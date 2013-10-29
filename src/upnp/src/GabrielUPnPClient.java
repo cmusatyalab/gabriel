@@ -84,9 +84,9 @@ public class GabrielUPnPClient {
 		// respond soon
 		upnpService.getControlPoint().search(new STAllHeader());
 
-		// Let's wait 10 seconds for them to respond
+		// Let's wait 1000 seconds for them to respond
 //		System.out.println("Waiting 10 seconds before shutting down...");
-		Thread.sleep(1);
+		Thread.sleep(60*60*1000);
 
 		// Release all resources and advertise BYEBYE to other UPnP devices
 //		System.out.println("Stopping Cling...");

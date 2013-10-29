@@ -47,23 +47,31 @@ class UPnPClient(threading.Thread):
         LOG.info("execute : %s" % ' '.join(cmd))
         _PIPE = subprocess.PIPE
         self.proc = subprocess.Popen(cmd, close_fds=True, stdout=_PIPE, stderr=_PIPE)
-        out, err = self.proc.communicate()
-        if err != None and len(err) != 0:
-            print err
-            raise UPnPClientError(str(err))
-        out_list = out.strip().split("\n")
-        for outline in out_list:
-            if len(outline.strip()) == 0:
-                continue
-            key, value = outline.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if key.lower() == "ipaddress":
-                self.ip_addr = str(value)
-            if key.lower() == "port":
-                self.port_number = int(value)
 
-        LOG.info("Gabriel Server is at %s:%d" % (self.ip_addr, self.port_number))
+        while(not self.stop.wait(0.01)):
+            self.proc.poll()
+            if self.proc.returncode is None:
+                continue
+
+            if self.proc.returncode == 0:
+                out = self.proc.stdout.read()
+                out_list = out.strip().split("\n")
+                for outline in out_list:
+                    if len(outline.strip()) == 0:
+                        continue
+                    key, value = outline.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key.lower() == "ipaddress":
+                        self.ip_addr = str(value)
+                    if key.lower() == "port":
+                        self.port_number = int(value)
+                LOG.info("Gabriel Server is at %s:%d" % (self.ip_addr, self.port_number))
+                break
+            else:
+                LOG.warning("Cannot locate Gabriel Service")
+                break
+        self.proc = None
 
     def terminate(self):
         self.stop.set()
@@ -81,6 +89,10 @@ if __name__ == "__main__":
     try:
         upnp_client_thread = UPnPClient()
         upnp_client_thread.start()
+        #import time
+        #time.sleep(20)
+        #upnp_client_thread.terminate()
+        #LOG.warning("Cannot find server")
     except UPnPClientError as e:
         LOG.error(str(e))
 
