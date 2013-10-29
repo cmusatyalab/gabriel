@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SEI Client</string>
+    <string name="default_ipaddress">127.0.0.1</string>
+    <string name="default_portnumber">10191</string>
+    <string name="default_directory">/sdcard/</string>
+    <string name="pref_ipaddress">ipaddress</string>
+    <string name="pref_portnumber">portnumber</string>
+    <string name="pref_directory">directory</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_clear">Clear</string>
+    <string name="intent_key_directory">directory</string>
+
+</resources>

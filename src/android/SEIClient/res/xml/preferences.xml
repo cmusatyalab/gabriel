@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+	<PreferenceCategory android:title="Server Settings">
+
+		<EditTextPreference android:title="Server Address"
+			android:summary="Chnage the server address" android:defaultValue="192.168.2.3"
+			android:key="serveraddresspreference">
+		</EditTextPreference>
+
+		<EditTextPreference android:title="Port"
+			android:summary="Change the port to connect to" android:defaultValue="6789"
+			android:key="serverportpreference" android:inputType="number" >
+		</EditTextPreference>
+
+	</PreferenceCategory>
+
+
+</PreferenceScreen>

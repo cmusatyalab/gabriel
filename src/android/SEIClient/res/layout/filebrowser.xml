@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical" >
+
+    <RelativeLayout
+        android:id="@+id/relativeLayout1"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent" >
+
+        <LinearLayout
+            android:id="@+id/container"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:orientation="vertical" android:layout_above="@+id/linearLayout1">
+
+            <TextView
+                android:id="@+id/current_dir_text"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:background="#363636"
+                android:padding="5dip"
+                android:textColor="#FFF"
+                android:textSize="15dip" />
+
+            <ListView
+                android:id="@android:id/list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" >
+            </ListView>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/linearLayout1"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" android:layout_alignParentBottom="true">
+
+            <Button
+                android:id="@+id/cancel_button"
+                android:layout_width="0dip"
+                android:layout_height="match_parent"
+                android:text="Cancel" android:layout_weight="1"/>
+
+            <Button
+                android:id="@+id/use_this_dir_button"
+                android:layout_width="0dip"
+                android:layout_height="match_parent"
+                android:text="Use this Directory" android:layout_weight="1"/>
+        </LinearLayout>
+    </RelativeLayout>
+
+</LinearLayout>

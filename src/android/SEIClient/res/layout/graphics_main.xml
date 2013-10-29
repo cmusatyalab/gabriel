@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:orientation="vertical" >
+
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:textSize = "25sp"
+        android:gravity="center_vertical"
+        android:layout_weight="1"
+        android:text="Cloudlet" />
+
+    <Button
+        android:id="@+id/testCloudlet"
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="bottom"
+        android:layout_weight="1"
+        android:text="Start Cloudlet" >
+    </Button>
+
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:textSize = "25sp"
+        android:gravity="center_vertical"
+        android:layout_weight="1"
+        android:text="Amazon East" />
+
+    <Button
+        android:id="@+id/testEast"
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="bottom"
+        android:layout_weight="1"
+        android:text="Start Amazon East" >
+    </Button>
+    
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:textSize = "25sp"
+        android:gravity="center_vertical"
+        android:layout_weight="1"
+        android:text="Amazon West" />
+    
+    <Button
+        android:id="@+id/testWest"
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="bottom"
+        android:layout_weight="1"
+        android:text="Start Amazon West" >
+    </Button>
+    
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:textSize = "25sp"
+        android:gravity="center_vertical"
+        android:layout_weight="1"
+        android:text="Amazon EU" />
+    
+    <Button
+        android:id="@+id/testEU"
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="bottom"
+        android:layout_weight="1"
+        android:text="Start Amazon EU" >
+    </Button>
+
+    <TextView
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:textSize = "25sp"
+        android:gravity="center_vertical"
+        android:layout_weight="1"
+        android:text="Amazon Asia" />
+    
+    <Button
+        android:id="@+id/testAsia"
+        android:layout_width="fill_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="bottom"
+        android:layout_weight="1"
+        android:text="Start Amazon Asia" >
+    </Button>
+</LinearLayout>

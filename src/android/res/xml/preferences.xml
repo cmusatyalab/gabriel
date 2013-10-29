@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+    
+		<ListPreference
+                android:key="list_protocol"
+                android:title="Protocol"
+                android:entries="@array/protocol_list"
+                android:entryValues="@array/protocol_list" android:selectable="true"/>
+        
+        <CheckBoxPreference
+                android:key="proxy_enabled"
+                android:title="Enable Proxy"/>
+    
+        
+        <EditTextPreference 
+            android:key="server_IP"
+            android:title="Proxy hostname or IP"/>
+        
+        <EditTextPreference
+            android:key="server_port"
+            android:title="Proxy TCP port"/>
+            
+            
+</PreferenceScreen>
