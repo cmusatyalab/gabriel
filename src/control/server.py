@@ -1,5 +1,22 @@
-# edited by Norbert (mjpeg part) from a file from Copyright Jon Berg , turtlemeat.com,
-# MJPEG Server for the webcam
+#!/usr/bin/env python 
+#
+# Cloudlet Infrastructure for Mobile Computing
+#
+#   Author: Kiryong Ha <krha@cmu.edu>
+#
+#   Copyright (C) 2011-2013 Carnegie Mellon University
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
 
 
 import cgi
@@ -9,6 +26,7 @@ import sys
 from os import curdir, sep
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from SocketServer import ThreadingMixIn
+from optparse import OptionParser
 import SocketServer
 import threading
 import functools
@@ -19,20 +37,15 @@ import struct
 import re
 import socket
 import json
-from cloudlet import log as logging
+from config import Const as Const
+
+import log as logging
+from upnp_server import UPnPServer, UPnPError
 
 
 LOG = logging.getLogger(__name__)
 image_queue_list = list()
 result_queue_list = list()
-
-
-class Conf(object):
-    MOBILE_PORT = 9098
-    HTTP_PORT = 8080
-    VIDEO_PORT = 10101
-
-    MAX_FRAME_SIZE = 10
 
 class Protocol_client(object):
     CONTROL_MESSAGE_KEY = "control"
@@ -149,7 +162,7 @@ class VideoStreamingHandler(SocketServer.StreamRequestHandler, object):
         super(MobileVideoHandler, self).setup()
         global image_queue_list
 
-        self.data_queue = Queue.Queue(Conf.MAX_FRAME_SIZE)
+        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         self.result_queue = Queue.Queue()
         image_queue_list.append(self.data_queue)
         result_queue_list.append(self.result_queue)
@@ -252,29 +265,51 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
 
 
+class MobileCommServer(SocketServer.TCPServer):
+    def __init__(self, args):
+        server_address = ('0.0.0.0', Const.MOBILE_SERVER_PORT)
+        self.allow_reuse_address = True
+        try:
+            SocketServer.TCPServer.__init__(self, server_address, MobileVideoHandler)
+        except socket.error as e:
+            sys.stderr.write(str(e))
+            sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))
+            sys.exit(1)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        LOG.info("* Mobile server configuration")
+        LOG.info(" - Open TCP Server at %s" % (str(server_address)))
+        LOG.info(" - Disable nagle (No TCP delay)  : %s" \
+                % str(self.socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)))
+        LOG.info("-"*50)
 
-def get_local_ipaddress():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("gmail.com", 80))
-    ipaddress = (s.getsockname()[0])
-    s.close()
-    return ipaddress
+        # Start UPnP Server
+        try:
+            self.upnp_server = UPnPServer()
+            self.upnp_server.start()
+        except UPnPError as e:
+            LOG.warning(str(e))
+            LOG.warning("Cannot start UPnP Server")
+            self.upnp_server = None
+        LOG.info("Start UPnP Server")
+
+    def handle_error(self, request, client_address):
+        #SocketServer.TCPServer.handle_error(self, request, client_address)
+        #sys.stderr.write("handling error from client %s\n" % (str(client_address)))
+        pass
 
 
 def main():
-    mobile_server = ThreadedHTTPServer(('0.0.0.0', Conf.MOBILE_PORT), MobileVideoHandler)
-    mobile_server.allow_reuse_address = True
-    mobile_server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    mobile_server.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    video_server = ThreadedHTTPServer(('0.0.0.0', Conf.VIDEO_PORT), VideoStreamingHandler)
+    mobile_server = MobileCommServer(sys.argv[1:])
+    video_server = ThreadedHTTPServer(('0.0.0.0', Const.VIDEO_PORT), VideoStreamingHandler)
     video_server.allow_reuse_address = True
     video_server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     video_server.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    LOG.info('started mobile server at %s' % (str(Conf.MOBILE_PORT)))
+    LOG.info('started mobile server at %s' % (str(Const.MOBILE_SERVER_PORT)))
     mobile_server_thread = threading.Thread(target=mobile_server.serve_forever)
     mobile_server_thread.daemon = True
-    LOG.info('started AppVM server at %s' % (str(Conf.VIDEO_PORT)))
+    LOG.info('started AppVM server at %s' % (str(Const.VIDEO_PORT)))
     video_server_thread = threading.Thread(target=video_server.serve_forever)
     video_server_thread.daemon = True
 
@@ -286,7 +321,7 @@ def main():
         emulated_result_queue = Queue.Queue()
         result_queue_list.append(emulated_result_queue)
         while True:
-            user_input = raw_input("Enter result: ")
+            user_input = raw_input("Enter q to quit: ")
             if user_input.lower() == 'q':
                 break
             else:
@@ -305,7 +340,6 @@ def main():
     else:
         #server.terminate()
         sys.exit(0)
-
 
 
 if __name__ == '__main__':
