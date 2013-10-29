@@ -42,6 +42,8 @@ def which(program):
 
 
 class Const(object):
+    VERSION = "0.1.1"
+
     # port number for the server modules
     MOBILE_SERVER_PORT = 9098
     HTTP_PORT = 8080
