@@ -45,7 +45,8 @@ class AppServerError(Exception):
 
 class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
-        super(SocketServer.StreamRequestHandler, self).setup()
+        #super(SocketServer.StreamRequestHandler, self).setup()
+        super(VideoSensorHandler, self).setup()
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         self.result_queue = Queue.Queue()
         mobile_server.image_queue_list.append(self.data_queue)
@@ -56,7 +57,7 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             jpeg_data = self.data_queue.get()
             LOG.info("sending new image")
             json_header = json.dumps({
-                Protocol_application.JSON_KEY_SENSOR_TYPE :
+                Protocol_application.JSON_KEY_SENSOR_TYPE:
                         Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
                 })
             header_size = struct.pack("!I", len(json_header))
@@ -93,9 +94,10 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_video_streaming()
                 time.sleep(0.001)
         except Exception as e:
-            sys.stderr.write(traceback.format_exc())
-            sys.stderr.write("%s" % str(e))
-            sys.stderr.write("handler raises exception\n")
+            #sys.stderr.write(traceback.format_exc())
+            #sys.stderr.write("%s" % str(e))
+            #sys.stderr.write("handler raises exception\n")
+            LOG.info("Client is disconnected unexpectedly")
             self.terminate()
 
     def terminate(self):
@@ -103,13 +105,12 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
         mobile_server.result_queue_list.remove(self.result_queue)
 
 
-class VideoSensorServer(ThreadingMixIn, HTTPServer):
+class VideoSensorServer(SocketServer.TCPServer):
     def __init__(self, args):
         server_address = ('0.0.0.0', Const.VIDEO_PORT)
         self.allow_reuse_address = True
         try:
-            SocketServer.TCPServer.__init__(self, server_address,
-                    VideoSensorHandler)
+            SocketServer.TCPServer.__init__(self, server_address, VideoSensorHandler)
         except socket.error as e:
             sys.stderr.write(str(e))
             sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))
@@ -125,7 +126,10 @@ class VideoSensorServer(ThreadingMixIn, HTTPServer):
         LOG.info("-" * 50)
 
     def handle_error(self, request, client_address):
+        import pdb;pdb.set_trace()
+        LOG.info("error")
         pass
 
     def terminate(self):
+        LOG.info("terminate")
         pass
