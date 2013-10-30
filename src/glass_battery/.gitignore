@@ -1,0 +1,5 @@
+bin/
+gen/
+*.png
+*.apk
+*.ap_
