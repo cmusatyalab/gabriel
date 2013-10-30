@@ -5,13 +5,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import edu.cmu.cs.gabriel.R;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
@@ -48,7 +52,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	public String REMOTE_IP = "128.2.210.197";
 	public static int REMOTE_CONTROL_PORT = 5000;
 	public static int REMOTE_DATA_PORT = 9098;
-	public static int FPS_LIMITATION = 20;
+	public static int FPS_LIMITATION = 100;
 
 	CameraConnector cameraRecorder;
 	VideoStreamingThread streamingThread;
@@ -62,13 +66,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	protected TextToSpeech mTTS;
 
-
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
-		this.statView = (TextView) findViewById(R.id.stat_textView);
+//		this.statView = (TextView) findViewById(R.id.stat_textView);
 
 		// TextToSpeech.OnInitListener
 		mTTS = new TextToSpeech(this, this);
@@ -81,6 +84,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		controlThread = null;
 		hasStarted = false;
 		localOutputStream = null;
+		
+		startCapture();
+
 	}
 
 	// Implements TextToSpeech.OnInitListener
@@ -133,20 +139,28 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private PreviewCallback previewCallback = new PreviewCallback() {
+		private long frameCount = 0, firstUpdateTime = 0;
 		private long prevUpdateTime = 0, currentUpdateTime = 0;
-		private long expected_time_delay = 1000/FPS_LIMITATION;
-		
+		private long expected_time_delay = 1000 / FPS_LIMITATION;
+
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
 			if (hasStarted && (localOutputStream != null)) {
-				currentUpdateTime = System.currentTimeMillis();
-				if ((currentUpdateTime - prevUpdateTime) < expected_time_delay){
-//					Log.d(LOG_TAG, "skip frame " + (currentUpdateTime - prevUpdateTime) + " " + expected_time_delay);
-					return;
-				}
-//				Log.d(LOG_TAG, "sending frame");
-				prevUpdateTime = currentUpdateTime;
 				Camera.Parameters parameters = mCamera.getParameters();
 				Camera.Size size = parameters.getPreviewSize();
+				
+				if (firstUpdateTime == 0) {
+					firstUpdateTime = System.currentTimeMillis();
+				}
+				currentUpdateTime = System.currentTimeMillis();
+				frameCount++;
+				int interval = 10;
+				if (frameCount % interval == 0) {
+					Log.d(LOG_TAG, "Current FPS: " + 1000.0 * 1 / (currentUpdateTime - prevUpdateTime));
+					Log.d(LOG_TAG, "Image size : " + size.width + "x" + size.height);
+				}
+				prevUpdateTime = currentUpdateTime;
+
+				
 				YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), size.width, size.height, null);
 				ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
 				image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
@@ -165,20 +179,21 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
 			} else if (msg.what == VideoStreamingThread.NETWORK_RET_RESULT) {
 				String ttsMessage = (String) msg.obj;
-				
+
 				// Select a random hello.
 				Log.d(LOG_TAG, "tts string origin: " + ttsMessage);
 				mTTS.setSpeechRate(1f);
 				mTTS.speak(ttsMessage, TextToSpeech.QUEUE_FLUSH, null);
-				
-//				Bundle data = msg.getData();
-//				double avgfps = data.getDouble("avg_fps");
-//				double fps = data.getDouble("fps");
-//				if (fps != 0.0) {
-//					Log.e("krha", fps + " " + avgfps);
-//					statView.setText("FPS - " + String.format("%04.2f", fps) + "(current), "
-//							+ String.format("%04.2f", avgfps) + "(avg)");
-//				}
+
+				// Bundle data = msg.getData();
+				// double avgfps = data.getDouble("avg_fps");
+				// double fps = data.getDouble("fps");
+				// if (fps != 0.0) {
+				// Log.e("krha", fps + " " + avgfps);
+				// statView.setText("FPS - " + String.format("%04.2f", fps) +
+				// "(current), "
+				// + String.format("%04.2f", avgfps) + "(avg)");
+				// }
 			}
 		}
 	};
@@ -206,8 +221,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				}
 
 				if (streamingThread == null) {
-					streamingThread = new VideoStreamingThread(PROTOCOL_INDEX, cameraRecorder.getOutputFileDescriptor(),
-							REMOTE_IP, serverStreamPort, returnMsgHandler);
+					streamingThread = new VideoStreamingThread(PROTOCOL_INDEX,
+							cameraRecorder.getOutputFileDescriptor(), REMOTE_IP, serverStreamPort, returnMsgHandler);
 					streamingThread.start();
 				}
 
@@ -220,13 +235,83 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		}
 	};
 
-	public void startStreaming(View view) throws IOException {
+	protected int selectedRangeIndex = 0;
+	public void selectFrameRate(View view) throws IOException {
+		selectedRangeIndex = 0;
+		final List<int[]> rangeList = this.mPreview.supportingFPS;
+		String[] rangeListString = new String[rangeList.size()];
+		for (int i = 0; i < rangeListString.length; i++) {
+			int[] targetRange = rangeList.get(i);
+			rangeListString[i] = new String(targetRange[0] + " ~" + targetRange[1]);
+		}
+
+		AlertDialog.Builder ab = new AlertDialog.Builder(this);
+		ab.setTitle("FPS Range List");
+		ab.setIcon(R.drawable.ic_launcher);
+		ab.setSingleChoiceItems(rangeListString, 0, new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				selectedRangeIndex = position;
+			}
+		}).setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				if (position >= 0) {
+					selectedRangeIndex = position;
+				}
+				int[] targetRange = rangeList.get(selectedRangeIndex);
+				mPreview.changeConfiguration(targetRange, null);
+			}
+		}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				return;
+			}
+		});
+		ab.show();
+	}
+
+	protected int selectedSizeIndex = 0;
+	public void selectImageSize(View view) throws IOException {
+		selectedSizeIndex = 0;
+		final List<Camera.Size> imageSize = this.mPreview.supportingSize;
+		String[] sizeListString = new String[imageSize.size()];
+		for (int i = 0; i < sizeListString.length; i++) {
+			Camera.Size targetRange = imageSize.get(i);
+			sizeListString[i] = new String(targetRange.width + " ~" + targetRange.height);
+		}
+
+		AlertDialog.Builder ab = new AlertDialog.Builder(this);
+		ab.setTitle("Image Size List");
+		ab.setIcon(R.drawable.ic_launcher);
+		ab.setSingleChoiceItems(sizeListString, 0, new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				selectedRangeIndex = position;
+			}
+		}).setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				if (position >= 0) {
+					selectedRangeIndex = position;
+				}
+				Camera.Size targetSize = imageSize.get(selectedRangeIndex);
+				mPreview.changeConfiguration(null, targetSize);
+			}
+		}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+			public void onClick(DialogInterface dialog, int position) {
+				return;
+			}
+		});
+		ab.show();
+	}
+	
+	private void startCapture(){
 		if (hasStarted == false) {
 			mPreview.setPreviewCallback(previewCallback);
 			Log.d(LOG_TAG, "connecting to control channel " + REMOTE_IP + ":" + REMOTE_CONTROL_PORT);
 			controlThread = new ControlThread(controlMsgHandler, REMOTE_IP, REMOTE_CONTROL_PORT);
 			controlThread.start();
 		}
+	}
+	
+	public void startStreaming(View view) throws IOException {
+		startCapture();
 	}
 
 	public void stopStreaming() {
@@ -326,6 +411,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mTTS.shutdown();
 		}
 		finish();
-		
+
 	}
 }

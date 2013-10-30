@@ -164,14 +164,15 @@ def main():
         emulated_result_queue = Queue.Queue()
         mobile_server.result_queue_list.append(emulated_result_queue)
         while True:
-            user_input = raw_input("Enter q to quit: ")
-            if user_input.lower() == 'q':
-                break
-            else:
-                json_result = json.dumps({
-                    Protocol_client.RESULT_MESSAGE_KEY: str(user_input),
-                    })
-                emulated_result_queue.put(json_result)
+            time.sleep(100)
+            #user_input = raw_input("Enter q to quit: ")
+            #if user_input.lower() == 'q':
+            #    break
+            #else:
+            #    json_result = json.dumps({
+            #        Protocol_client.RESULT_MESSAGE_KEY: str(user_input),
+            #        })
+            #    emulated_result_queue.put(json_result)
     except Exception as e:
         sys.stderr.write(str(e))
         m_server.terminate()

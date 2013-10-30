@@ -1,33 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:keepScreenOn="true"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
+    android:keepScreenOn="true"
     android:orientation="vertical" >
-    <TextView                                                                                                                                                                                  
-        android:id="@+id/stat_textView"                                                                                                                                                        
-        android:layout_width="match_parent"                                                                                                                                                    
-        android:layout_height="wrap_content"                                                                                                                                                   
-        android:gravity="center"                                                                                                                                                               
-        android:text="FPS"                                                                                                                                                                     
-        android:textSize="30sp" /> 
+
+    <Button
+        android:id="@+id/button_settingFrame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:onClick="selectFrameRate"
+        android:text="FPS Setting"
+        android:textSize="20sp" />
+
+    <Button
+        android:id="@+id/button_settingSize"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:onClick="selectImageSize"
+        android:text="Size Setting"
+        android:textSize="20sp" />
 
     <LinearLayout
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
-        android:weightSum="1"
-        android:orientation="horizontal" >
+        android:orientation="horizontal"
+        android:weightSum="1" >
 
         <edu.cmu.cs.gabriel.CameraPreview
             android:id="@+id/camera_preview"
-            android:layout_height="fill_parent"
             android:layout_width="0dp"
+            android:layout_height="fill_parent"
             android:layout_weight="0.9" />
 
         <Button
             android:id="@+id/button_startStreaming"
-            android:layout_height="fill_parent"
             android:layout_width="0dp"
+            android:layout_height="fill_parent"
             android:layout_weight="0.1"
             android:onClick="startStreaming"
             android:text="@string/start_button" />

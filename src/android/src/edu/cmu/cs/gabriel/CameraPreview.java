@@ -7,18 +7,21 @@ import android.content.Context;
 import android.graphics.ImageFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
+import android.hardware.Camera.Size;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
-
+	public static final int MIN_FPS = 50;
 	public static final int IMAGE_WIDTH = 320;
-	public static final int IMAGE_HEIGHT = 240;
+
 
 	public SurfaceHolder mHolder;
 	public Camera mCamera = null;
+	public List<int[]> supportingFPS = null;
+	public List<Camera.Size> supportingSize = null;
 
 	public void close() {
 		if (mCamera != null) {
@@ -46,28 +49,63 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 	}
 
+	public void changeConfiguration(int[] range, Size imageSize) {
+		Camera.Parameters parameters = mCamera.getParameters();
+		if (range != null){
+			parameters.setPreviewFpsRange(range[0], range[1]);			
+		}
+		if (imageSize != null){
+			parameters.setPreviewSize(imageSize.width, imageSize.height);
+			parameters.setPictureFormat(ImageFormat.JPEG);			
+		}
+		
+		mCamera.setParameters(parameters);
+	}
+
 	public void surfaceCreated(SurfaceHolder holder) {
 
 		if (mCamera == null) {
 			mCamera = Camera.open();
-//	        mCamera.setDisplayOrientation(90);
+			// mCamera.setDisplayOrientation(90);
 		}
 		if (mCamera != null) {
+
 			try {
 				mCamera.setPreviewDisplay(holder);
-		        Camera.Parameters parameters = mCamera.getParameters();
-		        // set fps to capture
-		        List<int[]> supportedFps = parameters.getSupportedPreviewFpsRange();
-		        int[] targetRange = supportedFps.get(supportedFps.size() - 1);
-		        parameters.setPreviewFpsRange(targetRange[0], targetRange[1]);
-//		        parameters.setPreviewFpsRange(targetRange[0], FPS_RANGE);
-		        // set resolusion
-		        List<Camera.Size> supportedSizes = parameters.getSupportedPreviewSizes();
-		        parameters.setPreviewSize(IMAGE_WIDTH, IMAGE_HEIGHT);        
-		        parameters.setPictureFormat(ImageFormat.JPEG);
-//		        parameters.set("orientation", "portrait");
-		        
-		        mCamera.setParameters(parameters);
+				// set fps to capture
+				Camera.Parameters parameters = mCamera.getParameters();
+				List<int[]> supportedFps = parameters.getSupportedPreviewFpsRange();
+				if(this.supportingFPS == null)
+					this.supportingFPS = supportedFps;
+				int index = 0, fpsDiff = Integer.MAX_VALUE;
+				for (int i = 0; i < supportedFps.size(); i++){
+					int[] frameRate = supportedFps.get(i);
+					int diff = Math.abs(MIN_FPS*1000 - frameRate[0]);
+					if (diff < fpsDiff){
+						fpsDiff = diff;
+						index = i;
+					}
+				}
+				int[] targetRange = supportedFps.get(index);
+				
+				// set resolusion
+				List<Camera.Size> supportedSizes = parameters.getSupportedPreviewSizes();
+				if(this.supportingSize == null)
+					this.supportingSize = supportedSizes;
+				index = 0;
+				int sizeDiff = Integer.MAX_VALUE;
+				for (int i = 0; i < supportedSizes.size(); i++){
+					Camera.Size size = supportedSizes.get(i);
+					int diff = Math.abs(size.width - CameraPreview.IMAGE_WIDTH);
+					if (diff < sizeDiff){
+						sizeDiff = diff;
+						index = i;
+					}
+				}
+				Camera.Size target_size = supportedSizes.get(index);
+				List<Integer> supportedFormat = parameters.getSupportedPreviewFormats();
+				
+				changeConfiguration(targetRange, target_size);
 				mCamera.startPreview();
 
 			} catch (IOException exception) {
@@ -89,17 +127,16 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
 	public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
 		/*
-		Camera.Parameters parameters = mCamera.getParameters();
-		parameters.setPreviewSize(w, h);
-		mCamera.setParameters(parameters);
-		mCamera.startPreview();
-		*/
+		 * Camera.Parameters parameters = mCamera.getParameters();
+		 * parameters.setPreviewSize(w, h); mCamera.setParameters(parameters);
+		 * mCamera.startPreview();
+		 */
 	}
 
-    public void setPreviewCallback(PreviewCallback previewCallback) {
-        mCamera.setPreviewCallback(previewCallback);
-    }
-    
+	public void setPreviewCallback(PreviewCallback previewCallback) {
+		mCamera.setPreviewCallback(previewCallback);
+	}
+
 	public Camera getCamera() {
 		return mCamera;
 	}

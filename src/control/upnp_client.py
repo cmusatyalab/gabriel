@@ -38,6 +38,9 @@ class UPnPClient(threading.Thread):
         self.stop = threading.Event()
         self.upnp_bin = Const.UPnP_CLIENT_PATH
         self.proc = None
+        self.ip_addr = None
+        self.port_number = None
+
         if os.path.exists(self.upnp_bin) == False:
             raise UPnPClientError("Cannot find binary: %s" % self.upnp_bin)
         threading.Thread.__init__(self, target=self.run_exec)
@@ -66,7 +69,6 @@ class UPnPClient(threading.Thread):
                         self.ip_addr = str(value)
                     if key.lower() == "port":
                         self.port_number = int(value)
-                LOG.info("Gabriel Server is at %s:%d" % (self.ip_addr, self.port_number))
                 break
             else:
                 LOG.warning("Cannot locate Gabriel Service")
@@ -89,6 +91,9 @@ if __name__ == "__main__":
     try:
         upnp_client_thread = UPnPClient()
         upnp_client_thread.start()
+        upnp_client_thread.join()
+        LOG.info("Gabriel Server is at %s:%d" % (upnp_client_thread.ip_addr, upnp_client_thread.port_number))
+
         #import time
         #time.sleep(20)
         #upnp_client_thread.terminate()

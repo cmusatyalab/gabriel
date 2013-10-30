@@ -73,7 +73,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
         if (self.frame_count % 10 == 0):
             msg = "Video frame rate from client : current(%f), average(%f)" % \
                     (self.current_FPS, self.average_FPS)
-            #LOG.info(msg)
+            LOG.info(msg)
         for image_queue in image_queue_list:
             if image_queue.full() is True:
                 image_queue.get()
