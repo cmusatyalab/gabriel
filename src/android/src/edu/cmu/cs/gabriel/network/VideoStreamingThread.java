@@ -181,11 +181,10 @@ public class VideoStreamingThread extends Thread {
 	}
 
 	public void push(byte[] byteArray) {
-		if (this.frameBufferList.size() < 10){
-			this.frameBufferList.add(byteArray);
-		}else{
-			Log.w(LOG_TAG, "Buffer Fulled");
+		if (this.frameBufferList.size() > 5){
+			this.frameBufferList.remove(0);
 		}
+		this.frameBufferList.add(byteArray);
 	}
 	
 	private void notifyError(String message) {
