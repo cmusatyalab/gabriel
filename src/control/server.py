@@ -109,24 +109,31 @@ def process_command_line(argv):
     return settings, args
 
 
-class EmualtedMobileDevice(object):
+class EmulatedMobileDevice(object):
     def __init__(self, image_dir):
         from os import listdir
+        self.stop = threading.Event()
         self.filelist = [os.path.join(image_dir, f) for f in listdir(image_dir)
                 if f.lower().endswith("jpeg") or f.lower().endswith("jpg")]
         self.filelist.sort()
 
     def serve_forever(self):
-        for image_file in self.filelist:
-            image_data = open(image_file, "r").read()
-            for image_queue in mobile_server.image_queue_list:
-                if image_queue.full() is True:
-                    image_queue.get()
-                image_queue.put(image_data)
-            #LOG.info("pushing emualted image to the queue")
-            time.sleep(0.1)
+        frame_count = 0;
+        while(not self.stop.wait(0.01)):
+            for image_file in self.filelist:
+                image_data = open(image_file, "r").read()
+                for image_queue in mobile_server.image_queue_list:
+                    if image_queue.full() is True:
+                        image_queue.get()
+                    image_queue.put(image_data)
+                if frame_count%100 == 0:
+                    pass
+                    #LOG.info("pushing emualted image to the queue (%d)" % frame_count)
+                frame_count += 1
+                time.sleep(0.1)
 
     def terminate(self):
+        self.stop.set()
         pass
 
 
@@ -142,7 +149,7 @@ def main():
 
     if settings.image_dir:
         # use emulated images for the testing
-        m_server = EmualtedMobileDevice(os.path.abspath(settings.image_dir))
+        m_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
     else:
         m_server = MobileCommServer(sys.argv[1:])
 
