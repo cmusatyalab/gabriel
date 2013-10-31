@@ -1,0 +1,38 @@
+License
+--------------
+This MOPED server program uses MOPED Open source project.
+You can find detail license agreement at http://personalrobotics.ri.cmu.edu/projects/moped.php
+
+
+Run
+--------------
+1) Download install
+	$ wget http://dl.dropbox.com/u/350113/download/moped_bin.tar.gz
+	$ tar xvfz moped_bin.tar.gz
+	$ cd moped_bin/
+	$ ./install
+
+2) Run
+	$ ./moped_server
+
+
+3) included library (11.10)
+	sudo apt-get install libgomp1 libcv2.1 libhighgui2.1 libcvaux2.1 libglu1-mesa libglew1.6
+
+Compile
+--------------
+1) Install dev library
+	For 10.04,
+	$ sudo apt-get install build-essential g++ git-core gitk libcv-dev libglew-dev libglew1.5-dev libdevil-dev libhighgui-dev libglut3-dev 
+
+	For 11.10
+	$ sudo apt-get install libcv-dev libglew1.6-dev libdevil-dev libhighgui-dev libcvaux-dev gcc-4.4 g++-4.4 libstdc++6-4.4-dev
+
+	For 12.10
+	$ sudo apt-get install libcv-dev libglew-dev libdevil-dev libhighgui-dev libcvaux-dev gcc-4.4 g++-4.4 libstdc++6-4.4-dev libopencv-dev freeglut3-dev
+
+2) (Additional)For Ubuntu 11.10
+	$ sudo apt-get install gcc-4.4 g++-4.4 libstdc++6-4.4-dev
+	$ vi Makefile
+		GXX=g++-4.4
+
