@@ -100,7 +100,5 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
-        client.terminate()
     except Exception as e:
-        client.terminate()
 

@@ -36,6 +36,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -70,6 +71,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
 //		this.statView = (TextView) findViewById(R.id.stat_textView);
 

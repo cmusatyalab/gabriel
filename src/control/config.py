@@ -55,5 +55,5 @@ class Const(object):
     UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "./lib/gabriel_upnp_client.jar")) 
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
-    MAX_FRAME_SIZE = 10
+    MAX_FRAME_SIZE = 3
 

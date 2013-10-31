@@ -70,7 +70,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                 self.init_connect_time)
         self.previous_time = self.current_time
 
-        if (self.frame_count % 10 == 0):
+        if (self.frame_count % 20 == 0):
             msg = "Video frame rate from client : current(%f), average(%f)" % \
                     (self.current_FPS, self.average_FPS)
             LOG.info(msg)
@@ -89,9 +89,10 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
             except Queue.Empty:
                 pass
             if result_msg is not None:
-                ret_size = struct.pack("!I", len(result_msg))
-                self.request.send(ret_size)
-                self.wfile.write(result_msg)
+                packet = struct.pack("!I%ds" % len(result_msg),
+                        len(result_msg),
+                        result_msg)
+                self.request.send(packet)
                 self.wfile.flush()
                 LOG.info("result message (%s) sent to the Glass", result_msg)
 
@@ -115,7 +116,6 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                     if output == socket_fd:
                         self._handle_result_output()
                 time.sleep(0.001)
-
         except Exception as e:
             LOG.info(traceback.format_exc())
             LOG.info("%s" % str(e))
