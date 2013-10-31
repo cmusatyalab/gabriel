@@ -24,7 +24,6 @@ import time
 import json
 from config import Const as Const
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
-from SocketServer import ThreadingMixIn
 import SocketServer
 import socket
 import select
@@ -55,25 +54,29 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
     def _handle_video_streaming(self):
         if self.data_queue.empty() is False:
             jpeg_data = self.data_queue.get()
-            LOG.info("sending new image")
+            #LOG.info("sending new image")
             json_header = json.dumps({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
                         Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
                 })
-            header_size = struct.pack("!I", len(json_header))
-            image_size = struct.pack("!I", len(jpeg_data))
-            self.request.send(header_size)
-            self.request.send(image_size)
-            self.wfile.write(json_header)
-            self.wfile.write(jpeg_data)
+            packet = struct.pack("!II%ds%ds" % (len(json_header), len(jpeg_data)), 
+                    len(json_header),
+                    len(jpeg_data),
+                    json_header,
+                    str(jpeg_data))
+            self.request.send(packet)
             self.wfile.flush()
 
+    def _recv_all(self, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            data += self.request.recv(recv_size - len(data))
+        return data
+
     def _handle_result_output(self):
-        ret_size = self.request.recv(4)
+        ret_size = self._recv_all(4)
         ret_size = struct.unpack("!I", ret_size)[0]
-        result_data = self.request.recv(ret_size)
-        while len(result_data) < result_data:
-            result_data += self.request.recv(ret_size - len(ret_size))
+        result_data = self._recv_all(ret_size)
         LOG.info("receive result : %s" % (str(result_data)))
         self.result_queue.put(str(result_data))
 
@@ -97,7 +100,7 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             #sys.stderr.write(traceback.format_exc())
             #sys.stderr.write("%s" % str(e))
             #sys.stderr.write("handler raises exception\n")
-            LOG.info("Client is disconnected unexpectedly")
+            LOG.info("Client is disconnected")
             self.terminate()
 
     def terminate(self):
@@ -105,7 +108,7 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
         mobile_server.result_queue_list.remove(self.result_queue)
 
 
-class VideoSensorServer(SocketServer.TCPServer):
+class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     def __init__(self, args):
         server_address = ('0.0.0.0', Const.VIDEO_PORT)
         self.allow_reuse_address = True
@@ -131,5 +134,5 @@ class VideoSensorServer(SocketServer.TCPServer):
         pass
 
     def terminate(self):
-        LOG.info("terminate")
-        pass
+        if self.socket != -1:
+            self.socket.close()

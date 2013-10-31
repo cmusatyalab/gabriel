@@ -5,6 +5,7 @@
     android:keepScreenOn="true"
     android:orientation="vertical" >
 
+    <!--
     <Button
         android:id="@+id/button_settingFrame"
         android:layout_width="match_parent"
@@ -21,7 +22,8 @@
         android:gravity="center"
         android:onClick="selectImageSize"
         android:text="Size Setting"
-        android:textSize="20sp" />
+        android:textSize="20sp" />         
+    -->
 
     <LinearLayout
         android:layout_width="fill_parent"
@@ -33,7 +35,9 @@
             android:id="@+id/camera_preview"
             android:layout_width="0dp"
             android:layout_height="fill_parent"
-            android:layout_weight="0.9" />
+            android:layout_weight="1.0" />
+            
+    <!--
 
         <Button
             android:id="@+id/button_startStreaming"
@@ -41,7 +45,8 @@
             android:layout_height="fill_parent"
             android:layout_weight="0.1"
             android:onClick="startStreaming"
-            android:text="@string/start_button" />
+            android:text="@string/start_button" />         
+    -->
     </LinearLayout>
 
 </LinearLayout>
