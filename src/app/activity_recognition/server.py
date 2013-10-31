@@ -29,8 +29,8 @@ chop_counter = 60
 
 w = 160
 h = 120
-selected_feature = "mosift"
-descriptor = "all"
+selected_feature = "trajS"
+descriptor = "MBH"
 n_clusters = 1024
 
 model_names = ["SayHi", "Clapping", "TurnAround", "Squat", "ExtendingHands"]
@@ -56,7 +56,7 @@ def detectActivity(frames, queue):
 
     # Write into a video chunk
     fd, video_path = tempfile.mkstemp(dir='tmp/all', prefix='video', suffix='.avi')
-    print "Created temporary video file: %s" % video_path
+    #print "Created temporary video file: %s" % video_path
     videoWriter = cv.CreateVideoWriter(video_path, cv.CV_FOURCC('X', 'V', 'I', 'D'), 30, (160, 120), True)
     if not videoWriter:
         print "Error in creating video writer"
@@ -66,7 +66,7 @@ def detectActivity(frames, queue):
             cv.WriteFrame(videoWriter, frame)
 
     video_spent_time = time.time() - current_time
-    print "\n\n\n\n\n\n\nVideo write spent time: %f\n\n\n\n\n\n\n" % video_spent_time
+    print "Video write spent time: %f" % video_spent_time
 
     # Extract features from video file (in .spbof file)
     video_name = os.path.basename(video_path).split('.avi')[0]
@@ -79,8 +79,9 @@ def detectActivity(frames, queue):
     input_file = "%s/input_%s_%s.txt" % (FEATURE_DIR, selected_feature, video_name)
     center_file = "%s/centers_%s_%s_%d" % (centers_path, selected_feature, descriptor, n_clusters)
 
+    DEVNULL = open(os.devnull, 'wb')
     subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h),
-                     '-r', '30', tmp_video_file])
+                     '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
     #tmp_video_file = video_path
     with open(raw_file, 'wb') as out:
         if selected_feature == "traj":
@@ -92,39 +93,40 @@ def detectActivity(frames, queue):
                             stdout = out)
             os.remove(stable_video_file)
         elif selected_feature == "mosift":
-            #os.system("bin/siftmotionffmpeg -r -t 1 -k 2 tmp/all/%s.avi tmp/all/mosift_raw_%s.txt" % (video_name,video_name))
             subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r', '-t', '1', '-k', '2',
-                             tmp_video_file, raw_file])
+                             tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
         elif selected_feature == "stip":
             with open(input_file, 'w') as f_input:
                 f_input.write(os.path.basename(tmp_video_file).split('.')[0])
-            subprocess.call(['%s/stipdet' % bin_path, '-i', input_file, '-vpath', './%s/all/' % (TMP_DIR),
-                             '-ext', '.avi', '-o', raw_file, '-det', 'harris3d', '-vis', 'no'])
+            subprocess.call(['%s/stipdet' % bin_path, '-i', input_file, '-vpath', './%s/' % (FEATURE_DIR),
+                             '-ext', '.avi', '-o', raw_file, '-det', 'harris3d', '-vis', 'no'], stdout=DEVNULL, stderr=DEVNULL)
             os.remove(input_file)
         elif selected_feature == "stipS":
             subprocess.call(['%s/stabilize_c' % bin_path, tmp_video_file, stable_video_file])
             with open(input_file, 'w') as f_input:
                 f_input.write(os.path.basename(stable_video_file).split('.')[0])
-            subprocess.call(['%s/stipdet' % bin_path, '-i', input_file, '-vpath', './%s/all/' % (TMP_DIR),
-                             '-ext', '.avi', '-o', raw_file, '-det', 'harris3d', '-vis', 'no'])
+            subprocess.call(['%s/stipdet' % bin_path, '-i', input_file, '-vpath', './%s/' % (FEATURE_DIR),
+                             '-ext', '.avi', '-o', raw_file, '-det', 'harris3d', '-vis', 'no'], stdout=DEVNULL, stderr=DEVNULL)
             os.remove(stable_video_file)
             os.remove(input_file)
 
-    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
-    subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'])
+    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
+    subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)
 
     os.remove(raw_file)
     os.remove(txyc_file)
 
     # Detect activity from MoSIFT feature vectors
     feature_vec = load_data(spbof_file)
-    #os.remove(spbof_file)
+    os.remove(spbof_file)
 
     model_idx = -1
     max_score = 0
     for idx, model_name in enumerate(model_names):
+        if idx == len(model_names) - 1:
+            break
         #svmmodel = svmutil.svm_load_model("model_%s" % model_name)
-        p_labs, p_acc, p_vals = svmutil.svm_predict([1], [feature_vec], svmmodels[idx], "-b 1")
+        p_labs, p_acc, p_vals = svmutil.svm_predict([1], [feature_vec], svmmodels[idx], "-b 1 -q")
         labels = svmmodels[idx].get_labels()
         val = p_vals[0][0] * labels[0] + p_vals[0][1] * labels[1]
         if val > max_score:
@@ -132,12 +134,10 @@ def detectActivity(frames, queue):
             model_idx = idx
 
     model_name = model_names[model_idx]
-    if max_score > 0.4: # Activity is detected
+    if max_score > 0.5: # Activity is detected
         shutil.copyfile("tmp/all/%s.avi" % video_name, "tmp/activity/%s_%s_%d.avi" % (video_name, model_name, int(max_score * 100)))
         os.remove(video_path)
         
-        return
-
         if not queue.empty():
             previous_time = queue.get()
             queue.put(previous_time)
@@ -155,7 +155,7 @@ def detectActivity(frames, queue):
         for i in xrange(10):
             print ""
 
-        UDP_IP = "128.237.197.216"
+        UDP_IP = "127.0.0.1"
         UDP_PORT = 18080
         MESSAGE = MESSAGES[model_idx]
 
@@ -164,6 +164,8 @@ def detectActivity(frames, queue):
     else:
         print "Max confidence score: %f, activity is: %s" % (max_score, model_name)
         os.rename("tmp/all/%s.avi" % video_name, "tmp/all/%s_%s_%d.avi" % (video_name, model_name, int(max_score * 100)))
+
+    DEVNULL.close()
 
 def processFrame(data):
     t_start = time.time()
