@@ -53,6 +53,7 @@ public class VideoStreamingThread extends Thread {
 	private FileInputStream cameraInputStream;
 	private Vector<byte[]> frameBufferList = new Vector<byte[]>();
 	private Handler networkHander = null;
+	private long frameID = 0;
 
 	public VideoStreamingThread(int protocol, FileDescriptor fd, String IPString, int port, Handler handler) {
 		is_running = false;
@@ -135,10 +136,15 @@ public class VideoStreamingThread extends Thread {
 			case PROTOCOL_TCP:
 				try {
 					while (this.frameBufferList.size() > 0){
+						byte[] header = ("{\"id\":" + this.frameID  + "}").getBytes();
 						byte[] data = this.frameBufferList.remove(0);
+						networkWriter.writeInt(header.length);
 						networkWriter.writeInt(data.length);
+						networkWriter.write(header);
 						networkWriter.write(data, 0, data.length);
-						networkWriter.flush();						
+						networkWriter.flush();
+						networkReceiver.getReceiverStamps().put(this.frameID, System.currentTimeMillis());
+						this.frameID++;
 					}
 				} catch (IOException e) {
 					Log.e(LOG_TAG, e.getMessage());

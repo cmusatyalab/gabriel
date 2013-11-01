@@ -72,15 +72,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
-//		this.statView = (TextView) findViewById(R.id.stat_textView);
+        init();
+	}
 
+	private void init() {
+		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
+		
 		// TextToSpeech.OnInitListener
 		mTTS = new TextToSpeech(this, this);
-
-		// Screen Size for visualization
-		Display display = getWindowManager().getDefaultDisplay();
-
 		cameraRecorder = null;
 		streamingThread = null;
 		controlThread = null;
@@ -88,7 +87,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		localOutputStream = null;
 		
 		startCapture();
-
 	}
 
 	// Implements TextToSpeech.OnInitListener
@@ -107,11 +105,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	@Override
 	protected void onResume() {
 		super.onResume();
+		this.init();
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
+		this.terminate();
 	}
 
 	@Override
@@ -157,8 +157,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				frameCount++;
 				int interval = 10;
 				if (frameCount % interval == 0) {
-					Log.d(LOG_TAG, "Current FPS: " + 1000.0 * 1 / (currentUpdateTime - prevUpdateTime));
-					Log.d(LOG_TAG, "Image size : " + size.width + "x" + size.height);
+//					Log.d(LOG_TAG, "Current FPS: " + 1000.0 * 1 / (currentUpdateTime - prevUpdateTime));
+//					Log.d(LOG_TAG, "Image size : " + size.width + "x" + size.height);
 				}
 				prevUpdateTime = currentUpdateTime;
 
@@ -391,7 +391,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private void terminate() {
-		mPreview.setPreviewCallback(null);
 		if (controlThread != null) {
 			Message msg_out = Message.obtain();
 			msg_out.what = ControlThread.CODE_CLOSE_CONNECTION;
@@ -405,6 +404,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			streamingThread.stopStreaming();
 		}
 		if (mPreview != null) {
+			mPreview.setPreviewCallback(null);
 			mPreview.close();
 		}
 		// Don't forget to shutdown!
@@ -413,6 +413,5 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mTTS.shutdown();
 		}
 		finish();
-
-	}
+	}	
 }

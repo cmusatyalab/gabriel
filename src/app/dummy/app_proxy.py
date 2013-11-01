@@ -18,6 +18,7 @@
 #   limitations under the License.
 #
 
+import traceback
 import threading
 import socket
 import select
@@ -27,7 +28,6 @@ import sys
 import Queue
 import time
 
-from launcher import AppLauncher
 from protocol import Protocol_client
 
 
@@ -35,17 +35,13 @@ class AppProxyError(Exception):
     pass
 
 class AppProxyClient(threading.Thread):
-    def __init__(self, control_addr, app_addr):
+    def __init__(self, control_addr):
         self.stop = threading.Event()
         self.port_number = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock.connect(control_addr)
-        self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.app_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.app_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.app_sock.connect(app_addr)
         self.result_queue = Queue.Queue()
         threading.Thread.__init__(self, target=self.streaming)
 
@@ -65,17 +61,16 @@ class AppProxyClient(threading.Thread):
                     if s == socket_fd:
                         self._handle_result_output()
         except Exception as e:
-            print str(e)
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.write("%s" % str(e))
+            sys.stderr.write("handler raises exception\n")
             sys.stdout.write("Server is disconnected unexpectedly\n")
         self.sock.close()
-        self.app_sock.close()
 
     def terminate(self):
         self.stop.set()
         if self.sock is not None:
             self.sock.close()
-        if self.app_sock is not None:
-            self.app_sock.close()
 
     def _recv_all(self, sock, recv_size):
         data = ''
@@ -96,18 +91,11 @@ class AppProxyClient(threading.Thread):
         header_data = json.loads(header)
         frame_id = header_data.get(Protocol_client.FRAME_MESSAGE_KEY, None)
 
-        # feed data to the app
-        packet = struct.pack("!I%ds" % len(data), len(data), data)
-        self.app_sock.sendall(packet)
-        result_size = struct.unpack("!I", self._recv_all(self.app_sock, 4))[0]
-        result_data = self._recv_all(self.app_sock, result_size)
-        #sys.stdout.write("result : %s\n" % result_data)
-
+        # echo server
         return_message = dict()
         if frame_id is not None:
             return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
-        if len(result_data.strip()) != 0:
-            return_message[Protocol_client.RESULT_MESSAGE_KEY] = result_data
+        #return_message[Protocol_client.RESULT_MESSAGE_KEY] = "dummy"
         self.result_queue.put(json.dumps(return_message))
 
     def _handle_result_output(self):
@@ -119,18 +107,10 @@ class AppProxyClient(threading.Thread):
             sys.stdout.write("returning result: %s\n" % return_data)
 
 if __name__ == "__main__":
-    APP_PATH = "./moped_server"
-    APP_PORT = 9092
-
-    app_thread = AppLauncher(APP_PATH, is_print=False)
-    app_thread.start()
-    app_thread.isDaemon = True
-    time.sleep(3)
 
     sys.stdout.write("Start receiving data\n")
     control_addr = ("128.2.210.197", 10101)
-    app_addr = ("127.0.0.1", APP_PORT)
-    client = AppProxyClient(control_addr, app_addr)
+    client = AppProxyClient(control_addr)
     client.start()
     client.isDaemon = True
     try:
@@ -139,8 +119,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
         client.terminate()
-        app_thread.terminate()
     except Exception as e:
         client.terminate()
-        app_thread.terminate()
 

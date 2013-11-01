@@ -33,6 +33,7 @@ import struct
 import mobile_server
 import log as logging
 from protocol import Protocol_application
+from protocol import Protocol_client
 
 
 LOG = logging.getLogger(__name__)
@@ -51,14 +52,21 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
         mobile_server.image_queue_list.append(self.data_queue)
         mobile_server.result_queue_list.append(self.result_queue)
 
+        self.frame_latency_dict = dict()
+        self.average_frame_latency = 0.0
+        self.counter_frame_latency = 0
+
     def _handle_video_streaming(self):
         if self.data_queue.empty() is False:
-            jpeg_data = self.data_queue.get()
-            #LOG.info("sending new image")
-            json_header = json.dumps({
+            (header, jpeg_data) = self.data_queue.get()
+            header = json.loads(header)
+            header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
                         Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
                 })
+
+            #LOG.info("sending new image")
+            json_header = json.dumps(header)
             packet = struct.pack("!II%ds%ds" % (len(json_header), len(jpeg_data)), 
                     len(json_header),
                     len(jpeg_data),
@@ -67,17 +75,36 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             self.request.send(packet)
             self.wfile.flush()
 
+            # latency measurement
+            frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+            if frame_id is not None:
+                self.frame_latency_dict[frame_id] = time.time()
+
     def _recv_all(self, recv_size):
         data = ''
         while len(data) < recv_size:
-            data += self.request.recv(recv_size - len(data))
+            tmp_data = self.request.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise AppServerError("Socket is closed")
+            data += tmp_data
         return data
 
     def _handle_result_output(self):
         ret_size = self._recv_all(4)
         ret_size = struct.unpack("!I", ret_size)[0]
         result_data = self._recv_all(ret_size)
-        LOG.info("receive result : %s" % (str(result_data)))
+        result_json = json.loads(result_data)
+        frame_id = result_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        if frame_id is not None:
+            sending_time = self.frame_latency_dict.get(frame_id)
+            if sending_time is not None:
+                time_diff = time.time() - sending_time
+                self.average_frame_latency += time_diff
+                self.counter_frame_latency += 1
+                if self.counter_frame_latency%100 == 0:
+                    LOG.info("average frame latency : %f" %
+                            (self.average_frame_latency /
+                            self.counter_frame_latency))
         self.result_queue.put(str(result_data))
 
     def handle(self):
@@ -97,9 +124,9 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_video_streaming()
                 time.sleep(0.001)
         except Exception as e:
-            #sys.stderr.write(traceback.format_exc())
-            #sys.stderr.write("%s" % str(e))
-            #sys.stderr.write("handler raises exception\n")
+            LOG.debug(traceback.format_exc())
+            LOG.debug("%s" % str(e))
+            LOG.debug("handler raises exception\n")
             LOG.info("Client is disconnected")
             self.terminate()
 

@@ -23,21 +23,24 @@ public class ResultReceivingThread extends Thread {
 	
 	private static final String MESSAGE_CONTROL = "control";
 	private static final String MESSAGE_RESULT = "result";
+	private static final String MESSAGE_FRAME_ID = "id";
+	
 	private static final String LOG_TAG = "krha";
 	
 	private Handler mHandler;
 	private DataInputStream networkReader;
 	private boolean is_running = true;
 
-	private TreeMap<Integer, Long> receiver_stamps = new TreeMap<Integer, Long>();
-	
+	private TreeMap<Long, Long> receiver_stamps = new TreeMap<Long, Long>();
+	private long frame_latency_diff = 0;
+	private long frame_latency_count = 0;
 	
 	public ResultReceivingThread(DataInputStream dataInputStream, Handler mHandler) {
 		this.networkReader = dataInputStream;
 		this.mHandler = mHandler;
 	}
 	
-	public TreeMap<Integer, Long> getReceiverStamps(){
+	public TreeMap<Long, Long> getReceiverStamps(){
 		return this.receiver_stamps;
 	}
 
@@ -79,6 +82,7 @@ public class ResultReceivingThread extends Thread {
 		// convert the message to JSON
 		JSONObject obj;		
 		String controlMsg = null, returnMsg = null;
+		long frameID = -1;
 		obj = new JSONObject(recvData);
 		
 		try{
@@ -86,6 +90,9 @@ public class ResultReceivingThread extends Thread {
 		} catch(JSONException e){}
 		try{
 			returnMsg = obj.getString(MESSAGE_RESULT);
+		} catch(JSONException e){}
+		try{
+			frameID = obj.getLong(MESSAGE_FRAME_ID);
 		} catch(JSONException e){}
 		
 		Message msg = Message.obtain();
@@ -95,10 +102,24 @@ public class ResultReceivingThread extends Thread {
 			this.mHandler.sendMessage(msg);
 		}
 		if (returnMsg != null){
-			Log.d(LOG_TAG, "tts string message : " + returnMsg);			
+			Log.d(LOG_TAG, returnMsg);
 			msg.what = VideoStreamingThread.NETWORK_RET_RESULT;
 			msg.obj = returnMsg;
 			this.mHandler.sendMessage(msg);			
+		}
+		if (frameID != -1){
+			Long sent_time = this.receiver_stamps.get(frameID);
+			if (sent_time != null){
+				long time_diff = System.currentTimeMillis() - sent_time;
+				frame_latency_diff  += time_diff;
+				frame_latency_count++;
+				if (frame_latency_count % 30 == 0){
+					Log.d(LOG_TAG, "average frame latency : " + frame_latency_diff/frame_latency_count);
+				}				
+			}
+			if (this.receiver_stamps.size() > 30*60){
+				this.receiver_stamps.clear();
+			}
 		}
 	}
 
