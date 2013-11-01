@@ -110,19 +110,13 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
 			} catch (IOException exception) {
 				Log.e("Error", "exception:surfaceCreated Camera Open ");
-				mCamera.release();
-				mCamera = null;
-				// TODO: add more exception handling logic here
+				this.close();
 			}
 		}
 	}
 
 	public void surfaceDestroyed(SurfaceHolder holder) {
-		if (mCamera != null) {
-			mCamera.stopPreview();
-			mCamera.release();
-			mCamera = null;
-		}
+		this.close();
 	}
 
 	public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
@@ -134,7 +128,9 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 	}
 
 	public void setPreviewCallback(PreviewCallback previewCallback) {
-		mCamera.setPreviewCallback(previewCallback);
+		if (this.mCamera != null){
+			mCamera.setPreviewCallback(previewCallback);
+		}
 	}
 
 	public Camera getCamera() {

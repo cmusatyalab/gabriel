@@ -45,6 +45,7 @@ class MobileCommError(Exception):
 class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(MobileVideoHandler, self).setup()
+        self.stop = threading.Event()
         self.average_FPS = 0.0
         self.current_FPS = 0.0
         self.init_connect_time = None
@@ -52,15 +53,20 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
         self.current_time = 0
         self.frame_count = 0
 
+    def _recv_all(self, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = self.request.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise MobileCommError("Socket is closed")
+            data += tmp_data
+        return data
+
     def _handle_image_input(self):
-        img_size = self.request.recv(4)
-        if img_size is None or len(img_size) != 4:
-            msg = "Failed to receive first byte of header"
-            raise MobileCommError(msg)
-        img_size = struct.unpack("!I", img_size)[0]
-        image_data = self.request.recv(img_size)
-        while len(image_data) < img_size:
-            image_data += self.request.recv(img_size - len(image_data))
+        header_size = struct.unpack("!I", self._recv_all(4))[0]
+        img_size = struct.unpack("!I", self._recv_all(4))[0]
+        header_data = self._recv_all(header_size)
+        image_data = self._recv_all(img_size)
         self.frame_count += 1
 
         # measurement
@@ -70,14 +76,14 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                 self.init_connect_time)
         self.previous_time = self.current_time
 
-        if (self.frame_count % 20 == 0):
+        if (self.frame_count % 100 == 0):
             msg = "Video frame rate from client : current(%f), average(%f)" % \
                     (self.current_FPS, self.average_FPS)
             LOG.info(msg)
         for image_queue in image_queue_list:
             if image_queue.full() is True:
                 image_queue.get()
-            image_queue.put(image_data)
+            image_queue.put((header_data, image_data))
 
     def _handle_result_output(self):
         global result_queue_list
@@ -94,7 +100,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                         result_msg)
                 self.request.send(packet)
                 self.wfile.flush()
-                LOG.info("result message (%s) sent to the Glass", result_msg)
+                #LOG.info("result message (%s) sent to the Glass", result_msg)
 
     def handle(self):
         global image_queue_list
@@ -106,25 +112,34 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
             socket_fd = self.request.fileno()
             input_list = [socket_fd]
             output_list = [socket_fd]
-            while True:
+            except_list = [socket_fd]
+
+            while(not self.stop.wait(0.01)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, [])
+                        select.select(input_list, output_list, except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_image_input()
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_result_output()
+                for e in exceptready:
+                    if e == socket_fd:
+                        break
+
+                if not (inputready or outputready or exceptready):
+                    continue
                 time.sleep(0.001)
         except Exception as e:
-            LOG.info(traceback.format_exc())
-            LOG.info("%s" % str(e))
-            LOG.info("handler raises exception\n")
+            #LOG.info(traceback.format_exc())
+            #LOG.info("%s" % str(e))
+            #LOG.info("handler raises exception\n")
             LOG.info("Client disconnected")
-            self.terminate()
+        if self.socket != -1:
+            self.socket.close()
 
     def terminate(self):
-        pass
+        self.stop.set()
 
 
 class MobileCommServer(SocketServer.TCPServer):

@@ -123,9 +123,10 @@ class EmulatedMobileDevice(object):
             for image_file in self.filelist:
                 image_data = open(image_file, "r").read()
                 for image_queue in mobile_server.image_queue_list:
+                    header_data = json.dumps({"type":"emulated"})
                     if image_queue.full() is True:
                         image_queue.get()
-                    image_queue.put(image_data)
+                    image_queue.put(header_data, image_data)
                 if frame_count%100 == 0:
                     pass
                     #LOG.info("pushing emualted image to the queue (%d)" % frame_count)
