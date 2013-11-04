@@ -16,29 +16,27 @@ import android.util.Log;
 public class BatteryRecordingService extends IntentService {
 	FileWriter mFileWriter = null;
 	String mOutputFileName = "batteryRecording";
-	String mAppName = "SampleApp";	
+	static public String AppName = "SampleApp";	
 	boolean stopped = false;
 	/** 
 	 * A constructor is required, and must call the super IntentService(String)
 	 * constructor with a name for the worker thread.
 	 */
-	public BatteryRecordingService(/*Handler handler*/) {
+	public BatteryRecordingService() {
 	    super("BatteryRecordingService");
-	    //mHandler = handler;
 	    stopped = false;
 	  }
 	  
 	@Override
 	protected void onHandleIntent(Intent arg0) {
 		Log.i("BatteryRecordingService", "Got Intent, starting to record");
-		// TODO Auto-generated method stub
 		try {
-			File dir = new File(Environment.getExternalStorageDirectory() + File.separator + mAppName + File.separator);
+			File dir = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator);
 			dir.mkdirs();
 			
-			File file = new File(Environment.getExternalStorageDirectory() + File.separator + mAppName + File.separator + mOutputFileName);
+			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);
 			Log.i("BatteryRecordingService", file.getAbsolutePath());
-			mFileWriter = new FileWriter(file);//,true); //Append
+			mFileWriter = new FileWriter(file); //New Empty File
 			mFileWriter.write("Time/ms\tCurrent/mA\tVoltage/V\n");
 			mFileWriter.close();
 			
@@ -58,7 +56,6 @@ public class BatteryRecordingService extends IntentService {
 				
 			}
 			
-			//mFileWriter.close();
 			Log.i("Battery", "BatteryRecordingService properly stopped.");
 		}
 		catch (IOException ex)
@@ -134,7 +131,7 @@ public class BatteryRecordingService extends IntentService {
             Log.i("Battery", "Current : " + current + "\t" + "Voltage : " + voltage);
             long time = System.currentTimeMillis();
 
-			File file = new File(Environment.getExternalStorageDirectory() + File.separator + mAppName + File.separator + mOutputFileName);
+			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);
 			mFileWriter = new FileWriter(file,true); //Append
 			String BatteryInfo = time + "\t" + current/1000.0 + "\t" + voltage/1000000.0 + "\n"; 
             mFileWriter.write(BatteryInfo);

@@ -395,6 +395,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	 */
 	Intent batteryRecordingService = null;
 	public void startBatteryRecording() {
+		BatteryRecordingService.AppName = "GabrielClient";
 		Log.i("wenluh", "Starting Battery Recording Service");
         batteryRecordingService = new Intent(this, BatteryRecordingService.class);
         startService(batteryRecordingService);
