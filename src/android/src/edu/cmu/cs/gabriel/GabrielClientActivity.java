@@ -50,7 +50,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
 	public int PROTOCOL_INDEX = VideoStreamingThread.PROTOCOL_TCP;
-	public String REMOTE_IP = "128.2.210.197";
+	public String REMOTE_IP = "128.2.210.163";
 	public static int REMOTE_CONTROL_PORT = 5000;
 	public static int REMOTE_DATA_PORT = 9098;
 
@@ -72,6 +72,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         init();
+        startBatteryRecording();
 	}
 
 	private void init() {
@@ -115,6 +116,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		this.terminate();
 	}
 
+	@Override
+	protected void onDestroy() {
+		stopBatteryRecording();
+		super.onDestroy();
+	}
+	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		// Inflate the menu; this adds items to the action bar if it is present.
@@ -379,6 +386,28 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		this.PROTOCOL_INDEX = protocolIndex;
 	}
 
+	
+	/*
+	 * Recording battery info by sending an intent
+	 * Current and voltage at the time
+	 * Sample every 100ms
+	 */
+	Intent batteryRecordingService = null;
+	public void startBatteryRecording() {
+		BatteryRecordingService.AppName = "GabrielClient";
+		Log.i("wenluh", "Starting Battery Recording Service");
+        batteryRecordingService = new Intent(this, BatteryRecordingService.class);
+        startService(batteryRecordingService);
+	}
+
+	public void stopBatteryRecording() {
+		Log.i("wenluh", "Stopping Battery Recording Service");
+		if (batteryRecordingService != null) {
+			stopService(batteryRecordingService);
+			batteryRecordingService = null;
+		}
+	}	
+	
 	@Override
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		if (keyCode == KeyEvent.KEYCODE_BACK) {
