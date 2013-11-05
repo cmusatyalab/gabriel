@@ -53,7 +53,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	public String REMOTE_IP = "128.2.210.197";
 	public static int REMOTE_CONTROL_PORT = 5000;
 	public static int REMOTE_DATA_PORT = 9098;
-	public static int FPS_LIMITATION = 100;
 
 	CameraConnector cameraRecorder;
 	VideoStreamingThread streamingThread;
@@ -65,7 +64,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private CameraPreview mPreview;
 	private BufferedOutputStream localOutputStream;
 
-	protected TextToSpeech mTTS;
+	protected TextToSpeech mTTS = null;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -79,7 +78,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
 		
 		// TextToSpeech.OnInitListener
-		mTTS = new TextToSpeech(this, this);
+		if (mTTS == null){
+			mTTS = new TextToSpeech(this, this);			
+		}
 		cameraRecorder = null;
 		streamingThread = null;
 		controlThread = null;
@@ -143,6 +144,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private PreviewCallback previewCallback = new PreviewCallback() {
 		private long frameCount = 0, firstUpdateTime = 0;
 		private long prevUpdateTime = 0, currentUpdateTime = 0;
+		private int FPS_LIMITATION = 1000;
 		private long expected_time_delay = 1000 / FPS_LIMITATION;
 
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
@@ -155,18 +157,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				}
 				currentUpdateTime = System.currentTimeMillis();
 				frameCount++;
-				int interval = 10;
-				if (frameCount % interval == 0) {
-//					Log.d(LOG_TAG, "Current FPS: " + 1000.0 * 1 / (currentUpdateTime - prevUpdateTime));
-//					Log.d(LOG_TAG, "Image size : " + size.width + "x" + size.height);
+//				Log.d(LOG_TAG, currentUpdateTime + " " + prevUpdateTime + " " + expected_time_delay);
+				if (currentUpdateTime - prevUpdateTime > expected_time_delay){					
+					YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), size.width, size.height, null);
+					ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
+					image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
+					streamingThread.push(tmpBuffer.toByteArray());
+					prevUpdateTime = currentUpdateTime;
 				}
-				prevUpdateTime = currentUpdateTime;
-
-				
-				YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), size.width, size.height, null);
-				ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
-				image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
-				streamingThread.push(tmpBuffer.toByteArray());
 			}
 		}
 	};
@@ -318,7 +316,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	public void stopStreaming() {
 		hasStarted = false;
-		mPreview.setPreviewCallback(null);
+		if (mPreview != null)
+			mPreview.setPreviewCallback(null);
 		if (streamingThread != null && streamingThread.isAlive()) {
 			streamingThread.stopStreaming();
 		}
@@ -391,26 +390,32 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private void terminate() {
+		// Don't forget to shutdown!
+		if (mTTS != null) {
+			Log.d(LOG_TAG, "TTS is closed");
+			mTTS.stop();
+			mTTS.shutdown();
+			mTTS = null;
+		}
 		if (controlThread != null) {
 			Message msg_out = Message.obtain();
 			msg_out.what = ControlThread.CODE_CLOSE_CONNECTION;
 			Handler controlHandler = controlThread.getHandler();
 			controlHandler.sendMessage(msg_out);
+			controlThread = null;
 		}
 		if (cameraRecorder != null) {
 			cameraRecorder.close();
+			cameraRecorder = null;
 		}
 		if ((streamingThread != null) && (streamingThread.isAlive())) {
 			streamingThread.stopStreaming();
+			streamingThread = null;
 		}
 		if (mPreview != null) {
 			mPreview.setPreviewCallback(null);
 			mPreview.close();
-		}
-		// Don't forget to shutdown!
-		if (mTTS != null) {
-			mTTS.stop();
-			mTTS.shutdown();
+			mPreview = null;
 		}
 		finish();
 	}	

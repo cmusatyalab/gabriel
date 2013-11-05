@@ -113,7 +113,7 @@ public class ResultReceivingThread extends Thread {
 				long time_diff = System.currentTimeMillis() - sent_time;
 				frame_latency_diff  += time_diff;
 				frame_latency_count++;
-				if (frame_latency_count % 30 == 0){
+				if (frame_latency_count % 10 == 0){
 					Log.d(LOG_TAG, "average frame latency : " + frame_latency_diff/frame_latency_count);
 				}				
 			}

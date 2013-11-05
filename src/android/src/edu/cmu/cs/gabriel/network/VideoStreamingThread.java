@@ -187,8 +187,8 @@ public class VideoStreamingThread extends Thread {
 	}
 
 	public void push(byte[] byteArray) {
-		if (this.frameBufferList.size() > 5){
-			this.frameBufferList.remove(0);
+		if (this.frameBufferList.size() > 2){
+			this.frameBufferList.clear();
 		}
 		this.frameBufferList.add(byteArray);
 	}
