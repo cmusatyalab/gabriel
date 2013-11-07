@@ -40,7 +40,7 @@ class AppLauncher(threading.Thread):
         self.port_number = None
 
         if os.path.exists(self.app_binary) == False:
-            raise AppLauncherError("Cannot find binary: %s" % self.upnp_bin)
+            raise AppLauncherError("Cannot find binary: %s" % self.app_binary)
         threading.Thread.__init__(self, target=self.run_exec)
 
     def run_exec(self):
@@ -50,9 +50,9 @@ class AppLauncher(threading.Thread):
         sys.stdout.write("execute : %s\n" % ' '.join(cmd))
         _PIPE = subprocess.PIPE
         if self.is_print:
-            self.proc = subprocess.Popen(cmd, close_fds=True, stderr=_PIPE)
+            self.proc = subprocess.Popen(cmd, stderr=_PIPE)
         else:
-            self.proc = subprocess.Popen(cmd, close_fds=True, stdout=_PIPE, stderr=_PIPE)
+            self.proc = subprocess.Popen(cmd, stdout=_PIPE, stderr=_PIPE)
 
         while(not self.stop.wait(0.01)):
             self.proc.poll()
@@ -78,13 +78,17 @@ class AppLauncher(threading.Thread):
 
 
 if __name__ == "__main__":
+    app_thread = None
     try:
-        app_thread = AppLauncher("./FaceRecognitionServer")
+        app_thread = AppLauncher("./FaceRecognitionServer.exe", is_print=True)
         app_thread.start()
         app_thread.join()
     except KeyboardInterrupt as e:
         sys.stdout.write("user exit\n")
-        app_thread.terminate()
+        if app_thread is not None:
+            app_thread.terminate()
     except AppLauncherError as e:
-        app_thread.terminate()
+        print str(e)
+        if app_thread is not None:
+            app_thread.terminate()
 

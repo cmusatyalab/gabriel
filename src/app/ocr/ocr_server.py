@@ -29,7 +29,8 @@ import threading
 import traceback
 import time
 
-tr = Tesseract()
+tr = Tesseract(lang="eng")
+tr.set_page_seg_mode(3)
 
 import struct
 
@@ -73,7 +74,10 @@ class OCRServerHandler(SocketServer.StreamRequestHandler, object):
         self.wfile.flush()
 
         # logging
-        self.output_file.write("frame: %d --> %s" % (self.frame_count, result_msg))
+        ret = unicode("frame: %d " % (self.frame_count))
+        ret = ret + unicode(result_msg)
+        
+        self.output_file.write(ret.encode('utf8'))
         self.output_file.flush()
         #open("image-%d.jpg" % self.frame_count, "wb").write(image_data)
         self.frame_count += 1
@@ -134,8 +138,10 @@ def run_ocr(image_data, force_return=False):
     buff.write(image_data)
     buff.seek(0)
     image = Image.open(buff)
-    utf8str = tr.ocr_image(image)
-    return_str = utf8str.encode("ascii", "ignore")
+    tr.set_image(image)
+    utf8str = tr.get_utf8_text()
+    #return_str = utf8str.encode("ascii", "ignore")
+    return_str = utf8str
 
     if force_return:
         return return_str
@@ -147,8 +153,8 @@ def run_ocr(image_data, force_return=False):
 
 
 if __name__ == "__main__":
-    #data = open('test.png', 'rb').read()
-    #print run_ocr(data)
+    data = open('test.jpg', 'rb').read()
+    print run_ocr(data, force_return=True)
     server = OCRServer(sys.argv[1:])
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True

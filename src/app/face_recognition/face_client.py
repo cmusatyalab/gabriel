@@ -131,7 +131,7 @@ def face_request(sock, data):
         found_name = sock.recv(recv_size)
 
     found_name.replace("\x00", "").strip()
-    found_name.split(b'\0',1)[0]
+    found_name = found_name.split(b'\0',1)[0]
     return str(found_name), (rect_x, rect_y, rect_width, rect_height)
 
 
