@@ -20,6 +20,7 @@
 
 import time
 import sys
+import json
 
 import SocketServer
 import threading
@@ -32,6 +33,7 @@ import socket
 from config import Const as Const
 import log as logging
 from upnp_server import UPnPServer, UPnPError
+from protocol import Protocol_client
 
 
 LOG = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
         self.previous_time = None
         self.current_time = 0
         self.frame_count = 0
+        self.ret_frame_ids = Queue.Queue()
 
     def _recv_all(self, recv_size):
         data = ''
@@ -85,9 +88,37 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                 image_queue.get()
             image_queue.put((header_data, image_data))
 
+        # return frame id to flow control
+        json_header = json.loads(header_data)
+        frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        if frame_id is not None:
+            self.ret_frame_ids.put(frame_id)
+
     def _handle_result_output(self):
         global result_queue_list
+        def _post_header_process(header_message):
+            header_json = json.loads(header_message)
+            frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+            if frame_id is not None:
+                header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
+                del header_json[Protocol_client.FRAME_MESSAGE_KEY]
+            return json.dumps(frame_id)
 
+        # return result from the token bucket
+        try:
+            return_frame_id = self.ret_frame_ids.get_nowait()
+            return_data = json.dumps({
+                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
+                    })
+            packet = struct.pack("!I%ds" % len(return_data),
+                    len(return_data),
+                    return_data)
+            self.request.send(packet)
+            self.wfile.flush()
+        except Queue.Empty:
+            pass
+
+        # return result from the application server
         for result_queue in result_queue_list:
             result_msg = None
             try:
@@ -95,12 +126,13 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
             except Queue.Empty:
                 pass
             if result_msg is not None:
-                # process header data a little bit since we like to differenciate
-                # frame id that walk throuhg application from the frame id for
+                # process header a little bit since we like to differenciate
+                # frame id that comes from an application with the frame id for
                 # the token bucket.
-                packet = struct.pack("!I%ds" % len(result_msg),
-                        len(result_msg),
-                        result_msg)
+                processed_result_msg = _post_header_process(result_msg)
+                packet = struct.pack("!I%ds" % len(processed_result_msg),
+                        len(processed_result_msg),
+                        processed_result_msg)
                 self.request.send(packet)
                 self.wfile.flush()
 
@@ -137,9 +169,9 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                     continue
                 time.sleep(0.0001)
         except Exception as e:
-            #LOG.info(traceback.format_exc())
-            #LOG.info("%s" % str(e))
-            #LOG.info("handler raises exception\n")
+            LOG.info(traceback.format_exc())
+            LOG.info("%s" % str(e))
+            LOG.info("handler raises exception\n")
             LOG.info("Client disconnected")
         if self.socket != -1:
             self.socket.close()
