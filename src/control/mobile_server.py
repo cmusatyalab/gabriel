@@ -32,7 +32,6 @@ import socket
 
 from config import Const as Const
 import log as logging
-from upnp_server import UPnPServer, UPnPError
 from protocol import Protocol_client
 
 
@@ -201,16 +200,6 @@ class MobileCommServer(SocketServer.TCPServer):
                     socket.TCP_NODELAY)))
         LOG.info("-" * 50)
 
-        # Start UPnP Server
-        try:
-            self.upnp_server = UPnPServer()
-            self.upnp_server.start()
-        except UPnPError as e:
-            LOG.warning(str(e))
-            LOG.warning("Cannot start UPnP Server")
-            self.upnp_server = None
-        LOG.info("Start UPnP Server")
-
     def handle_error(self, request, client_address):
         #SocketServer.TCPServer.handle_error(self, request, client_address)
         #sys.stderr.write("handling error from client")
@@ -220,14 +209,6 @@ class MobileCommServer(SocketServer.TCPServer):
         # close all thread
         if self.socket != -1:
             self.socket.close()
-        if hasattr(self, 'upnp_server') and self.upnp_server is not None:
-            LOG.info("[TERMINATE] Terminate UPnP Server")
-            self.upnp_server.terminate()
-            self.upnp_server.join()
-        if hasattr(self, 'rest_server') and self.rest_server is not None:
-            LOG.info("[TERMINATE] Terminate REST API monitor")
-            self.rest_server.terminate()
-            self.rest_server.join()
         LOG.info("[TERMINATE] Finish mobile communication server connection")
 
 

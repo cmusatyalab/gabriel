@@ -35,7 +35,6 @@ import mobile_server
 from BaseHTTPServer import BaseHTTPRequestHandler
 
 import log as logging
-from protocol import Protocol_client
 from config import Const
 
 
@@ -148,6 +147,8 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 def main():
     settings, args = process_command_line(sys.argv[1:])
 
+    m_server = None
+    video_server = None
     if settings.image_dir:
         # use emulated images for the testing
         m_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
@@ -173,24 +174,25 @@ def main():
         mobile_server.result_queue_list.append(emulated_result_queue)
         while True:
             time.sleep(100)
-            #user_input = raw_input("Enter q to quit: ")
-            #if user_input.lower() == 'q':
-            #    break
-            #else:
-            #    json_result = json.dumps({
-            #        Protocol_client.RESULT_MESSAGE_KEY: str(user_input),
-            #        })
-            #    emulated_result_queue.put(json_result)
     except Exception as e:
         sys.stderr.write(str(e))
-        m_server.terminate()
+        if m_server is not None:
+            m_server.terminate()
+        if video_server is not None:
+            video_server.terminate()
         sys.exit(1)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
-        m_server.terminate()
+        if m_server is not None:
+            m_server.terminate()
+        if video_server is not None:
+            video_server.terminate()
         sys.exit(1)
     else:
-        m_server.terminate()
+        if m_server is not None:
+            m_server.terminate()
+        if video_server is not None:
+            video_server.terminate()
         sys.exit(0)
 
 if __name__ == '__main__':
