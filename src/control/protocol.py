@@ -21,6 +21,7 @@
 class Protocol_client(object):
     CONTROL_MESSAGE_KEY = "control"
     RESULT_MESSAGE_KEY = "result"
+    RESULT_ID_MESSAGE_KEY = "result_frame_id"
     FRAME_MESSAGE_KEY = "id"
 
 
