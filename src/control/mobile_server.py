@@ -95,12 +95,18 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
             except Queue.Empty:
                 pass
             if result_msg is not None:
+                # process header data a little bit since we like to differenciate
+                # frame id that walk throuhg application from the frame id for
+                # the token bucket.
                 packet = struct.pack("!I%ds" % len(result_msg),
                         len(result_msg),
                         result_msg)
                 self.request.send(packet)
                 self.wfile.flush()
-                #LOG.info("result message (%s) sent to the Glass", result_msg)
+
+                # send only one
+                LOG.info("result message (%s) sent to the Glass", result_msg)
+                break
 
     def handle(self):
         global image_queue_list
@@ -114,7 +120,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
             output_list = [socket_fd]
             except_list = [socket_fd]
 
-            while(not self.stop.wait(0.01)):
+            while(not self.stop.wait(0.0001)):
                 inputready, outputready, exceptready = \
                         select.select(input_list, output_list, except_list)
                 for s in inputready:
@@ -129,7 +135,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
 
                 if not (inputready or outputready or exceptready):
                     continue
-                time.sleep(0.001)
+                time.sleep(0.0001)
         except Exception as e:
             #LOG.info(traceback.format_exc())
             #LOG.info("%s" % str(e))
