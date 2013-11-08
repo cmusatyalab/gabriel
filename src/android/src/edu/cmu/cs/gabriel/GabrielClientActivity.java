@@ -11,6 +11,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import edu.cmu.cs.gabriel.R;
+import edu.cmu.cs.gabriel.network.ResultReceivingThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
 
 import android.app.Activity;
@@ -50,7 +51,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
 	public int PROTOCOL_INDEX = VideoStreamingThread.PROTOCOL_TCP;
-	public String REMOTE_IP = "128.2.210.163";
+	public String REMOTE_IP = "128.2.210.197";
 	public static int REMOTE_CONTROL_PORT = 5000;
 	public static int REMOTE_DATA_PORT = 9098;
 
@@ -150,42 +151,26 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private PreviewCallback previewCallback = new PreviewCallback() {
-		private long frameCount = 0, firstUpdateTime = 0;
-		private long prevUpdateTime = 0, currentUpdateTime = 0;
-		private int FPS_LIMITATION = 1000;
-		private long expected_time_delay = 1000 / FPS_LIMITATION;
 
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
 			if (hasStarted && (localOutputStream != null)) {
 				Camera.Parameters parameters = mCamera.getParameters();
-				Camera.Size size = parameters.getPreviewSize();
-				
-				if (firstUpdateTime == 0) {
-					firstUpdateTime = System.currentTimeMillis();
-				}
-				currentUpdateTime = System.currentTimeMillis();
-				frameCount++;
-//				Log.d(LOG_TAG, currentUpdateTime + " " + prevUpdateTime + " " + expected_time_delay);
-				if (currentUpdateTime - prevUpdateTime > expected_time_delay){					
-					YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), size.width, size.height, null);
-					ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
-					image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
-					streamingThread.push(tmpBuffer.toByteArray());
-					prevUpdateTime = currentUpdateTime;
-				}
+				streamingThread.push(frame, parameters);
 			}
 		}
 	};
 
 	private Handler returnMsgHandler = new Handler() {
 		public void handleMessage(Message msg) {
+			
 			if (msg.what == VideoStreamingThread.NETWORK_RET_FAILED) {
 				Bundle data = msg.getData();
 				String message = data.getString("message");
 				stopStreaming();
 				new AlertDialog.Builder(GabrielClientActivity.this).setTitle("INFO").setMessage(message)
 						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
-			} else if (msg.what == VideoStreamingThread.NETWORK_RET_RESULT) {
+			} 
+			if (msg.what == VideoStreamingThread.NETWORK_RET_RESULT) {
 				String ttsMessage = (String) msg.obj;
 
 				// Select a random hello.
