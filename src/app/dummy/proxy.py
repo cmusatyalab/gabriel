@@ -25,6 +25,8 @@ import Queue
 
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
+from app_proxy import get_service_list
+from app_proxy import SERVICE_META
 
 
 class DummyApp(AppProxyThread):
@@ -36,8 +38,12 @@ if __name__ == "__main__":
     sys.stdout.write("Start OCR proxy\n")
     image_queue = Queue.Queue(1)
     output_queue = Queue.Queue()
-    control_addr = ("128.2.210.197", 10101)
-    client = AppProxyStreamingClient(control_addr, image_queue, output_queue)
+
+    sys.stdout.write("Finding control VM\n")
+    service_list = get_service_list()
+    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+    client = AppProxyStreamingClient((video_ip, video_port), image_queue, output_queue)
     client.start()
     client.isDaemon = True
     app_thread = DummyApp(image_queue, output_queue)

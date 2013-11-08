@@ -30,6 +30,8 @@ from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
 from app_proxy import LOG
+from app_proxy import get_service_list
+from app_proxy import SERVICE_META
 from face_client import face_request
 
 
@@ -77,10 +79,9 @@ if __name__ == "__main__":
     APP_PORT = 9876
     image_queue = Queue.Queue(1)
     output_queue = Queue.Queue()
-    control_addr = ("128.2.210.197", 10101)
-    #app_addr = ("128.2.213.131", APP_PORT)
-    app_addr = ("127.0.0.1", APP_PORT)
 
+    app_addr = ("128.2.213.131", APP_PORT)
+    #app_addr = ("127.0.0.1", APP_PORT)
     app_thread = None
     face_thread = None
     client_thread = None
@@ -91,7 +92,11 @@ if __name__ == "__main__":
         #app_thread.isDaemon = True
         #time.sleep(3)
 
-        client_thread = AppProxyStreamingClient(control_addr, image_queue, output_queue)
+        sys.stdout.write("Finding control VM\n")
+        service_list = get_service_list()
+        video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+        video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+        client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue, output_queue)
         client_thread.start()
         client_thread.isDaemon = True
         face_thread = FaceThread(app_addr, image_queue, output_queue)

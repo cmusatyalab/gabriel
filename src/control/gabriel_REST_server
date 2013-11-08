@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+import sys
+import signal
+import json
+from flask import Flask
+from flask.ext import restful
+from flask.ext.restful import reqparse
+from flask.ext.restful import Resource
+
+from config import Const
+from config import ServiceMeta
+
+
+def sigint_handler(signum, frame):
+    sys.stdout.write("Exit by SIGINT\n")
+    raise SystemExit
+
+# handling keyboard interrupt
+signal.signal(signal.SIGINT, sigint_handler)
+
+
+def get_ip(iface = 'eth0'):
+    import socket
+    import struct
+    import fcntl
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockfd = sock.fileno()
+    SIOCGIFADDR = 0x8915
+
+    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
+    try:
+        res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
+    except:
+        return None
+    ip = struct.unpack('16sH2x4s8x', res)[2]
+    return socket.inet_ntoa(ip)
+
+
+class HWResource(Resource):
+    parser = reqparse.RequestParser()
+    parser.add_argument('task', type=str)
+
+    def get(self):
+        global resource_monitor
+        ip_addr = get_ip(iface="eth0")
+        ret_data = {
+                ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
+                ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.VIDEO_PORT)
+                }
+
+        return ret_data
+
+
+parser = reqparse.RequestParser()
+
+
+# run REST server
+app = Flask(__name__)
+api = restful.Api(app)
+api.add_resource(HWResource, '/')
+
+# do no turn on debug mode. it make a mess for graceful terminate
+#app.run(debug=True)
+app.run(host="0.0.0.0", port=Const.SERVICE_DISCOVERY_HTTP_PORT)

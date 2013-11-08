@@ -46,14 +46,19 @@ class Const(object):
 
     # port number for the server modules
     MOBILE_SERVER_PORT = 9098
-    HTTP_PORT = 8080
+    SERVICE_DISCOVERY_HTTP_PORT = 8021
     VIDEO_PORT = 10101
 
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
     #which("gabriel_upnp_server.jar")
     UPnP_SERVER_PATH = os.path.abspath(os.path.join(MODULE_DIR, "./lib/gabriel_upnp_server.jar"))
     UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "./lib/gabriel_upnp_client.jar")) 
+    REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "./gabriel_REST_server"))
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
     MAX_FRAME_SIZE = 3
 
+
+class ServiceMeta(object):
+    VIDEO_TCP_STREAMING_ADDRESS = "video_tcp_streaming_address"
+    VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"

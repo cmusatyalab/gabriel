@@ -18,22 +18,38 @@
 #   limitations under the License.
 #
 
+import sys
+sys.path.insert(0, "../../")
+from control.protocol import Protocol_client
+from control import log as logging
+from control.upnp_client import UPnPClient
+from control.config import Const
+from control.config import ServiceMeta
+
 import traceback
 import threading
 import socket
 import select
 import struct
 import json
-import sys
 import Queue
 import time
-
-from protocol import Protocol_client
-import log as logging
+import pprint
 
 
 LOG = logging.getLogger(__name__)
+upnp_client = UPnPClient()
+CONST = Const
+SERVICE_META = ServiceMeta
 
+
+def get_service_list():
+    upnp_client.start()
+    upnp_client.join()
+    pstr = pprint.pformat(upnp_client.service_list)
+    LOG.info("Gabriel Server :")
+    LOG.info(pstr)
+    return upnp_client.service_list
 
 class AppProxyError(Exception):
     pass
@@ -228,4 +244,20 @@ class AppProxyThread(threading.Thread):
     def terminate(self):
         self.stop.set()
 
+
+
+if __name__ == "__main__":
+    LOG.info("Start receiving data")
+    try:
+        control_addr = ("128.2.210.197", 10101)
+        client = AppProxyBlockingClient(control_addr)
+        client.start()
+        client.isDaemon = True
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt as e:
+        LOG.info("user exits")
+        client.terminate()
+    except Exception as e:
+        client.terminate()
 

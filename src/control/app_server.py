@@ -30,6 +30,8 @@ import select
 import traceback
 import struct
 
+from upnp_server import UPnPServer, UPnPError
+from RESTServer_binder import RESTServer, RESTServerError
 import mobile_server
 import log as logging
 from protocol import Protocol_application
@@ -155,6 +157,27 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
                     socket.TCP_NODELAY)))
         LOG.info("-" * 50)
 
+        # start REST server for meta info
+        try:
+            self.rest_server = RESTServer()
+            self.rest_server.start()
+        except RESTServerError as e:
+            LOG.warning(str(e))
+            LOG.warning("Cannot start REST API Server")
+            self.rest_server = None
+        LOG.info("Start RESTful API Server")
+
+        # Start UPnP Server
+        try:
+            self.upnp_server = UPnPServer()
+            self.upnp_server.start()
+        except UPnPError as e:
+            LOG.warning(str(e))
+            LOG.warning("Cannot start UPnP Server")
+            self.upnp_server = None
+        LOG.info("Start UPnP Server")
+
+
     def handle_error(self, request, client_address):
         import pdb;pdb.set_trace()
         LOG.info("error")
@@ -163,3 +186,12 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     def terminate(self):
         if self.socket != -1:
             self.socket.close()
+        if hasattr(self, 'upnp_server') and self.upnp_server is not None:
+            LOG.info("[TERMINATE] Terminate UPnP Server")
+            self.upnp_server.terminate()
+            self.upnp_server.join()
+        if hasattr(self, 'rest_server') and self.rest_server is not None:
+            LOG.info("[TERMINATE] Terminate REST API monitor")
+            self.rest_server.terminate()
+            self.rest_server.join()
+        LOG.info("[TERMINATE] Finish app communication server connection")

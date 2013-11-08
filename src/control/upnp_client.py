@@ -22,6 +22,8 @@ import subprocess
 import threading
 import os
 import sys
+import json
+import urllib2
 from config import Const as Const
 import log as logging
 
@@ -38,8 +40,9 @@ class UPnPClient(threading.Thread):
         self.stop = threading.Event()
         self.upnp_bin = Const.UPnP_CLIENT_PATH
         self.proc = None
-        self.ip_addr = None
-        self.port_number = None
+        self.http_ip_addr = None
+        self.http_port_number = None
+        self.service_list = None
 
         if os.path.exists(self.upnp_bin) == False:
             raise UPnPClientError("Cannot find binary: %s" % self.upnp_bin)
@@ -66,14 +69,21 @@ class UPnPClient(threading.Thread):
                     key = key.strip()
                     value = value.strip()
                     if key.lower() == "ipaddress":
-                        self.ip_addr = str(value)
+                        self.http_ip_addr = str(value)
                     if key.lower() == "port":
-                        self.port_number = int(value)
+                        self.http_port_number = int(value)
                 break
             else:
                 LOG.warning("Cannot locate Gabriel Service")
                 break
         self.proc = None
+
+        # connect detail service info
+        if self.http_ip_addr is not None and self.http_port_number is not None:
+            meta_stream = urllib2.urlopen("http://%s:%d/" % \
+                    (self.http_ip_addr, self.http_port_number))
+            meta_raw = meta_stream.read()
+            self.service_list = json.loads(meta_raw)
 
     def terminate(self):
         self.stop.set()
@@ -92,7 +102,9 @@ if __name__ == "__main__":
         upnp_client_thread = UPnPClient()
         upnp_client_thread.start()
         upnp_client_thread.join()
-        LOG.info("Gabriel Server is at %s:%d" % (upnp_client_thread.ip_addr, upnp_client_thread.port_number))
+        LOG.info("Gabriel HTTP Meta Server is at %s:%d" % \
+                (upnp_client_thread.http_ip_addr, upnp_client_thread.http_port_number))
+        LOG.info("Gabriel service list :\n%s" % (upnp_client_thread.service_list))
 
         #import time
         #time.sleep(20)

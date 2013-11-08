@@ -21,12 +21,12 @@
 import sys
 sys.path.insert(0, "../common")
 import time
-import threading
 import Queue
-import json
+
 from app_proxy import AppProxyThread
 from app_proxy import AppProxyStreamingClient
-from protocol import Protocol_client
+from app_proxy import get_service_list
+from app_proxy import SERVICE_META
 import ocr_server
 
 
@@ -35,15 +35,19 @@ class OCRThread(AppProxyThread):
     def handle(self, header, data):
         ret_str = ocr_server.run_ocr(data)
         if ret_str is not None and len(ret_str.strip()) > 0:
-           return ret_str.strip()
+            return ret_str.strip()
 
 
 if __name__ == "__main__":
     sys.stdout.write("Start OCR proxy\n")
     image_queue = Queue.Queue(1)
     output_queue = Queue.Queue()
-    control_addr = ("128.2.210.197", 10101)
-    client = AppProxyStreamingClient(control_addr, image_queue, output_queue)
+
+    service_list = get_service_list()
+    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+
+    client = AppProxyStreamingClient((video_ip, video_port), image_queue, output_queue)
     client.start()
     client.isDaemon = True
     app_thread = OCRThread(image_queue, output_queue)

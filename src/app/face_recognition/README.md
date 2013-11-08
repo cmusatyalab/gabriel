@@ -5,7 +5,4 @@ This is a developing project and some features might not be stable yet.
 Please visit our website at [Elijah page](http://elijah.cs.cmu.edu/).
 
 
-installation
---------------
-This is a Windows application
 
