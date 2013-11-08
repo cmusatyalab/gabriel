@@ -13,4 +13,5 @@ library dependecies
 	> sudo pip install tesserwrap
 	>
 
-
+Installation
+https://code.google.com/p/tesseract-ocr/wiki/Compiling
