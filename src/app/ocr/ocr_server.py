@@ -64,20 +64,19 @@ class OCRServerHandler(SocketServer.StreamRequestHandler, object):
         print "result length : %d, compute time : %f" % \
                 (len(result_msg), end_time-start_time)
         if result_msg is None or len(result_msg) == 0:
+            result_msg = ""
             packet = struct.pack("!I", 0)
         else:
-            packet = struct.pack("!I", 0)
-            #packet = struct.pack("!I%ds" % len(result_msg),
-            #        len(result_msg),
-            #        result_msg)
+            packet = struct.pack("!I%ds" % len(result_msg),
+                    len(result_msg),
+                    result_msg)
         self.request.send(packet)
         self.wfile.flush()
 
         # logging
-        ret = unicode("frame: %d " % (self.frame_count))
-        ret = ret + unicode(result_msg)
-        
-        self.output_file.write(ret.encode('utf8'))
+        self.output_file.write("frame: %d\n" % (self.frame_count))
+        self.output_file.write(result_msg)
+        self.output_file.write("\n")
         self.output_file.flush()
         #open("image-%d.jpg" % self.frame_count, "wb").write(image_data)
         self.frame_count += 1
@@ -140,8 +139,8 @@ def run_ocr(image_data, force_return=False):
     image = Image.open(buff)
     tr.set_image(image)
     utf8str = tr.get_utf8_text()
-    #return_str = utf8str.encode("ascii", "ignore")
-    return_str = utf8str
+    return_str = utf8str.encode("ascii", "ignore")
+    #return_str = utf8str
 
     if force_return:
         return return_str
@@ -153,8 +152,8 @@ def run_ocr(image_data, force_return=False):
 
 
 if __name__ == "__main__":
-    data = open('test.jpg', 'rb').read()
-    print run_ocr(data, force_return=True)
+    #data = open('test.jpg', 'rb').read()
+    #print run_ocr(data, force_return=True)
     server = OCRServer(sys.argv[1:])
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True

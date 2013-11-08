@@ -21,27 +21,22 @@ import android.util.Log;
 
 public class ResultReceivingThread extends Thread {
 	
-	private static final String MESSAGE_CONTROL = "control";
-	private static final String MESSAGE_RESULT = "result";
-	private static final String MESSAGE_FRAME_ID = "id";
+	public static final String MESSAGE_CONTROL = "control";
+	public static final String MESSAGE_RESULT = "result";
+	public static final String MESSAGE_FRAME_ID = "id";
 	
 	private static final String LOG_TAG = "krha";
 	
-	private Handler mHandler;
+	private Handler networkHandler;
+	private Handler tokenHandler;
 	private DataInputStream networkReader;
 	private boolean is_running = true;
 
-	private TreeMap<Long, Long> receiver_stamps = new TreeMap<Long, Long>();
-	private long frame_latency_diff = 0;
-	private long frame_latency_count = 0;
 	
-	public ResultReceivingThread(DataInputStream dataInputStream, Handler mHandler) {
+	public ResultReceivingThread(DataInputStream dataInputStream, Handler networkHandler, Handler tokenHandler) {
 		this.networkReader = dataInputStream;
-		this.mHandler = mHandler;
-	}
-	
-	public TreeMap<Long, Long> getReceiverStamps(){
-		return this.receiver_stamps;
+		this.networkHandler = networkHandler;
+		this.tokenHandler = tokenHandler;
 	}
 
 	@Override
@@ -94,32 +89,27 @@ public class ResultReceivingThread extends Thread {
 		try{
 			frameID = obj.getLong(MESSAGE_FRAME_ID);
 		} catch(JSONException e){}
-		
-		Message msg = Message.obtain();
-		if (controlMsg != null){			
+
+		if (frameID != -1){
+			Message msg = Message.obtain();
+			msg.what = VideoStreamingThread.NETWORK_RET_TOKEN;
+			Bundle data = new Bundle();
+			data.putLong(ResultReceivingThread.MESSAGE_FRAME_ID, frameID);
+			msg.setData(data);
+			this.tokenHandler.sendMessage(msg);
+		}			
+		if (controlMsg != null){
+			Message msg = Message.obtain();
 			msg.what = VideoStreamingThread.NETWORK_RET_CONFIG;
-			msg.obj = controlMsg;
-			this.mHandler.sendMessage(msg);
+			msg.obj = controlMsg;			
+			this.networkHandler.sendMessage(msg);
 		}
 		if (returnMsg != null){
+			Message msg = Message.obtain();
 			Log.d(LOG_TAG, returnMsg);
 			msg.what = VideoStreamingThread.NETWORK_RET_RESULT;
-			msg.obj = returnMsg;
-			this.mHandler.sendMessage(msg);			
-		}
-		if (frameID != -1){
-			Long sent_time = this.receiver_stamps.get(frameID);
-			if (sent_time != null){
-				long time_diff = System.currentTimeMillis() - sent_time;
-				frame_latency_diff  += time_diff;
-				frame_latency_count++;
-				if (frame_latency_count % 10 == 0){
-					Log.d(LOG_TAG, "average frame latency : " + frame_latency_diff/frame_latency_count);
-				}				
-			}
-			if (this.receiver_stamps.size() > 30*60){
-				this.receiver_stamps.clear();
-			}
+			msg.obj = returnMsg;			
+			this.networkHandler.sendMessage(msg);			
 		}
 	}
 
@@ -127,7 +117,7 @@ public class ResultReceivingThread extends Thread {
 		Message msg = Message.obtain();
 		msg.what = VideoStreamingThread.NETWORK_RET_FAILED;
 		msg.obj = errorMessage;
-		this.mHandler.sendMessage(msg);
+		this.networkHandler.sendMessage(msg);
 	}
 	
 	public void close() {
