@@ -1,0 +1,486 @@
+frame 1: 
+frame 2: 
+frame 3: 
+frame 4: 
+frame 5: 
+frame 6: 
+frame 7: 
+frame 8: 
+frame 9: 
+frame 10: 
+frame 11: 
+frame 12: 
+frame 13: 
+frame 14: 
+frame 15: 
+frame 16: 
+frame 17: 
+frame 18: 
+frame 19: 
+frame 20: 
+frame 21: 
+frame 22: 
+frame 23: 
+frame 24: 
+frame 25: 
+frame 26: 
+frame 27: 
+frame 28: 
+frame 29: 
+frame 30: 
+frame 31: 
+frame 32: .......—
+frame 33: 
+frame 34: gun. .—on n-nml‘
+gun can. muu-m mm
+
+nu-.. ..m..u...... .......u..
+.......-u
+
+_...__. .. ,..‘...‘.y
+
+nu--« ¢.—u.m
+tam .. \¢IVV
+
+sq-nu... .....
+frame 35: as 01
+ll’)!
+.  mm
+d-nu.-nu-nun. n-mum
+IQJIIJ nu. ~u...... mood m..m. .. - .
+&u-x.gn|-no-cull uuuqu - - ~ o ant
+tn;
+:n
+I u-on v- um I luau! nuuuum
+I-an mum.
+nan —Iua-um-ux»
+HI—-1.11-I-II-III
+nun. us,-1. ........-.1-I,
+
+  
+       
+    
+      
+ 
+   
+     
+    
+ 
+
+  
+
+mun.
+
+ 
+
+     
+   
+
+1.... ... ..~.... -.A
+
+uuauq us.
+can: - 1-an gun-umw-m.
+frame 36: $1.1:
+""‘"'3'i'.'a:'.;'-«"1"-7a‘:--«n.uuouuv o '
+
+I ll
+
+II menu In -||bl£lIu<In,1Kl£IHl
+IQIELGXU;
+
+ggq - 1 Kﬁltviloxr, tzuhrlbz
+
+ll I-nunnu-n-Im
+lama: nu, ‘Sadr! (avv‘<(7r€‘I.
+
+Lqmun us, ‘wow '11’ (ant-(‘.0¢"I.'
+
+-as-r— - um ulnar-Iunno.
+frame 37: 011
+
+S:
+
+I mean u am as numnunnitln
+nclnmlﬁth
+
+Iain u up Ioallvnnulr. -—1dbrﬂ:
+
+II tuxnnutnnudlli
+umuns us. ‘Sour! tantrum‘):
+
+Iqwtun us. '5-our! ~u (uOt(!Ii"I:
+dlilnn - -can puny-tsuu-H.
+AI uunnu-q \-I01 ' 0
+
+tn‘-dun an 4
+_m. dam o-nu-u - - mtdnlm
+frame 38: i «sun I- am as uumuna-Ill
+Iuinmcluntl:
+
+can - up loci-II-an-I-Ir. r-mum
+I9 llannhufnlncldtll
+IQJIAU ll. ‘mu: (mn<:M‘);
+
+u..ou.nu nu, --.«.n ma! (uv«ul"|1
+31": - nun pxhuly-ulnnll;
+ﬁiuﬂuu ob !
+
+_II, ‘Inn All nmlunu-I -an ' 0
+
+1-In -I (
+_nn. Geno: nun-n - a mi
+frame 39: n; 1
+1! Hsocket I- null) U. (isnckenlltluoltln 1
+socket.¢lo:e():
+socket I My Sackeurcmolelv, ICIOIEPOYK);
+£1 (so<kel.isConnecled())
+
+LOQJHOG TAG, 'Surkt't (,nnn(‘Irc!1');
+ﬂu
+
+|.oo.e(Lo6 YAG, ‘snow: nu: (orvm:(lod");
+
+aulslrean 3 so-zkcl .9:t0ulputSlreu( );
+
+)
+) bitch (socluztixczpuon c) (
+l.ou.e(LOG TAﬁ. ‘(mu m nlumlxxmq sorkvl: ' o epﬁg
+
+) catch uaixcepllon ex) (
+
+Log.:(LOG TAG. '$u(H>I I-vunlmu - o ex‘mslr1ng());
+return; V
+
+J___j J
+frame 40: uueun;
+case 1:
+
+if ((socket != null) && (!socket.isC1osed()))
+socke\.c1ose();
+
+sucket = new Socket(remoteIP. remotePurt);
+if (sucket.isCnnnected())
+
+Log.1'(LOG TAG, "Bowel Cannected");
+else
+
+Log.e(LOE_TA6, "Some! not connecled.'");
+
+outstream = sockex .get0utputSt ream();
+}
+
+catch (Socketbtceptinn e) {
+
+Log.e(L06_TA6, “hum! xn Inlljvlll/1111.] sucker: “ + e.getMessag
+catch (IOExceptinn ex) (
+
+Log.e(LDG TAG, "5u(kE'I l’lub1Cm: " + ex.toStr1'ng());
+return:
+frame 41: wreak;
+case 1:
+
+if ((socket != null) && (!sucket.isC1osed()))
+sucket.c1ose();
+
+socket = new Socket(remoteIP, remotePort);
+if (socket.isConnected(H
+
+Lag.i(LD6 T/15, “Sufkel C0lmEClf.‘d“);
+elsa
+
+Log.e(L06 TAG, “Sutkef nut cannected!“);
+
+uurstream : socket .get0utputStreanI();
+)
+
+) catch (sucketixception e) (
+Log.e(Laa_T/16, “EHO! Jn xmuaLz/mu socket: " o e.ge(Hes
+) catch (l0Except1nn ex) (
+
+Log e(L05 TAG, "Socket P:onLom; " + ex.tastring());
+return;
+frame 42: Inu.I(IIm Mm “.I:muuInu vlmmml nm|mu:Iml Mn " a
+
+|“'||'~NN‘| uc-IIunMmInm().nIllv‘1ImU o "M a‘
+Inuit:
+
+uh: h
+
+H llnmhwl 0» mm) M (lam!-0| IIIIUIOIIIHH
+Nnluvl : Iunnq)‘
+
+umkrl - mm '«uM<I(IwmnIvII', wuumm-nu),
+
+H (nmmm munm-I.uI|)l
+
+hm Hun. Mn, 'm|w‘\ :.ummImI‘),
+
+ulna
+
+mu «um. um, ‘....u.‘4 uul uuvm'\I.nU"],
+
+mu-.|n—..m ~ mm mvlnuuxulnluuun|),
+I
+
+1 uuh (’m1hr‘lIIun|vlIm\ M I
+
+mu,.<(::m Mu. wmn m .um..n Inn umlvrl “ u a.mumuIl|
+I uni: umm-mum ml) (
+
+um own. 141., -....n.~x I'|nIrh'u| ‘ : A-u:.I0MI|lIaHM
+frame 43: pdrntl ounputsxruu aurstrean;
+
+ 
+
+‘ pd“: VIM run!) (
+Log.L[LD6_TAE. 's:reawg wean mnnu-g");
+
+"Y (
+IIXKGI lprotucollmiax) (
+an o:
+udpsncker = not naxagmsamm;
+udpsacket .sumemwtersszaus:/rrsxszzsr;
+udpsockel. selsendauiferS1ze(Bt/fFEI[5)'lE);
+udpsackel.mnn:cI(renote!P, re|etePortl:
+Log.HLlm mo, 5:-eamng channel connected (.2: - 9
+ndpsacku.gelXnelMﬂress[).to5trin9U . - .
+break;
+use 1:
+u Hsazku -= null) as usocm.;sc1asam))
+sackzlxlosell:
+mm = nan sukettremm, momma;
+u (sncke(.is:unnEr.tedI))
+frame 44: cu- 
+D.q..§,(,.,s,~ 13’n1y ._~,‘.
+
+"H .0‘Ivssmxv/\>’|h-\l|x\v.\ .> M.uu/\nhvx|yy.Iv.1  
+
+1’
+;.. private nulmnhlvmm 
+
+   
+
+vuh\1< mu m > I
+1 mm mm m. m ‘mwum 1,
+‘ try 4
+switch .,.m.».u:‘ wuyl
+1 case a
+
+..-_. 7 , m Dnmqvumsnckriﬂ,
+‘.<.—_.x.» <sU\c<cweEuVQnvsucﬂxuﬂlll S]/I’!
+‘.—'}N‘,\\A" se-IscndauihusxzclmllNR sum.
+..*;v~(‘.xc‘ :m\nL‘<Uvv .LH" ‘rmnll¥’uv'Y.
+mg ,L__»y,.‘ V ; ‘\ ,W.v-,u ,~ .
+.»- geunmamessn msmngn . . udpsntke
+
+ 
+
+V mus _
+Brnk‘
+
+ 
+
+‘ . m ‘: rm\\] 5.; mum: xs(u7s:dHH
+ kn‘ ,mm
+frame 45: arm
+
+ 
+
+Ec pse
+Ilsraztm \.\ now new
+
+ 
+
+ 
+
+Ocklhrumpva
+frame 46: 
+frame 47: 
+frame 48: 
+frame 49: 
+frame 50: 
+frame 51: 
+frame 52: 
+frame 53: 
+frame 54: 
+frame 55: 
+frame 56: 
+frame 57: 
+frame 58: - 1...u..cm.-; Mumul IIL-hurl, huhcr|(wn,cmu.cLlu, xxzssss,
+()l'|icc hnun: Mnmluyx. l‘3()pn|—3pn\
+
+- TAs:
+
+— Xlnlel Chen a
+- mmu EDSHIIZ
+- Oiﬁcc Hours Thunday 3 3l)pm4 10pm
+
+— Fang Zhnu
+~ OIf|r::.EDSH23'.’.
+- Oﬁicz Hours. Tuesday 3.3|)pmA 30pm
+
+— Ame Suppe.
+- Oﬁice NSHESZO
+- Oﬁiee Hours: WA-.dn¢Sd‘Y 4-0°45-00pm
+frame 59: Office hours: Mondays, 1:30pm-3pm
+
+~ TAs:
+
+— Xinlei Chen
+
+- Office. EDSHZIZ
+
+- Oiﬁce Hour» Thuwday 3.30pm4".\Dpm
+— Feng Zhou.
+
+- Ofﬁce Ens:-1232.
+
+- Ofﬁcc Hours: Tuesdny 3 30pm4:30pv|n
+
+— Arne Suppe.
+- Oﬂice NSHB520.
+- Ofﬁce Hnurs: Wednesday 4:00—S:00pm
+frame 60: - TAs:
+— Xjnleichen.
+- Olﬁce:EDSHgl2.
+- Oiﬁee Hours: 'ﬂ|ursday3:30pm-430|ln
+
+— Feng Zhou.
+frame 61: - TAs:
+— Xinlei Chen.
+- Ofﬁce: EDS]-l_212.
+- 01110: Hours: Thursday 3:30pm-4:30pm
+— Feng Zhou.
+' Ofﬁce:EDSH232.
+' Ofﬁeeﬂours: Tuesday 3:30pm-4:30pm
+;_ — Amesuppe. s
+' %ocNSHB520.
+“ , an-:=wgu-aw.
+frame 62: (Hlnr I14-mu [\lulu|.w‘ l '.1)|vm ﬁlm.
+
+' I .'\‘.
+\IIIl:'|l I|I‘II
+- nu... |Iv'.II'l'
+~ on... In»... |I:mal.w 1 sup”. 4 |1¥|vm
+|'ru;'_ /Imn
+- Ullur lII\l|,'\-
+- (lllur Ilum-, II|:".n|,xy \ HIIHI14 mpm
+
+Arnc Sumn-
+- UIINT N$HI|'ﬁ.’U
+- Olllcc Iluuu: Wcclncxduy 4:01) Szmpvn
+frame 63: - Imlluvlul Mum-nl lluhuu. Iuhunorlunuab.
+lllhv Mun Mumlny-. |‘\()pm»1pm
+
+- TA:;
+— Xnhlﬁnn.
+- can Immu
+- <3-nun m-ayuo.n4.nx-
+- 1&1.
+s XE“.
+15-Iqynopmsop
+frame 64: 
+frame 65: 
+frame 66: 
+frame 67: L119
+frame 68: 
+frame 69: 
+frame 70: 
+frame 71: 
+frame 72: 
+frame 73: 
+frame 74: 
+frame 75: 
+frame 76: 
+frame 77: \1-‘HUI!
+frame 78: 
+frame 79: 
+frame 80: 
+frame 81: 
+frame 82: 
+frame 83: 
+frame 84: 
+frame 85: 
+frame 86: Comp
+
+Algorilhn
+frame 87: 
+frame 88: 
+frame 89: YIIVI Ill COIPIIIII ICIIICI
+frame 90: 
+frame 91: r  :~ Vision
+
+Applications
+frame 92: 
+frame 93: 
+frame 94: u m_...¢........
+
+   
+
+ 
+
+nu:-119.; ...,..a.m.......—n_n-.3-V4
+xx-.4e.c.......
+
+ 
+ 
+
+   
+
+4.. mm puma.-; nu: -hug-In-1
+
+. ,u »» mm! m.
+..:_.......n..-IrI:nIl4hT
+frame 95: .\.s nu
+
+ 
+
+space :
+
+Ivequency
+
+ 
+
+low-pass Lawarrpass
+
+n x 1: Ilw n|mcr.'n.'o- ul mu km pm» «um rmuh» m -. h:md—p<L\\ rum. numn-an
+.~:...¢ m m .. n..1m-m.- L.I|‘|.WI.|l’l(IlG1l|l\\I..\lI
+
+ 
+
+nmgc. x. mm ... rm‘ xmmd lI\\A_\ my mum pnxccuing. 11.: vtsnllmg pymnid ha: puykl
+AV   H , .,. .s..- Innhumn mum mm um rmnmu Gausslln (L; in Finn 3.34»)
+frame 96: urn-sum-nun
+
+  
+  
+  
+
+spam:
+
+~wc/W F /\
+
+Ila-mus n..an.u.eo«mnw.p—mu...=.nua.u-u4..Q
+Glnseﬁillulhllf-<nlv¢lq:l—9Inol'Cn&-"L
+
+ 
+
+_.__.......a.....:..n-saunas-‘n.
+frame 97: v—.u n.n-_.4—;...-..._-..—o._—
+.n_-..u-—n4..-«v—..
+frame 98: ur-—-—...-.
+
+  
+ 
+ 
+
+‘ ._. ...._a—......—.—— sun;
+_..... .. -.1.-.——¢—---c—c—nd.
+frame 99: . . .... meant!
+
+‘. .»...,..._n—.-on
+
+-..-. .o—--q.
+., -... --...-.._-o
+4. .... ..-......4\-u
+frame 100: 
