@@ -9,7 +9,7 @@ Please visit our website at [Elijah page](http://elijah.cs.cmu.edu/).
 Installation
 -------------
 library dependecies
-	> sudo apt-get install libtesseract-dev
+	> sudo apt-get install libtesseract-dev g++ tesseract-ocr-eng
 	> sudo pip install tesserwrap
 	>
 
