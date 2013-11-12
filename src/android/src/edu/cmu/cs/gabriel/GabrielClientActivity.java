@@ -11,7 +11,8 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import edu.cmu.cs.gabriel.R;
-import edu.cmu.cs.gabriel.network.ResultReceivingThread;
+import edu.cmu.cs.gabriel.network.NetworkProtocol;
+import edu.cmu.cs.gabriel.network.VideoControlThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
 
 import android.app.Activity;
@@ -50,14 +51,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int CAPTURE_VIDEO_ACTIVITY_REQUEST_CODE = 200;
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
-	public int PROTOCOL_INDEX = VideoStreamingThread.PROTOCOL_TCP;
 	public String REMOTE_IP = "128.2.210.197";
 	public static int REMOTE_CONTROL_PORT = 5000;
 	public static int REMOTE_DATA_PORT = 9098;
 
 	CameraConnector cameraRecorder;
-	VideoStreamingThread streamingThread;
-	ControlThread controlThread;
+	VideoStreamingThread videoSenderThread;
 
 	private SharedPreferences sharedPref;
 	private boolean hasStarted;
@@ -84,8 +83,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mTTS = new TextToSpeech(this, this);			
 		}
 		cameraRecorder = null;
-		streamingThread = null;
-		controlThread = null;
+		videoSenderThread = null;
 		hasStarted = false;
 		localOutputStream = null;
 		
@@ -155,7 +153,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
 			if (hasStarted && (localOutputStream != null)) {
 				Camera.Parameters parameters = mCamera.getParameters();
-				streamingThread.push(frame, parameters);
+				videoSenderThread.push(frame, parameters);
 			}
 		}
 	};
@@ -163,70 +161,24 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private Handler returnMsgHandler = new Handler() {
 		public void handleMessage(Message msg) {
 			
-			if (msg.what == VideoStreamingThread.NETWORK_RET_FAILED) {
+			if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
 				Bundle data = msg.getData();
 				String message = data.getString("message");
 				stopStreaming();
 				new AlertDialog.Builder(GabrielClientActivity.this).setTitle("INFO").setMessage(message)
 						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
 			} 
-			if (msg.what == VideoStreamingThread.NETWORK_RET_RESULT) {
+			if (msg.what == NetworkProtocol.NETWORK_RET_RESULT) {
 				String ttsMessage = (String) msg.obj;
 
 				// Select a random hello.
 				Log.d(LOG_TAG, "tts string origin: " + ttsMessage);
 				mTTS.setSpeechRate(1f);
 				mTTS.speak(ttsMessage, TextToSpeech.QUEUE_FLUSH, null);
-
-				// Bundle data = msg.getData();
-				// double avgfps = data.getDouble("avg_fps");
-				// double fps = data.getDouble("fps");
-				// if (fps != 0.0) {
-				// Log.e("krha", fps + " " + avgfps);
-				// statView.setText("FPS - " + String.format("%04.2f", fps) +
-				// "(current), "
-				// + String.format("%04.2f", avgfps) + "(avg)");
-				// }
 			}
 		}
 	};
 
-	private Handler controlMsgHandler = new Handler() {
-		public void handleMessage(Message msg_in) {
-			if (msg_in.what == ControlThread.CODE_TCP_SETUP_SUCCESS) {
-				Log.i(LOG_TAG, "connected to control channel " + REMOTE_IP + ":" + REMOTE_CONTROL_PORT);
-				Handler handler = controlThread.getHandler();
-				// now ask the control channel to query streaming port
-				Message msg_out = Message.obtain();
-				Bundle data = new Bundle();
-				data.putString("serviceName", "streaming");
-				data.putString("resourceName", "video");
-				msg_out.what = ControlThread.CODE_QUERY_PORT;
-				msg_out.setData(data);
-				handler.sendMessage(msg_out);
-			} else if (msg_in.what == ControlThread.CODE_TCP_SETUP_FAIL) {
-				// nothing for now
-			} else if (msg_in.what == ControlThread.CODE_STREAM_PORT) {
-				int serverStreamPort = msg_in.arg1;
-				if (cameraRecorder == null) {
-					cameraRecorder = new CameraConnector();
-					cameraRecorder.init();
-				}
-
-				if (streamingThread == null) {
-					streamingThread = new VideoStreamingThread(PROTOCOL_INDEX,
-							cameraRecorder.getOutputFileDescriptor(), REMOTE_IP, serverStreamPort, returnMsgHandler);
-					streamingThread.start();
-				}
-
-				Log.i(LOG_TAG, "StreamingThread starts");
-
-				localOutputStream = new BufferedOutputStream(new FileOutputStream(
-						cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
-				hasStarted = true;
-			}
-		}
-	};
 
 	protected int selectedRangeIndex = 0;
 	public void selectFrameRate(View view) throws IOException {
@@ -296,10 +248,21 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	
 	private void startCapture(){
 		if (hasStarted == false) {
+			Log.i(LOG_TAG, "StreamingThread starts");
 			mPreview.setPreviewCallback(previewCallback);
-			Log.d(LOG_TAG, "connecting to control channel " + REMOTE_IP + ":" + REMOTE_CONTROL_PORT);
-			controlThread = new ControlThread(controlMsgHandler, REMOTE_IP, REMOTE_CONTROL_PORT);
-			controlThread.start();
+
+			if (cameraRecorder == null) {
+				cameraRecorder = new CameraConnector();
+				cameraRecorder.init();
+			}
+			if (videoSenderThread == null) {
+				videoSenderThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(), REMOTE_IP, REMOTE_DATA_PORT, returnMsgHandler);
+				videoSenderThread.start();
+			}
+			localOutputStream = new BufferedOutputStream(new FileOutputStream(
+					cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
+			
+			hasStarted = true;
 		}
 	}
 	
@@ -311,8 +274,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		hasStarted = false;
 		if (mPreview != null)
 			mPreview.setPreviewCallback(null);
-		if (streamingThread != null && streamingThread.isAlive()) {
-			streamingThread.stopStreaming();
+		if (videoSenderThread != null && videoSenderThread.isAlive()) {
+			videoSenderThread.stopStreaming();
 		}
 	}
 
@@ -348,30 +311,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		String sProtocol = sharedPref.getString(SettingsActivity.KEY_PROTOCOL_LIST, "UDP");
 		String[] sProtocolList = getResources().getStringArray(R.array.protocol_list);
 
-		if (sProtocol.compareToIgnoreCase(sProtocolList[0]) == 0)
-			setProtocolIndex(VideoStreamingThread.PROTOCOL_UDP);
-		else if (sProtocol.compareToIgnoreCase(sProtocolList[1]) == 0)
-			setProtocolIndex(VideoStreamingThread.PROTOCOL_TCP);
-		else if (sProtocol.compareToIgnoreCase(sProtocolList[2]) == 0)
-			setProtocolIndex(VideoStreamingThread.PROTOCOL_RTPUDP);
-		else
-			setProtocolIndex(VideoStreamingThread.PROTOCOL_RTPTCP);
-
 		REMOTE_IP = sharedPref.getString(SettingsActivity.KEY_PROXY_IP, "128.2.213.25");
 		REMOTE_CONTROL_PORT = Integer.parseInt(sharedPref.getString(SettingsActivity.KEY_PROXY_PORT, "8080"));
 
 		Log.v("pref", "remotePort is" + REMOTE_CONTROL_PORT);
-
 	}
-
-	public int getProtocolIndex() {
-		return PROTOCOL_INDEX;
-	}
-
-	public void setProtocolIndex(int protocolIndex) {
-		this.PROTOCOL_INDEX = protocolIndex;
-	}
-
 	
 	/*
 	 * Recording battery info by sending an intent
@@ -412,20 +356,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mTTS.shutdown();
 			mTTS = null;
 		}
-		if (controlThread != null) {
-			Message msg_out = Message.obtain();
-			msg_out.what = ControlThread.CODE_CLOSE_CONNECTION;
-			Handler controlHandler = controlThread.getHandler();
-			controlHandler.sendMessage(msg_out);
-			controlThread = null;
-		}
 		if (cameraRecorder != null) {
 			cameraRecorder.close();
 			cameraRecorder = null;
 		}
-		if ((streamingThread != null) && (streamingThread.isAlive())) {
-			streamingThread.stopStreaming();
-			streamingThread = null;
+		if ((videoSenderThread != null) && (videoSenderThread.isAlive())) {
+			videoSenderThread.stopStreaming();
+			videoSenderThread = null;
 		}
 		if (mPreview != null) {
 			mPreview.setPreviewCallback(null);

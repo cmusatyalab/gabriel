@@ -21,10 +21,6 @@ import android.util.Log;
 
 public class ResultReceivingThread extends Thread {
 	
-	public static final String MESSAGE_CONTROL = "control";
-	public static final String MESSAGE_RESULT = "result";
-	public static final String MESSAGE_FRAME_ID = "id";
-	
 	private static final String LOG_TAG = "krha";
 	
 	private Handler networkHandler;
@@ -81,33 +77,33 @@ public class ResultReceivingThread extends Thread {
 		obj = new JSONObject(recvData);
 		
 		try{
-			controlMsg = obj.getString(MESSAGE_CONTROL);
+			controlMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_CONTROL);
 		} catch(JSONException e){}
 		try{
-			returnMsg = obj.getString(MESSAGE_RESULT);
+			returnMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
 		} catch(JSONException e){}
 		try{
-			frameID = obj.getLong(MESSAGE_FRAME_ID);
+			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
 		} catch(JSONException e){}
 
 		if (frameID != -1){
 			Message msg = Message.obtain();
-			msg.what = VideoStreamingThread.NETWORK_RET_TOKEN;
+			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
 			Bundle data = new Bundle();
-			data.putLong(ResultReceivingThread.MESSAGE_FRAME_ID, frameID);
+			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
 			msg.setData(data);
 			this.tokenHandler.sendMessage(msg);
 		}			
 		if (controlMsg != null){
 			Message msg = Message.obtain();
-			msg.what = VideoStreamingThread.NETWORK_RET_CONFIG;
+			msg.what = NetworkProtocol.NETWORK_RET_CONFIG;
 			msg.obj = controlMsg;			
 			this.networkHandler.sendMessage(msg);
 		}
 		if (returnMsg != null){
 			Message msg = Message.obtain();
 			Log.d(LOG_TAG, returnMsg);
-			msg.what = VideoStreamingThread.NETWORK_RET_RESULT;
+			msg.what = NetworkProtocol.NETWORK_RET_RESULT;
 			msg.obj = returnMsg;			
 			this.networkHandler.sendMessage(msg);			
 		}
@@ -115,7 +111,7 @@ public class ResultReceivingThread extends Thread {
 
 	private void notifyError(String errorMessage) {		
 		Message msg = Message.obtain();
-		msg.what = VideoStreamingThread.NETWORK_RET_FAILED;
+		msg.what = NetworkProtocol.NETWORK_RET_FAILED;
 		msg.obj = errorMessage;
 		this.networkHandler.sendMessage(msg);
 	}

@@ -25,15 +25,6 @@ import android.os.Message;
 import android.util.Log;
 
 public class VideoStreamingThread extends Thread {
-	public static final int PROTOCOL_UDP = 0;
-	public static final int PROTOCOL_TCP = PROTOCOL_UDP + 1;
-	public static final int PROTOCOL_RTPUDP = PROTOCOL_TCP + 1;
-	public static final int PROTOCOL_RTPTCP = PROTOCOL_RTPUDP + 1;
-	
-	public static final int NETWORK_RET_FAILED = 1;
-	public static final int NETWORK_RET_RESULT = 2;
-	public static final int NETWORK_RET_CONFIG = 3;
-	public static final int NETWORK_RET_TOKEN = 4;
 
 	private static final String LOG_TAG = "krha";
 
@@ -51,25 +42,25 @@ public class VideoStreamingThread extends Thread {
 	// TCP
 	private Socket tcpSocket = null;
 	private DataOutputStream networkWriter = null;
-	private ResultReceivingThread networkReceiver = null;
+	private VideoControlThread networkReceiver = null;
 
 	private FileInputStream cameraInputStream;
 	private Vector<byte[]> frameBufferList = new Vector<byte[]>();
 	private Handler networkHander = null;
 	private long frameID = 0;
 	private TreeMap<Long, SentPacketInfo> latencyStamps = new TreeMap<Long, SentPacketInfo>();
-	
-	class SentPacketInfo{
+
+	class SentPacketInfo {
 		public long sentTime;
 		public int sentSize;
-		
+
 		public SentPacketInfo(long currentTimeMillis, int sentSize) {
 			this.sentTime = currentTimeMillis;
 			this.sentSize = sentSize;
 		}
 	}
 
-	public VideoStreamingThread(int protocol, FileDescriptor fd, String IPString, int port, Handler handler) {
+	public VideoStreamingThread(FileDescriptor fd, String IPString, int port, Handler handler) {
 		is_running = false;
 		this.networkHander = handler;
 		try {
@@ -79,7 +70,6 @@ public class VideoStreamingThread extends Thread {
 		}
 		remotePort = port;
 
-		this.protocolIndex = protocol;
 		cameraInputStream = new FileInputStream(fd);
 	}
 
@@ -93,24 +83,12 @@ public class VideoStreamingThread extends Thread {
 		int packet_count = 0;
 
 		try {
-			switch (protocolIndex) {
-			case PROTOCOL_UDP:
-				udpSocket = new DatagramSocket();
-				udpSocket.setReceiveBufferSize(BUFFER_SIZE);
-				udpSocket.setSendBufferSize(BUFFER_SIZE);
-				udpSocket.connect(remoteIP, remotePort);
-				Log.i(LOG_TAG, "Streaming channel connected to: " + udpSocket.getInetAddress().toString() + ":"
-						+ udpSocket.getPort());
-				break;
-			case PROTOCOL_TCP:
-				tcpSocket = new Socket();
-				tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5*1000);
-				networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
-				DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
-				networkReceiver = new ResultReceivingThread(networkReader, this.networkHander, this.tokenHandler);
-				networkReceiver.start();
-				break;
-			}
+			tcpSocket = new Socket();
+			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
+			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
+			DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
+			networkReceiver = new VideoControlThread(networkReader, this.networkHander, this.tokenHandler);
+			networkReceiver.start();
 		} catch (IOException e) {
 			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
 			this.notifyError(e.getMessage());
@@ -119,58 +97,27 @@ public class VideoStreamingThread extends Thread {
 		}
 
 		while (this.is_running) {
-			switch (protocolIndex) {
-			case PROTOCOL_UDP:
-				try {
-					bytes_read = cameraInputStream.read(buffer, 0, BUFFER_SIZE);
-					Log.v(LOG_TAG, "Read " + bytes_read + " bytes");
-				} catch (IOException e) {
-					Log.e(LOG_TAG, e.getMessage());
-					this.notifyError(e.getMessage());
-				}
-
-				if (bytes_read <= 0) {
-					try {
-						Thread.sleep(10);
-					} catch (InterruptedException e) {}
-				} else {
-					DatagramPacket packet = new DatagramPacket(buffer, bytes_read);
-					try {
-						udpSocket.send(packet);
-					} catch (IOException e) {
-						Log.e(LOG_TAG, e.getMessage());
-						this.notifyError(e.getMessage());
-						this.is_running = false;
-						return;
+			try {
+				while (this.frameBufferList.size() > 0) {
+					byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
+					byte[] data = this.frameBufferList.remove(0);
+					networkWriter.writeInt(header.length);
+					networkWriter.writeInt(data.length);
+					networkWriter.write(header);
+					networkWriter.write(data, 0, data.length);
+					networkWriter.flush();
+					latencyStamps.put(this.frameID, new SentPacketInfo(System.currentTimeMillis(), data.length
+							+ header.length));
+					this.frameID++;
+					if (this.currentToken > 0) {
+						this.currentToken--;
 					}
 				}
-				bytes_count += bytes_read;
-				packet_count++;
-				break;
-			case PROTOCOL_TCP:
-				try {
-					while (this.frameBufferList.size() > 0){
-						byte[] header = ("{\"id\":" + this.frameID  + "}").getBytes();
-						byte[] data = this.frameBufferList.remove(0);
-						networkWriter.writeInt(header.length);
-						networkWriter.writeInt(data.length);
-						networkWriter.write(header);
-						networkWriter.write(data, 0, data.length);
-						networkWriter.flush();
-						latencyStamps.put(this.frameID,
-								new SentPacketInfo(System.currentTimeMillis(), data.length+header.length));
-						this.frameID++;
-						if (this.currentToken > 0){
-							this.currentToken--;
-						}
-					}
-				} catch (IOException e) {
-					Log.e(LOG_TAG, e.getMessage());
-					this.notifyError(e.getMessage());
-					this.is_running = false;
-					return;
-				}
-				break;
+			} catch (IOException e) {
+				Log.e(LOG_TAG, e.getMessage());
+				this.notifyError(e.getMessage());
+				this.is_running = false;
+				return;
 			}
 		}
 		this.is_running = false;
@@ -185,17 +132,20 @@ public class VideoStreamingThread extends Thread {
 		if (cameraInputStream != null) {
 			try {
 				cameraInputStream.close();
-			} catch (IOException e) {}
+			} catch (IOException e) {
+			}
 		}
 		if (tcpSocket != null) {
 			try {
 				tcpSocket.close();
-			} catch (IOException e) {}
+			} catch (IOException e) {
+			}
 		}
 		if (networkWriter != null) {
 			try {
 				networkWriter.close();
-			} catch (IOException e) {}
+			} catch (IOException e) {
+			}
 		}
 		if (networkReceiver != null) {
 			networkReceiver.close();
@@ -208,7 +158,7 @@ public class VideoStreamingThread extends Thread {
 	private long firstStartTime = 0, lastSentTime = 0;
 	private long prevUpdateTime = 0, currentUpdateTime = 0;
 	private Size cameraImageSize = null;
-	
+
 	public void push(byte[] frame, Parameters parameters) {
 
 		if (firstStartTime == 0) {
@@ -216,24 +166,25 @@ public class VideoStreamingThread extends Thread {
 		}
 		currentUpdateTime = System.currentTimeMillis();
 		sentframeCount++;
-		
-		if (currentToken > 0){
+
+		if (currentToken > 0) {
 			cameraImageSize = parameters.getPreviewSize();
-			YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width, cameraImageSize.height, null);
+			YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
+					cameraImageSize.height, null);
 			ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
 			image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
 			this.frameBufferList.add(tmpBuffer.toByteArray());
 			prevUpdateTime = currentUpdateTime;
 		}
 	}
-	
+
 	private void notifyError(String message) {
 		// callback
 		Message msg = Message.obtain();
-		msg.what = VideoStreamingThread.NETWORK_RET_FAILED;
+		msg.what = NetworkProtocol.NETWORK_RET_FAILED;
 		Bundle data = new Bundle();
 		data.putString("message", message);
-		msg.setData(data);		
+		msg.setData(data);
 		this.networkHander.sendMessage(msg);
 	}
 
@@ -242,38 +193,37 @@ public class VideoStreamingThread extends Thread {
 		private long frame_latency = 0;
 		private long frame_size = 0;
 		private long frame_latency_count = 0;;
-		
+
 		public void handleMessage(Message msg) {
-			if (msg.what == VideoStreamingThread.NETWORK_RET_TOKEN) {
+			if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {
 				Bundle bundle = msg.getData();
-				long recvFrameID = bundle.getLong(ResultReceivingThread.MESSAGE_FRAME_ID);
+				long recvFrameID = bundle.getLong(VideoControlThread.MESSAGE_FRAME_ID);
 				SentPacketInfo sentPacket = latencyStamps.remove(recvFrameID);
-				if (sentPacket != null){
+				if (sentPacket != null) {
 					long time_diff = System.currentTimeMillis() - sentPacket.sentTime;
 					frame_latency += time_diff;
 					frame_size += sentPacket.sentSize;
 					frame_latency_count++;
-					if (frame_latency_count % 10 == 0){
-						Log.d(LOG_TAG, cameraImageSize.width + "x" + cameraImageSize.height + " " + "Latency : " +
-								frame_latency/frame_latency_count +
-								" (ms)\tThroughput : " + frame_size/frame_latency_count +
-								" (Bps)");
-					}				
+					if (frame_latency_count % 10 == 0) {
+						Log.d(LOG_TAG, cameraImageSize.width + "x" + cameraImageSize.height + " " + "Latency : "
+								+ frame_latency / frame_latency_count + " (ms)\tThroughput : " + frame_size
+								/ frame_latency_count + " (Bps)");
+					}
 				}
-				if (latencyStamps.size() > 30*60){
+				if (latencyStamps.size() > 30 * 60) {
 					latencyStamps.clear();
 				}
-				
+
 				increaseToken();
 			}
 		}
 	};
-		
-	public int getCurrentToken(){
+
+	public int getCurrentToken() {
 		return this.currentToken;
 	}
-	
-	public void increaseToken(){
+
+	public void increaseToken() {
 		this.currentToken++;
 	}
 }
