@@ -8,9 +8,13 @@ Please visit our website at [Elijah page](http://elijah.cs.cmu.edu/).
 
 Installation
 -------------
+* PIL==1.1.7
+* Pillow==2.2.1
+* tesserwrap==0.1.3
+
 library dependecies
-	> sudo apt-get install libtesseract-dev g++ tesseract-ocr-eng
-	> sudo pip install tesserwrap
+	> sudo apt-get install python-dev libjpeg-dev libtesseract-dev g++ tesseract-ocr-eng 
+	> sudo pip install tesserwrap Pillow PIL
 	>
 
 Installation
