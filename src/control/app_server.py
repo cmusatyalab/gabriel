@@ -138,6 +138,8 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
 
 
 class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+    stopped = False
+
     def __init__(self, args):
         server_address = ('0.0.0.0', Const.VIDEO_PORT)
         self.allow_reuse_address = True
@@ -177,6 +179,9 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
             self.upnp_server = None
         LOG.info("Start UPnP Server")
 
+    def serve_forever(self):
+        while not self.stopped:
+            self.handle_request()
 
     def handle_error(self, request, client_address):
         import pdb;pdb.set_trace()
@@ -184,6 +189,9 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         pass
 
     def terminate(self):
+        self.server_close()
+        self.stopped = True
+        
         if self.socket != -1:
             self.socket.close()
         if hasattr(self, 'upnp_server') and self.upnp_server is not None:
