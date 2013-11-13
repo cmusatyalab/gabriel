@@ -45,7 +45,7 @@ class MobileCommError(Exception):
 
 class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
-        super(MobileVideoHandler, self).setup()
+        super(MobileSensorHandler, self).setup()
         self.stop = threading.Event()
         self.average_FPS = 0.0
         self.current_FPS = 0.0
@@ -60,7 +60,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data == None or len(tmp_data) == 0:
-                raise MobileCommError("Socket is closed")
+                raise MobileCommError("Socket is closed at %s" % str(self))
             data += tmp_data
         return data
 
@@ -93,9 +93,8 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                     continue
                 time.sleep(0.0001)
         except Exception as e:
-            LOG.info(traceback.format_exc())
-            LOG.info("%s" % str(e))
-            LOG.info("handler raises exception\n")
+            #LOG.info(traceback.format_exc())
+            LOG.info("%s\n" % str(e))
             LOG.info("Client disconnected")
         if self.socket != -1:
             self.socket.close()
@@ -106,7 +105,10 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
 
 class MobileVideoHandler(MobileSensorHandler):
     def setup(self):
-        super(MobileVideoHandler, self).setup()
+        super(MobileVideoHandler, self).setup() 
+        
+    def __repr__(self):
+        return "Mobile Video Server"
 
     def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
@@ -123,9 +125,12 @@ class MobileVideoHandler(MobileSensorHandler):
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
+            pass
+        '''
             msg = "Video frame rate from client : current(%f), average(%f)" % \
                     (self.current_FPS, self.average_FPS)
             LOG.info(msg)
+        '''
         for image_queue in image_queue_list:
             if image_queue.full() is True:
                 image_queue.get()
@@ -186,13 +191,28 @@ class MobileVideoHandler(MobileSensorHandler):
 
 class MobileAccHandler(MobileSensorHandler):
     def setup(self):
-        super(MobileVideoHandler, self).setup()
+        super(MobileAccHandler, self).setup()
+        
+    def __str__(self):
+        return "representation"
+
+    def __repr__(self):
+        return "Mobile Acc Server"
 
     def _handle_input_data(self):
+        def chunks(l, n):
+            for i in xrange(0, len(l), n):
+                yield l[i:i + n]
+
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         acc_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
         acc_data = self._recv_all(acc_size)
+        ACC_SEGMENT_SIZE = 12# (int, float, float)
+        for chunk in chunks(acc_data, ACC_SEGMENT_SIZE):
+            (acc_time, acc_x, acc_y) = struct.unpack("!iff", chunk)
+            #print "time: %d, acc_x: %f, acc_y: %f" % (acc_time, acc_x, acc_y)
+
         self.frame_count += 1
 
         # measurement
@@ -241,6 +261,7 @@ class MobileCommServer(SocketServer.TCPServer):
     def __init__(self, port, handler):
         server_address = ('0.0.0.0', port)
         self.allow_reuse_address = True
+        self.handler = handler
         try:
             SocketServer.TCPServer.__init__(self, server_address,
                     handler)
@@ -250,7 +271,7 @@ class MobileCommServer(SocketServer.TCPServer):
             sys.exit(1)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        LOG.info("* Mobile server configuration")
+        LOG.info("* Mobile server(%s) configuration" % str(self.handler))
         LOG.info(" - Open TCP Server at %s" % (str(server_address)))
         LOG.info(" - Disable nagle (No TCP delay)  : %s" %
                 str(self.socket.getsockopt(
@@ -274,7 +295,7 @@ class MobileCommServer(SocketServer.TCPServer):
         # close all thread
         if self.socket != -1:
             self.socket.close()
-        LOG.info("[TERMINATE] Finish mobile communication server connection")
+        LOG.info("[TERMINATE] Finish %s mobile server connection" % str(self.handler))
 
 
 def main():

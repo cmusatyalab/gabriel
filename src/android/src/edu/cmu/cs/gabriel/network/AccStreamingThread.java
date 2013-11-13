@@ -39,10 +39,20 @@ public class AccStreamingThread extends Thread {
 	private DataOutputStream networkWriter = null;
 	private AccControlThread networkReceiver = null;
 
-	private Vector<byte[]> frameBufferList = new Vector<byte[]>();
+	private Vector<AccData> accDataList = new Vector<AccData>();
 	private Handler networkHander = null;
 	private long frameID = 0;
 	private TreeMap<Long, SentPacketInfo> latencyStamps = new TreeMap<Long, SentPacketInfo>();
+	
+	class AccData{
+		public int sentTime;
+		public float xacc, yacc;
+		public AccData(int time, float x, float y) {
+			sentTime = time;
+			xacc = x;
+			yacc = y;
+		}
+	}
 	
 	class SentPacketInfo{
 		public long sentTime;
@@ -85,20 +95,34 @@ public class AccStreamingThread extends Thread {
 
 		while (this.is_running) {
 			try {
-				while (this.frameBufferList.size() > 0) {
-					byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
-					byte[] data = this.frameBufferList.remove(0);
-					networkWriter.writeInt(header.length);
-					networkWriter.writeInt(data.length);
-					networkWriter.write(header);
-					networkWriter.write(data, 0, data.length);
-					networkWriter.flush();
-					latencyStamps.put(this.frameID, new SentPacketInfo(System.currentTimeMillis(), data.length
-							+ header.length));
-					this.frameID++;
-					if (this.currentToken > 0) {
-						this.currentToken--;
-					}
+				if (this.accDataList.size() == 0){
+					try {
+						Thread.sleep(10);
+					} catch (InterruptedException e) {}
+					continue;
+				}
+				
+		        ByteArrayOutputStream baos =new ByteArrayOutputStream();
+		        DataOutputStream dos=new DataOutputStream(baos);				
+				while (this.accDataList.size() > 0) {
+					AccData data = this.accDataList.remove(0);
+					dos.writeInt(data.sentTime);
+					dos.writeFloat(data.xacc);
+					dos.writeFloat(data.yacc);
+				}
+
+				byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
+		        byte[] data = baos.toByteArray();
+				networkWriter.writeInt(header.length);
+				networkWriter.writeInt(data.length);
+				networkWriter.write(header);
+				networkWriter.write(data);
+				networkWriter.flush();
+				latencyStamps.put(this.frameID, new SentPacketInfo(System.currentTimeMillis(), data.length
+						+ header.length));
+				this.frameID++;
+				if (this.currentToken > 0) {
+					this.currentToken--;
 				}
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
@@ -106,7 +130,6 @@ public class AccStreamingThread extends Thread {
 				this.is_running = false;
 				return;
 			}
-			break;
 		}
 		this.is_running = false;
 	}
@@ -134,23 +157,16 @@ public class AccStreamingThread extends Thread {
 	private long firstStartTime = 0, lastSentTime = 0;
 	private long prevUpdateTime = 0, currentUpdateTime = 0;
 	private Size cameraImageSize = null;
-	
-	public void push(byte[] frame, Parameters parameters) {
 
+
+	public void push(float[] sensor) {
 		if (firstStartTime == 0) {
 			firstStartTime = System.currentTimeMillis();
 		}
 		currentUpdateTime = System.currentTimeMillis();
 		sentframeCount++;
-		
-		if (currentToken > 0){
-			cameraImageSize = parameters.getPreviewSize();
-			YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width, cameraImageSize.height, null);
-			ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
-			image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
-			this.frameBufferList.add(tmpBuffer.toByteArray());
-			prevUpdateTime = currentUpdateTime;
-		}
+		this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor[0], sensor[1]));
+		prevUpdateTime = currentUpdateTime;
 	}
 	
 	private void notifyError(String message) {
@@ -180,10 +196,6 @@ public class AccStreamingThread extends Thread {
 					frame_size += sentPacket.sentSize;
 					frame_latency_count++;
 					if (frame_latency_count % 10 == 0){
-						Log.d(LOG_TAG, cameraImageSize.width + "x" + cameraImageSize.height + " " + "Latency : " +
-								frame_latency/frame_latency_count +
-								" (ms)\tThroughput : " + frame_size/frame_latency_count +
-								" (Bps)");
 					}				
 				}
 				if (latencyStamps.size() > 30*60){

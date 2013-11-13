@@ -31,6 +31,7 @@ import re
 import json
 from mobile_server import MobileCommServer
 from mobile_server import MobileVideoHandler
+from mobile_server import MobileAccHandler
 from app_server import VideoSensorServer
 import mobile_server
 from BaseHTTPServer import BaseHTTPRequestHandler
@@ -167,7 +168,7 @@ def main():
         m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
     else:
         m_video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
-    m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
+    m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileAccHandler)
     a_video_server = VideoSensorServer(sys.argv[1:])
     http_server = ThreadedHTTPServer(('localhost', 8080), MJPEGStreamHandler)
 
