@@ -163,7 +163,6 @@ def main():
     m_video_server = None
     m_acc_server = None
     a_video_server = None
-
     if settings.image_dir:
         m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
     else:
