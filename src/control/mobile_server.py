@@ -44,6 +44,17 @@ class MobileCommError(Exception):
     pass
 
 class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
+    def setup(self):
+        super(MobileVideoHandler, self).setup()
+        self.stop = threading.Event()
+        self.average_FPS = 0.0
+        self.current_FPS = 0.0
+        self.init_connect_time = None
+        self.previous_time = None
+        self.current_time = 0
+        self.frame_count = 0
+        self.ret_frame_ids = Queue.Queue()
+
     def _recv_all(self, recv_size):
         data = ''
         while len(data) < recv_size:
@@ -82,9 +93,9 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                     continue
                 time.sleep(0.0001)
         except Exception as e:
-            #LOG.info(traceback.format_exc())
-            #LOG.info("%s" % str(e))
-            #LOG.info("handler raises exception\n")
+            LOG.info(traceback.format_exc())
+            LOG.info("%s" % str(e))
+            LOG.info("handler raises exception\n")
             LOG.info("Client disconnected")
         if self.socket != -1:
             self.socket.close()
@@ -96,14 +107,6 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
 class MobileVideoHandler(MobileSensorHandler):
     def setup(self):
         super(MobileVideoHandler, self).setup()
-        self.stop = threading.Event()
-        self.average_FPS = 0.0
-        self.current_FPS = 0.0
-        self.init_connect_time = None
-        self.previous_time = None
-        self.current_time = 0
-        self.frame_count = 0
-        self.ret_frame_ids = Queue.Queue()
 
     def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
@@ -179,6 +182,58 @@ class MobileVideoHandler(MobileSensorHandler):
                 # send only one
                 LOG.info("result message (%s) sent to the Glass", result_msg)
                 break
+
+
+class MobileAccHandler(MobileSensorHandler):
+    def setup(self):
+        super(MobileVideoHandler, self).setup()
+
+    def _handle_input_data(self):
+        header_size = struct.unpack("!I", self._recv_all(4))[0]
+        acc_size = struct.unpack("!I", self._recv_all(4))[0]
+        header_data = self._recv_all(header_size)
+        acc_data = self._recv_all(acc_size)
+        self.frame_count += 1
+
+        # measurement
+        self.current_time = time.time()
+        self.current_FPS = 1 / (self.current_time - self.previous_time)
+        self.average_FPS = self.frame_count / (self.current_time -
+                self.init_connect_time)
+        self.previous_time = self.current_time
+
+        if (self.frame_count % 100 == 0):
+            msg = "ACC rate from client : current(%f), average(%f)" % \
+                    (self.current_FPS, self.average_FPS)
+            LOG.info(msg)
+        for image_queue in image_queue_list:
+            if image_queue.full() is True:
+                image_queue.get()
+            image_queue.put((header_data, image_data))
+
+        # return frame id to flow control
+        #json_header = json.loads(header_data)
+        #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        #if frame_id is not None:
+        #    self.ret_frame_ids.put(frame_id)
+
+    def _handle_output_result(self):
+        pass
+        '''
+        try:
+            return_frame_id = self.ret_frame_ids.get_nowait()
+            return_data = json.dumps({
+                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
+                    })
+            packet = struct.pack("!I%ds" % len(return_data),
+                    len(return_data),
+                    return_data)
+            self.request.send(packet)
+            self.wfile.flush()
+        except Queue.Empty:
+            pass
+        '''
+
 
 class MobileCommServer(SocketServer.TCPServer): 
     stopped = False

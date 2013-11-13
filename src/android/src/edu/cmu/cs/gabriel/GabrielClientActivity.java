@@ -55,7 +55,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
 	public String GABRIEL_IP = "128.2.210.197";
-	// public static final String GABRIEL_IP = "128.2.213.130";
+//	 public static final String GABRIEL_IP = "128.2.213.130";
 	public static final int VIDEO_STREAM_PORT = 9098;
 	public static final int ACC_STREAM_PORT = 9099;
 
