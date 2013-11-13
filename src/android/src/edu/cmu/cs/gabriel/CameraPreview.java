@@ -15,8 +15,7 @@ import android.view.SurfaceView;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 	public static final int MIN_FPS = 50;
-	public static final int IMAGE_WIDTH = 600;
-
+	public static final int IMAGE_WIDTH = 300;
 
 	public SurfaceHolder mHolder;
 	public Camera mCamera = null;

@@ -43,7 +43,57 @@ result_queue_list = list()
 class MobileCommError(Exception):
     pass
 
-class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
+class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
+    def _recv_all(self, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = self.request.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise MobileCommError("Socket is closed")
+            data += tmp_data
+        return data
+
+    def handle(self):
+        global image_queue_list
+        try:
+            LOG.info("new Google Glass is connected")
+            self.init_connect_time = time.time()
+            self.previous_time = time.time()
+
+            socket_fd = self.request.fileno()
+            input_list = [socket_fd]
+            output_list = [socket_fd]
+            except_list = [socket_fd]
+
+            while(not self.stop.wait(0.0001)):
+                inputready, outputready, exceptready = \
+                        select.select(input_list, output_list, except_list)
+                for s in inputready:
+                    if s == socket_fd:
+                        self._handle_input_data()
+                for output in outputready:
+                    if output == socket_fd:
+                        self._handle_output_result()
+                for e in exceptready:
+                    if e == socket_fd:
+                        break
+
+                if not (inputready or outputready or exceptready):
+                    continue
+                time.sleep(0.0001)
+        except Exception as e:
+            #LOG.info(traceback.format_exc())
+            #LOG.info("%s" % str(e))
+            #LOG.info("handler raises exception\n")
+            LOG.info("Client disconnected")
+        if self.socket != -1:
+            self.socket.close()
+
+    def terminate(self):
+        self.stop.set()
+
+
+class MobileVideoHandler(MobileSensorHandler):
     def setup(self):
         super(MobileVideoHandler, self).setup()
         self.stop = threading.Event()
@@ -55,16 +105,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
         self.frame_count = 0
         self.ret_frame_ids = Queue.Queue()
 
-    def _recv_all(self, recv_size):
-        data = ''
-        while len(data) < recv_size:
-            tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data == None or len(tmp_data) == 0:
-                raise MobileCommError("Socket is closed")
-            data += tmp_data
-        return data
-
-    def _handle_image_input(self):
+    def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         img_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
@@ -93,7 +134,7 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
         if frame_id is not None:
             self.ret_frame_ids.put(frame_id)
 
-    def _handle_result_output(self):
+    def _handle_output_result(self):
         global result_queue_list
         def _post_header_process(header_message):
             header_json = json.loads(header_message)
@@ -139,53 +180,15 @@ class MobileVideoHandler(SocketServer.StreamRequestHandler, object):
                 LOG.info("result message (%s) sent to the Glass", result_msg)
                 break
 
-    def handle(self):
-        global image_queue_list
-        try:
-            LOG.info("new Google Glass is connected")
-            self.init_connect_time = time.time()
-            self.previous_time = time.time()
+class MobileCommServer(SocketServer.TCPServer): 
+    stopped = False
 
-            socket_fd = self.request.fileno()
-            input_list = [socket_fd]
-            output_list = [socket_fd]
-            except_list = [socket_fd]
-
-            while(not self.stop.wait(0.0001)):
-                inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list)
-                for s in inputready:
-                    if s == socket_fd:
-                        self._handle_image_input()
-                for output in outputready:
-                    if output == socket_fd:
-                        self._handle_result_output()
-                for e in exceptready:
-                    if e == socket_fd:
-                        break
-
-                if not (inputready or outputready or exceptready):
-                    continue
-                time.sleep(0.0001)
-        except Exception as e:
-            LOG.info(traceback.format_exc())
-            LOG.info("%s" % str(e))
-            LOG.info("handler raises exception\n")
-            LOG.info("Client disconnected")
-        if self.socket != -1:
-            self.socket.close()
-
-    def terminate(self):
-        self.stop.set()
-
-
-class MobileCommServer(SocketServer.TCPServer):
-    def __init__(self, args):
-        server_address = ('0.0.0.0', Const.MOBILE_SERVER_PORT)
+    def __init__(self, port, handler):
+        server_address = ('0.0.0.0', port)
         self.allow_reuse_address = True
         try:
             SocketServer.TCPServer.__init__(self, server_address,
-                    MobileVideoHandler)
+                    handler)
         except socket.error as e:
             sys.stderr.write(str(e))
             sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))
@@ -200,12 +203,19 @@ class MobileCommServer(SocketServer.TCPServer):
                     socket.TCP_NODELAY)))
         LOG.info("-" * 50)
 
+    def serve_forever(self):
+        while not self.stopped:
+            self.handle_request()
+
     def handle_error(self, request, client_address):
         #SocketServer.TCPServer.handle_error(self, request, client_address)
         #sys.stderr.write("handling error from client")
         pass
 
     def terminate(self):
+        self.server_close()
+        self.stopped = True
+
         # close all thread
         if self.socket != -1:
             self.socket.close()
@@ -213,24 +223,30 @@ class MobileCommServer(SocketServer.TCPServer):
 
 
 def main():
-    mobile_server = MobileCommServer(sys.argv[1:])
+    video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
+    acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
 
-    LOG.info('started mobile server at %s' % (str(Const.MOBILE_SERVER_PORT)))
-    mobile_server_thread = threading.Thread(target=mobile_server.serve_forever)
-    mobile_server_thread.daemon = True
+    video_thread = threading.Thread(target=video_server.serve_forever)
+    acc_thread = threading.Thread(target=acc_server.serve_forever)
+    video_thread.daemon = True
+    acc_thread.daemon = True
 
     try:
-        mobile_server_thread.start()
+        video_thread.start()
+        acc_thread.start()
     except Exception as e:
         sys.stderr.write(str(e))
-        mobile_server.terminate()
+        video_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
-        mobile_server.terminate()
+        video_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     else:
-        mobile_server.terminate()
+        video_server.terminate()
+        acc_server.terminate()
         sys.exit(0)
 
 

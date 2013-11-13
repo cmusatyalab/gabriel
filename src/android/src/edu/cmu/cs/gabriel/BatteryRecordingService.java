@@ -128,7 +128,7 @@ public class BatteryRecordingService extends IntentService {
 	        	voltage = Integer.parseInt(br.readLine());
 	            reader.close();
 	        }
-            Log.i("Battery", "Current : " + current + "\t" + "Voltage : " + voltage);
+//            Log.i("Battery", "Current : " + current + "\t" + "Voltage : " + voltage);
             long time = System.currentTimeMillis();
 
 			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);

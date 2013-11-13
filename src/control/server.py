@@ -30,6 +30,7 @@ import Queue
 import re
 import json
 from mobile_server import MobileCommServer
+from mobile_server import MobileVideoHandler
 from app_server import VideoSensorServer
 import mobile_server
 from BaseHTTPServer import BaseHTTPRequestHandler
@@ -140,34 +141,50 @@ class EmulatedMobileDevice(object):
 from SocketServer import ThreadingMixIn
 from BaseHTTPServer import HTTPServer
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    stopped = False
     #class ThreadedHTTPServer(HTTPServer):
     """Handle requests in a separate thread."""
+    def serve_forever(self):
+        while not self.stopped:
+            self.handle_request()
+
+    def terminate(self):
+        self.server_close()
+        self.stopped = True
+
+        # close all thread
+        if self.socket != -1:
+            self.socket.close()
 
 
 def main():
     settings, args = process_command_line(sys.argv[1:])
 
-    m_server = None
-    video_server = None
-    if settings.image_dir:
-        # use emulated images for the testing
-        m_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
-    else:
-        m_server = MobileCommServer(sys.argv[1:])
+    m_video_server = None
+    m_acc_server = None
+    a_video_server = None
 
-    video_server = VideoSensorServer(sys.argv[1:])
+    if settings.image_dir:
+        m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
+    else:
+        m_video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
+    m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
+    a_video_server = VideoSensorServer(sys.argv[1:])
     http_server = ThreadedHTTPServer(('localhost', 8080), MJPEGStreamHandler)
 
-    m_server_thread = threading.Thread(target=m_server.serve_forever)
-    m_server_thread.daemon = True
-    video_server_thread = threading.Thread(target=video_server.serve_forever)
-    video_server_thread.daemon = True
+    m_video_server_thread = threading.Thread(target=m_video_server.serve_forever)
+    m_acc_server_thread = threading.Thread(target=m_acc_server.serve_forever)
+    a_video_server_thread = threading.Thread(target=a_video_server.serve_forever)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
+    m_video_server_thread.daemon = True
+    m_acc_server_thread.daemon = True
+    a_video_server_thread.daemon = True
     http_server_thread.daemon = True
 
     try:
-        m_server_thread.start()
-        video_server_thread.start()
+        m_video_server_thread.start()
+        m_acc_server_thread.start()
+        a_video_server_thread.start()
         http_server_thread.start()
 
         emulated_result_queue = Queue.Queue()
@@ -176,23 +193,32 @@ def main():
             time.sleep(100)
     except Exception as e:
         sys.stderr.write(str(e))
-        if m_server is not None:
-            m_server.terminate()
-        if video_server is not None:
-            video_server.terminate()
+        if m_video_server is not None:
+            m_video_server.shutdown()
+            m_video_server.terminate()
+        if m_acc_server is not None:
+            m_acc_server.shutdown()
+            m_acc_server.terminate()
+        if a_video_server is not None:
+            a_video_server.shutdown()
+            a_video_server.terminate()
         sys.exit(1)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
-        if m_server is not None:
-            m_server.terminate()
-        if video_server is not None:
-            video_server.terminate()
+        if m_video_server is not None:
+            m_video_server.terminate()
+        if m_acc_server is not None:
+            m_acc_server.terminate()
+        if a_video_server is not None:
+            a_video_server.terminate()
         sys.exit(1)
     else:
-        if m_server is not None:
-            m_server.terminate()
-        if video_server is not None:
-            video_server.terminate()
+        if m_video_server is not None:
+            m_video_server.terminate()
+        if m_acc_server is not None:
+            m_acc_server.terminate()
+        if a_video_server is not None:
+            a_video_server.terminate()
         sys.exit(0)
 
 if __name__ == '__main__':

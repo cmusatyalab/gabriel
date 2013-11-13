@@ -45,7 +45,8 @@ class Const(object):
     VERSION = "0.1.1"
 
     # port number for the server modules
-    MOBILE_SERVER_PORT = 9098
+    MOBILE_SERVER_VIDEO_PORT = 9098
+    MOBILE_SERVER_ACC_PORT = 9099
     SERVICE_DISCOVERY_HTTP_PORT = 8021
     VIDEO_PORT = 10101
 
