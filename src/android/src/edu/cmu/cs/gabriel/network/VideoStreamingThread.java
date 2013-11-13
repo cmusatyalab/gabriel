@@ -204,7 +204,7 @@ public class VideoStreamingThread extends Thread {
 					frame_latency += time_diff;
 					frame_size += sentPacket.sentSize;
 					frame_latency_count++;
-					if (frame_latency_count % 10 == 0) {
+					if (frame_latency_count % 100 == 0) {
 						Log.d(LOG_TAG, cameraImageSize.width + "x" + cameraImageSize.height + " " + "Latency : "
 								+ frame_latency / frame_latency_count + " (ms)\tThroughput : " + frame_size
 								/ frame_latency_count + " (Bps)");

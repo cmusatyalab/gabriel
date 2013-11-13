@@ -55,7 +55,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
 	public String GABRIEL_IP = "128.2.210.197";
-//	 public static final String GABRIEL_IP = "128.2.213.130";
+	// public static final String GABRIEL_IP = "128.2.213.130";
 	public static final int VIDEO_STREAM_PORT = 9098;
 	public static final int ACC_STREAM_PORT = 9099;
 
@@ -69,6 +69,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private TextView statView;
 	private CameraPreview mPreview;
 	private BufferedOutputStream localOutputStream;
+	AlertDialog errorAlertDialog;
 
 	// ACC
 	private SensorManager mSensorManager = null;
@@ -91,10 +92,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-			mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
-		}
-		if (mAccelerometer == null) {
 			mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+			mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
 		}
 
 		// TextToSpeech.OnInitListener
@@ -107,6 +106,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		controlThread = null;
 		hasStarted = false;
 		localOutputStream = null;
+
+		if (this.errorAlertDialog == null) {
+			this.errorAlertDialog = new AlertDialog.Builder(GabrielClientActivity.this).create();
+			this.errorAlertDialog.setTitle("Error");
+			this.errorAlertDialog.setIcon(R.drawable.ic_launcher);
+		}
 
 		startCapture();
 	}
@@ -181,7 +186,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	private Handler returnMsgHandler = new Handler() {
 		public void handleMessage(Message msg) {
-
 			if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
 				Bundle data = msg.getData();
 				String message = data.getString("message");
@@ -420,6 +424,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (mSensorManager != null) {
 			mSensorManager.unregisterListener(this);
 			mSensorManager = null;
+			mAccelerometer = null;
 		}
 		finish();
 	}
@@ -432,9 +437,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	public void onSensorChanged(SensorEvent event) {
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
-		float mSensorX, mSensorY;
-		mSensorX = event.values[0];
-		mSensorY = event.values[1];
-		Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
+		if (accStreamingThread != null) {
+			accStreamingThread.push(event.values);
+		}
+		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}
 }
