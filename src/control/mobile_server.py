@@ -37,7 +37,8 @@ from protocol import Protocol_client
 
 LOG = logging.getLogger(__name__)
 image_queue_list = list()
-result_queue_list = list()
+acc_queue_list = list()
+result_queue = list()
 
 
 class MobileCommError(Exception):
@@ -78,7 +79,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
 
             while(not self.stop.wait(0.0001)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list)
+                        select.select(input_list, output_list, except_list, 0)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
@@ -143,50 +144,9 @@ class MobileVideoHandler(MobileSensorHandler):
             self.ret_frame_ids.put(frame_id)
 
     def _handle_output_result(self):
-        global result_queue_list
-        def _post_header_process(header_message):
-            header_json = json.loads(header_message)
-            frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-            if frame_id is not None:
-                header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
-                del header_json[Protocol_client.FRAME_MESSAGE_KEY]
-            return json.dumps(frame_id)
-
-        # return result from the token bucket
-        try:
-            return_frame_id = self.ret_frame_ids.get_nowait()
-            return_data = json.dumps({
-                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
-                    })
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data),
-                    return_data)
-            self.request.send(packet)
-            self.wfile.flush()
-        except Queue.Empty:
-            pass
-
-        # return result from the application server
-        for result_queue in result_queue_list:
-            result_msg = None
-            try:
-                result_msg = result_queue.get_nowait()
-            except Queue.Empty:
-                pass
-            if result_msg is not None:
-                # process header a little bit since we like to differenciate
-                # frame id that comes from an application with the frame id for
-                # the token bucket.
-                processed_result_msg = _post_header_process(result_msg)
-                packet = struct.pack("!I%ds" % len(processed_result_msg),
-                        len(processed_result_msg),
-                        processed_result_msg)
-                self.request.send(packet)
-                self.wfile.flush()
-
-                # send only one
-                LOG.info("result message (%s) sent to the Glass", result_msg)
-                break
+        """ control message
+        """
+        pass
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -194,7 +154,7 @@ class MobileAccHandler(MobileSensorHandler):
         super(MobileAccHandler, self).setup()
         
     def __str__(self):
-        return "representation"
+        return "Mobile Acc Server"
 
     def __repr__(self):
         return "Mobile Acc Server"
@@ -226,36 +186,65 @@ class MobileAccHandler(MobileSensorHandler):
             msg = "ACC rate from client : current(%f), average(%f)" % \
                     (self.current_FPS, self.average_FPS)
             LOG.info(msg)
-        for image_queue in image_queue_list:
-            if image_queue.full() is True:
-                image_queue.get()
-            image_queue.put((header_data, image_data))
-
-        # return frame id to flow control
-        #json_header = json.loads(header_data)
-        #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        #if frame_id is not None:
-        #    self.ret_frame_ids.put(frame_id)
+        for acc_queue in acc_queue_list:
+            if acc_queue.full() is True:
+                acc_queue.get()
+            acc_queue.put((header_data, acc_data))
 
     def _handle_output_result(self):
+        """ control message
+        """
         pass
-        '''
-        try:
-            return_frame_id = self.ret_frame_ids.get_nowait()
-            return_data = json.dumps({
-                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
-                    })
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data),
-                    return_data)
-            self.request.send(packet)
-            self.wfile.flush()
-        except Queue.Empty:
-            pass
-        '''
 
 
-class MobileCommServer(SocketServer.TCPServer): 
+class MobileResultHandler(MobileSensorHandler):
+    def setup(self):
+        super(MobileResultHandler, self).setup()
+
+    def __str__(self):
+        return "Mobile Result Handler"
+
+    def __repr__(self):
+        return "Mobile Result Handler"
+
+    def _handle_input_data(self):
+        """ NO input from mobile device
+        This is only for result return
+        """
+        pass
+
+    def _handle_output_result(self):
+        global result_queue
+
+        def _post_header_process(header_message):
+            header_json = json.loads(header_message)
+            frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+            if frame_id is not None:
+                header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
+                del header_json[Protocol_client.FRAME_MESSAGE_KEY]
+            return json.dumps(frame_id)
+
+        while True:
+            result_msg = None
+            try:
+                result_msg = result_queue.get_nowait()
+                # process header a little bit since we like to differenciate
+                # frame id that comes from an application with the frame id for
+                # the token bucket.
+                processed_result_msg = _post_header_process(result_msg)
+                packet = struct.pack("!I%ds" % len(processed_result_msg),
+                        len(processed_result_msg),
+                        processed_result_msg)
+                self.request.send(packet)
+                self.wfile.flush()
+
+                # send only one
+                LOG.info("result message (%s) sent to the Glass", result_msg)
+            except Queue.Empty:
+                break
+
+
+class MobileCommServer(SocketServer.TCPServer):
     stopped = False
 
     def __init__(self, port, handler):
@@ -295,7 +284,7 @@ class MobileCommServer(SocketServer.TCPServer):
         # close all thread
         if self.socket != -1:
             self.socket.close()
-        LOG.info("[TERMINATE] Finish %s mobile server connection" % str(self.handler))
+        LOG.info("[TERMINATE] Finish %s" % str(self.handler))
 
 
 def main():

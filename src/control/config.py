@@ -44,9 +44,15 @@ def which(program):
 class Const(object):
     VERSION = "0.1.1"
 
+    # UComm Server
+    UCOMM_SERVER_LIST = ["127.0.0.1:12000", "127.0.0.01:12001"]
+
     # port number for the server modules
+    UCOMM_COMMUNICATE_PORT = 9090
     MOBILE_SERVER_VIDEO_PORT = 9098
     MOBILE_SERVER_ACC_PORT = 9099
+    MOBILE_SERVER_GPS_PORT = 9100
+    MOBILE_SERVER_RESULT_PORT = 9101
     SERVICE_DISCOVERY_HTTP_PORT = 8021
     VIDEO_PORT = 10101
 
@@ -61,5 +67,6 @@ class Const(object):
 
 
 class ServiceMeta(object):
+    RESULT_RETURN_SERVER_LIST = "result_return_server_list"
     VIDEO_TCP_STREAMING_ADDRESS = "video_tcp_streaming_address"
     VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"

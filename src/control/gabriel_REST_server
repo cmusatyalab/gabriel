@@ -37,7 +37,7 @@ def get_ip(iface = 'eth0'):
     return socket.inet_ntoa(ip)
 
 
-class HWResource(Resource):
+class ServiceInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type=str)
 
@@ -45,6 +45,7 @@ class HWResource(Resource):
         global resource_monitor
         ip_addr = get_ip(iface="eth0")
         ret_data = {
+                ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
                 ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
                 ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.VIDEO_PORT)
                 }
@@ -58,7 +59,7 @@ parser = reqparse.RequestParser()
 # run REST server
 app = Flask(__name__)
 api = restful.Api(app)
-api.add_resource(HWResource, '/')
+api.add_resource(ServiceInfo, '/')
 
 # do no turn on debug mode. it make a mess for graceful terminate
 #app.run(debug=True)
