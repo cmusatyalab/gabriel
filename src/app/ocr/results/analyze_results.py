@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import numpy as np
 
 def calculate_energy(file_name, frame_n):
     last_t = -1
@@ -35,16 +36,47 @@ def calculate_latency(file_name):
     return ave_latency 
 
 def main():
-    # calculate battery usage for offloading
-    print "average offloading energy: %f joule (J)" % calculate_energy("battery_offload.txt", 300)
-    # calculate battery usage for native
-    print "average native energy: %f joule (J)" % calculate_energy("battery_native.txt", 300)
-    print
+    battery_offload_list = []
+    battery_native_list = []
+    latency_offload_list = []
+    latency_native_list = []
+    for exp_idx in xrange(1, 6):
+        print "Experiment %d:" % exp_idx
+        # calculate battery usage for offloading
+        battery_offload = calculate_energy("battery_offload_%d.txt" % exp_idx, 300)
+        print "average offloading energy: %f joule (J)" % battery_offload
+        battery_offload_list.append(battery_offload)
+        # calculate battery usage for native
+        battery_native = calculate_energy("battery_native_%d.txt" % exp_idx, 300)
+        print "average native energy: %f joule (J)" % battery_native
+        battery_native_list.append(battery_native)
 
-    # calculate average latency for offloading
-    print "offloading average latency: %f seconds" % calculate_latency("latency_offload_glass.txt")
-    # calculate average latency for native
-    print "native average latency: %f seconds" % calculate_latency("latency_native_glass.txt")
+        # calculate average latency for offloading
+        latency_offload = calculate_latency("latency_offload_glass_%d.txt" % exp_idx)
+        print "offloading average latency: %f seconds" % latency_offload
+        latency_offload_list.append(latency_offload)
+        # calculate average latency for native
+        latency_native = calculate_latency("latency_native_glass_%d.txt" % exp_idx)
+        print "native average latency: %f seconds" % latency_native
+        latency_native_list.append(latency_native)
+
+        print
+
+    battery_offload_mean = np.mean(battery_offload_list)
+    battery_native_mean = np.mean(battery_native_list)
+    latency_offload_mean = np.mean(latency_offload_list)
+    latency_native_mean = np.mean(latency_native_list)
+
+    battery_offload_std = np.std(battery_offload_list)
+    battery_native_std = np.std(battery_native_list)
+    latency_offload_std = np.std(latency_offload_list)
+    latency_native_std = np.std(latency_native_list)
+
+    print "Summary:"
+    print "offloading energy mean: %f joule (J), std: %f joule (J)" % (battery_offload_mean, battery_offload_std)
+    print "native energy mean: %f joule (J), std: %f joule (J)" % (battery_native_mean, battery_native_std)
+    print "offloading latency mean: %f seconds, std: %f seconds" % (latency_offload_mean, latency_offload_std)
+    print "native latency mean: %f seconds, std: %f seconds" % (latency_native_mean, latency_native_std)
     print
 
 if __name__ == "__main__":
