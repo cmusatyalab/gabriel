@@ -60,7 +60,7 @@ class AppProxyStreamingClient(threading.Thread):
     And put the data into the queue, so that other thread can use the image
     """
 
-    def __init__(self, control_addr, image_queue):
+    def __init__(self, control_addr, data_queue):
         self.stop = threading.Event()
         self.port_number = None
         try:
@@ -70,7 +70,7 @@ class AppProxyStreamingClient(threading.Thread):
             self.sock.connect(control_addr)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
-        self.image_queue = image_queue
+        self.data_queue = data_queue
         threading.Thread.__init__(self, target=self.streaming)
 
     def streaming(self):
@@ -83,7 +83,7 @@ class AppProxyStreamingClient(threading.Thread):
                         select.select(input_list, [], [], 0)
                 for s in inputready:
                     if s == socket_fd:
-                        self._handle_video_streaming()
+                        self._handle_input_streaming()
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -106,20 +106,20 @@ class AppProxyStreamingClient(threading.Thread):
             data += tmp_data
         return data
 
-    def _handle_video_streaming(self):
+    def _handle_input_streaming(self):
         # receive data from control VM
         header_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
         data_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
         header = self._recv_all(self.sock, header_size)
         data = self._recv_all(self.sock, data_size)
         header_data = json.loads(header)
-        if self.image_queue.full() is True:
-            try:
-                self.image_queue.get_nowait()
-            except Queue.Empty as e:
-                pass
         try:
-            self.image_queue.put_nowait((header_data, data))
+            if self.data_queue.full() is True:
+                self.data_queue.get_nowait()
+        except Queue.Empty as e:
+            pass
+        try:
+            self.data_queue.put_nowait((header_data, data))
         except Queue.Full as e:
             pass
 
@@ -192,8 +192,8 @@ class AppProxyBlockingClient(threading.Thread):
 
 
 class AppProxyThread(threading.Thread):
-    def __init__(self, image_queue, output_queue_list):
-        self.image_queue = image_queue
+    def __init__(self, data_queue, output_queue_list):
+        self.data_queue = data_queue
         self.output_queue_list = output_queue_list
         self.stop = threading.Event()
         threading.Thread.__init__(self, target=self.run)
@@ -201,7 +201,7 @@ class AppProxyThread(threading.Thread):
     def run(self):
         while(not self.stop.wait(0.001)):
             try:
-                (header, data) = self.image_queue.get_nowait()
+                (header, data) = self.data_queue.get_nowait()
             except Queue.Empty as e:
                 time.sleep(0.001)
                 continue

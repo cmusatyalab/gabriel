@@ -53,8 +53,10 @@ class Const(object):
     MOBILE_SERVER_ACC_PORT = 9099
     MOBILE_SERVER_GPS_PORT = 9100
     MOBILE_SERVER_RESULT_PORT = 9101
+    APP_SERVER_VIDEO_PORT = 10101
+    APP_SERVER_ACC_PORT = 10102
+    APP_SERVER_GPS_PORT = 10103
     SERVICE_DISCOVERY_HTTP_PORT = 8021
-    VIDEO_PORT = 10101
 
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
     #which("gabriel_upnp_server.jar")
@@ -70,3 +72,5 @@ class ServiceMeta(object):
     RESULT_RETURN_SERVER_LIST = "result_return_server_list"
     VIDEO_TCP_STREAMING_ADDRESS = "video_tcp_streaming_address"
     VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"
+    ACC_TCP_STREAMING_ADDRESS = "acc_tcp_streaming_address"
+    ACC_TCP_STREAMING_PORT = "acc_tcp_streaming_port"

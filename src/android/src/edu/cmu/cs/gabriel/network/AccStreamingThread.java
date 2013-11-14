@@ -46,11 +46,10 @@ public class AccStreamingThread extends Thread {
 	
 	class AccData{
 		public int sentTime;
-		public float xacc, yacc;
-		public AccData(int time, float x, float y) {
+		public float[] acc;
+		public AccData(int time, float[] s) {
 			sentTime = time;
-			xacc = x;
-			yacc = y;
+			acc = s;
 		}
 	}
 	
@@ -107,8 +106,9 @@ public class AccStreamingThread extends Thread {
 				while (this.accDataList.size() > 0) {
 					AccData data = this.accDataList.remove(0);
 					dos.writeInt(data.sentTime);
-					dos.writeFloat(data.xacc);
-					dos.writeFloat(data.yacc);
+					dos.writeFloat(data.acc[0]);
+					dos.writeFloat(data.acc[1]);
+					dos.writeFloat(data.acc[2]);
 				}
 
 				byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
@@ -165,7 +165,7 @@ public class AccStreamingThread extends Thread {
 		}
 		currentUpdateTime = System.currentTimeMillis();
 		sentframeCount++;
-		this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor[0], sensor[1]));
+		this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor));
 		prevUpdateTime = currentUpdateTime;
 	}
 	

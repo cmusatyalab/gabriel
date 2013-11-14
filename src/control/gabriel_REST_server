@@ -47,7 +47,9 @@ class ServiceInfo(Resource):
         ret_data = {
                 ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
                 ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.VIDEO_PORT)
+                ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
+                ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
+                ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT)
                 }
 
         return ret_data
@@ -63,4 +65,5 @@ api.add_resource(ServiceInfo, '/')
 
 # do no turn on debug mode. it make a mess for graceful terminate
 #app.run(debug=True)
+app.debug = True
 app.run(host="0.0.0.0", port=Const.SERVICE_DISCOVERY_HTTP_PORT)
