@@ -60,14 +60,24 @@ class RESTServer(threading.Thread):
 
     def terminate(self):
         self.stop.set()
-        if self.proc != None:
-            import signal
-            self.proc.send_signal(signal.SIGINT) 
-            self.proc.wait()
-            if self.proc.returncode == None:
-                self.proc.terminate()
-            elif self.proc.returncode != 0:
-                msg = "[Error] RESTful Server closed unexpectedly: %d\n" % \
-                        self.proc.returncode
-                pass
+        try:
+            if self.proc != None:
+                import signal
+                self.proc.send_signal(signal.SIGINT) 
+                self.proc.wait()
+                if self.proc.returncode == None:
+                    self.proc.terminate()
+                elif self.proc.returncode != 0:
+                    msg = "[Error] RESTful Server closed unexpectedly: %d\n" % \
+                            self.proc.returncode
+        except Exception as e:
+            pass
 
+
+if __name__ == '__main__':
+    try:
+        rest_server = RESTServer()
+        rest_server.start()
+    except RESTServerError as e:
+        print str(e)
+        rest_server = None

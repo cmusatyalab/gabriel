@@ -95,7 +95,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                 time.sleep(0.0001)
         except Exception as e:
             #LOG.info(traceback.format_exc())
-            LOG.info("%s\n" % str(e))
+            LOG.deubg("%s\n" % str(e))
             LOG.info("Client disconnected")
         if self.socket != -1:
             self.socket.close()
@@ -126,12 +126,9 @@ class MobileVideoHandler(MobileSensorHandler):
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            pass
-        '''
-            msg = "Video frame rate from client : current(%f), average(%f)" % \
-                    (self.current_FPS, self.average_FPS)
+            msg = "Video frame rate from client : current(%f), average(%f), queue(%d)" % \
+                    (self.current_FPS, self.average_FPS, len(image_queue_list))
             LOG.info(msg)
-        '''
         for image_queue in image_queue_list:
             if image_queue.full() is True:
                 image_queue.get()
@@ -144,9 +141,19 @@ class MobileVideoHandler(MobileSensorHandler):
             self.ret_frame_ids.put(frame_id)
 
     def _handle_output_result(self):
-        """ control message
-        """
-        pass
+        # return result from the token bucket
+        try:
+            return_frame_id = self.ret_frame_ids.get_nowait()
+            return_data = json.dumps({
+                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
+                    })
+            packet = struct.pack("!I%ds" % len(return_data),
+                    len(return_data),
+                    return_data)
+            self.request.send(packet)
+            self.wfile.flush()
+        except Queue.Empty:
+            pass
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -160,19 +167,10 @@ class MobileAccHandler(MobileSensorHandler):
         return "Mobile Acc Server"
 
     def _handle_input_data(self):
-        def chunks(l, n):
-            for i in xrange(0, len(l), n):
-                yield l[i:i + n]
-
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         acc_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
         acc_data = self._recv_all(acc_size)
-        ACC_SEGMENT_SIZE = 12# (int, float, float)
-        for chunk in chunks(acc_data, ACC_SEGMENT_SIZE):
-            (acc_time, acc_x, acc_y) = struct.unpack("!iff", chunk)
-            #print "time: %d, acc_x: %f, acc_y: %f" % (acc_time, acc_x, acc_y)
-
         self.frame_count += 1
 
         # measurement
@@ -183,13 +181,19 @@ class MobileAccHandler(MobileSensorHandler):
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            msg = "ACC rate from client : current(%f), average(%f)" % \
-                    (self.current_FPS, self.average_FPS)
+            msg = "ACC rate from client : current(%f), average(%f), queue(%d)" % \
+                    (self.current_FPS, self.average_FPS, len(acc_queue_list))
             LOG.info(msg)
-        for acc_queue in acc_queue_list:
-            if acc_queue.full() is True:
-                acc_queue.get()
-            acc_queue.put((header_data, acc_data))
+
+        try:
+            for acc_queue in acc_queue_list:
+                if acc_queue.full() is True:
+                    acc_queue.get_nowait()
+                acc_queue.put_nowait((header_data, acc_data))
+        except Queue.Empty as e:
+            pass
+        except Queue.Full as e:
+            pass
 
     def _handle_output_result(self):
         """ control message
@@ -252,8 +256,7 @@ class MobileCommServer(SocketServer.TCPServer):
         self.allow_reuse_address = True
         self.handler = handler
         try:
-            SocketServer.TCPServer.__init__(self, server_address,
-                    handler)
+            SocketServer.TCPServer.__init__(self, server_address, handler)
         except socket.error as e:
             sys.stderr.write(str(e))
             sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))

@@ -30,8 +30,6 @@ import select
 import traceback
 import struct
 
-from upnp_server import UPnPServer, UPnPError
-from RESTServer_binder import RESTServer, RESTServerError
 import mobile_server
 import log as logging
 from protocol import Protocol_application
@@ -45,41 +43,9 @@ class AppServerError(Exception):
     pass
 
 
-class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
+class SensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
-        #super(SocketServer.StreamRequestHandler, self).setup()
-        super(VideoSensorHandler, self).setup()
-        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
-        self.result_queue = Queue.Queue()
-        mobile_server.image_queue_list.append(self.data_queue)
-
-        self.frame_latency_dict = dict()
-        self.average_frame_latency = 0.0
-        self.counter_frame_latency = 0
-
-    def _handle_video_streaming(self):
-        if self.data_queue.empty() is False:
-            (header, jpeg_data) = self.data_queue.get()
-            header = json.loads(header)
-            header.update({
-                Protocol_application.JSON_KEY_SENSOR_TYPE:
-                        Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
-                })
-
-            #LOG.info("sending new image")
-            json_header = json.dumps(header)
-            packet = struct.pack("!II%ds%ds" % (len(json_header), len(jpeg_data)), 
-                    len(json_header),
-                    len(jpeg_data),
-                    json_header,
-                    str(jpeg_data))
-            self.request.send(packet)
-            self.wfile.flush()
-
-            # latency measurement
-            frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-            if frame_id is not None:
-                self.frame_latency_dict[frame_id] = time.time()
+        super(SensorHandler, self).setup()
 
     def _recv_all(self, recv_size):
         data = ''
@@ -94,17 +60,13 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
         try:
             LOG.info("new AppVM is connected")
             socket_fd = self.request.fileno()
-            input_list = [socket_fd]
             output_list = [socket_fd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, [], 0)
-                for s in inputready:
-                    if s == socket_fd:
-                        self._handle_result_output()
+                        select.select([], output_list, [], 0)
                 for output in outputready:
                     if output == socket_fd:
-                        self._handle_video_streaming()
+                        self._handle_input_stream()
                 time.sleep(0.001)
         except Exception as e:
             LOG.debug(traceback.format_exc())
@@ -113,25 +75,80 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             LOG.info("AppVM is disconnected")
             self.terminate()
 
+
+class VideoSensorHandler(SensorHandler):
+    def setup(self):
+        super(VideoSensorHandler, self).setup()
+        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
+        mobile_server.image_queue_list.append(self.data_queue)
+
+    def _handle_input_stream(self):
+        if self.data_queue.empty() is False:
+            (header, jpeg_data) = self.data_queue.get()
+            header = json.loads(header)
+            header.update({
+                Protocol_application.JSON_KEY_SENSOR_TYPE:
+                        Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
+                })
+
+            json_header = json.dumps(header)
+            packet = struct.pack("!II%ds%ds" % (len(json_header), len(jpeg_data)), 
+                    len(json_header),
+                    len(jpeg_data),
+                    json_header,
+                    str(jpeg_data))
+            self.request.send(packet)
+            self.wfile.flush()
+
     def terminate(self):
         mobile_server.image_queue_list.remove(self.data_queue)
 
 
-class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+class AccSensorHandler(SensorHandler):
+    def setup(self):
+        super(AccSensorHandler, self).setup()
+        print "add new acc handler"
+        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
+        mobile_server.acc_queue_list.append(self.data_queue)
+
+    def _handle_input_stream(self):
+        if self.data_queue.empty() is False:
+            (header, acc_data) = self.data_queue.get()
+            header = json.loads(header)
+            header.update({
+                Protocol_application.JSON_KEY_SENSOR_TYPE:
+                        Protocol_application.JSON_VALUE_SENSOR_TYPE_ACC,
+                })
+
+            json_header = json.dumps(header)
+            packet = struct.pack("!II%ds%ds" % (len(json_header), len(acc_data)), 
+                    len(json_header),
+                    len(acc_data),
+                    json_header,
+                    str(acc_data))
+            self.request.send(packet)
+            self.wfile.flush()
+
+    def terminate(self):
+        mobile_server.acc_queue_list.remove(self.data_queue)
+
+
+class ApplicationServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     stopped = False
 
-    def __init__(self, args):
-        server_address = ('0.0.0.0', Const.VIDEO_PORT)
+    def __init__(self, port, handler):
+        server_address = ('0.0.0.0', port)
         self.allow_reuse_address = True
+        self.handler = handler
         try:
-            SocketServer.TCPServer.__init__(self, server_address, VideoSensorHandler)
+            SocketServer.TCPServer.__init__(self, server_address, handler)
         except socket.error as e:
             sys.stderr.write(str(e))
             sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))
             sys.exit(1)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        LOG.info("* Video Sensor server configuration")
+        LOG.info("* Application server(%s) configuration" % str(self.handler))
         LOG.info(" - Open TCP Server at %s" % (str(server_address)))
         LOG.info(" - Disable nagle (No TCP delay)  : %s" %
                 str(self.socket.getsockopt(
@@ -139,32 +156,11 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
                     socket.TCP_NODELAY)))
         LOG.info("-" * 50)
 
-        # start REST server for meta info
-        try:
-            self.rest_server = RESTServer()
-            self.rest_server.start()
-        except RESTServerError as e:
-            LOG.warning(str(e))
-            LOG.warning("Cannot start REST API Server")
-            self.rest_server = None
-        LOG.info("Start RESTful API Server")
-
-        # Start UPnP Server
-        try:
-            self.upnp_server = UPnPServer()
-            self.upnp_server.start()
-        except UPnPError as e:
-            LOG.warning(str(e))
-            LOG.warning("Cannot start UPnP Server")
-            self.upnp_server = None
-        LOG.info("Start UPnP Server")
-
     def serve_forever(self):
         while not self.stopped:
             self.handle_request()
 
     def handle_error(self, request, client_address):
-        import pdb;pdb.set_trace()
         LOG.info("error")
         pass
 
@@ -174,12 +170,6 @@ class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         
         if self.socket != -1:
             self.socket.close()
-        if hasattr(self, 'upnp_server') and self.upnp_server is not None:
-            LOG.info("[TERMINATE] Terminate UPnP Server")
-            self.upnp_server.terminate()
-            self.upnp_server.join()
-        if hasattr(self, 'rest_server') and self.rest_server is not None:
-            LOG.info("[TERMINATE] Terminate REST API monitor")
-            self.rest_server.terminate()
-            self.rest_server.join()
         LOG.info("[TERMINATE] Finish app communication server connection")
+
+

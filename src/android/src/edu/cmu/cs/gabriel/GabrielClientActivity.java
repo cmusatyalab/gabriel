@@ -341,6 +341,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (videoStreamingThread != null && videoStreamingThread.isAlive()) {
 			videoStreamingThread.stopStreaming();
 		}
+		if (accStreamingThread != null && accStreamingThread.isAlive()) {
+			accStreamingThread.stopStreaming();
+		}
 	}
 
 	public void setDefaultPreferences() {
@@ -415,6 +418,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
 			videoStreamingThread.stopStreaming();
 			videoStreamingThread = null;
+		}
+		if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
+			accStreamingThread.stopStreaming();
+			accStreamingThread = null;
 		}
 		if (mPreview != null) {
 			mPreview.setPreviewCallback(null);
