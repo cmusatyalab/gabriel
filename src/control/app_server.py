@@ -52,7 +52,6 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         self.result_queue = Queue.Queue()
         mobile_server.image_queue_list.append(self.data_queue)
-        mobile_server.result_queue_list.append(self.result_queue)
 
         self.frame_latency_dict = dict()
         self.average_frame_latency = 0.0
@@ -91,24 +90,6 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             data += tmp_data
         return data
 
-    def _handle_result_output(self):
-        ret_size = self._recv_all(4)
-        ret_size = struct.unpack("!I", ret_size)[0]
-        result_data = self._recv_all(ret_size)
-        result_json = json.loads(result_data)
-        frame_id = result_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        if frame_id is not None:
-            sending_time = self.frame_latency_dict.get(frame_id)
-            if sending_time is not None:
-                time_diff = time.time() - sending_time
-                self.average_frame_latency += time_diff
-                self.counter_frame_latency += 1
-                if self.counter_frame_latency%100 == 0:
-                    LOG.info("average frame latency : %f" %
-                            (self.average_frame_latency /
-                            self.counter_frame_latency))
-        self.result_queue.put(str(result_data))
-
     def handle(self):
         try:
             LOG.info("new AppVM is connected")
@@ -117,7 +98,7 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             output_list = [socket_fd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, [])
+                        select.select(input_list, output_list, [], 0)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_result_output()
@@ -129,12 +110,11 @@ class VideoSensorHandler(SocketServer.StreamRequestHandler, object):
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
             LOG.debug("handler raises exception\n")
-            LOG.info("Client is disconnected")
+            LOG.info("AppVM is disconnected")
             self.terminate()
 
     def terminate(self):
         mobile_server.image_queue_list.remove(self.data_queue)
-        mobile_server.result_queue_list.remove(self.result_queue)
 
 
 class VideoSensorServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):

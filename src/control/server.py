@@ -32,7 +32,9 @@ import json
 from mobile_server import MobileCommServer
 from mobile_server import MobileVideoHandler
 from mobile_server import MobileAccHandler
+from mobile_server import MobileResultHandler
 from app_server import VideoSensorServer
+from ucomm_server import UCommServer, UCommHandler
 import mobile_server
 from BaseHTTPServer import BaseHTTPRequestHandler
 
@@ -48,7 +50,6 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         self.result_queue = Queue.Queue()
         mobile_server.image_queue_list.append(self.data_queue)
-        mobile_server.result_queue_list.append(self.result_queue)
 
         try:
             self.path = re.sub('[^.a-zA-Z0-9]', "", str(self.path))
@@ -163,63 +164,63 @@ def main():
 
     m_video_server = None
     m_acc_server = None
+    m_result_server = None
+    ucomm_server = None
     a_video_server = None
     if settings.image_dir:
         m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
     else:
         m_video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
     m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileAccHandler)
+    m_result_server = MobileCommServer(Const.MOBILE_SERVER_RESULT_PORT, MobileResultHandler)
     a_video_server = VideoSensorServer(sys.argv[1:])
+    ucomm_server = UCommServer(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
     http_server = ThreadedHTTPServer(('localhost', 8080), MJPEGStreamHandler)
 
     m_video_server_thread = threading.Thread(target=m_video_server.serve_forever)
     m_acc_server_thread = threading.Thread(target=m_acc_server.serve_forever)
+    m_result_server_thread = threading.Thread(target=m_result_server.serve_forever)
     a_video_server_thread = threading.Thread(target=a_video_server.serve_forever)
+    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
+    m_result_server_thread.daemon = True
     a_video_server_thread.daemon = True
+    ucomm_thread.daemon = True
     http_server_thread.daemon = True
 
+    exit_status = 1
     try:
         m_video_server_thread.start()
         m_acc_server_thread.start()
+        m_result_server_thread.start()
         a_video_server_thread.start()
+        ucomm_thread.start()
         http_server_thread.start()
 
-        emulated_result_queue = Queue.Queue()
-        mobile_server.result_queue_list.append(emulated_result_queue)
         while True:
             time.sleep(100)
     except Exception as e:
         sys.stderr.write(str(e))
-        if m_video_server is not None:
-            m_video_server.shutdown()
-            m_video_server.terminate()
-        if m_acc_server is not None:
-            m_acc_server.shutdown()
-            m_acc_server.terminate()
-        if a_video_server is not None:
-            a_video_server.shutdown()
-            a_video_server.terminate()
-        sys.exit(1)
+        exit_status = 1
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
+        exit_status = 0
+    finally:
         if m_video_server is not None:
             m_video_server.terminate()
         if m_acc_server is not None:
             m_acc_server.terminate()
+        if m_result_server is not None:
+            m_result_server.terminate()
+        if ucomm_server is not None:
+            ucomm_server.terminate()
         if a_video_server is not None:
             a_video_server.terminate()
-        sys.exit(1)
-    else:
-        if m_video_server is not None:
-            m_video_server.terminate()
-        if m_acc_server is not None:
-            m_acc_server.terminate()
-        if a_video_server is not None:
-            a_video_server.terminate()
-        sys.exit(0)
+
+    return exit_status
 
 if __name__ == '__main__':
-    main()
+    ret = main()
+    sys.exit(ret)
