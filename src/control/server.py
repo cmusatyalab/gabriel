@@ -37,8 +37,10 @@ from app_server import ApplicationServer
 from app_server import VideoSensorHandler
 from app_server import AccSensorHandler
 from ucomm_server import UCommServer, UCommHandler
-import mobile_server
 from BaseHTTPServer import BaseHTTPRequestHandler
+from http_streaming_server import MJPEGStreamHandler
+from http_streaming_server import ThreadedHTTPServer
+import mobile_server
 
 import log as logging
 from config import Const
@@ -49,52 +51,6 @@ from upnp_server import UPnPServer, UPnPError
 LOG = logging.getLogger(__name__)
 rest_server = RESTServer()
 upnp_server = UPnPServer()
-
-
-class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
-    def do_GET(self):
-        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
-        self.result_queue = Queue.Queue()
-        mobile_server.image_queue_list.append(self.data_queue)
-
-        try:
-            self.path = re.sub('[^.a-zA-Z0-9]', "", str(self.path))
-            if self.path== "" or self.path is None or self.path[:1] == ".":
-                return
-            if self.path.endswith(".html"):
-                f = open(curdir + sep + self.path)
-                self.send_response(200)
-                self.send_header('Content-type',	'text/html')
-                self.end_headers()
-                self.wfile.write(f.read())
-                f.close()
-                return
-            if self.path.endswith(".mjpeg"):
-                self.send_response(200)
-                self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
-                self.wfile.write("\r\n\r\n")
-                while 1:
-                    if self.data_queue.empty() == False:
-                        image_data = self.data_queue.get()
-                        #LOG.info("getting new image")
-                        self.wfile.write("--aaboundary\r\n")
-                        self.wfile.write("Content-Type: image/jpeg\r\n")
-                        self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
-                        self.wfile.write(image_data)
-                        self.wfile.write("\r\n\r\n\r\n")
-                        time.sleep(0.01)
-                return
-            if self.path.endswith(".jpeg"):
-                f = open(curdir + sep + self.path)
-                self.send_response(200)
-                self.send_header('Content-type', 'image/jpeg')
-                self.end_headers()
-                self.wfile.write(f.read())
-                f.close()
-                return
-            return
-        except IOError:
-            self.send_error(404,'File Not Found: %s' % self.path)
 
 
 def process_command_line(argv):
@@ -144,25 +100,6 @@ class EmulatedMobileDevice(object):
     def terminate(self):
         self.stop.set()
         pass
-
-
-from SocketServer import ThreadingMixIn
-from BaseHTTPServer import HTTPServer
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
-    stopped = False
-    #class ThreadedHTTPServer(HTTPServer):
-    """Handle requests in a separate thread."""
-    def serve_forever(self):
-        while not self.stopped:
-            self.handle_request()
-
-    def terminate(self):
-        self.server_close()
-        self.stopped = True
-
-        # close all thread
-        if self.socket != -1:
-            self.socket.close()
 
 
 def start_discovery_and_rest():
