@@ -74,3 +74,5 @@ class ServiceMeta(object):
     VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"
     ACC_TCP_STREAMING_ADDRESS = "acc_tcp_streaming_address"
     ACC_TCP_STREAMING_PORT = "acc_tcp_streaming_port"
+    UCOMM_COMMUNICATE_ADDRESS = "ucomm_data_address"
+    UCOMM_COMMUNICATE_PORT = "ucomm_data_port"
