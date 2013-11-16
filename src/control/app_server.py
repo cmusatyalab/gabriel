@@ -73,7 +73,7 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
             LOG.debug("%s" % str(e))
             LOG.debug("handler raises exception\n")
             LOG.info("AppVM is disconnected")
-            self.terminate()
+        self.terminate()
 
 
 class VideoSensorHandler(SensorHandler):
@@ -167,7 +167,7 @@ class ApplicationServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         self.server_close()
         self.stopped = True
         
-        if self.socket != -1:
+        if self.socket is not None:
             self.socket.close()
         LOG.info("[TERMINATE] Finish app communication server connection")
 
