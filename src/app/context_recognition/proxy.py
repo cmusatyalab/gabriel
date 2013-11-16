@@ -23,6 +23,8 @@ import sys
 sys.path.insert(0, "../common")
 import time
 import Queue
+import math
+import numpy as np
 
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -40,7 +42,7 @@ def extract_feature(data_list):
     x = [data[1] for data in data_list]
     y = [data[2] for data in data_list]
     z = [data[3] for data in data_list]
-    mag_list = [math.sqrt(data[0] * data[0] + data[1] * data[1] + data[2] * data[2]) for data in data_list]
+    mag_list = [math.sqrt(data[1] * data[1] + data[2] * data[2] + data[3] * data[3]) for data in data_list]
     ave = [np.mean(x), np.mean(y), np.mean(z)]
     std = [np.std(x), np.std(y), np.std(z)]
     mag_ave = np.mean(mag_list)
@@ -72,8 +74,8 @@ class DummyAccApp(AppProxyThread):
         global acc_data_list
         for chunk in self.chunks(acc_data, ACC_SEGMENT_SIZE):
             (acc_time, acc_x, acc_y, acc_z) = struct.unpack("!ifff", chunk)
-            print "time: %d, acc_x: %f, acc_y: %f, acc_x: %f" % \
-                    (acc_time, acc_x, acc_y, acc_z)
+            #print "time: %d, acc_x: %f, acc_y: %f, acc_x: %f" % \
+                    #                (acc_time, acc_x, acc_y, acc_z)
             acc_data_list.append([acc_time, acc_x, acc_y, acc_z])
             if len(acc_data_list) == WID_SIZE:
                 feature = extract_feature(acc_data_list)
@@ -81,6 +83,7 @@ class DummyAccApp(AppProxyThread):
                 for i in xrange(WID_SIZE - OVERLAP):
                     del(acc_data_list[0])
     
+                print MESSAGES[activity_level]
                 return MESSAGES[activity_level]
 
         return None
@@ -98,6 +101,8 @@ def init():
             clusters.append(cluster)
 
 if __name__ == "__main__":
+    init()
+
     output_queue_list = list()
 
     sys.stdout.write("Finding control VM\n")
@@ -130,9 +135,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
     finally:
-        video_client.terminate()
         acc_client.terminate()
-        app_thread.terminate()
         acc_app.terminate()
         result_pub.terminate()
 
