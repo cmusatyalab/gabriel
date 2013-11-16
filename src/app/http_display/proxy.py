@@ -28,6 +28,8 @@ from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
+from app_proxy import LOG
+
 import threading
 import time
 import Queue
@@ -49,7 +51,9 @@ class DummyVideoApp(AppProxyThread):
     def handle(self, header, data):
         global share_queue
         share_queue.put_nowait(data)
-        return None
+        ret = "dummy"
+        #LOG.info("return from app : %s" % ret)
+        return ret
 
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
