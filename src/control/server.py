@@ -158,7 +158,7 @@ def main():
     a_video_server = ApplicationServer(Const.APP_SERVER_VIDEO_PORT, VideoSensorHandler)
     a_acc_server = ApplicationServer(Const.APP_SERVER_ACC_PORT, AccSensorHandler)
     ucomm_server = UCommServer(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
-    http_server = ThreadedHTTPServer(('localhost', 8080), MJPEGStreamHandler)
+    http_server = ThreadedHTTPServer(('0.0.0.0', 8080), MJPEGStreamHandler)
 
     m_video_server_thread = threading.Thread(target=m_video_server.serve_forever)
     m_acc_server_thread = threading.Thread(target=m_acc_server.serve_forever)

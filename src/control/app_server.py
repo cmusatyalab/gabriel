@@ -107,7 +107,6 @@ class VideoSensorHandler(SensorHandler):
 class AccSensorHandler(SensorHandler):
     def setup(self):
         super(AccSensorHandler, self).setup()
-        print "add new acc handler"
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         mobile_server.acc_queue_list.append(self.data_queue)
 
