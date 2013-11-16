@@ -56,7 +56,6 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 f.close()
                 return
             if self.path.endswith(".mjpeg"):
-                print "data"
                 self.send_response(200)
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")

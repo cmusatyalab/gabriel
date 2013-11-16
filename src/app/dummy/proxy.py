@@ -53,7 +53,7 @@ if __name__ == "__main__":
     output_queue_list = list()
 
     sys.stdout.write("Finding control VM\n")
-    service_list = get_service_list()
+    service_list = get_service_list(sys.argv)
     video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
     video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
     acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)

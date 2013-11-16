@@ -71,7 +71,6 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 f.close()
                 return
             if self.path.endswith(".mjpeg"):
-                print "data"
                 self.send_response(200)
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")
@@ -119,7 +118,7 @@ if __name__ == "__main__":
     output_queue_list = list()
 
     sys.stdout.write("Finding control VM\n")
-    service_list = get_service_list()
+    service_list = get_service_list(sys.argv)
     video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
     video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
     acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     app_thread.start()
     app_thread.isDaemon = True
 
-    http_server = ThreadedHTTPServer(('localhost', 7070), MJPEGStreamHandler)
+    http_server = ThreadedHTTPServer(('0.0.0.0', 7070), MJPEGStreamHandler)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
     http_server_thread.daemon = True
     http_server_thread.start()

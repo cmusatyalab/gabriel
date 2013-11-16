@@ -26,6 +26,7 @@ from control.upnp_client import UPnPClient
 from control.config import Const
 from control.config import ServiceMeta
 
+from optparse import OptionParser
 import traceback
 import threading
 import socket
@@ -43,13 +44,45 @@ CONST = Const
 SERVICE_META = ServiceMeta
 
 
-def get_service_list():
-    upnp_client.start()
-    upnp_client.join()
-    pstr = pprint.pformat(upnp_client.service_list)
+def get_service_list(argv):
+    settings, args = process_command_line(sys.argv[1:])
+    service_list = None
+    if settings.address is None:
+        upnp_client.start()
+        upnp_client.join()
+        service_list = upnp_client.service_list
+    else:
+        import urllib2
+        ip_addr, port = settings.address.split(":", 1)
+        port = int(port)
+        meta_stream = urllib2.urlopen("http://%s:%d/" % (ip_addr, port))
+        meta_raw = meta_stream.read()
+        service_list = json.loads(meta_raw)
+    pstr = pprint.pformat(service_list)
     LOG.info("Gabriel Server :")
     LOG.info(pstr)
-    return upnp_client.service_list
+    return service_list
+
+
+def process_command_line(argv):
+    VERSION = 'gabriel discovery'
+    DESCRIPTION = "Gabriel service discovery"
+
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
+            description=DESCRIPTION)
+
+    parser.add_option(
+            '-s', '--address', action='store', dest='address',
+            help="(IP address:port number) of directory server")
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings, args
+
 
 class AppProxyError(Exception):
     pass
