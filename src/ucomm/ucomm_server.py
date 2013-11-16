@@ -19,38 +19,146 @@
 #
 
 import sys
+sys.path.insert(0, "../")
 import time
 import SocketServer
 import socket
 import select
 import traceback
 import struct
+import json
+import Queue
 import threading
+import pprint
+from optparse import OptionParser
 
-import log as logging
+from control.config import ServiceMeta as SERVICE_META
+from control.upnp_client import UPnPClient
+import logging
 
 
-LOG = logging.getLogger(__name__)
+class tempLOG(object):
+    def info(self, data):
+        sys.stdout.write("INFO\t" + data + "\n")
+    def debug(self, data):
+        sys.stdout.write("DEBUG\t" + data + "\n")
+    def error(self, data):
+        sys.stderr.write("ERROR\t" + data + "\n")
+
+
+LOG = tempLOG()
+upnp_client = UPnPClient()
+output_queue = Queue.Queue()
 
 
 class UCommConst(object):
     RESULT_RECEIVE_PORT     =   10120
 
 
-class UCommServerError(Exception):
+class UCommError(Exception):
     pass
 
 
-class UCommHandler(SocketServer.StreamRequestHandler, object):
+def process_command_line(argv):
+    VERSION = 'gabriel discovery'
+    DESCRIPTION = "Gabriel service discovery"
+
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
+            description=DESCRIPTION)
+
+    parser.add_option(
+            '-s', '--address', action='store', dest='address',
+            help="(IP address:port number) of directory server")
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings, args
+
+
+def get_service_list(argv):
+    settings, args = process_command_line(sys.argv[1:])
+    service_list = None
+    if settings.address is None:
+        upnp_client.start()
+        upnp_client.join()
+        service_list = upnp_client.service_list
+    else:
+        import urllib2
+        ip_addr, port = settings.address.split(":", 1)
+        port = int(port)
+        meta_stream = urllib2.urlopen("http://%s:%d/" % (ip_addr, port))
+        meta_raw = meta_stream.read()
+        service_list = json.loads(meta_raw)
+    pstr = pprint.pformat(service_list)
+    LOG.info("Gabriel Server :")
+    LOG.info(pstr)
+    return service_list
+
+
+class ResultForwardingClient(threading.Thread):
+    """
+    This client will forward all the result received from the client
+    """
+
+    def __init__(self, control_address, output_queue):
+        self.stop = threading.Event()
+        self.output_queue = output_queue
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock.connect(control_address)
+        threading.Thread.__init__(self, target=self.forward)
+
+    def forward(self):
+        output_list = [self.sock.fileno()]
+        error_list = [self.sock.fileno()]
+
+        LOG.info("Start forwardning data")
+        try:
+            while(not self.stop.wait(0.00001)):
+                inputready, outputready, exceptready = \
+                        select.select([], output_list, error_list, 0)
+                for s in outputready:
+                    self._handle_result_output(s)
+                for s in exceptready:
+                    break
+        except Exception as e:
+            LOG.warning(traceback.format_exc())
+            LOG.warning("%s" % str(e))
+            LOG.debug("Result Forwading thread terminated")
+        self.terminate()
+
+    def terminate(self):
+        self.stop.set()
+        if self.sock is not None:
+            self.sock.close()
+
+    def _handle_result_output(self, socket_fd):
+        while self.output_queue.empty() is False:
+            try:
+                return_data = self.output_queue.get_nowait()
+                packet = struct.pack("!I%ds" % len(return_data),
+                        len(return_data), return_data)
+                self.sock.sendall(packet)
+                LOG.info("forward the result: %s" % return_data)
+            except Queue.Empty as e:
+                pass
+
+
+class UCommServerHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
-        super(UCommHandler, self).setup()
+        super(UCommServerHandler, self).setup()
 
     def _recv_all(self, recv_size):
         data = ''
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data == None or len(tmp_data) == 0:
-                raise UCommServerError("Socket is closed")
+                raise UCommError("Socket is closed")
             data += tmp_data
         return data
 
@@ -118,13 +226,33 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
 
 def main():
-    ucomm_server = None
-    ucomm_server = UCommServer(UCommConst.RESULT_RECEIVE_PORT, UCommHandler)
-    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
-    ucomm_thread.daemon = True
+    global output_queue
+
+    service_list = get_service_list(sys.argv)
+    control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
+    control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
+
+    # result pub/sub
+    try:
+        LOG.info("connecting to %s:%d" % (control_vm_ip, control_vm_port))
+        result_forward = ResultForwardingClient((control_vm_ip, control_vm_port), \
+                output_queue)
+        result_forward.isDaemon = True
+    except socket.error as e:
+        # do not proceed if cannot connect to control VM
+        LOG.info("Failed to connect to Control server (%s:%d)" % \
+                (control_vm_ip, control_vm_port))
+        if result_forward is not None:
+            result_forward.terminate()
+        return 2
 
     exit_status = 1
+    ucomm_server = None
+    ucomm_server = UCommServer(UCommConst.RESULT_RECEIVE_PORT, UCommServerHandler)
+    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
+    ucomm_thread.daemon = True
     try:
+        result_forward.start()
         ucomm_thread.start()
         while True:
             time.sleep(100)
@@ -137,6 +265,8 @@ def main():
     finally:
         if ucomm_server is not None:
             ucomm_server.terminate()
+        if result_forward is not None:
+            result_forward.terminate()
     return exit_status
 
 
