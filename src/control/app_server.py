@@ -174,7 +174,7 @@ class ApplicationServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         self.server_close()
         self.stopped = True
         
-        if self.socket != -1:
+        if self.socket is not None:
             self.socket.close()
         LOG.info("[TERMINATE] Finish app communication server connection")
 

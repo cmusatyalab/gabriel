@@ -236,10 +236,8 @@ class AppProxyThread(threading.Thread):
             try:
                 (header, data) = self.data_queue.get_nowait()
             except Queue.Empty as e:
-                time.sleep(0.001)
                 continue
             if header == None or data == None:
-                time.sleep(0.001)
                 continue
 
             return_message = dict()
@@ -358,10 +356,10 @@ class ResultpublishClient(threading.Thread):
             return
 
         while output_queue.empty() is False:
-            return_data = self.result_queue.get()
+            return_data = output_queue.get()
             packet = struct.pack("!I%ds" % len(return_data),
                     len(return_data), return_data)
-            self.sock.sendall(packet)
+            sending_socket.sendall(packet)
             LOG.info("returning result: %s" % return_data)
 
 if __name__ == "__main__":

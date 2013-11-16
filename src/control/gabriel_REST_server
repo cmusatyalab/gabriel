@@ -49,7 +49,9 @@ class ServiceInfo(Resource):
                 ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
                 ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
                 ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT)
+                ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT),
+                ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
+                ServiceMeta.UCOMM_COMMUNICATE_PORT: int(Const.UCOMM_COMMUNICATE_PORT),
                 }
 
         return ret_data
