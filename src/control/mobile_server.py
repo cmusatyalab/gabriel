@@ -97,11 +97,12 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
             #LOG.info(traceback.format_exc())
             LOG.deubg("%s\n" % str(e))
             LOG.info("Client disconnected")
-        if self.socket != -1:
-            self.socket.close()
+        self.terminate()
 
     def terminate(self):
         self.stop.set()
+        if self.socket != -1:
+            self.socket.close()
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -285,7 +286,7 @@ class MobileCommServer(SocketServer.TCPServer):
         self.stopped = True
 
         # close all thread
-        if self.socket != -1:
+        if self.socket is not None:
             self.socket.close()
         LOG.info("[TERMINATE] Finish %s" % str(self.handler))
 
