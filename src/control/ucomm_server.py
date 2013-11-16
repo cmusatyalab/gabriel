@@ -25,7 +25,6 @@ import json
 import SocketServer
 import threading
 import select
-import traceback
 import Queue
 import struct
 import socket
@@ -42,6 +41,7 @@ LOG = logging.getLogger(__name__)
 class UCommError(Exception):
     pass
 
+
 class UCommHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(UCommHandler, self).setup()
@@ -57,6 +57,9 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
         return data
 
     def _handle_input_data(self):
+        return_size = struct.unpack("!I", self._recv_all(4))[0]
+        return_data = self._recv_all(return_size)
+        print return_data
         pass
 
     def _handle_output_result(self):
@@ -78,6 +81,7 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
             except_list = [socket_fd]
 
             while(not self.stop.wait(0.0001)):
+                print "before"
                 inputready, outputready, exceptready = \
                         select.select(input_list, output_list, except_list, 0)
                 for s in inputready:
@@ -92,11 +96,12 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
 
                 if not (inputready or outputready or exceptready):
                     continue
-                time.sleep(0.0001)
+                print "after"
         except Exception as e:
             #LOG.info(traceback.format_exc())
             LOG.info("%s\n" % str(e))
             LOG.info("UComm module is disconnected")
+
         if self.socket != -1:
             self.socket.close()
 
