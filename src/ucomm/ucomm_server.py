@@ -40,6 +40,8 @@ import logging
 class tempLOG(object):
     def info(self, data):
         sys.stdout.write("INFO\t" + data + "\n")
+    def warning(self, data):
+        sys.stdout.write("warning\t" + data + "\n")
     def debug(self, data):
         sys.stdout.write("DEBUG\t" + data + "\n")
     def error(self, data):
@@ -123,7 +125,7 @@ class ResultForwardingClient(threading.Thread):
                 inputready, outputready, exceptready = \
                         select.select([], output_list, error_list, 0)
                 for s in outputready:
-                    self._handle_result_output(s)
+                    self._handle_result_output()
                 for s in exceptready:
                     break
         except Exception as e:
@@ -137,7 +139,7 @@ class ResultForwardingClient(threading.Thread):
         if self.sock is not None:
             self.sock.close()
 
-    def _handle_result_output(self, socket_fd):
+    def _handle_result_output(self):
         while self.output_queue.empty() is False:
             try:
                 return_data = self.output_queue.get_nowait()
@@ -181,9 +183,10 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
             self.terminate()
 
     def _handle_input_stream(self):
+        global output_queue
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
-        print "received : %s" % header_data
+        output_queue.put(header_data)
 
 
 class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
