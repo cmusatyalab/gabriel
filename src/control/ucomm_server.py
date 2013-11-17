@@ -57,16 +57,11 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
         return data
 
     def _handle_input_data(self):
-        return_size = struct.unpack("!I", self._recv_all(4))[0]
-        return_data = self._recv_all(return_size)
-        print return_data
-        pass
-
-    def _handle_output_result(self):
-        ret_size = self._recv_all(4)
-        ret_size = struct.unpack("!I", ret_size)[0]
-        result_data = self._recv_all(ret_size)
-        self.result_queue.put(str(result_data))
+        global result_queue
+        result_size = struct.unpack("!I", self._recv_all(4))[0]
+        result_data = self._recv_all(result_size)
+        result_queue.put(str(result_data))
+        print result_data
 
     def handle(self):
         global image_queue_list
@@ -81,22 +76,16 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
             except_list = [socket_fd]
 
             while(not self.stop.wait(0.0001)):
-                print "before"
                 inputready, outputready, exceptready = \
                         select.select(input_list, output_list, except_list, 0)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
-                for output in outputready:
-                    if output == socket_fd:
-                        self._handle_output_result()
                 for e in exceptready:
                     if e == socket_fd:
                         break
-
                 if not (inputready or outputready or exceptready):
                     continue
-                print "after"
         except Exception as e:
             #LOG.info(traceback.format_exc())
             LOG.info("%s\n" % str(e))
