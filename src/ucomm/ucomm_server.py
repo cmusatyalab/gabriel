@@ -20,6 +20,8 @@
 
 import sys
 sys.path.insert(0, "../")
+from control.protocol import Protocol_client
+
 import time
 import SocketServer
 import socket
@@ -34,7 +36,6 @@ from optparse import OptionParser
 
 from control.config import ServiceMeta as SERVICE_META
 from control.upnp_client import UPnPClient
-import logging
 
 
 class tempLOG(object):
@@ -113,6 +114,9 @@ class ResultForwardingClient(threading.Thread):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock.connect(control_address)
+
+        self.previous_sent_time = time.time()
+        self.previous_sent_data = ""
         threading.Thread.__init__(self, target=self.forward)
 
     def forward(self):
@@ -121,13 +125,14 @@ class ResultForwardingClient(threading.Thread):
 
         LOG.info("Start forwardning data")
         try:
-            while(not self.stop.wait(0.00001)):
+            while(not self.stop.wait(0.0001)):
                 inputready, outputready, exceptready = \
                         select.select([], output_list, error_list, 0)
                 for s in outputready:
                     self._handle_result_output()
                 for s in exceptready:
                     break
+                time.sleep(0.001)
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -139,13 +144,35 @@ class ResultForwardingClient(threading.Thread):
         if self.sock is not None:
             self.sock.close()
 
+    @staticmethod
+    def _post_header_process(header_message):
+        header_json = json.loads(header_message)
+        frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        if frame_id is not None:
+            header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
+            del header_json[Protocol_client.FRAME_MESSAGE_KEY]
+        return json.dumps(frame_id)
+
     def _handle_result_output(self):
         while self.output_queue.empty() is False:
             try:
                 return_data = self.output_queue.get_nowait()
+
+                # ignore the result if same output is sent within 1 sec
+                result_str = json.loads(return_data).get(Protocol_client.RESULT_MESSAGE_KEY, None)
+                if result_str == None:
+                    continue
+                if self.previous_sent_data.lower() == result_str.lower():
+                    time_diff = time.time() - self.previous_sent_time 
+                    if time_diff < 2:
+                        LOG.info("Identical result (%s) is ignored" % result_str)
+                        continue
+
                 packet = struct.pack("!I%ds" % len(return_data),
                         len(return_data), return_data)
                 self.sock.sendall(packet)
+                self.previous_sent_time = time.time()
+                self.previous_sent_data = result_str
                 LOG.info("forward the result: %s" % return_data)
             except Queue.Empty as e:
                 pass
@@ -171,11 +198,11 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
             input_list = [socket_fd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, [], [], 0)
+                        select.select(input_list, [], [], 100)
                 for insocket in inputready:
                     if insocket == socket_fd:
                         self._handle_input_stream()
-                time.sleep(0.001)
+                time.sleep(0.00001)
         except Exception as e:
             #LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
