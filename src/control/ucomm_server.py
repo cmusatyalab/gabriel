@@ -61,7 +61,6 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
         result_size = struct.unpack("!I", self._recv_all(4))[0]
         result_data = self._recv_all(result_size)
         result_queue.put(str(result_data))
-        print result_data
 
     def handle(self):
         global image_queue_list
