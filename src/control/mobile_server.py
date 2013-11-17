@@ -38,7 +38,7 @@ from protocol import Protocol_client
 LOG = logging.getLogger(__name__)
 image_queue_list = list()
 acc_queue_list = list()
-result_queue = list()
+result_queue = Queue.Queue()
 
 
 class MobileCommError(Exception):

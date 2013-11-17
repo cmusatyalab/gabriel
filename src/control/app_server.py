@@ -63,7 +63,6 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
             output_list = [socket_fd]
             except_list = [socket_fd]
             while True:
-                print "before"
                 inputready, outputready, exceptready = \
                         select.select([], output_list, except_list, 0)
                 for output in outputready:
@@ -72,12 +71,10 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
                 for output in exceptready:
                     if output == socket_fd:
                         break
-                time.sleep(0.1)
-                print "after"
+                time.sleep(0.0001)
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
-            LOG.debug("handler raises exception\n")
             LOG.info("AppVM is disconnected")
         self.terminate()
 
