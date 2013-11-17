@@ -217,10 +217,9 @@ class AppProxyBlockingClient(threading.Thread):
         if return_message is None:
             return_message = dict()
 
-        if frame_id is not None:
-            return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
-
         if len(return_message) > 0:
+            if frame_id is not None:
+                return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
             self.result_queue.put(json.dumps(return_message))
 
 
@@ -240,16 +239,15 @@ class AppProxyThread(threading.Thread):
             if header == None or data == None:
                 continue
 
-            return_message = dict()
             result = self.handle(header, data)
             if result is not None:
+                return_message = dict()
                 return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
-            frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-            if frame_id is not None:
-                return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
-
-            for output_queue in self.output_queue_list:
-                output_queue.put(json.dumps(return_message))
+                frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+                if frame_id is not None:
+                    return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
+                for output_queue in self.output_queue_list:
+                    output_queue.put(json.dumps(return_message))
         LOG.debug("App thread terminated")
 
     def handle(self, header, data):

@@ -175,6 +175,10 @@ def main():
     ucomm_thread.daemon = True
     http_server_thread.daemon = True
 
+    all_thread_list = [m_video_server_thread, m_acc_server_thread, \
+            m_result_server_thread, a_video_server_thread, a_acc_server_thread, \
+            ucomm_thread, http_server_thread]
+
     exit_status = 1
     try:
         m_video_server_thread.start()
@@ -208,6 +212,11 @@ def main():
             a_acc_server.terminate()
         finish_discovery_and_rest()
 
+    '''
+    for each_thread in all_thread_list:
+        if each_thread.is_alive() == True:
+            import pdb;pdb.set_trace()
+    '''
     return exit_status
 
 if __name__ == '__main__':

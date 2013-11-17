@@ -61,17 +61,20 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
             LOG.info("new AppVM is connected")
             socket_fd = self.request.fileno()
             output_list = [socket_fd]
+            except_list = [socket_fd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, [], 0)
+                        select.select([], output_list, except_list, 0)
                 for output in outputready:
                     if output == socket_fd:
-                        self._handle_input_stream()
-                time.sleep(0.001)
+                        self._handle_sensor_stream()
+                for output in exceptready:
+                    if output == socket_fd:
+                        break
+                time.sleep(0.0001)
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
-            LOG.debug("handler raises exception\n")
             LOG.info("AppVM is disconnected")
         self.terminate()
 
@@ -82,7 +85,7 @@ class VideoSensorHandler(SensorHandler):
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         mobile_server.image_queue_list.append(self.data_queue)
 
-    def _handle_input_stream(self):
+    def _handle_sensor_stream(self):
         if self.data_queue.empty() is False:
             (header, jpeg_data) = self.data_queue.get()
             header = json.loads(header)
@@ -101,6 +104,7 @@ class VideoSensorHandler(SensorHandler):
             self.wfile.flush()
 
     def terminate(self):
+        LOG.info("Video Offloading Engine is disconnected")
         mobile_server.image_queue_list.remove(self.data_queue)
 
 
@@ -110,7 +114,7 @@ class AccSensorHandler(SensorHandler):
         self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
         mobile_server.acc_queue_list.append(self.data_queue)
 
-    def _handle_input_stream(self):
+    def _handle_sensor_stream(self):
         if self.data_queue.empty() is False:
             (header, acc_data) = self.data_queue.get()
             header = json.loads(header)

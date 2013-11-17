@@ -45,7 +45,7 @@ class Const(object):
     VERSION = "0.1.1"
 
     # UComm Server
-    UCOMM_SERVER_LIST = ["127.0.0.1:12000", "127.0.0.01:12001"]
+    UCOMM_SERVER_LIST = ["10.0.0.5:10120", "10.0.0.3:10120", "127.0.0.01:12001"]
 
     # port number for the server modules
     UCOMM_COMMUNICATE_PORT = 9090
