@@ -38,7 +38,7 @@ from protocol import Protocol_client
 LOG = logging.getLogger(__name__)
 image_queue_list = list()
 acc_queue_list = list()
-result_queue = list()
+result_queue = Queue.Queue()
 
 
 class MobileCommError(Exception):
@@ -68,7 +68,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
     def handle(self):
         global image_queue_list
         try:
-            LOG.info("new Google Glass is connected")
+            LOG.info("Google Glass is connected for (%s)" % str(self))
             self.init_connect_time = time.time()
             self.previous_time = time.time()
 
@@ -236,10 +236,9 @@ class MobileResultHandler(MobileSensorHandler):
                 # process header a little bit since we like to differenciate
                 # frame id that comes from an application with the frame id for
                 # the token bucket.
-                processed_result_msg = _post_header_process(result_msg)
-                packet = struct.pack("!I%ds" % len(processed_result_msg),
-                        len(processed_result_msg),
-                        processed_result_msg)
+                packet = struct.pack("!I%ds" % len(result_msg),
+                        len(result_msg),
+                        result_msg)
                 self.request.send(packet)
                 self.wfile.flush()
 
