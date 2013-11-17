@@ -26,6 +26,7 @@ from control.upnp_client import UPnPClient
 from control.config import Const
 from control.config import ServiceMeta
 
+from optparse import OptionParser
 import traceback
 import threading
 import socket
@@ -43,13 +44,45 @@ CONST = Const
 SERVICE_META = ServiceMeta
 
 
-def get_service_list():
-    upnp_client.start()
-    upnp_client.join()
-    pstr = pprint.pformat(upnp_client.service_list)
+def get_service_list(argv):
+    settings, args = process_command_line(sys.argv[1:])
+    service_list = None
+    if settings.address is None:
+        upnp_client.start()
+        upnp_client.join()
+        service_list = upnp_client.service_list
+    else:
+        import urllib2
+        ip_addr, port = settings.address.split(":", 1)
+        port = int(port)
+        meta_stream = urllib2.urlopen("http://%s:%d/" % (ip_addr, port))
+        meta_raw = meta_stream.read()
+        service_list = json.loads(meta_raw)
+    pstr = pprint.pformat(service_list)
     LOG.info("Gabriel Server :")
     LOG.info(pstr)
-    return upnp_client.service_list
+    return service_list
+
+
+def process_command_line(argv):
+    VERSION = 'gabriel discovery'
+    DESCRIPTION = "Gabriel service discovery"
+
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
+            description=DESCRIPTION)
+
+    parser.add_option(
+            '-s', '--address', action='store', dest='address',
+            help="(IP address:port number) of directory server")
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings, args
+
 
 class AppProxyError(Exception):
     pass
@@ -60,7 +93,7 @@ class AppProxyStreamingClient(threading.Thread):
     And put the data into the queue, so that other thread can use the image
     """
 
-    def __init__(self, control_addr, image_queue, result_queue):
+    def __init__(self, control_addr, data_queue):
         self.stop = threading.Event()
         self.port_number = None
         try:
@@ -70,31 +103,27 @@ class AppProxyStreamingClient(threading.Thread):
             self.sock.connect(control_addr)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
-        self.image_queue = image_queue
-        self.result_queue = result_queue
+        self.data_queue = data_queue
         threading.Thread.__init__(self, target=self.streaming)
 
     def streaming(self):
         LOG.info("Start getting data from the server")
         socket_fd = self.sock.fileno()
         input_list = [socket_fd]
-        output_list = [socket_fd]
         try:
             while(not self.stop.wait(0.01)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, [])
+                        select.select(input_list, [], [])
                 for s in inputready:
                     if s == socket_fd:
-                        self._handle_video_streaming()
-                for s in outputready:
-                    if s == socket_fd:
-                        self._handle_result_output()
+                        self._handle_input_streaming()
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
             LOG.warning("handler raises exception")
             LOG.warning("Server is disconnected unexpectedly")
         self.sock.close()
+        LOG.debug("Streaming thread terminated")
 
     def terminate(self):
         self.stop.set()
@@ -110,25 +139,22 @@ class AppProxyStreamingClient(threading.Thread):
             data += tmp_data
         return data
 
-    def _handle_video_streaming(self):
+    def _handle_input_streaming(self):
         # receive data from control VM
-        #LOG.info("receiving new image\n")
         header_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
         data_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
         header = self._recv_all(self.sock, header_size)
         data = self._recv_all(self.sock, data_size)
         header_data = json.loads(header)
-        if self.image_queue.full() is True:
-            self.image_queue.get()
-        self.image_queue.put((header_data, data))
-
-    def _handle_result_output(self):
-        while self.result_queue.empty() is False:
-            return_data = self.result_queue.get()
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data), return_data)
-            self.sock.sendall(packet)
-            LOG.info("returning result: %s" % return_data)
+        try:
+            if self.data_queue.full() is True:
+                self.data_queue.get_nowait()
+        except Queue.Empty as e:
+            pass
+        try:
+            self.data_queue.put_nowait((header_data, data))
+        except Queue.Full as e:
+            pass
 
 
 class AppProxyBlockingClient(threading.Thread):
@@ -146,17 +172,13 @@ class AppProxyBlockingClient(threading.Thread):
         LOG.info("Start getting data from the server")
         socket_fd = self.sock.fileno()
         input_list = [socket_fd]
-        output_list = [socket_fd]
         try:
             while(not self.stop.wait(0.01)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, [])
+                        select.select(input_list, [], [])
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_video_streaming()
-                for s in outputready:
-                    if s == socket_fd:
-                        self._handle_result_output()
         except Exception as e:
             LOG.info(traceback.format_exc())
             LOG.info("%s" % str(e))
@@ -201,31 +223,21 @@ class AppProxyBlockingClient(threading.Thread):
         if len(return_message) > 0:
             self.result_queue.put(json.dumps(return_message))
 
-    def _handle_result_output(self):
-        while self.result_queue.empty() is False:
-            return_data = self.result_queue.get()
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data), return_data)
-            self.sock.sendall(packet)
-            LOG.info("returning result: %s" % return_data)
-
 
 class AppProxyThread(threading.Thread):
-    def __init__(self, image_queue, output_queue):
-        self.image_queue = image_queue
-        self.output_queue = output_queue
+    def __init__(self, data_queue, output_queue_list):
+        self.data_queue = data_queue
+        self.output_queue_list = output_queue_list
         self.stop = threading.Event()
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
         while(not self.stop.wait(0.001)):
             try:
-                (header, data) = self.image_queue.get_nowait()
+                (header, data) = self.data_queue.get_nowait()
             except Queue.Empty as e:
-                time.sleep(0.001)
                 continue
             if header == None or data == None:
-                time.sleep(0.001)
                 continue
 
             return_message = dict()
@@ -236,7 +248,9 @@ class AppProxyThread(threading.Thread):
             if frame_id is not None:
                 return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
 
-            self.output_queue.put(json.dumps(return_message))
+            for output_queue in self.output_queue_list:
+                output_queue.put(json.dumps(return_message))
+        LOG.debug("App thread terminated")
 
     def handle(self, header, data):
         return None
@@ -245,6 +259,111 @@ class AppProxyThread(threading.Thread):
         self.stop.set()
 
 
+class ResultpublishClient(threading.Thread):
+    """
+    This client will publish the algorithm result to all TCP server
+    listed in publish_addr_list
+    """
+
+    def __init__(self, publish_addr_list, result_queue_list):
+        self.stop = threading.Event()
+        self.result_queue_list = result_queue_list
+        self.publish_addr_list = list()
+        for addr in publish_addr_list:
+            (ip, port) = addr.split(":")
+            # addr, port, socket, result_data_queue
+            self.publish_addr_list.append((ip, int(port), None, None))
+        threading.Thread.__init__(self, target=self.publish)
+
+    def update_connection(self):
+        for index, (addr, port, app_sock, result_queue) in enumerate(self.publish_addr_list):
+            if app_sock is not None:
+                continue
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                original_timeout = sock.gettimeout()
+                sock.settimeout(1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                sock.connect((addr, port))
+                sock.settimeout(original_timeout)
+                # update
+                result_queue = Queue.Queue()
+                self.result_queue_list.append(result_queue)
+                self.publish_addr_list[index] = (addr, port, sock, result_queue)
+            except socket.error as e:
+                LOG.info("Failed to connect to (%s, %d)" % (addr, port))
+                pass
+
+    def _get_all_socket_fd(self):
+        fd_list = list()
+        for (addr, port, app_sock, result_queue) in self.publish_addr_list:
+            if app_sock is None:
+                continue
+            fd_list.append(app_sock.fileno())
+        return fd_list
+
+    def publish(self):
+        self.update_connection()
+        output_list = self._get_all_socket_fd()
+        error_list = self._get_all_socket_fd()
+	if len(output_list) == 0:
+	    LOG.warning("No available UCOMM connection")
+	    return
+
+        LOG.info("Start publishing data")
+        try:
+            while(not self.stop.wait(0.0001)):
+                inputready, outputready, exceptready = \
+                        select.select([], output_list, error_list)
+                for s in inputready:
+                    pass
+                for s in outputready:
+                    self._handle_result_output(s)
+                for s in exceptready:
+                    self._handle_error(s)
+        except Exception as e:
+            LOG.warning(traceback.format_exc())
+            LOG.warning("%s" % str(e))
+            LOG.warning("handler raises exception")
+            LOG.warning("Server is disconnected unexpectedly")
+        LOG.debug("Publish thread terminated")
+
+    def terminate(self):
+        self.stop.set()
+        for index, (addr, port, app_sock, result_queue) in enumerate(self.publish_addr_list):
+            if app_sock is None:
+                continue
+            self.result_queue_list.remove(result_queue)
+            app_sock.close()
+
+    def _handle_error(self, socket_fd):
+        for index, (addr, port, app_sock, result_queue) in enumerate(self.publish_addr_list):
+            if app_sock is None:
+                continue
+            if app_sock.fileno() == socket_fd:
+                self.result_queue_list.remove(result_queue)
+                del self.publish_addr_list[index]
+                break
+
+    def _handle_result_output(self, socket_fd):
+        sending_socket = None
+        output_queue = None
+        for (addr, port, app_sock, result_queue) in self.publish_addr_list:
+            if app_sock is None:
+                continue
+            if app_sock.fileno() == socket_fd:
+                sending_socket = app_sock
+                output_queue = result_queue
+        if sending_socket is None:
+            return
+
+        while output_queue.empty() is False:
+            return_data = output_queue.get()
+            packet = struct.pack("!I%ds" % len(return_data),
+                    len(return_data), return_data)
+            sending_socket.sendall(packet)
+            LOG.info("returning result: %s" % return_data)
 
 if __name__ == "__main__":
     LOG.info("Start receiving data")
