@@ -52,7 +52,6 @@ class DummyVideoApp(AppProxyThread):
         global share_queue
         share_queue.put_nowait(data)
         ret = "dummy"
-        #LOG.info("return from app : %s" % ret)
         return ret
 
 
