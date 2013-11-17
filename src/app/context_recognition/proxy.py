@@ -32,8 +32,7 @@ from app_proxy import SERVICE_META
 import struct
 
 from analysis import extract_feature
-from analysis import classify_levels
-from analysis import classify_level0
+from analysis import classify
 
 WID_SIZE = 50
 OVERLAP = 25
@@ -53,7 +52,7 @@ class DummyAccApp(AppProxyThread):
             acc_data_list.append([acc_time, acc_x, acc_y, acc_z])
             if len(acc_data_list) == WID_SIZE:
                 feature_levels, feature_level0 = extract_feature(acc_data_list)
-                activity = classify(feature_levels + feature_level0)
+                activity = classify(feature_levels, feature_level0)
                 
                 for i in xrange(WID_SIZE - OVERLAP):
                     del(acc_data_list[0])

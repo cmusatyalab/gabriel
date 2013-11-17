@@ -58,4 +58,4 @@ def classify(feature_levels, feature_level0):
         return MESSAGES_HIGH[activity_level]
     else:
         activity_idx = get_cluster(feature_level0, clusters_level0)
-        return MESSAGES_LOW(activity_idx)
+        return MESSAGES_LOW[activity_idx]
