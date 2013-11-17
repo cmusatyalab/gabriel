@@ -23,8 +23,6 @@ import sys
 sys.path.insert(0, "../common")
 import time
 import Queue
-import math
-import numpy as np
 
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -33,36 +31,11 @@ from app_proxy import get_service_list
 from app_proxy import SERVICE_META
 import struct
 
+from analysis import extract_feature
+from analysis import classify
 
 WID_SIZE = 50
 OVERLAP = 25
-MESSAGES = ['Sitting', 'Walking', 'Running']
-
-def extract_feature(data_list):
-    x = [data[1] for data in data_list]
-    y = [data[2] for data in data_list]
-    z = [data[3] for data in data_list]
-    mag_list = [math.sqrt(data[1] * data[1] + data[2] * data[2] + data[3] * data[3]) for data in data_list]
-    ave = [np.mean(x), np.mean(y), np.mean(z)]
-    std = [np.std(x), np.std(y), np.std(z)]
-    mag_ave = np.mean(mag_list)
-    mag_std = np.std(mag_list)
-
-    return std + [mag_std]
-
-def classify(feature):
-    global clusters
-    cluster_num = -1
-    min_dist = 10000
-    for cluster_idx, cluster in enumerate(clusters):
-        dist = 0
-        for idx, val in enumerate(cluster):
-            dist += (val - feature[idx]) * (val - feature[idx])
-        if dist < min_dist:
-            min_dist = dist
-            cluster_num = cluster_idx
-
-    return cluster_num
 
 class DummyAccApp(AppProxyThread):
     def chunks(self, l, n):
@@ -78,27 +51,20 @@ class DummyAccApp(AppProxyThread):
                     #                (acc_time, acc_x, acc_y, acc_z)
             acc_data_list.append([acc_time, acc_x, acc_y, acc_z])
             if len(acc_data_list) == WID_SIZE:
-                feature = extract_feature(acc_data_list)
-                activity_level = classify(feature)
+                feature_levels, feature_level0 = extract_feature(acc_data_list)
+                activity = classify(feature_levels, feature_level0)
+                
                 for i in xrange(WID_SIZE - OVERLAP):
                     del(acc_data_list[0])
     
-                print MESSAGES[activity_level]
-                return MESSAGES[activity_level]
+                print activity 
+                return activity
 
         return None
 
 def init():
-    global acc_data_list, clusters
+    global acc_data_list
     acc_data_list = []
-    clusters = []
-    with open('cluster_centers') as f:
-        for line in f:
-            splits = line.strip().split()
-            cluster = []
-            for s in splits:
-                cluster.append(float(s))
-            clusters.append(cluster)
 
 if __name__ == "__main__":
     init()

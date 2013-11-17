@@ -29,6 +29,7 @@ from launcher import AppLauncher
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
+from app_proxy import ResultpublishClient
 from app_proxy import LOG
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
@@ -36,6 +37,13 @@ from face_client import face_request
 
 
 class FaceThread(AppProxyThread):
+    def handle(self, header, data):
+        ret = "dummy"
+	print ret
+        return ret
+
+
+	'''
     def __init__(self, app_addr, image_queue, output_queue):
         super(FaceThread, self).__init__(image_queue, output_queue)
         self.result_queue = output_queue
@@ -73,18 +81,20 @@ class FaceThread(AppProxyThread):
         if len(found_name.strip()) != 0:
             return found_name
         return None
+	'''
 
 if __name__ == "__main__":
     APP_PATH = "./FaceRecognitionServer.exe"
     APP_PORT = 9876
     image_queue = Queue.Queue(1)
-    output_queue = Queue.Queue()
+    output_queue_list = list()
 
     app_addr = ("128.2.213.131", APP_PORT)
     #app_addr = ("127.0.0.1", APP_PORT)
     app_thread = None
     face_thread = None
     client_thread = None
+    result_pub = None
 
     try:
         #app_thread = AppLauncher(APP_PATH, is_print=True)
@@ -93,33 +103,40 @@ if __name__ == "__main__":
         #time.sleep(3)
 
         sys.stdout.write("Finding control VM\n")
-        service_list = get_service_list()
+        service_list = get_service_list(sys.argv)
         video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
         video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-        client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue, output_queue)
+	return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+
+        client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
         client_thread.isDaemon = True
-        face_thread = FaceThread(app_addr, image_queue, output_queue)
+        face_thread = FaceThread(image_queue, output_queue_list)
         face_thread.start()
-        face_thread.isDaemon = True
+        face_thread.isDaemon = True 
+	
+	# result pub/sub
+	result_pub = ResultpublishClient(return_addresses, output_queue_list)
+	result_pub.start()
+	result_pub.isDaemon = True
 
         LOG.info("Start receiving data\n")
         while True:
             time.sleep(1)
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
-        if client_thread != None:
-            client_thread.terminate()
-        if app_thread != None:
-            app_thread.terminate()
-        if face_thread != None:
-            face_thread.terminate()
     except Exception as e:
+	import traceback
+	LOG.warning(traceback.format_exc())
+	LOG.warning("%s" % str(e))
         LOG.warning(str(e))
+    finally:
         if client_thread != None:
             client_thread.terminate()
         if app_thread != None:
             app_thread.terminate()
         if face_thread != None:
             face_thread.terminate()
+	if result_pub != None:
+	    result_pub.terminate()
 
