@@ -40,7 +40,8 @@ class FaceThread(AppProxyThread):
     def handle(self, header, data):
         
 	self.imagecount += 1
-	fn = 'testimage' + str(self.imagecount) + '.jpg'
+	# fn = 'testimage' + str(self.imagecount) + '.jpg'
+	fn = 'image2OCR.jpg'
 	f = open(fn, 'wb')
         f.write(data)
 	f.close()
@@ -55,9 +56,13 @@ class FaceThread(AppProxyThread):
 	result = f.read()
 	f.close()
 
-        ret = result.replace('\n','')
-	ret = ret.replace('\r','')
-        ret = ret[:-1]
+        result = result.replace('\n', ' ')
+        import re
+	ret = re.sub(r'[^A-Za-z0-9 ]', '', result)
+
+        # ret = result.replace('\n','')
+	# ret = ret.replace('\r','')
+        # ret = ret[:-1]
 	
 	print str(self.imagecount) + ":\t" + ret
         return ret
