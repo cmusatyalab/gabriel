@@ -53,12 +53,13 @@ class FaceThread(AppProxyThread):
 	outfn = fn + '.txt'
         f = open(outfn, 'r')
 	result = f.read()
-        result = result.replace('\n','')
-	result = result.replace('\r','')
 	f.close()
 
-        ret = "dummy" + str(self.imagecount) + result
-	print ret
+        ret = result.replace('\n','')
+	ret = ret.replace('\r','')
+        ret = ret[:-1]
+	
+	print str(self.imagecount) + ":\t" + ret
         return ret
 
     def __init__(self, image_queue, output_queue):
