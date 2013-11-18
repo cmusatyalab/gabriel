@@ -308,15 +308,16 @@ class ResultpublishClient(threading.Thread):
 
         LOG.info("Start publishing data")
         try:
-            while(not self.stop.wait(0.0001)):
+            while(not self.stop.wait(0.001)):
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, error_list, 0)
+                        select.select([], output_list, error_list, 0.1)
                 for s in inputready:
                     pass
                 for s in outputready:
                     self._handle_result_output(s)
                 for s in exceptready:
                     self._handle_error(s)
+                time.sleep(0.001)
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
