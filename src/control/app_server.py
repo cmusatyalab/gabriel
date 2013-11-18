@@ -58,13 +58,13 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
 
     def handle(self):
         try:
-            LOG.info("new AppVM is connected")
+            LOG.info("Offloading engine is connected")
             socket_fd = self.request.fileno()
             output_list = [socket_fd]
             except_list = [socket_fd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, except_list, 0)
+                        select.select([], output_list, except_list, 0.1)
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_sensor_stream()
@@ -75,7 +75,6 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
-            LOG.info("AppVM is disconnected")
         self.terminate()
 
 
