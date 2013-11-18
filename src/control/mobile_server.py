@@ -79,7 +79,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
 
             while(not self.stop.wait(0.0001)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list, 0)
+                        select.select(input_list, output_list, except_list, 0.1)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()

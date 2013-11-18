@@ -74,9 +74,9 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
             output_list = [socket_fd]
             except_list = [socket_fd]
 
-            while(not self.stop.wait(0.0001)):
+            while(not self.stop.wait(0.001)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list, 0)
+                        select.select(input_list, output_list, except_list, 0.1)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
@@ -85,6 +85,7 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
                         break
                 if not (inputready or outputready or exceptready):
                     continue
+                time.sleep(0.001)
         except Exception as e:
             #LOG.info(traceback.format_exc())
             LOG.info("%s\n" % str(e))
