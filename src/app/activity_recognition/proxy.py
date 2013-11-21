@@ -207,19 +207,17 @@ class MasterProcessing(threading.Thread):
     def terminate(self):
         self.stop.set()
 
-class SlaveProxy(AppProxyThread):
-    def __init__(self, app_addr, data_queue, output_queue):
-        super(SlaveProxy, self).__init__(data_queue, output_queue)
-        self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.app_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.app_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.app_sock.connect(app_addr)
-        self.result_queue = output_queue
-
-    def terminate(self):
-        super(AppProxyThread, self).terminate()
-        if self.app_sock is not None:
-            self.app_sock.close()
+class SlaveProxy(threading.Thread):
+    def __init__(self, master_addr):
+        self.stop = threading.Event()
+        try:
+            self.master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.master_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.master_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.master_sock.connect(master_addr)
+        except socket.error as e:
+            LOG.warning(SLAVE_TAG + "Failed to connect to %s" % str(master_addr))
+        threading.Thread.__init__(self, target=self.run)
 
     @staticmethod
     def _recv_all(socket, recv_size):
@@ -231,21 +229,52 @@ class SlaveProxy(AppProxyThread):
             data += tmp_data
         return data
 
+    def run(self):
+        LOG.info(SLAVE_TAG + "Start getting data from master node")
+        socket_fd = self.master_sock.fileno()
+        input_list = [socket_fd]
+        try:
+            while(not self.stop.wait(0.01)):
+                inputready, outputready, exceptready = \
+                        select.select(input_list, [], [], 0)
+                for s in inputready:
+                    if s == socket_fd:
+                        header_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
+                        data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
+                        header = self._recv_all(self.master_sock, header_size)
+                        data = self._recv_all(self.master_sock, data_size)
+                        header = json.loads(header)
 
+                        result = self.handle(header, data) # results is a list of lines
+
+                        data_back = json.dumps(result)
+                        packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
+                        self.master_sock.sendall(packet)
+        except Exception as e:
+            LOG.warning(traceback.format_exc())
+            LOG.warning("%s" % str(e))
+            LOG.warning("handler raises exception")
+            LOG.warning("Server is disconnected unexpectedly")
+        self.master_sock.close()
+        LOG.debug("Proxy thread terminated")
+
+    def terminate(self):
+        self.stop.set()
+        if self.master_sock is not None:
+            self.master_sock.close()
+    
     def handle(self, header, data):
         # receive data from control VM
-        LOG.info("receiving new image")
+        LOG.info(SLAVE_TAG + "receiving new image pair")
 
-        # feed data to the app
-        packet = struct.pack("!I%ds" % len(data), len(data), data)
-        self.app_sock.sendall(packet)
-        result_size = struct.unpack("!I", self._recv_all(self.app_sock, 4))[0]
-        result_data = self._recv_all(self.app_sock, result_size)
-        sys.stdout.write("result : %s\n" % result_data)
-
-        if len(result_data.strip()) != 0:
-            return result_data
-        return None
+        # extract feature 
+        image1_size = header.get("image1_size")
+        image1 = data[:image1_size]
+        image2 = data[image1_size:]
+        
+        result = extract_feature([image1, image2])
+        
+        return result
 
 if __name__ == "__main__":
     service_list = get_service_list()
@@ -280,11 +309,11 @@ if __name__ == "__main__":
         result_pub.isDaemon = True
 
     # Slave proxy
-    slave_queue = Queue.Queue(1)
-    slave_streaming = AppProxyStreamingClient((master_node_ip, master_node_port), slave_queue)
-    slave_streaming.start()
-    slave_streaming.isDaemon = True
-    slave_proxy = SlaveProxy(slave_queue, output_queue_list)
+    #slave_queue = Queue.Queue(1)
+    #slave_streaming = AppProxyStreamingClient((master_node_ip, master_node_port), slave_queue)
+    #slave_streaming.start()
+    #slave_streaming.isDaemon = True
+    slave_proxy = SlaveProxy((master_node_ip, master_node_port))
     slave_proxy.start()
     slave_proxy.isDaemon = True
 

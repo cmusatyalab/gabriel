@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os
 import sys
 import time
@@ -6,7 +7,6 @@ import tempfile
 import shutil
 import socket
 import struct
-from multiprocessing import Process, Manager
 sys.path.insert(0, "lib")
 import svmutil
 #import sys
@@ -15,22 +15,16 @@ import Image, cv, cv2
 from cStringIO import StringIO
 
 TMP_DIR = "tmp"
-FEATURE_DIR = os.path.join(TMP_DIR, 'feature')
 bin_path = "bin"
 centers_path = "cluster_centers"
 model_path = "models"
 
-frames = []
-ps = []
 queue = Manager().Queue()
-chop_length = 90
-chop_period = 60
-chop_counter = 60
 
 w = 160
 h = 120
-selected_feature = "trajS"
-descriptor = "MBH"
+selected_feature = "mosift"
+descriptor = "all"
 n_clusters = 1024
 
 model_names = ["SayHi", "Clapping", "TurnAround", "Squat", "ExtendingHands"]
@@ -38,6 +32,62 @@ svmmodels = []
 for model_name in model_names:
     svmmodels.append(svmutil.svm_load_model("%s/model_%s_%s_%s_%d" % (model_path, model_name, selected_feature, descriptor, n_clusters)))
 MESSAGES = ["Someone is waving to you.", "Someone is clapping.", "Someone is turning around.", "Someone just squated.", "Someone wants to shake hands with you."]
+
+
+def _format_convert(data):
+    file_jpgdata = StringIO(data)
+    image = Image.open(file_jpgdata)
+    frame_bgr = cv.CreateImageHeader(image.size, cv.IPL_DEPTH_8U, 3)
+    cv.SetData(frame_bgr, image.tostring())
+    # convert frame from BGR to RGB
+    # in Image, it's RGB; in cv, it's BGR
+    frame = cv.CreateImage(cv.GetSize(frame_bgr),cv.IPL_DEPTH_8U, 3)
+    cv.CvtColor(frame_bgr, frame, cv.CV_BGR2RGB)
+    return frame
+
+def extract_feature(image_pair):
+    frame_pair = []
+    for image in image_pair:
+        frame = _format_convert(image) 
+        frame_pair.append(frame)
+    
+    # Write into a video chunk
+    #fd, video_path = tempfile.mkstemp(dir='tmp/all', prefix='image_pair_', suffix='.avi')
+    video_path = "%s/tmp_image_pair.avi" % TMP_DIR
+    video_name = os.path.basename(video_path).split('.avi')[0]
+    videoWriter = cv.CreateVideoWriter(video_path, cv.CV_FOURCC('X', 'V', 'I', 'D'), 30, (160, 120), True)
+    for frame in frame_pair:
+        cv.WriteFrame(videoWriter, frame)
+
+    # extract features
+    raw_file = "%s/%s_raw_%s.txt" % (TMP_DIR, selected_feature, video_name)
+    txyc_file = "%s/%s_%s_%d_%s.txyc" % (FEATURE_DIR, selected_feature, descriptor, n_clusters, video_name)
+    tmp_video_file = "%s/%s_%s.avi" % (TMP_DIR, selected_feature, video_name)
+    stable_video_file = "%s/stable_%s_%s.avi" % (TMP_DIR, selected_feature, video_name)
+    input_file = "%s/input_%s_%s.txt" % (TMP_DIR, selected_feature, video_name)
+    center_file = "%s/centers_%s_%s_%d" % (centers_path, selected_feature, descriptor, n_clusters)
+
+    DEVNULL = open(os.devnull, 'wb')
+    subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h),
+                     '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
+    with open(raw_file, 'wb') as out:
+        if selected_feature == "mosift":
+            subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r', '-t', '1', '-k', '2',
+                             tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
+
+    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
+
+    DEVNULL.close()
+
+    os.remove(raw_file)
+
+    with open(txyc_file) as f:
+        result = f.readlines()
+
+    os.remove(txyc_file)
+
+    return results
+
 
 def load_data(spbof_file):
     with open(spbof_file, 'r') as f:
@@ -48,94 +98,7 @@ def load_data(spbof_file):
             idx = int(v_tmp[0])
             val = float(v_tmp[1])
             v[idx] = val
-
     return v
-
-def detectActivity(frames, queue):
-    current_time = time.time()
-
-    # Write into a video chunk
-    fd, video_path = tempfile.mkstemp(dir='tmp/all', prefix='video', suffix='.avi')
-    #print "Created temporary video file: %s" % video_path
-    videoWriter = cv.CreateVideoWriter(video_path, cv.CV_FOURCC('X', 'V', 'I', 'D'), 30, (160, 120), True)
-    if not videoWriter:
-        print "Error in creating video writer"
-        sys.exit(1)
-    else:
-        for frame in frames:
-            cv.WriteFrame(videoWriter, frame)
-
-    video_spent_time = time.time() - current_time
-    print "Video write spent time: %f" % video_spent_time
-
-    # Extract features from video file (in .spbof file)
-    video_name = os.path.basename(video_path).split('.avi')[0]
-
-    spbof_file = "%s/%s_%s_%d_%s.spbof" % (FEATURE_DIR, selected_feature, descriptor, n_clusters, video_name)
-    raw_file = "%s/%s_raw_%s.txt" % (FEATURE_DIR, selected_feature, video_name)
-    txyc_file = "%s/%s_%s_%d_%s.txyc" % (FEATURE_DIR, selected_feature, descriptor, n_clusters, video_name)
-    tmp_video_file = "%s/%s_%s.avi" % (FEATURE_DIR, selected_feature, video_name)
-    stable_video_file = "%s/stable_%s_%s.avi" % (FEATURE_DIR, selected_feature, video_name)
-    input_file = "%s/input_%s_%s.txt" % (FEATURE_DIR, selected_feature, video_name)
-    center_file = "%s/centers_%s_%s_%d" % (centers_path, selected_feature, descriptor, n_clusters)
-
-    DEVNULL = open(os.devnull, 'wb')
-    subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h),
-                     '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
-    #tmp_video_file = video_path
-    with open(raw_file, 'wb') as out:
-        if selected_feature == "mosift":
-            subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r', '-t', '1', '-k', '2',
-                             tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
-       
-    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
-    subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)
-
-    os.remove(raw_file)
-    os.remove(txyc_file)
-
-        DEVNULL.close()
-
-def processFrame(data):
-    t_start = time.time()
-
-    file_jpgdata = StringIO(data)
-    image = Image.open(file_jpgdata)
-    frame_bgr = cv.CreateImageHeader(image.size, cv.IPL_DEPTH_8U, 3)
-    cv.SetData(frame_bgr, image.tostring())
-    # convert frame from BGR to RGB
-    # in Image, it's RGB; in cv, it's BGR
-    frame = cv.CreateImage(cv.GetSize(frame_bgr),cv.IPL_DEPTH_8U, 3)
-    cv.CvtColor(frame_bgr, frame, cv.CV_BGR2RGB)
-
-    # Show real-time captured image
-    #cv.NamedWindow('captured video', cv.CV_WINDOW_AUTOSIZE)
-    #cv.ShowImage('captured video', frame) 
-    #cv.WaitKey(1)
-
-    frames.append(frame)
-    if len(frames) > chop_length:
-        del frames[0]
-    global chop_counter
-    if len(frames) == chop_length:
-        if chop_counter == chop_period:
-            chop_counter = 1
-            #print "Start detecting activity... "
-            p = Process(target = detectActivity, args = (frames, queue, ))
-            p.start()
-            ps.append(p)
-            for p in ps:
-                if not p.is_alive():
-                    ps.remove(p)
-            print "number of processes now: %d" % len(ps)
-        else:
-            chop_counter += 1
-
-    t_end = time.time()
-    #print "Time spent to process one frame: %f" % (t_end - t_start)
-
-def extract_feature():
-    pass
 
 def classify(feature_list):
     DEVNULL = open(os.devnull, 'wb')
