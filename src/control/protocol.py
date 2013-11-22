@@ -23,6 +23,7 @@ class Protocol_client(object):
     RESULT_MESSAGE_KEY = "result"
     RESULT_ID_MESSAGE_KEY = "result_frame_id"
     FRAME_MESSAGE_KEY = "id"
+    TOKEN_INJECT_KEY = "token_inject"
 
 
 class Protocol_application(object):

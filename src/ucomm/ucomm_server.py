@@ -159,21 +159,24 @@ class ResultForwardingClient(threading.Thread):
                 return_data = self.output_queue.get_nowait()
 
                 # ignore the result if same output is sent within 1 sec
-                result_str = json.loads(return_data).get(Protocol_client.RESULT_MESSAGE_KEY, None)
+                return_json = json.loads(return_data)
+                result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
                 if result_str == None:
                     continue
                 if self.previous_sent_data.lower() == result_str.lower():
                     time_diff = time.time() - self.previous_sent_time 
                     if time_diff < 2:
                         LOG.info("Identical result (%s) is ignored" % result_str)
-                        continue
+                        return_json.pop(Protocol_client.RESULT_MESSAGE_KEY)
 
-                packet = struct.pack("!I%ds" % len(return_data),
-                        len(return_data), return_data)
+                output = json.dumps(return_json)
+                packet = struct.pack("!I%ds" % len(output),
+                        len(output), output)
                 self.sock.sendall(packet)
                 self.previous_sent_time = time.time()
                 self.previous_sent_data = result_str
-                LOG.info("forward the result: %s" % return_data)
+
+                LOG.info("forward the result: %s" % output)
             except Queue.Empty as e:
                 pass
 

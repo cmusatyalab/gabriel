@@ -46,11 +46,15 @@ import log as logging
 from config import Const
 from RESTServer_binder import RESTServer, RESTServerError
 from upnp_server import UPnPServer, UPnPError
+from app_server import OffloadingEngineMonitor
 
 
 LOG = logging.getLogger(__name__)
 rest_server = RESTServer()
 upnp_server = UPnPServer()
+service_monitor = OffloadingEngineMonitor(mobile_server.image_queue_list,
+        mobile_server.acc_queue_list, mobile_server.gps_queue_list,
+        mobile_server.result_queue)
 
 
 def process_command_line(argv):
@@ -102,31 +106,42 @@ class EmulatedMobileDevice(object):
         pass
 
 
-def start_discovery_and_rest():
+def start_background_services():
     global rest_server
     global upnp_server
+    global service_monitor
     # start REST server for meta info
     try:
         rest_server.start()
+        LOG.info("Start RESTful API Server")
     except RESTServerError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start REST API Server")
         rest_server = None
-    LOG.info("Start RESTful API Server")
 
     # Start UPnP Server
     try:
         upnp_server.start()
+        LOG.info("Start UPnP Server")
     except UPnPError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start UPnP Server")
         upnp_server = None
-    LOG.info("Start UPnP Server")
+
+    # Start Offloading Engine monitor
+    try:
+        service_monitor.start()
+        LOG.info("Start monitoring offload engines")
+    except UPnPError as e:
+        LOG.warning(str(e))
+        LOG.warning("Cannot start Offloading Engine Monitor")
+        service_monitor = None
 
 
-def finish_discovery_and_rest():
+def finish_background_services():
     global rest_server
     global upnp_server
+    global service_monitor
 
     if upnp_server is not None:
         LOG.info("[TERMINATE] Terminate UPnP Server")
@@ -136,12 +151,17 @@ def finish_discovery_and_rest():
         LOG.info("[TERMINATE] Terminate REST API monitor")
         rest_server.terminate()
         rest_server.join()
+    if service_monitor is not None:
+        LOG.info("[TERMINATE] Terminate Monitoring service")
+        service_monitor.terminate()
+        service_monitor.join()
+
 
 
 def main():
     settings, args = process_command_line(sys.argv[1:])
 
-    start_discovery_and_rest()
+    start_background_services()
 
     m_video_server = None
     m_acc_server = None
@@ -198,6 +218,7 @@ def main():
         sys.stdout.write("Exit by user\n")
         exit_status = 0
     finally:
+        finish_background_services()
         if m_video_server is not None:
             m_video_server.terminate()
         if m_acc_server is not None:
@@ -210,7 +231,6 @@ def main():
             a_video_server.terminate()
         if a_acc_server is not None:
             a_acc_server.terminate()
-        finish_discovery_and_rest()
 
     '''
     for each_thread in all_thread_list:

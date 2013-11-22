@@ -21,22 +21,16 @@ import android.util.Log;
 
 public class VideoControlThread extends Thread {
 	
-	public static final String MESSAGE_CONTROL = "control";
-	public static final String MESSAGE_RESULT = "result";
-	public static final String MESSAGE_FRAME_ID = "id";
-	
 	private static final String LOG_TAG = "krha";
 	
 	private Handler networkHandler;
-	private Handler tokenHandler;
 	private DataInputStream networkReader;
 	private boolean is_running = true;
 
 	
-	public VideoControlThread(DataInputStream dataInputStream, Handler networkHandler, Handler tokenHandler) {
+	public VideoControlThread(DataInputStream dataInputStream, Handler networkHandler) {
 		this.networkReader = dataInputStream;
 		this.networkHandler = networkHandler;
-		this.tokenHandler = tokenHandler;
 	}
 
 	@Override
@@ -76,40 +70,18 @@ public class VideoControlThread extends Thread {
 	private void notifyReceivedData(String recvData) throws JSONException {	
 		// convert the message to JSON
 		JSONObject obj;		
-		String controlMsg = null, returnMsg = null;
-		long frameID = -1;
+		String controlMsg = null;
 		obj = new JSONObject(recvData);
 		
 		try{
 			controlMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_CONTROL);
 		} catch(JSONException e){}
-		try{
-			returnMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
-		} catch(JSONException e){}
-		try{
-			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-		} catch(JSONException e){}
-
-		if (frameID != -1){
-			Message msg = Message.obtain();
-			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-			Bundle data = new Bundle();
-			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
-			msg.setData(data);
-			this.tokenHandler.sendMessage(msg);
-		}			
+		
 		if (controlMsg != null){
 			Message msg = Message.obtain();
 			msg.what = NetworkProtocol.NETWORK_RET_CONFIG;
 			msg.obj = controlMsg;			
 			this.networkHandler.sendMessage(msg);
-		}
-		if (returnMsg != null){
-			Message msg = Message.obtain();
-			Log.d(LOG_TAG, returnMsg);
-			msg.what = NetworkProtocol.NETWORK_RET_RESULT;
-			msg.obj = returnMsg;			
-			this.networkHandler.sendMessage(msg);			
 		}
 	}
 

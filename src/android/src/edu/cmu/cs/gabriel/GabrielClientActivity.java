@@ -15,6 +15,7 @@ import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
 import edu.cmu.cs.gabriel.network.ResultReceivingThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
+import edu.cmu.cs.gabriel.token.TokenController;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -47,6 +48,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener {
+	private static final String IMAGE_READ_FROM_FILE = "";
+	
 	private static final String LOG_TAG = "krha";
 
 	private static final int SETTINGS_ID = Menu.FIRST;
@@ -58,11 +61,16 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	// public static final String GABRIEL_IP = "128.2.213.130";
 	public static final int VIDEO_STREAM_PORT = 9098;
 	public static final int ACC_STREAM_PORT = 9099;
+	public static final int GPS_PORT = 9100;
+	public static final int RESULT_RECEIVING_PORT = 9101;
 
 	CameraConnector cameraRecorder;
-	VideoStreamingThread videoStreamingThread;
-	AccStreamingThread accStreamingThread;
 	ControlThread controlThread;
+	
+	VideoStreamingThread videoStreamingThread;	
+	AccStreamingThread accStreamingThread;
+	ResultReceivingThread resultThread;
+	TokenController tokenController = new TokenController();
 
 	private SharedPreferences sharedPref;
 	private boolean hasStarted;
@@ -71,10 +79,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private BufferedOutputStream localOutputStream;
 	AlertDialog errorAlertDialog;
 
-	// ACC
 	private SensorManager mSensorManager = null;
 	private Sensor mAccelerometer = null;
-
 	protected TextToSpeech mTTS = null;
 
 	@Override
@@ -105,6 +111,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		cameraRecorder = null;
 		videoStreamingThread = null;
 		accStreamingThread = null;
+		resultThread = null;
 		controlThread = null;
 		hasStarted = false;
 		localOutputStream = null;
@@ -121,6 +128,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	// Implements TextToSpeech.OnInitListener
 	public void onInit(int status) {
 		if (status == TextToSpeech.SUCCESS) {
+			if (mTTS == null){
+				mTTS = new TextToSpeech(this, this);
+			}
 			int result = mTTS.setLanguage(Locale.US);
 			if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
 				Log.e("krha_app", "Language is not available.");
@@ -239,15 +249,17 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 				if (videoStreamingThread == null) {
 					videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
-							GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler);
+							GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
 					videoStreamingThread.start();
 				}
 				if (accStreamingThread == null) {
-					accStreamingThread = new AccStreamingThread(GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler);
+					accStreamingThread = new AccStreamingThread(GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
 					accStreamingThread.start();
 				}
-
-				Log.i(LOG_TAG, "StreamingThread starts");
+				if (resultThread == null) {
+					resultThread = new ResultReceivingThread(GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+					resultThread.start();
+				}
 
 				localOutputStream = new BufferedOutputStream(new FileOutputStream(
 						cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
@@ -346,6 +358,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (accStreamingThread != null && accStreamingThread.isAlive()) {
 			accStreamingThread.stopStreaming();
 		}
+		if (resultThread != null && resultThread.isAlive()) {
+			resultThread.close();
+		}
 	}
 
 	public void setDefaultPreferences() {
@@ -434,6 +449,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mSensorManager.unregisterListener(this);
 			mSensorManager = null;
 			mAccelerometer = null;
+		}
+		if (tokenController != null){
+			tokenController.close();
 		}
 		finish();
 	}

@@ -45,7 +45,7 @@ class Const(object):
     VERSION = "0.1.1"
 
     # UComm Server
-    UCOMM_SERVER_LIST = ["10.0.0.4:10120", "10.0.0.5:10120", "127.0.0.01:12001"]
+    UCOMM_SERVER_LIST = ["10.0.0.4:10120", "10.0.0.5:10120", "127.0.0.1:10120"]
 
     # port number for the server modules
     UCOMM_COMMUNICATE_PORT = 9090
@@ -66,6 +66,7 @@ class Const(object):
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
     MAX_FRAME_SIZE = 3
+    TOKEN_INJECTION_SIZE = 10
 
 
 class ServiceMeta(object):
