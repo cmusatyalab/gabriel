@@ -38,6 +38,7 @@ from protocol import Protocol_client
 LOG = logging.getLogger(__name__)
 image_queue_list = list()
 acc_queue_list = list()
+gps_queue_list = list()
 result_queue = Queue.Queue()
 
 
@@ -127,7 +128,7 @@ class MobileVideoHandler(MobileSensorHandler):
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            msg = "Video frame rate from client : current(%f), average(%f), queue(%d)" % \
+            msg = "Video FPS : current(%f), average(%f), offloading engine(%d)" % \
                     (self.current_FPS, self.average_FPS, len(image_queue_list))
             LOG.info(msg)
         for image_queue in image_queue_list:
@@ -182,7 +183,7 @@ class MobileAccHandler(MobileSensorHandler):
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            msg = "ACC rate from client : current(%f), average(%f), queue(%d)" % \
+            msg = "ACC FPS : current(%f), average(%f), offloading Engine(%d)" % \
                     (self.current_FPS, self.average_FPS, len(acc_queue_list))
             LOG.info(msg)
 
@@ -243,7 +244,7 @@ class MobileResultHandler(MobileSensorHandler):
                 self.wfile.flush()
 
                 # send only one
-                LOG.info("result message (%s) sent to the Glass", result_msg)
+                #LOG.info("result message (%s) sent to the Glass", result_msg)
             except Queue.Empty:
                 break
 

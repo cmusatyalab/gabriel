@@ -37,6 +37,50 @@ def get_ip(iface = 'eth0'):
     return socket.inet_ntoa(ip)
 
 
+'''
+class CreateSession(Resource):
+    KEY_SESSION_ID  = "session_id"
+    KEY_RET         = "return"
+
+    def post(self):
+        global dbconn
+
+        new_session = Session()
+        dbconn.add_item(new_session)
+        # send response
+        ret_msg = {\
+                CreateSession.KEY_RET: "success", \
+                CreateSession.KEY_SESSION_ID: new_session.session_id, \
+                }
+        return ret_msg, 201
+
+
+class ManageSession(Resource):
+    def delete(self, session_id):
+        global dbconn
+
+        request_session_id = session_id
+        if request_session_id == None:
+            msg = "Need session ID" % request_session_id
+            abort(404, message=msg)
+
+        ret_session = dbconn.session.query(Session). \
+                filter(Session.session_id==request_session_id).first()
+        if ret_session == None:
+            msg = "Not a valid session : %d" % request_session_id
+            abort(404, message=msg)
+            
+        ret_session.terminate()
+        dbconn.session.commit()
+        ret_msg = {\
+                CreateSession.KEY_RET: "success", \
+                CreateSession.KEY_SESSION_ID: request_session_id, \
+                }
+        return ret_msg, 201
+'''
+
+
+
 class ServiceInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type=str)

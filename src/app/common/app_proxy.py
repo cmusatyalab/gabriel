@@ -101,6 +101,7 @@ class AppProxyStreamingClient(threading.Thread):
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.connect(control_addr)
+            LOG.info("Success to connect to %s" % str(control_addr))
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.data_queue = data_queue

@@ -15,6 +15,8 @@ import java.net.UnknownHostException;
 import java.util.TreeMap;
 import java.util.Vector;
 
+import edu.cmu.cs.gabriel.token.TokenController;
+
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.Camera.Parameters;
@@ -27,8 +29,6 @@ import android.util.Log;
 public class AccStreamingThread extends Thread {
 	private static final String LOG_TAG = "krha";
 
-	private static final int MAX_TOKEN_SIZE = 5;
-	private int currentToken = MAX_TOKEN_SIZE;
 
 	static final int BUFFER_SIZE = 102400; // only for the UDP case
 	private boolean is_running = false;
@@ -40,32 +40,25 @@ public class AccStreamingThread extends Thread {
 	private AccControlThread networkReceiver = null;
 
 	private Vector<AccData> accDataList = new Vector<AccData>();
+	private TokenController tokenController = null;
 	private Handler networkHander = null;
 	private long frameID = 0;
-	private TreeMap<Long, SentPacketInfo> latencyStamps = new TreeMap<Long, SentPacketInfo>();
 	
 	class AccData{
 		public int sentTime;
-		public float[] acc;
-		public AccData(int time, float[] s) {
+		public float x, y, z;
+		public AccData(int time, float x, float y, float z) {
 			sentTime = time;
-			acc = s;
-		}
-	}
-	
-	class SentPacketInfo{
-		public long sentTime;
-		public int sentSize;
-		
-		public SentPacketInfo(long currentTimeMillis, int sentSize) {
-			this.sentTime = currentTimeMillis;
-			this.sentSize = sentSize;
+			this.x = x;
+			this.y = y;
+			this.z = z;
 		}
 	}
 
-	public AccStreamingThread(String IPString, int port, Handler handler) {
+	public AccStreamingThread(String IPString, int port, Handler handler, TokenController tokenController) {
 		is_running = false;
 		this.networkHander = handler;
+		this.tokenController = tokenController;
 		try {
 			remoteIP = InetAddress.getByName(IPString);
 		} catch (UnknownHostException e) {
@@ -83,7 +76,7 @@ public class AccStreamingThread extends Thread {
 			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5*1000);
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
-			networkReceiver = new AccControlThread(networkReader, this.networkHander, this.tokenHandler);
+			networkReceiver = new AccControlThread(networkReader, this.networkHander);
 			networkReceiver.start();
 		} catch (IOException e) {
 			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
@@ -106,9 +99,9 @@ public class AccStreamingThread extends Thread {
 				while (this.accDataList.size() > 0) {
 					AccData data = this.accDataList.remove(0);
 					dos.writeInt(data.sentTime);
-					dos.writeFloat(data.acc[0]);
-					dos.writeFloat(data.acc[1]);
-					dos.writeFloat(data.acc[2]);
+					dos.writeFloat(data.x);
+					dos.writeFloat(data.y);
+					dos.writeFloat(data.z);
 				}
 
 				byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
@@ -118,12 +111,7 @@ public class AccStreamingThread extends Thread {
 				networkWriter.write(header);
 				networkWriter.write(data);
 				networkWriter.flush();
-				latencyStamps.put(this.frameID, new SentPacketInfo(System.currentTimeMillis(), data.length
-						+ header.length));
 				this.frameID++;
-				if (this.currentToken > 0) {
-					this.currentToken--;
-				}
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
 				this.notifyError(e.getMessage());
@@ -160,13 +148,15 @@ public class AccStreamingThread extends Thread {
 
 
 	public void push(float[] sensor) {
-		if (firstStartTime == 0) {
-			firstStartTime = System.currentTimeMillis();
+		if (this.tokenController.getCurrentToken() > 0) {
+			if (firstStartTime == 0) {
+				firstStartTime = System.currentTimeMillis();
+			}
+			currentUpdateTime = System.currentTimeMillis();
+			sentframeCount++;
+			this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor[0], sensor[1], sensor[2]));
+			prevUpdateTime = currentUpdateTime;
 		}
-		currentUpdateTime = System.currentTimeMillis();
-		sentframeCount++;
-		this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor));
-		prevUpdateTime = currentUpdateTime;
 	}
 	
 	private void notifyError(String message) {
@@ -177,41 +167,5 @@ public class AccStreamingThread extends Thread {
 		data.putString("message", message);
 		msg.setData(data);		
 		this.networkHander.sendMessage(msg);
-	}
-
-	private Handler tokenHandler = new Handler() {
-
-		private long frame_latency = 0;
-		private long frame_size = 0;
-		private long frame_latency_count = 0;
-		
-		public void handleMessage(Message msg) {
-			if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {
-				Bundle bundle = msg.getData();
-				long recvFrameID = bundle.getLong(VideoControlThread.MESSAGE_FRAME_ID);
-				SentPacketInfo sentPacket = latencyStamps.remove(recvFrameID);
-				if (sentPacket != null){
-					long time_diff = System.currentTimeMillis() - sentPacket.sentTime;
-					frame_latency += time_diff;
-					frame_size += sentPacket.sentSize;
-					frame_latency_count++;
-					if (frame_latency_count % 10 == 0){
-					}				
-				}
-				if (latencyStamps.size() > 30*60){
-					latencyStamps.clear();
-				}
-				
-				increaseToken();
-			}
-		}
-	};
-		
-	public int getCurrentToken(){
-		return this.currentToken;
-	}
-	
-	public void increaseToken(){
-		this.currentToken++;
 	}
 }

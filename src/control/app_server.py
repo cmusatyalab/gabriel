@@ -32,6 +32,7 @@ import struct
 
 import mobile_server
 import log as logging
+import threading
 from protocol import Protocol_application
 from protocol import Protocol_client
 
@@ -174,4 +175,45 @@ class ApplicationServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
             self.socket.close()
         LOG.info("[TERMINATE] Finish app communication server connection")
 
+
+class OffloadingEngineMonitor(threading.Thread):
+    def __init__(self, v_queuelist, a_queuelist, g_queuelist, result_queue):
+        self.stop = threading.Event()
+        threading.Thread.__init__(self, target=self.monitor)
+        self.v_queuelist = v_queuelist
+        self.a_queuelist = a_queuelist
+        self.g_queuelist = g_queuelist
+        self.result_queue = result_queue
+
+        self.count_prev_video_app = 0
+        self.count_prev_acc_app = 0
+        self.count_prev_gps_app = 0
+        self.count_cur_video_app = 0
+        self.count_cur_acc_app = 0
+        self.count_cur_gps_app = 0
+
+    def _inject_token(self):
+        if self.result_queue.empty() == True:
+            LOG.info("Inject token to start receiving data from the Glass")
+            header = json.dumps({
+                Protocol_client.TOKEN_INJECT_KEY: int(Const.TOKEN_INJECTION_SIZE),
+                })
+            self.result_queue.put(header)
+
+    def monitor(self):
+        while(not self.stop.wait(0.01)):
+            self.count_cur_video_app = len(self.v_queuelist)
+            self.count_cur_acc_app = len(self.a_queuelist)
+            self.count_cur_gps_app = len(self.g_queuelist)
+
+            if (self.count_prev_video_app == 0 and self.count_cur_video_app > 0) or \
+                    (self.count_prev_acc_app == 0 and self.count_cur_acc_app > 0) or \
+                    (self.count_prev_gps_app == 0 and self.count_cur_gps_app > 0):
+                self._inject_token()
+            self.count_prev_video_app = self.count_cur_video_app
+            self.count_prev_acc_app = self.count_cur_acc_app
+            self.count_prev_gps_app = self.count_cur_gps_app
+
+    def terminate(self):
+        self.stop.set()
 

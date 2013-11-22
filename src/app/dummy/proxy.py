@@ -33,7 +33,7 @@ import struct
 
 class DummyVideoApp(AppProxyThread):
     def handle(self, header, data):
-        return None
+        return "dummy"
 
 
 class DummyAccApp(AppProxyThread):
