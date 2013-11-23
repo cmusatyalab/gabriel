@@ -35,6 +35,7 @@ import socket
 from config import Const as Const
 import log as logging
 from protocol import Protocol_client
+from protocol import Protocol_measurement
 
 
 LOG = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
             pass
         self.terminate()
         LOG.info("%s\tterminate thread" % str(self))
+
     def _handle_input_data(self):
         pass
 
@@ -117,13 +119,14 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         pass
 
     def terminate(self):
-        os.write(self.stop_file.fileno(), "stop\n")
-        self.stop_file.flush()
+        if self.stop_file != None:
+            os.write(self.stop_file.fileno(), "stop\n")
+            self.stop_file.flush()
+            self.stop_file.close()
+            self.stop_file = None
         if self.connection is not None:
             self.connection.close()
             self.connection = None
-            self.stop_file.close()
-            self.stop_file = None
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -139,6 +142,11 @@ class MobileVideoHandler(MobileSensorHandler):
         header_data = self._recv_all(header_size)
         image_data = self._recv_all(img_size)
         self.frame_count += 1
+
+        # add header data for measurement
+        #header_json = json.loads(header_data)
+        #header_json[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME] = time.time()
+        #header_data = json.dumps(header_json)
 
         # measurement
         self.current_time = time.time()
@@ -218,6 +226,10 @@ class MobileAccHandler(MobileSensorHandler):
 class MobileResultHandler(MobileSensorHandler):
     def setup(self):
         super(MobileResultHandler, self).setup()
+        self.control_app_latency = 0.0
+        self.app_ucomm_latency = 0.0
+        self.ucomm_control_latency = 0.0
+        self.latency_count = 0
 
     def __str__(self):
         return "Mobile Result Handler"
@@ -259,8 +271,22 @@ class MobileResultHandler(MobileSensorHandler):
                 self.request.send(packet)
                 self.wfile.flush()
 
+                # check time
+                #header = json.loads(result_msg)
+                #control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
+                #app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
+                #ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
+                #self.control_app_latency += app_sent_time-control_sent_time
+                #self.app_ucomm_latency += ucomm_sent_time-app_sent_time
+                #self.ucomm_control_latency += time.time()-ucomm_sent_time
+                #self.latency_count += 1
+                #LOG.info("control-app:%f\tapp-ucomm:%f\tucomm-client:%f" % \
+                #        (self.control_app_latency/self.latency_count,
+                #            self.app_ucomm_latency/self.latency_count,
+                #            self.ucomm_control_latency/self.latency_count))
+
                 # send only one
-                LOG.info("result message (%s) sent to the Glass", result_msg)
+                #LOG.info("result message (%s) sent to the Glass", result_msg)
             except Queue.Empty:
                 pass
 
