@@ -2,7 +2,9 @@ package edu.cmu.cs.gabriel;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -33,6 +35,7 @@ import android.hardware.Camera.PreviewCallback;
 import android.nfc.Tag;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.preference.PreferenceManager;
@@ -48,7 +51,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener {
-	private static final String IMAGE_READ_FROM_FILE = "";
 	
 	private static final String LOG_TAG = "krha";
 
@@ -67,10 +69,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	CameraConnector cameraRecorder;
 	ControlThread controlThread;
 	
-	VideoStreamingThread videoStreamingThread;	
+	VideoStreamingThread videoStreamingThread;
 	AccStreamingThread accStreamingThread;
 	ResultReceivingThread resultThread;
-	TokenController tokenController = new TokenController();
+	TokenController tokenController = null;
 
 	private SharedPreferences sharedPref;
 	private boolean hasStarted;
@@ -82,7 +84,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private SensorManager mSensorManager = null;
 	private Sensor mAccelerometer = null;
 	protected TextToSpeech mTTS = null;
-
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -90,14 +92,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		
 		init();
 		startBatteryRecording();
-
 	}
 
 	private void init() {
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
+		Const.ROOT_DIR.mkdirs();
 
+		if (tokenController == null){
+			tokenController = new TokenController(Const.LATENCY_FILE);
+		}
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 			mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -202,8 +208,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				Bundle data = msg.getData();
 				String message = data.getString("message");
 				stopStreaming();
-				new AlertDialog.Builder(GabrielClientActivity.this).setTitle("INFO").setMessage(message)
-						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
+//				new AlertDialog.Builder(GabrielClientActivity.this).setTitle("INFO").setMessage(message)
+//						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
 			}
 			if (msg.what == NetworkProtocol.NETWORK_RET_RESULT) {
 				String ttsMessage = (String) msg.obj;
@@ -246,7 +252,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 					cameraRecorder = new CameraConnector();
 					cameraRecorder.init();
 				}
-
+				if (resultThread == null) {
+					resultThread = new ResultReceivingThread(GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+					resultThread.start();
+				}
 				if (videoStreamingThread == null) {
 					videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
 							GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
@@ -255,10 +264,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				if (accStreamingThread == null) {
 					accStreamingThread = new AccStreamingThread(GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
 					accStreamingThread.start();
-				}
-				if (resultThread == null) {
-					resultThread = new ResultReceivingThread(GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
-					resultThread.start();
 				}
 
 				localOutputStream = new BufferedOutputStream(new FileOutputStream(
@@ -432,6 +437,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			cameraRecorder.close();
 			cameraRecorder = null;
 		}
+		if ((resultThread != null) && (resultThread.isAlive())) {
+			resultThread.close();
+			resultThread = null;
+		}
 		if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
 			videoStreamingThread.stopStreaming();
 			videoStreamingThread = null;
@@ -465,7 +474,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-			accStreamingThread.push(event.values);
+//			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}

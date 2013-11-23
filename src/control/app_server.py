@@ -193,12 +193,15 @@ class OffloadingEngineMonitor(threading.Thread):
         self.count_cur_gps_app = 0
 
     def _inject_token(self):
+        '''
         if self.result_queue.empty() == True:
             LOG.info("Inject token to start receiving data from the Glass")
             header = json.dumps({
                 Protocol_client.TOKEN_INJECT_KEY: int(Const.TOKEN_INJECTION_SIZE),
                 })
             self.result_queue.put(header)
+        '''
+        pass
 
     def monitor(self):
         while(not self.stop.wait(0.01)):

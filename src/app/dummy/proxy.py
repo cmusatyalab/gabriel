@@ -70,13 +70,15 @@ if __name__ == "__main__":
     app_thread.isDaemon = True
 
     # dummy acc app
-    acc_queue = Queue.Queue(1)
-    acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
-    acc_client.start()
-    acc_client.isDaemon = True
-    acc_app = DummyAccApp(acc_queue, output_queue_list)
-    acc_app.start()
-    acc_app.isDaemon = True
+    acc_client = None
+    acc_app = None
+    #acc_queue = Queue.Queue(1)
+    #acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
+    #acc_client.start()
+    #acc_client.isDaemon = True
+    #acc_app = DummyAccApp(acc_queue, output_queue_list)
+    #acc_app.start()
+    #acc_app.isDaemon = True
 
     # result pub/sub
     result_pub = ResultpublishClient(return_addresses, output_queue_list)
@@ -92,8 +94,10 @@ if __name__ == "__main__":
         sys.stdout.write("user exits\n")
     finally:
         video_client.terminate()
-        acc_client.terminate()
+        if acc_client is not None:
+            acc_client.terminate()
         app_thread.terminate()
-        acc_app.terminate()
+        if acc_app is not None:
+            acc_app.terminate()
         result_pub.terminate()
 
