@@ -1,10 +1,15 @@
 package edu.cmu.cs.gabriel.network;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -15,6 +20,7 @@ import java.net.UnknownHostException;
 import java.util.TreeMap;
 import java.util.Vector;
 
+import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.token.SentPacketInfo;
 import edu.cmu.cs.gabriel.token.TokenController;
 
@@ -30,6 +36,8 @@ import android.util.Log;
 public class VideoStreamingThread extends Thread {
 
 	private static final String LOG_TAG = "krha";
+	protected File[] imageFiles = null;
+	protected int indexImageFile = 0;
 
 	private int protocolIndex; // may use a protocol other than UDP
 	static final int BUFFER_SIZE = 102400; // only for the UDP case
@@ -62,8 +70,27 @@ public class VideoStreamingThread extends Thread {
 			Log.e(LOG_TAG, "unknown host: " + e.getMessage());
 		}
 		remotePort = port;
-
 		cameraInputStream = new FileInputStream(fd);
+		
+		// check input data at image directory
+		imageFiles = this.getImageFiles(Const.TEST_IMAGE_DIR);
+	}
+
+	private File[] getImageFiles(File imageDir) {
+		if (imageDir == null){
+			return null;
+		}
+	    File[] files = imageDir.listFiles(new FilenameFilter() {			
+			@Override
+			public boolean accept(File dir, String filename) {
+				if (filename.toLowerCase().endsWith("jpg") == true)
+					return true;
+				if (filename.toLowerCase().endsWith("jpeg") == true)
+					return true;
+				return false;
+			}
+		});
+		return files;
 	}
 
 	public void run() {
@@ -103,12 +130,17 @@ public class VideoStreamingThread extends Thread {
 					this.tokenController.sendData(this.frameID, data.length + header.length);
 					this.tokenController.decreaseToken();
 				}
+				
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
 				this.notifyError(e.getMessage());
 				this.is_running = false;
 				return;
-			}
+			} 
+
+			try{
+				Thread.sleep(1);
+			} catch (InterruptedException e) {}
 		}
 		this.is_running = false;
 	}
@@ -144,17 +176,55 @@ public class VideoStreamingThread extends Thread {
 		return true;
 	}
 
+	
 	private Size cameraImageSize = null;
-
+    private long frameCount = 0, firstUpdateTime = 0;
+    private long prevUpdateTime = 0, currentUpdateTime = 0;
+    private long totalsize = 0;
+    
 	public void push(byte[] frame, Parameters parameters) {
-		if (this.tokenController.getCurrentToken() > 0) {
-			cameraImageSize = parameters.getPreviewSize();
-			YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
-					cameraImageSize.height, null);
-			ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
-			image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 95, tmpBuffer);
-			this.frameBufferList.add(tmpBuffer.toByteArray());
+		if (this.tokenController.getCurrentToken() <= 0) {
+			return;
+		}		
+
+        int datasize = 0;
+        cameraImageSize = parameters.getPreviewSize();
+        if (this.imageFiles == null){
+            YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
+            		cameraImageSize.height, null);
+            ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
+            image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 90, tmpBuffer);
+            this.frameBufferList.add(tmpBuffer.toByteArray());
+            datasize = tmpBuffer.size();
+        }else{
+        	try {
+        		int index = indexImageFile % this.imageFiles.length;
+	            datasize = (int) this.imageFiles[index].length();
+				FileInputStream fi = new FileInputStream(this.imageFiles[index]);
+				byte[] buffer = new byte[datasize];
+				fi.read(buffer, 0, datasize);
+	            this.frameBufferList.add(buffer);
+	            indexImageFile++;
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+        }
+		
+        if (firstUpdateTime == 0) {
+            firstUpdateTime = System.currentTimeMillis();
+        }
+        currentUpdateTime = System.currentTimeMillis();
+        frameCount++;
+        totalsize += datasize;
+        if (frameCount % 10 == 0) {
+        	Log.d(LOG_TAG, "(" + cameraImageSize.width + "," + cameraImageSize.height + ")" +
+        			"BW: " + 8.0*totalsize / (currentUpdateTime-firstUpdateTime)/1000 + 
+        			" Mbps\tCurrent FPS: " + 8.0*datasize/(currentUpdateTime - prevUpdateTime)/1000 + " Mbps\t" +
+        			"FPS: " + 1000.0*frameCount/(currentUpdateTime-firstUpdateTime));
 		}
+        prevUpdateTime = currentUpdateTime;
 	}
 
 	private void notifyError(String message) {

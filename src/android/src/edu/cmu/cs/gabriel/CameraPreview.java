@@ -14,8 +14,12 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
-	public static final int MIN_FPS = 50;
-	public static final int IMAGE_WIDTH = 300;
+	/*
+	 * Galaxy Nexus
+	 * 320x240	: 2 Mbps, 24 FPS
+	 * 640x480	: 3 Mbps, 10 FPS
+	 * 800x480	: 2.5Mbps, 7.5 FPS 
+	 */
 
 	public SurfaceHolder mHolder;
 	public Camera mCamera = null;
@@ -51,9 +55,11 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 	public void changeConfiguration(int[] range, Size imageSize) {
 		Camera.Parameters parameters = mCamera.getParameters();
 		if (range != null){
+			Log.d("krha", "frame rate configuration : " + range[0] + "," + range[1]);
 			parameters.setPreviewFpsRange(range[0], range[1]);			
 		}
 		if (imageSize != null){
+			Log.d("krha", "image size configuration : " + imageSize.width + "," + imageSize.height);
 			parameters.setPreviewSize(imageSize.width, imageSize.height);
 			parameters.setPictureFormat(ImageFormat.JPEG);			
 		}
@@ -68,7 +74,6 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 			// mCamera.setDisplayOrientation(90);
 		}
 		if (mCamera != null) {
-
 			try {
 				mCamera.setPreviewDisplay(holder);
 				// set fps to capture
@@ -79,7 +84,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 				int index = 0, fpsDiff = Integer.MAX_VALUE;
 				for (int i = 0; i < supportedFps.size(); i++){
 					int[] frameRate = supportedFps.get(i);
-					int diff = Math.abs(MIN_FPS*1000 - frameRate[0]);
+					int diff = Math.abs(Const.MIN_FPS*1000 - frameRate[0]);
 					if (diff < fpsDiff){
 						fpsDiff = diff;
 						index = i;
@@ -95,7 +100,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 				int sizeDiff = Integer.MAX_VALUE;
 				for (int i = 0; i < supportedSizes.size(); i++){
 					Camera.Size size = supportedSizes.get(i);
-					int diff = Math.abs(size.width - CameraPreview.IMAGE_WIDTH);
+					int diff = Math.abs(size.width - Const.IMAGE_WIDTH);
 					if (diff < sizeDiff){
 						sizeDiff = diff;
 						index = i;

@@ -55,6 +55,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         self.previous_time = None
         self.current_time = 0
         self.frame_count = 0
+        self.totoal_recv_size = 0
         self.ret_frame_ids = Queue.Queue()
 
     def _recv_all(self, recv_size):
@@ -62,7 +63,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data == None or len(tmp_data) == 0:
-                raise MobileCommError("Socket is closed at %s" % str(self))
+                raise MobileCommError("Cannot recv data at %s" % str(self))
             data += tmp_data
         return data
 
@@ -95,15 +96,22 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                     continue
                 time.sleep(0.0001)
         except Exception as e:
-            #LOG.info(traceback.format_exc())
-            LOG.deubg("%s\n" % str(e))
-            LOG.info("Client disconnected")
+            LOG.info(traceback.format_exc())
+            LOG.debug("%s\n" % str(e))
         self.terminate()
+
+    def _handle_input_data(self):
+        pass
+
+    def _handle_output_result(self):
+        pass
 
     def terminate(self):
         self.stop.set()
-        if self.socket != -1:
-            self.socket.close()
+        if self.connection is not None:
+            LOG.info("socket is closed at %s" % str(self))
+            self.connection.close()
+            self.connection = None
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -122,14 +130,17 @@ class MobileVideoHandler(MobileSensorHandler):
 
         # measurement
         self.current_time = time.time()
+        self.totoal_recv_size += (header_size + img_size + 8)
         self.current_FPS = 1 / (self.current_time - self.previous_time)
         self.average_FPS = self.frame_count / (self.current_time -
                 self.init_connect_time)
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            msg = "Video FPS : current(%f), average(%f), offloading engine(%d)" % \
-                    (self.current_FPS, self.average_FPS, len(image_queue_list))
+            msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
+                    (self.current_FPS, self.average_FPS, \
+                    8*self.totoal_recv_size/(self.current_time-self.init_connect_time)/1000/1000,
+                    len(image_queue_list))
             LOG.info(msg)
         for image_queue in image_queue_list:
             if image_queue.full() is True:
@@ -137,25 +148,14 @@ class MobileVideoHandler(MobileSensorHandler):
             image_queue.put((header_data, image_data))
 
         # return frame id to flow control
+        '''
         json_header = json.loads(header_data)
         frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
         if frame_id is not None:
             self.ret_frame_ids.put(frame_id)
-
-    def _handle_output_result(self):
-        # return result from the token bucket
-        try:
-            return_frame_id = self.ret_frame_ids.get_nowait()
-            return_data = json.dumps({
-                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
-                    })
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data),
-                    return_data)
-            self.request.send(packet)
-            self.wfile.flush()
-        except Queue.Empty:
-            pass
+        global result_queue
+        result_queue.put(header_data)
+        '''
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -244,7 +244,7 @@ class MobileResultHandler(MobileSensorHandler):
                 self.wfile.flush()
 
                 # send only one
-                #LOG.info("result message (%s) sent to the Glass", result_msg)
+                LOG.info("result message (%s) sent to the Glass", result_msg)
             except Queue.Empty:
                 break
 
