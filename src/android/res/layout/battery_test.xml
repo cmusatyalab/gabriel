@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:keepScreenOn="true"
+    android:orientation="vertical" >
+
+    <!--
+    <Button
+        android:id="@+id/button_settingFrame"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:onClick="selectFrameRate"
+        android:text="FPS Setting"
+        android:textSize="20sp" />
+    -->
+
+    <Button
+        android:id="@+id/button_settingSize"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:onClick="startExperiment"
+        android:text="Start"
+        android:textSize="20sp" />         
+
+    <LinearLayout
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:orientation="horizontal"
+        android:weightSum="1" >
+
+        <edu.cmu.cs.gabriel.CameraPreview
+            android:id="@+id/camera_preview"
+            android:layout_width="0dp"
+            android:layout_height="fill_parent"
+            android:layout_weight="1.0" />
+            
+    <!--
+
+        <Button
+            android:id="@+id/button_startStreaming"
+            android:layout_width="0dp"
+            android:layout_height="fill_parent"
+            android:layout_weight="0.1"
+            android:onClick="startStreaming"
+            android:text="@string/start_button" />         
+    -->
+    </LinearLayout>
+
+</LinearLayout>
