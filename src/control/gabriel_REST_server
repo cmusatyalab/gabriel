@@ -1,23 +1,33 @@
 #!/usr/bin/env python
 
 import sys
-import signal
 import json
 from flask import Flask
+from flask import request
 from flask.ext import restful
 from flask.ext.restful import reqparse
 from flask.ext.restful import Resource
+from flask.ext.restful import abort
 
 from config import Const
 from config import ServiceMeta
 
 
-def sigint_handler(signum, frame):
-    sys.stdout.write("Exit by SIGINT\n")
-    raise SystemExit
+custom_service_list = list()
 
-# handling keyboard interrupt
-signal.signal(signal.SIGINT, sigint_handler)
+class CustomService(object):
+    def __init__(self, service_name, data):
+        self.service_name = service_name
+        self.content = data
+
+    def update_data(self, json_str):
+        self.content = json_str
+
+    def get_service_name(self):
+        return self.service_name
+
+    def get_data(self):
+        return self.content
 
 
 def get_ip(iface = 'eth0'):
@@ -37,79 +47,139 @@ def get_ip(iface = 'eth0'):
     return socket.inet_ntoa(ip)
 
 
-'''
-class CreateSession(Resource):
-    KEY_SESSION_ID  = "session_id"
-    KEY_RET         = "return"
+class CreateService(Resource):
+    KEY_SERVICE_NAME    = "service_name"
+    KEY_SERVICE_CONTENT = "service_content"
+    KEY_RET             = "return"
 
-    def post(self):
-        global dbconn
+    def post(self, service_name):
+        global custom_service_list
 
-        new_session = Session()
-        dbconn.add_item(new_session)
+        existing_service = self._find_service(service_name)
+        if existing_service is not None:
+            msg = "Service %s is existing. Delete first." % service_name
+            abort(404, message=msg)
+
+        data = dict(json.loads(request.data))
+        new_service = CustomService(service_name, data)
+        custom_service_list.append(new_service)
+
         # send response
-        ret_msg = {\
-                CreateSession.KEY_RET: "success", \
-                CreateSession.KEY_SESSION_ID: new_session.session_id, \
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                CreateService.KEY_SERVICE_NAME: new_service.get_service_name(),
+                CreateService.KEY_SERVICE_CONTENT: new_service.get_data(),
                 }
         return ret_msg, 201
 
-
-class ManageSession(Resource):
-    def delete(self, session_id):
-        global dbconn
-
-        request_session_id = session_id
-        if request_session_id == None:
-            msg = "Need session ID" % request_session_id
+    def get(self, service_name):
+        requested_service = service_name
+        if requested_service == None:
+            msg = "Need service ID"
             abort(404, message=msg)
 
-        ret_session = dbconn.session.query(Session). \
-                filter(Session.session_id==request_session_id).first()
-        if ret_session == None:
-            msg = "Not a valid session : %d" % request_session_id
+        matching_service = self._find_service(service_name)
+        if matching_service == None:
+            msg = "Not a valid service name: %s" % service_name
             abort(404, message=msg)
-            
-        ret_session.terminate()
-        dbconn.session.commit()
-        ret_msg = {\
-                CreateSession.KEY_RET: "success", \
-                CreateSession.KEY_SESSION_ID: request_session_id, \
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                CreateService.KEY_SERVICE_NAME: matching_service.get_service_name(),
+                CreateService.KEY_SERVICE_CONTENT: matching_service.get_data(),
                 }
-        return ret_msg, 201
-'''
+        return ret_msg, 200
+
+    def delete(self, service_name):
+        requested_service = service_name
+        if requested_service == None:
+            msg = "Need service ID"
+            abort(404, message=msg)
+        matching_service = self._find_service(service_name)
+        if matching_service == None:
+            msg = "Not a valid service name: %s" % service_name
+            abort(404, message=msg)
+        custom_service_list.remove(matching_service)
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                CreateService.KEY_SERVICE_NAME: matching_service.get_service_name(),
+                CreateService.KEY_SERVICE_CONTENT: matching_service.get_data(),
+                }
+        return ret_msg, 202
+
+    def _find_service(self, requested_service):
+        global custom_service_list
+
+        matching_service = None
+        for service_item in custom_service_list:
+            if service_item.service_name == requested_service:
+                matching_service = service_item
+                return matching_service
+        return matching_service
 
 
+class ManageService(Resource):
+    def get(self):
+        ret_list = list()
+        for service in custom_service_list:
+            ret_list.append({
+                    CreateService.KEY_SERVICE_NAME: service.get_service_name(),
+                    CreateService.KEY_SERVICE_CONTENT: service.get_data(),
+                    })
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                "services": ret_list,
+                }
+        return ret_msg, 200
 
-class ServiceInfo(Resource):
+
+class GabrielInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type=str)
+    ip_addr = get_ip(iface="eth0")
+    service_info = {
+            ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
+            ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
+            ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
+            ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
+            ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT),
+            ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
+            ServiceMeta.UCOMM_COMMUNICATE_PORT: int(Const.UCOMM_COMMUNICATE_PORT),
+            }
 
     def get(self):
-        global resource_monitor
-        ip_addr = get_ip(iface="eth0")
-        ret_data = {
-                ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
-                ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
-                ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT),
-                ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
-                ServiceMeta.UCOMM_COMMUNICATE_PORT: int(Const.UCOMM_COMMUNICATE_PORT),
-                }
+        return self.service_info, 200
 
-        return ret_data
+    def put(self):
+        data = dict(json.loads(request.data))
+        ucomm_ips = data.get(ServiceMeta.RESULT_RETURN_SERVER_LIST, None)
+        if ucomm_ips is None or len(ucomm_ips) == 0:
+            msg = "Need list of ucomm_ips"
+            abort(404, message=msg)
+        if type(ucomm_ips) != type(list()):
+            ucomm_ips = [ucomm_ips]
+
+        original_list = self.service_info.get(ServiceMeta.RESULT_RETURN_SERVER_LIST, list())
+        merged_set = set(original_list)
+        for new_address in ucomm_ips:
+            merged_set.add(str(new_address))
+        self.service_info[ServiceMeta.RESULT_RETURN_SERVER_LIST] = list(merged_set)
+
+        # send response
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                "objects": self.service_info,
+                }
+        return ret_msg, 202
 
 
 parser = reqparse.RequestParser()
-
-
 # run REST server
 app = Flask(__name__)
 api = restful.Api(app)
-api.add_resource(ServiceInfo, '/')
+api.add_resource(GabrielInfo, '/')
+api.add_resource(ManageService, '/services/')
+api.add_resource(CreateService, '/services/<string:service_name>')
 
 # do no turn on debug mode. it make a mess for graceful terminate
 #app.run(debug=True)
-app.debug = True
 app.run(host="0.0.0.0", port=Const.SERVICE_DISCOVERY_HTTP_PORT)

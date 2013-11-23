@@ -78,7 +78,7 @@ public class ResultReceivingThread extends Thread {
 			} catch (IOException e) {
 				Log.e("krha", e.toString());
 				// Do not send error to handler, Streaming thread already sent it.
-//				this.notifyError(e.getMessage());				
+				this.notifyError(e.getMessage());				
 				break;
 			} catch (JSONException e) {
 				Log.e("krha", e.toString());
