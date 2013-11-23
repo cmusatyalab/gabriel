@@ -22,6 +22,8 @@ import Queue
 import sys
 import time
 import json
+import os
+import tempfile
 from config import Const as Const
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import SocketServer
@@ -47,36 +49,68 @@ class AppServerError(Exception):
 class SensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(SensorHandler, self).setup()
+        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
 
     def _recv_all(self, recv_size):
         data = ''
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data == None or len(tmp_data) == 0:
+            if tmp_data is None or len(tmp_data) is 0:
                 raise AppServerError("Socket is closed")
             data += tmp_data
         return data
+
+    def _handle_input_data(self):
+        """ No input expected.
+        But blocked read will return 0 if the other side closed gracefully
+        """
+        ret_data = self.request.recv(1)
+        if ret_data is None:
+            raise AppServerError("Cannot recv data at %s" % str(self))
+        if len(ret_data) == 0:
+            raise AppServerError("Client side is closed gracefullu at %s" % str(self))
 
     def handle(self):
         try:
             LOG.info("Offloading engine is connected")
             socket_fd = self.request.fileno()
-            output_list = [socket_fd]
-            except_list = [socket_fd]
+            stopfd = self.stop_file.fileno()
+            input_list = [socket_fd, stopfd]
+            output_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
             while True:
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, except_list, 0.1)
+                        select.select(input_list, output_list, except_list)
+                for s in inputready:
+                    if s == socket_fd:
+                        self._handle_input_data()
+                    if s == stopfd:
+                        break
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_sensor_stream()
+                    if s == stopfd:
+                        break
                 for output in exceptready:
                     if output == socket_fd:
                         break
-                time.sleep(0.0001)
+                    if s == stopfd:
+                        break
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
         self.terminate()
+        LOG.info("%s\tterminate thread" % str(self))
+
+    def terminate(self):
+        if self.stop_file != None:
+            os.write(self.stop_file.fileno(), "stop\n")
+            self.stop_file.flush()
+            self.stop_file.close()
+            self.stop_file = None
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
 
 
 class VideoSensorHandler(SensorHandler):
@@ -86,14 +120,13 @@ class VideoSensorHandler(SensorHandler):
         mobile_server.image_queue_list.append(self.data_queue)
 
     def _handle_sensor_stream(self):
-        if self.data_queue.empty() is False:
-            (header, jpeg_data) = self.data_queue.get()
+        try:
+            (header, jpeg_data) = self.data_queue.get_nowait()
             header = json.loads(header)
             header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
                         Protocol_application.JSON_VALUE_SENSOR_TYPE_JPEG,
                 })
-
             json_header = json.dumps(header)
             packet = struct.pack("!II%ds%ds" % (len(json_header), len(jpeg_data)), 
                     len(json_header),
@@ -102,10 +135,13 @@ class VideoSensorHandler(SensorHandler):
                     str(jpeg_data))
             self.request.send(packet)
             self.wfile.flush()
+        except Queue.Empty as e:
+            pass
 
     def terminate(self):
         LOG.info("Video Offloading Engine is disconnected")
         mobile_server.image_queue_list.remove(self.data_queue)
+        super(VideoSensorHandler, self).setup()
 
 
 class AccSensorHandler(SensorHandler):
@@ -115,8 +151,8 @@ class AccSensorHandler(SensorHandler):
         mobile_server.acc_queue_list.append(self.data_queue)
 
     def _handle_sensor_stream(self):
-        if self.data_queue.empty() is False:
-            (header, acc_data) = self.data_queue.get()
+        try:
+            (header, acc_data) = self.data_queue.get_nowait()
             header = json.loads(header)
             header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
@@ -131,9 +167,12 @@ class AccSensorHandler(SensorHandler):
                     str(acc_data))
             self.request.send(packet)
             self.wfile.flush()
+        except Queue.Empty as e:
+            pass
 
     def terminate(self):
         mobile_server.acc_queue_list.remove(self.data_queue)
+        super(AccSensorHandler, self).setup()
 
 
 class ApplicationServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):

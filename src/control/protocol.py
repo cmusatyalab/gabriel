@@ -32,3 +32,8 @@ class Protocol_application(object):
     JSON_VALUE_SENSOR_TYPE_ACC = "acc"
     JSON_VALUE_SENSOR_TYPE_GPS = "gps"
     JSON_VALUE_SENSOR_TYPE_AUDIO = "wave"
+
+class Protocol_measurement(object):
+    JSON_KEY_CONTROL_SENT_TIME = "control_sent_time"
+    JSON_KEY_APP_SENT_TIME = "app_sent_time"
+    JSON_KEY_UCOMM_SENT_TIME = "ucomm_sent_time"
