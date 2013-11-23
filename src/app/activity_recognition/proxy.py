@@ -26,10 +26,14 @@ import sys
 import Queue
 import time
 import cv2
+import threading
+from urlparse import urlparse
+import json
+import httplib
+import urllib2
 import numpy as np
 from cStringIO import StringIO
 
-from launcher import AppLauncher
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -89,7 +93,7 @@ class MasterProxy(threading.Thread):
                         self.connection_num += 1
                         if self.connection_num >= self.slave_num * 2:
                             self.slave_num *= 2
-                            is self.h_parts > self.w_parts:
+                            if self.h_parts > self.w_parts:
                                 self.w_parts = self.h_parts
                             else:
                                 self.h_parts *= 2
@@ -190,7 +194,7 @@ class MasterProxy(threading.Thread):
             data += tmp_data
         return data
 
-    def _uncrop_feature(feature, crop_config)
+    def _uncrop_feature(feature, crop_config):
         h_min, h_max, w_min, w_max = crop_config
         new_feature = []
         for a_feature in feature:
@@ -333,19 +337,63 @@ class SlaveProxy(threading.Thread):
         
         return result
 
+def GET(url):
+    meta_stream = urllib2.urlopen(url)
+    meta_raw = meta_stream.read()
+    ret = json.loads(meta_raw)
+    return ret
+
+def POST(url, json_string):
+    end_point = urlparse("%s" % url)
+    params = json.dumps(json_string)
+    headers = {"Content-type": "application/json"}
+
+    conn = httplib.HTTPConnection(end_point[1])
+    conn.request("POST", "%s" % end_point[2], params, headers)
+    response = conn.getresponse()
+    data = response.read()
+    dd = json.loads(data)
+    if dd.get("return", None) != "success":
+        msg = "Failed\n%s", str(dd)
+        raise Exception(msg)
+    conn.close()
+    return dd
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80)) 
+    return s.getsockname()[0]
+
+def register_as_master(url):
+    IP = get_local_ip()
+    json_info = {
+        "master_address": "%s:%d" % (IP, MASTER_PORT),
+    }
+    POST(url, json_info)
+    return IP, MASTER_PORT
+
 if __name__ == "__main__":
-    service_list = get_service_list()
+    sys.stdout.write("Finding control VM\n")
+    service_list = get_service_list(sys.argv)
     video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
     video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
     return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
     # master node discovery, not implemented yet
-    master_node_ip = service_list.get(SERVICE_META.MOTION_CLASSIFIER_MASTER_IP, "")
-    master_node_port = service_list.get(SERVICE_META.MOTION_CLASSIFIER_MASTER_PORT, -1)
-    is_master = False
-    if not master_node_ip:
-        register_as_master() # not implemented
+    master_info_url = "http://%s:%d%s" % (video_ip, 8021, "/services/motion")
+    try:
+        master_info = GET(master_info_url)
+        master_node_addr = master_info.get('service_content').get('master_address')
+        master_node_ip, master_node_port = master_node_addr.strip().split(':')
+        master_node_port = int(master_node_port)
+        is_master = False
+    except Exception as e:
+        master_node_ip, master_node_port = register_as_master(master_info_url)
         is_master = True
+
+    print (master_node_ip, master_node_port)
+
+    raise SystemExit
 
     # Master proxy
     if is_master:
