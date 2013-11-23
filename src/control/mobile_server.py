@@ -247,7 +247,6 @@ class MobileResultHandler(MobileSensorHandler):
             return json.dumps(frame_id)
 
         if result_queue.empty() is False:
-            print "handle output"
             result_msg = None
             try:
                 result_msg = result_queue.get_nowait()
