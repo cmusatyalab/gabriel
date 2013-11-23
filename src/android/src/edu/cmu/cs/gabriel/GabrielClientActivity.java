@@ -59,8 +59,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private static final int CHANGE_SETTING_CODE = 2;
 	private static final int LOCAL_OUTPUT_BUFF_SIZE = 1024 * 100;
 
-	public String GABRIEL_IP = "128.2.210.197";
-	// public static final String GABRIEL_IP = "128.2.213.130";
 	public static final int VIDEO_STREAM_PORT = 9098;
 	public static final int ACC_STREAM_PORT = 9099;
 	public static final int GPS_PORT = 9100;
@@ -253,16 +251,16 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 					cameraRecorder.init();
 				}
 				if (resultThread == null) {
-					resultThread = new ResultReceivingThread(GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+					resultThread = new ResultReceivingThread(Const.GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
 					resultThread.start();
 				}
 				if (videoStreamingThread == null) {
 					videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
-							GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
+							Const.GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
 					videoStreamingThread.start();
 				}
 				if (accStreamingThread == null) {
-					accStreamingThread = new AccStreamingThread(GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
+					accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
 					accStreamingThread.start();
 				}
 
@@ -344,7 +342,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	private void startCapture() {
 		if (hasStarted == false) {
 			mPreview.setPreviewCallback(previewCallback);
-			controlThread = new ControlThread(controlMsgHandler, GABRIEL_IP);
+			controlThread = new ControlThread(controlMsgHandler, Const.GABRIEL_IP);
 			controlThread.start();
 		}
 	}
