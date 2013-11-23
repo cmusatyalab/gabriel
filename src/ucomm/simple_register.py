@@ -23,6 +23,13 @@ import httplib
 import json
 
 
+def get(url):
+    import urllib2
+    meta_stream = urllib2.urlopen("%s" % (url))
+    meta_raw = meta_stream.read()
+    ret = json.loads(meta_raw)
+    return ret
+
 def post(url, json_string):
     end_point = urlparse("%s" % url)
     params = json.dumps(json_string)
@@ -45,6 +52,8 @@ json_info = {
         "master_address": "1111:1111",
     }
 ret = post(directory_url, json_info)
+print ret
+ret = get(directory_url)
 print ret
 
 
