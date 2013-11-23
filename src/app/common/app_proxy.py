@@ -21,12 +21,15 @@
 import sys
 sys.path.insert(0, "../../")
 from control.protocol import Protocol_client
+from control.protocol import Protocol_measurement
 from control import log as logging
 from control.upnp_client import UPnPClient
 from control.config import Const
 from control.config import ServiceMeta
 
 from optparse import OptionParser
+import os
+import tempfile
 import traceback
 import threading
 import socket
@@ -105,29 +108,38 @@ class AppProxyStreamingClient(threading.Thread):
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.data_queue = data_queue
+        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
         threading.Thread.__init__(self, target=self.streaming)
 
     def streaming(self):
         LOG.info("Start getting data from the server")
+        stopfd = self.stop_file.fileno()
         socket_fd = self.sock.fileno()
-        input_list = [socket_fd]
+        input_list = [socket_fd, stopfd]
+        except_list = [socket_fd, stopfd]
         try:
-            while(not self.stop.wait(0.01)):
+            while True:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, [], [], 0)
+                        select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_streaming()
+                    if s == stopfd:
+                        break
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
             LOG.warning("handler raises exception")
             LOG.warning("Server is disconnected unexpectedly")
-        self.sock.close()
+        self.terminate()
         LOG.debug("Streaming thread terminated")
 
     def terminate(self):
-        self.stop.set()
+        if self.stop_file is not None:
+            os.write(self.stop_file.fileno(), "stop\n")
+            self.stop_file.flush()
+            self.stop_file.close()
+            self.stop_file = None
         if self.sock is not None:
             self.sock.close()
 
@@ -147,6 +159,10 @@ class AppProxyStreamingClient(threading.Thread):
         header = self._recv_all(self.sock, header_size)
         data = self._recv_all(self.sock, data_size)
         header_data = json.loads(header)
+
+        # add header data for measurement
+        #header_data[Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
+
         try:
             if self.data_queue.full() is True:
                 self.data_queue.get_nowait()
@@ -242,13 +258,9 @@ class AppProxyThread(threading.Thread):
 
             result = self.handle(header, data)
             if result is not None:
-                return_message = dict()
-                return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
-                frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-                if frame_id is not None:
-                    return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
+                header[Protocol_client.RESULT_MESSAGE_KEY] = result
                 for output_queue in self.output_queue_list:
-                    output_queue.put(json.dumps(return_message))
+                    output_queue.put(json.dumps(header))
         LOG.debug("App thread terminated")
 
     def handle(self, header, data):
