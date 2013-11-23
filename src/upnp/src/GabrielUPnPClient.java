@@ -20,6 +20,7 @@ import org.teleal.cling.model.meta.ModelDetails;
 import org.teleal.cling.model.meta.RemoteDevice;
 import org.teleal.cling.model.meta.RemoteService;
 import org.teleal.cling.model.types.DeviceType;
+import org.teleal.cling.model.types.ServiceId;
 import org.teleal.cling.model.types.ServiceType;
 import org.teleal.cling.model.types.UDADeviceType;
 import org.teleal.cling.model.types.UDN;
@@ -33,6 +34,33 @@ public class GabrielUPnPClient {
 
 		// UPnP discovery is asynchronous, we need a callback
 		RegistryListener listener = new RegistryListener() {
+			private synchronized void handleService(Registry registry, RemoteDevice device) throws UnknownHostException{
+                RemoteService[] services = device.getServices();
+                for(int i = 0;  i < services.length; i++){
+                	RemoteService rs = services[i];
+                	ServiceId serviceID = rs.getServiceId();
+                	if (serviceID.getId().equals(GabrielService.SERVICE_ID) == false){
+                		continue;
+//                		System.out.println("Wrong Service : " + serviceID);
+//                    	ServiceType serviceType = rs.getServiceType();
+//                    	String typeName = serviceType.getType();
+//                    	int portNumber = serviceType.getVersion();
+//						InetAddress address = InetAddress.getByName(rs.getDevice().normalizeURI(rs.getDescriptorURI()).getHost());
+//	                	System.out.println("ipaddress: " + address.getHostAddress());
+//	                	System.out.println("port: " + portNumber);
+                	}
+                	
+                	ServiceType serviceType = rs.getServiceType();
+                	String typeName = serviceType.getType();
+                	int portNumber = serviceType.getVersion();
+					InetAddress address = InetAddress.getByName(rs.getDevice().normalizeURI(rs.getDescriptorURI()).getHost());
+                	System.out.println("ipaddress: " + address.getHostAddress());
+                	System.out.println("port: " + portNumber);
+                	System.exit(0);
+					
+                }
+			}
+			
 			public void remoteDeviceDiscoveryStarted(Registry registry, RemoteDevice device) {
 //				System.err.println("Discovery started: " + device.getDisplayString());
 			}
@@ -40,24 +68,20 @@ public class GabrielUPnPClient {
 //				System.out.println("Discovery failed: " + device.getDisplayString() + " => " + ex);
 			}
 			public void remoteDeviceAdded(Registry registry, RemoteDevice device) {
-                RemoteService[] services = device.getServices();
-                for(int i = 0;  i < services.length; i++){
-                	RemoteService rs = services[i];
-                	ServiceType serviceType = rs.getServiceType();
-                	String typeName = serviceType.getType();
-                	int portNumber = serviceType.getVersion();
-                	try {
-						InetAddress address = InetAddress.getByName(rs.getDevice().normalizeURI(rs.getDescriptorURI()).getHost());
-	                	System.out.println("ipaddress: " + address.getHostAddress());
-	                	System.out.println("port: " + portNumber);
-	                	System.exit(0);
-					} catch (UnknownHostException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-                }
+				try {
+					this.handleService(registry, device);
+				} catch (UnknownHostException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 			}
 			public void remoteDeviceUpdated(Registry registry, RemoteDevice device) {
+				try {
+					this.handleService(registry, device);
+				} catch (UnknownHostException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 			}
 			
 			public void remoteDeviceRemoved(Registry registry, RemoteDevice device) {

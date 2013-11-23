@@ -21,6 +21,8 @@
 import time
 import sys
 import json
+import tempfile
+import os
 
 import SocketServer
 import threading
@@ -48,21 +50,22 @@ class MobileCommError(Exception):
 class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(MobileSensorHandler, self).setup()
-        self.stop = threading.Event()
         self.average_FPS = 0.0
         self.current_FPS = 0.0
         self.init_connect_time = None
         self.previous_time = None
         self.current_time = 0
         self.frame_count = 0
+        self.totoal_recv_size = 0
         self.ret_frame_ids = Queue.Queue()
+        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
 
     def _recv_all(self, recv_size):
         data = ''
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data == None or len(tmp_data) == 0:
-                raise MobileCommError("Socket is closed at %s" % str(self))
+                raise MobileCommError("Cannot recv data at %s" % str(self))
             data += tmp_data
         return data
 
@@ -74,20 +77,27 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
             self.previous_time = time.time()
 
             socket_fd = self.request.fileno()
-            input_list = [socket_fd]
-            output_list = [socket_fd]
-            except_list = [socket_fd]
+            stopfd = self.stop_file.fileno()
+            input_list = [socket_fd, stopfd]
+            output_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
 
-            while(not self.stop.wait(0.0001)):
+            while True:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list, 0.1)
+                        select.select(input_list, output_list, except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
+                    if s == stopfd:
+                        break
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_output_result()
+                    if s == stopfd:
+                        break
                 for e in exceptready:
+                    if s == stopfd:
+                        break
                     if e == socket_fd:
                         break
 
@@ -96,14 +106,24 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                 time.sleep(0.0001)
         except Exception as e:
             #LOG.info(traceback.format_exc())
-            LOG.deubg("%s\n" % str(e))
-            LOG.info("Client disconnected")
+            LOG.debug("%s\n" % str(e))
+            pass
         self.terminate()
+        LOG.info("%s\tterminate thread" % str(self))
+    def _handle_input_data(self):
+        pass
+
+    def _handle_output_result(self):
+        pass
 
     def terminate(self):
-        self.stop.set()
-        if self.socket != -1:
-            self.socket.close()
+        os.write(self.stop_file.fileno(), "stop\n")
+        self.stop_file.flush()
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+            self.stop_file.close()
+            self.stop_file = None
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -122,14 +142,17 @@ class MobileVideoHandler(MobileSensorHandler):
 
         # measurement
         self.current_time = time.time()
+        self.totoal_recv_size += (header_size + img_size + 8)
         self.current_FPS = 1 / (self.current_time - self.previous_time)
         self.average_FPS = self.frame_count / (self.current_time -
                 self.init_connect_time)
         self.previous_time = self.current_time
 
         if (self.frame_count % 100 == 0):
-            msg = "Video FPS : current(%f), average(%f), offloading engine(%d)" % \
-                    (self.current_FPS, self.average_FPS, len(image_queue_list))
+            msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
+                    (self.current_FPS, self.average_FPS, \
+                    8*self.totoal_recv_size/(self.current_time-self.init_connect_time)/1000/1000,
+                    len(image_queue_list))
             LOG.info(msg)
         for image_queue in image_queue_list:
             if image_queue.full() is True:
@@ -137,25 +160,14 @@ class MobileVideoHandler(MobileSensorHandler):
             image_queue.put((header_data, image_data))
 
         # return frame id to flow control
+        '''
         json_header = json.loads(header_data)
         frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
         if frame_id is not None:
             self.ret_frame_ids.put(frame_id)
-
-    def _handle_output_result(self):
-        # return result from the token bucket
-        try:
-            return_frame_id = self.ret_frame_ids.get_nowait()
-            return_data = json.dumps({
-                    Protocol_client.FRAME_MESSAGE_KEY: return_frame_id,
-                    })
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data),
-                    return_data)
-            self.request.send(packet)
-            self.wfile.flush()
-        except Queue.Empty:
-            pass
+        global result_queue
+        result_queue.put(header_data)
+        '''
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -214,10 +226,14 @@ class MobileResultHandler(MobileSensorHandler):
         return "Mobile Result Handler"
 
     def _handle_input_data(self):
-        """ NO input from mobile device
-        This is only for result return
+        """ No input expected.
+        But blocked read will return 0 if the other side closed gracefully
         """
-        pass
+        ret_data = self.request.recv(1)
+        if ret_data == None:
+            raise MobileCommError("Cannot recv data at %s" % str(self))
+        if len(ret_data) == 0:
+            raise MobileCommError("Client side is closed gracefullu at %s" % str(self))
 
     def _handle_output_result(self):
         global result_queue
@@ -230,7 +246,7 @@ class MobileResultHandler(MobileSensorHandler):
                 del header_json[Protocol_client.FRAME_MESSAGE_KEY]
             return json.dumps(frame_id)
 
-        while True:
+        if result_queue.empty() is False:
             result_msg = None
             try:
                 result_msg = result_queue.get_nowait()
@@ -244,9 +260,9 @@ class MobileResultHandler(MobileSensorHandler):
                 self.wfile.flush()
 
                 # send only one
-                #LOG.info("result message (%s) sent to the Glass", result_msg)
+                LOG.info("result message (%s) sent to the Glass", result_msg)
             except Queue.Empty:
-                break
+                pass
 
 
 class MobileCommServer(SocketServer.TCPServer):
