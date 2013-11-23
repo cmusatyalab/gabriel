@@ -54,12 +54,14 @@ class CreateService(Resource):
 
     def post(self, service_name):
         global custom_service_list
+
         existing_service = self._find_service(service_name)
         if existing_service is not None:
             msg = "Service %s is existing. Delete first." % service_name
             abort(404, message=msg)
 
-        new_service = CustomService(service_name, dict(request.form))
+        data = dict(json.loads(request.data))
+        new_service = CustomService(service_name, data)
         custom_service_list.append(new_service)
 
         # send response
@@ -85,7 +87,7 @@ class CreateService(Resource):
                 CreateService.KEY_SERVICE_NAME: matching_service.get_service_name(),
                 CreateService.KEY_SERVICE_CONTENT: matching_service.get_data(),
                 }
-        return ret_msg, 201
+        return ret_msg, 200
 
     def delete(self, service_name):
         requested_service = service_name
@@ -102,7 +104,7 @@ class CreateService(Resource):
                 CreateService.KEY_SERVICE_NAME: matching_service.get_service_name(),
                 CreateService.KEY_SERVICE_CONTENT: matching_service.get_data(),
                 }
-        return ret_msg, 201
+        return ret_msg, 202
 
     def _find_service(self, requested_service):
         global custom_service_list
@@ -127,26 +129,47 @@ class ManageService(Resource):
                 CreateService.KEY_RET: "success",
                 "services": ret_list,
                 }
-        return ret_msg, 201
+        return ret_msg, 200
 
 
 class GabrielInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type=str)
+    ip_addr = get_ip(iface="eth0")
+    service_info = {
+            ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
+            ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
+            ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
+            ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
+            ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT),
+            ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
+            ServiceMeta.UCOMM_COMMUNICATE_PORT: int(Const.UCOMM_COMMUNICATE_PORT),
+            }
 
     def get(self):
-        ip_addr = get_ip(iface="eth0")
-        ret_data = {
-                ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
-                ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
-                ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
-                ServiceMeta.ACC_TCP_STREAMING_PORT: int(Const.APP_SERVER_ACC_PORT),
-                ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
-                ServiceMeta.UCOMM_COMMUNICATE_PORT: int(Const.UCOMM_COMMUNICATE_PORT),
-                }
+        return self.service_info, 200
 
-        return ret_data
+    def put(self):
+        data = dict(json.loads(request.data))
+        ucomm_ips = data.get(ServiceMeta.RESULT_RETURN_SERVER_LIST, None)
+        if ucomm_ips is None or len(ucomm_ips) == 0:
+            msg = "Need list of ucomm_ips"
+            abort(404, message=msg)
+        if type(ucomm_ips) != type(list()):
+            ucomm_ips = [ucomm_ips]
+
+        original_list = self.service_info.get(ServiceMeta.RESULT_RETURN_SERVER_LIST, list())
+        merged_set = set(original_list)
+        for new_address in ucomm_ips:
+            merged_set.add(str(new_address))
+        self.service_info[ServiceMeta.RESULT_RETURN_SERVER_LIST] = list(merged_set)
+
+        # send response
+        ret_msg = {
+                CreateService.KEY_RET: "success",
+                "objects": self.service_info,
+                }
+        return ret_msg, 202
 
 
 parser = reqparse.RequestParser()
