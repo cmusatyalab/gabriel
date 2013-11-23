@@ -21,7 +21,12 @@
 import sys
 sys.path.insert(0, "../")
 from control.protocol import Protocol_client
+from control.protocol import Protocol_measurement
+from control.config import ServiceMeta
+from urlparse import urlparse
 
+import httplib
+import urllib2
 import time
 import SocketServer
 import socket
@@ -82,21 +87,60 @@ def process_command_line(argv):
     return settings, args
 
 
-def get_service_list(argv):
+def get_ip(iface = 'eth0'):
+    import fcntl
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sockfd = sock.fileno()
+    SIOCGIFADDR = 0x8915
+
+    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
+    try:
+        res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
+    except:
+        return None
+    ip = struct.unpack('16sH2x4s8x', res)[2]
+    return socket.inet_ntoa(ip)
+
+
+def put(url, json_string):
+    end_point = urlparse("%s" % url)
+    params = json.dumps(json_string)
+    headers = {"Content-type": "application/json"}
+
+    conn = httplib.HTTPConnection(end_point[1])
+    conn.request("PUT", "%s" % end_point[2], params, headers)
+    response = conn.getresponse()
+    data = response.read()
+    dd = json.loads(data)
+    if dd.get("return", None) != "success":
+        msg = "Cannot register UCOMM server\n%s", str(dd)
+        raise UCommError(msg)
+    print dd
+    conn.close()
+
+
+def register_ucomm(argv):
     settings, args = process_command_line(sys.argv[1:])
     service_list = None
+    directory_url = None
     if settings.address is None:
         upnp_client.start()
         upnp_client.join()
+        directory_url = "http://%s:%d/" % \
+                    (upnp_client.http_ip_addr, upnp_client.http_port_number)
         service_list = upnp_client.service_list
     else:
-        import urllib2
         ip_addr, port = settings.address.split(":", 1)
         port = int(port)
-        meta_stream = urllib2.urlopen("http://%s:%d/" % (ip_addr, port))
+        directory_url = "http://%s:%d/" % (ip_addr, port)
+        meta_stream = urllib2.urlopen(directory_url)
         meta_raw = meta_stream.read()
         service_list = json.loads(meta_raw)
     pstr = pprint.pformat(service_list)
+    json_info = {
+        ServiceMeta.RESULT_RETURN_SERVER_LIST: "%s:%d" % (get_ip(), UCommConst.RESULT_RECEIVE_PORT),
+        }
+    put(directory_url, json_info)
     LOG.info("Gabriel Server :")
     LOG.info(pstr)
     return service_list
@@ -168,6 +212,9 @@ class ResultForwardingClient(threading.Thread):
                     if time_diff < 2:
                         LOG.info("Identical result (%s) is ignored" % result_str)
                         return_json.pop(Protocol_client.RESULT_MESSAGE_KEY)
+
+                # add header data for measurement
+                #return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
 
                 output = json.dumps(return_json)
                 packet = struct.pack("!I%ds" % len(output),
@@ -261,12 +308,18 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 def main():
     global output_queue
 
-    service_list = get_service_list(sys.argv)
+    try:
+        service_list = register_ucomm(sys.argv)
+    except Exception as e:
+        LOG.info(str(e))
+        LOG.info("failed to register UCOMM to the control")
+        sys.exit(1)
     control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
     control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
 
     # result pub/sub
     try:
+        result_forward = None
         LOG.info("connecting to %s:%d" % (control_vm_ip, control_vm_port))
         result_forward = ResultForwardingClient((control_vm_ip, control_vm_port), \
                 output_queue)
