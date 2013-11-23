@@ -18,6 +18,7 @@ public class BatteryRecordingService extends IntentService {
 	String mOutputFileName = "batteryRecording";
 	static public String AppName = "SampleApp";	
 	boolean stopped = false;
+	private Object lock = new Object();
 	/** 
 	 * A constructor is required, and must call the super IntentService(String)
 	 * constructor with a name for the worker thread.
@@ -37,7 +38,7 @@ public class BatteryRecordingService extends IntentService {
 			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);
 			Log.i("BatteryRecordingService", file.getAbsolutePath());
 			mFileWriter = new FileWriter(file); //New Empty File
-			mFileWriter.write("Time/ms\tCurrent/mA\tVoltage/V\n");
+//			mFileWriter.write("Time/ms\tCurrent/mA\tVoltage/V\n");
 			mFileWriter.close();
 			
 			int TotalTimes = 400;
@@ -131,12 +132,14 @@ public class BatteryRecordingService extends IntentService {
 //            Log.i("Battery", "Current : " + current + "\t" + "Voltage : " + voltage);
             long time = System.currentTimeMillis();
 
-			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);
-			mFileWriter = new FileWriter(file,true); //Append
-			String BatteryInfo = time + "\t" + current/1000.0 + "\t" + voltage/1000000.0 + "\n"; 
-            mFileWriter.write(BatteryInfo);
-            mFileWriter.flush();
-			mFileWriter.close();
+            synchronized (lock) {
+    			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mOutputFileName);
+    			mFileWriter = new FileWriter(file,true); //Append
+    			String BatteryInfo = time + "\t" + current/1000.0 + "\t" + voltage/1000000.0 + "\n"; 
+                mFileWriter.write(BatteryInfo);
+                mFileWriter.flush();
+    			mFileWriter.close();				
+			}
 		}
 		catch (FileNotFoundException ex)
 		{
@@ -145,6 +148,24 @@ public class BatteryRecordingService extends IntentService {
 		catch (IOException ex)
 		{
 			Log.e("Battery", "Why IOException?", ex);
+		}
+	}
+	
+	public void writeToFile(String data){
+		synchronized (lock) {
+			try {
+				// write data to file
+				File file = new File(Environment.getExternalStorageDirectory()
+						+ File.separator + AppName + File.separator
+						+ mOutputFileName);
+				mFileWriter = new FileWriter(file, true);
+				// Append
+				mFileWriter.write(data);
+				mFileWriter.flush();
+				mFileWriter.close();
+			} catch (IOException e) {
+				Log.d("error", e + "");
+			} 
 		}
 	}
 
