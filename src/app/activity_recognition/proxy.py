@@ -25,6 +25,7 @@ import struct
 import sys
 import Queue
 import time
+import traceback
 import cv2
 import threading
 from urlparse import urlparse
@@ -70,7 +71,7 @@ class MasterProxy(threading.Thread):
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
-        input_list = [server]
+        input_list = [self.server]
         output_list = []
         error_list = []
 
@@ -81,7 +82,7 @@ class MasterProxy(threading.Thread):
                         select.select(input_list, output_list, error_list, 0.1) 
                 for s in inputready:
                     if s == self.server:
-                        client, address = server.accept() 
+                        client, address = self.server.accept() 
                         input_list.append(client)
                         output_list.append(client)
                         error_list.append(client)
@@ -110,12 +111,12 @@ class MasterProxy(threading.Thread):
             LOG.warning(MASTER_TAG + "Server is disconnected unexpectedly")
         LOG.debug(MASTER_TAG + "Master thread terminated")
 
-    def _crop_image(image):
+    def _crop_image(self, image):
         img_array = np.asarray(bytearray(image), dtype=np.uint8)
         cv_image = cv2.imdecode(img_array, -1)
         height, width, depth = cv_image.shape
-        h_block = height / h_parts
-        w_block = width / w_parts
+        h_block = height / self.h_parts
+        w_block = width / self.w_parts
         overlap = 10
 
         image_parts = []
@@ -140,6 +141,7 @@ class MasterProxy(threading.Thread):
 
         return image_parts, crop_config
 
+    @staticmethod
     def _round_robin(l, counter):
         new_l = l[counter:]
         new_l += l[:counter]
@@ -148,7 +150,7 @@ class MasterProxy(threading.Thread):
     def _send_partial_image(self, sock):
         # send image pairs
         try:
-            images = self.partial_data_queues[self.queue_mapping[sock]].get_nowaite()
+            images = self.partial_data_queues[self.queue_mapping[sock]].get_nowait()
             data = json.dumps(images)
             packet = struct.pack("!I%ds" % len(data), len(data), data)
             sock.sendall(packet)
@@ -172,8 +174,8 @@ class MasterProxy(threading.Thread):
             return
         image_pairs = zip(self.last_image_parts, new_image_parts)
         self.last_image_parts = new_image_parts
-        image_pairs = _round_robin(image_pairs, self.round_robin_counter)
-        crop_config = _round_robin(crop_config, self.round_robin_counter)
+        image_pairs = self._round_robin(image_pairs, self.round_robin_counter)
+        crop_config = self._round_robin(crop_config, self.round_robin_counter)
         self.round_robin_counter += 1
         try:
             for idx in xrange(self.slave_num):
@@ -194,6 +196,7 @@ class MasterProxy(threading.Thread):
             data += tmp_data
         return data
 
+    @staticmethod
     def _uncrop_feature(feature, crop_config):
         h_min, h_max, w_min, w_max = crop_config
         new_feature = []
@@ -250,13 +253,12 @@ class MasterProcessing(threading.Thread):
     def run(self):
         while(not self.stop.wait(0.001)):
             try:
-                feature = self.data_queue.get_nowait()
+                feature = self.feature_queue.get_nowait()
             except Queue.Empty as e:
                 continue
 
             self.feature_list.append(feature)
             if len(feature_list) == self.window_len:
-                # TODO classify motion
                 result = classify(feature_list)
                 for i in xrange(detect_period):
                     del feature_list[0]
@@ -393,8 +395,6 @@ if __name__ == "__main__":
 
     print (master_node_ip, master_node_port)
 
-    raise SystemExit
-
     # Master proxy
     if is_master:
         image_queue = Queue.Queue(1)
@@ -406,14 +406,14 @@ if __name__ == "__main__":
         master_proxy = MasterProxy(image_queue, feature_queue)
         master_proxy.start()
         master_proxy.isDaemon = True
-        master_processing = MasterProcessing(feature_queue, output_queue_list, )
+        master_processing = MasterProcessing(feature_queue, output_queue_list, 60)
         master_processing.start()
         master_processing.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list) # this is where output_queues are created according to each return_address
         result_pub.start()
         result_pub.isDaemon = True
 
-        LOG.info(MASTER_TAG + "Start receiving data\n")
+        LOG.info(MASTER_TAG + "Start receiving data")
 
     # Slave proxy
     #slave_queue = Queue.Queue(1)
@@ -424,7 +424,7 @@ if __name__ == "__main__":
     slave_proxy.start()
     slave_proxy.isDaemon = True
 
-    LOG.info(SLAVE_TAG + "Start receiving data\n")
+    LOG.info(SLAVE_TAG + "Start receiving data")
     try:
         while True:
             time.sleep(1)
@@ -433,7 +433,10 @@ if __name__ == "__main__":
     except Exception as e:
         pass
     finally:
-        client.terminate()
-        app_thread.terminate()
-        result_pub.terminate()
+        if is_master:
+            master_streaming.terminate()
+            master_proxy.terminate()
+            master_processing.terminate()
+            result_pub.terminate()
+        slave_proxy.terminate()
 
