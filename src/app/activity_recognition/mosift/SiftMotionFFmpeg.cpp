@@ -80,7 +80,6 @@ using namespace std;
 	int descr_hist_bins = SIFT_DESCR_HIST_BINS_MSIFT;
 
 	bool display = false;
-	bool movie   = false;
 	int start_frame = 1;
 	int end_frame = INT_MAX;
 	int step    = 1;
@@ -111,9 +110,6 @@ bool is_too_center (Point2f p)
 		struct feature_MSIFT* features;
 		double tim = 0.0; // seconds
 		int inc = 1;
-		double pos;
-		char whence[10];
-		char plus[10];
 		int n = 0;
 		FILE* fp;
 
@@ -121,11 +117,8 @@ bool is_too_center (Point2f p)
 		arg_parse( argc, argv );
 
 		// Open the input video
-		AFGvideo *ff = new AFGvideo((char*)video_file_name, PIX_FMT_BGR24);
-		if (ff->hr < 0) {
-			fprintf(stderr, "AFGvideo (avcodec) failed to initialize\n%s '%s'\n",
-					ff->hrs, video_file_name);
-		}
+        //CvCapture* capture = 0;
+        //capture = cvCaptureFromFile(video_file_name);
 
 		// Open the key file
 		fp = fopen(feature_file_name, "w");
@@ -134,217 +127,81 @@ bool is_too_center (Point2f p)
 			exit(-1);
 		}
 
-		int width  = ff->width;
-		int height = ff->height;
-		double fps = ff->fps;
-		IplImage *ipl_color_header = cvCreateImageHeader (cvSize(width, height), IPL_DEPTH_8U, 3);
-		IplImage *ipl_color;
-		IplImage *ipl_color_next;
+		double fps = 30;
+		IplImage *ipl_color = 0;
+		IplImage *ipl_color_next = 0;
 
 		// Read the first frame
-		ff->Seek(tim);
-		pos = ff->nat_pts;
-		sprintf(whence, "%08.3f", pos);
-		ipl_color_header->imageDataOrigin = (char *)ff->buf();
-		ipl_color_header->imageData = ipl_color_header->imageDataOrigin;
-		ipl_color = cvCloneImage(ipl_color_header);
+        ipl_color = cvLoadImage( "tmp/test0.jpg" );
+        CvSize size = cvGetSize(ipl_color);
+        int width = size.width;
+        int height = size.height;
 
 		Mat frame,prev;
         	Point2f accum;
         	frame = Mat(ipl_color);
         	cvtColor(frame, prev, CV_BGR2GRAY);
 
-		// Write the video if needed
-		CvVideoWriter *Writer;
-		if (movie) {
-			Writer = cvCreateVideoWriter(out_video_name,
-					// ??
-					//                                            CV_FOURCC('P', 'I', 'M', '1'),
-					// ??
-					//                                            CV_FOURCC('M', 'J', 'P', 'G'),
-					// rawvideo, bgr24
-					//                                            CV_FOURCC('D', 'I', 'B', ' '),
-					// rawvideo, bgr24,
-					//0,
-					// msvideo1, rgb555
-					//                                            CV_FOURCC('M', 'S', 'V', 'C'),
-					// mpeg4 YUV420p
-					//                                            CV_FOURCC('F', 'F', 'D', 'S'),
-					//CV_FOURCC('I','Y','U','V'),
-					//CV_FOURCC('I','4','2','0'),
-					//CV_FOURCC('D','I','V','X'),
-					CV_FOURCC('X','V','I','D'),
-					fps,
-					cvSize(width, height),
-					1);
-			if (Writer == NULL) {
-				fprintf(stderr, "cvCreateVideoWriter failed to initialize file %s\n", out_video_name);
-				exit(-1);
-			}
-		}
-
 		// Display the result if needed
 		if (display)
 			cvNamedWindow("MoSIFT");
 
-		// Iteratively seek the frame
-		fprintf(stderr, "processing video file %s ...\n", video_file_name);
-		while (1) {
-			// Seek the frames provided
-			if (start_frame > inc) {
-				inc++;
-				ff->Next(1);
-				pos = ff->nat_pts;
-				sprintf(whence, "%08.3f", pos);
-				ipl_color_header->imageDataOrigin = (char *)ff->buf();
-				ipl_color_header->imageData = ipl_color_header->imageDataOrigin;
-				cvReleaseImage(&ipl_color);
-				ipl_color = cvCloneImage(ipl_color_header);
-				continue;
-			}
-			if (end_frame <= inc)
-				break;
+	    // Seek the next step frame
+		ipl_color_next = cvLoadImage( "tmp/test1.jpg" );
 
-			// Seek the next step frame
-			ff->Next(step);
-			inc += step;
-			pos = ff->nat_pts;
-			sprintf(plus, "%08.3f", pos);
-			ipl_color_header->imageDataOrigin = (char *)ff->buf();
-			ipl_color_header->imageData = ipl_color_header->imageDataOrigin;
-			ipl_color_next = cvCloneImage(ipl_color_header);
-			img = ipl_color;
-			if( ! img )
-				fatal_error( "unable to load image from %s", video_file_name );
+        //cvSaveImage("test0_x.jpg", ipl_color);
+        //cvSaveImage("test1_x.jpg", ipl_color_next);
 
-			if( inc % 1 == 0 ){
-				fprintf(stderr, "Finding SIFT features... %s vs %s, frame %d.  THIS IS NOT SHOWN FOR EVERY FRAME!!\n", whence, plus, inc);
-			}
-
-/***********************************************   Zhuo   ****************************************************************/
-			// Compute sparse optical flow, try to remove the effect of jittering and panning
-			Mat next, corners, newcorners, status, err;
-			frame = Mat(ipl_color_next);
-			goodFeaturesToTrack( prev, corners, 500, 0.01, 5 );
-			cvtColor(frame, next, CV_BGR2GRAY);
-			if (corners.rows>0) calcOpticalFlowPyrLK( prev, next, corners, newcorners, status, err );
-			Point2f s = Point2f(0,0); 
-			int count=0;
-			double list_x[500], list_y[500];
-			for (int i=0; i<corners.rows; i++) {
-				if ( status.at<char>(i)==1) {
-					Point2f dd = newcorners.at<Point2f>(i) - corners.at<Point2f>(i);
-					if (dd.x*dd.x + dd.y*dd.y < SHAKE_THRESH*SHAKE_THRESH && !is_too_center(corners.at<Point2f>(i))) {
-						list_x[count] = dd.x;
-						list_y[count] = dd.y;
-						s+=dd; count++;
-					}
+/*******************************************   Zhuo   ****************************************************************/
+		// Compute sparse optical flow, try to remove the effect of jittering and panning
+		Mat next, corners, newcorners, status, err;
+		frame = Mat(ipl_color_next);
+		goodFeaturesToTrack( prev, corners, 500, 0.01, 5 );
+		cvtColor(frame, next, CV_BGR2GRAY);
+		if (corners.rows>0) calcOpticalFlowPyrLK( prev, next, corners, newcorners, status, err );
+		Point2f s = Point2f(0,0); 
+		int count=0;
+		double list_x[500], list_y[500];
+		for (int i=0; i<corners.rows; i++) {
+			if ( status.at<char>(i)==1) {
+				Point2f dd = newcorners.at<Point2f>(i) - corners.at<Point2f>(i);
+				if (dd.x*dd.x + dd.y*dd.y < SHAKE_THRESH*SHAKE_THRESH && !is_too_center(corners.at<Point2f>(i))) {
+					list_x[count] = dd.x;
+					list_y[count] = dd.y;
+					s+=dd; count++;
 				}
 			}
-			//if (count) s=Point2f(s.x/count,s.y/count);
-			if (count) {
-                	        qsort(list_x, count, sizeof(double), compare);
-                        	qsort(list_y, count, sizeof(double), compare);
-                        	s=Point2f(list_x[count/2], list_y[count/2]);
-                	}
-			prev = next;
-
-/*************************************************************************************************************************/
-
-			// Extract the MoSIFT feature from two consequent frames
-			CMotion_SIFT_feature MSF;
-			
-			n = MSF.motion_sift_features( ipl_color, ipl_color_next, &features, s.x, s.y);
-
-			// Save the feature
-			MSF.export_video_features( fp, features, n, inc-step );
-
-			//fprintf( stderr, "Found %d features Time %.3f seconds\n",
-			//		n, ((double)(GetTickCount()-StartTickCount))/1000);
-			// Show the MoSIFT feature if needed
-			if (display) {
-				MSF.draw_features( ipl_color, features, n );
-				cvShowImage("MoSIFT", ipl_color);
-				cvWaitKey(10);
-			}
-
-			// Save the image with MoSIFT feature if needed
-			if (movie) {
-				cvWriteFrame(Writer, ipl_color);
-			}
-
-			// Stop if reach the end of video
-			if (pos >= ff->len_sec)
-				break;
-			
-			// Update the image
-			cvReleaseImage(&ipl_color);
-			ipl_color = ipl_color_next;
-			strcpy(whence, plus);
-
-			// Skip certain number of frames
-			int skip_t = skip;
-			int skip_end = 0;
-			while (skip_t > 0) {
-				skip_t--;
-				inc++;
-				ff->Next(1);
-				pos = ff->nat_pts;
-				sprintf(whence, "%08.3f", pos);
-				ipl_color_header->imageDataOrigin = (char *)ff->buf();
-				ipl_color_header->imageData = ipl_color_header->imageDataOrigin;
-				cvReleaseImage(&ipl_color);
-				ipl_color = cvCloneImage(ipl_color_header);
-			}
-
-			free(features);
-			
-			// Stop if reach the end of video
-			if (pos >= ff->len_sec)
-				break;
 		}
-		fprintf(stderr, "Done!!\n");
+		//if (count) s=Point2f(s.x/count,s.y/count);
+		if (count) {
+            	        qsort(list_x, count, sizeof(double), compare);
+                    	qsort(list_y, count, sizeof(double), compare);
+                    	s=Point2f(list_x[count/2], list_y[count/2]);
+            	}
+		prev = next;
+
+/*********************************************************************************************************************/
+
+		// Extract the MoSIFT feature from two consequent frames
+		CMotion_SIFT_feature MSF;
+		
+		n = MSF.motion_sift_features( ipl_color, ipl_color_next, &features, s.x, s.y);
+
+		// Save the feature
+		MSF.export_video_features( fp, features, n, inc-step );
+
+		// Update the image
 		cvReleaseImage(&ipl_color);
-		cvReleaseImageHeader(&ipl_color_header);
-		if (movie)
-			cvReleaseVideoWriter(&Writer);
+        cvReleaseImage(&ipl_color_next);
+		free(features);
+		
+    	fprintf(stderr, "Done!!\n");
 		fclose(fp);
 
-
-		if (binary) {
-			fprintf(stderr, "Compress into binary file!\n");
-			std::string tp_file = move_to_temp_file(feature_file_name);
-			txt2bin(tp_file.c_str(), feature_file_name);
-			remove(tp_file.c_str());
-		}
-		if (gzip) {
-			fprintf(stderr, "gzip the feature file!\n");
-			std::string tp_file = move_to_temp_file(feature_file_name);
-			txt2gzip(tp_file.c_str(), feature_file_name);
-			remove(tp_file.c_str());
-		}
-		if (display)
-			cvDestroyWindow("MoSIFT");
-		delete ff;
 		return 0;
 	}
 
-std::string move_to_temp_file(char* original){
-	srand(time(0));
-	char* temp_file = (char*)malloc(sizeof(char) * (strlen(original) + 100));
-	sprintf(temp_file, "%s_temp_%d", original, (int)rand());
-	std::string tp_file(temp_file);
-	free(temp_file);
-#ifdef _WIN32
-	std::string cmd = string("move /Y ") + std::string(original) + " " + tp_file;
-	system(cmd.c_str());
-#else
 
-	std::string cmd = std::string("mv ") + std::string(original) + " " + tp_file;
-	system(cmd.c_str());
-#endif
-	return tp_file;
-}
 
 /* Usage for MoSIFT */
 void usage(char* name) {
@@ -388,15 +245,6 @@ void arg_parse( int argc,  char* argv[] ) {
 				exit(-1);
 				break;
 
-				// read out_video_name
-			case 'o':
-				if( ! optarg )
-					fatal_error( "error parsing arguments at -%c\n"	\
-							"Try '%s -h' for help.", arg, pname );
-				out_video_name = optarg;
-				movie = true;
-				break;
-
 				// read start_frame
 			case 's':
 				if( ! optarg )
@@ -435,20 +283,6 @@ void arg_parse( int argc,  char* argv[] ) {
 					fatal_error( "error parsing arguments at -%c\n"	\
 							"Try '%s -h' for help.", arg, pname );
 				ratio = atof(optarg);
-				break;
-
-				// output the binary file
-			case 'b' :
-				if (gzip)
-					fatal_error( "cannot use binary mode and gzip mode simultaneously" );
-				binary = true;
-				break;
-
-				// output the gzip file
-			case 'z' :
-				if (binary)
-					fatal_error( "cannot use binary mode and gzip mode simultaneously" );
-				gzip = true;
 				break;
 
 				// display the feature

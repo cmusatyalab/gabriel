@@ -353,13 +353,13 @@ class SlaveProxy(threading.Thread):
         # receive data from control VM
         #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
         # convert from image bytes to cv2 image
-        frames = []
-        for image in images:
-            img_array = np.asarray(bytearray(image), dtype=np.uint8)
-            cv_image = cv2.imdecode(img_array, -1)
-            frames.append(cv_image)
+        #frames = []
+        #for image in images:
+        #    img_array = np.asarray(bytearray(image), dtype=np.uint8)
+        #    cv_image = cv2.imdecode(img_array, -1)
+        #    frames.append(cv_image)
         # extract feature 
-        result = extract_feature(frames)
+        result = extract_feature(images)
         #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
