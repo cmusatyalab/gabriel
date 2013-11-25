@@ -19,10 +19,11 @@
 #
 import sys
 sys.path.insert(0, "../common")
+sys.path.insert(0, "../../")
 import socket
 import select
 import struct
-import sys
+import os
 import Queue
 import time
 import traceback
@@ -34,6 +35,8 @@ import httplib
 import urllib2
 import numpy as np
 from cStringIO import StringIO
+
+from control.protocol import Protocol_client
 
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
@@ -64,7 +67,7 @@ class MasterProxy(threading.Thread):
         self.h_parts = 1
         self.partial_data_queues = []
         self.partial_feature_queues = []
-        self.crop_config_queue = Queue.Queue()
+        self.split_config_queue = Queue.Queue()
         self.round_robin_counter = 0
         self.queue_mapping = {}
         self.stop = threading.Event()
@@ -99,7 +102,7 @@ class MasterProxy(threading.Thread):
                             else:
                                 self.h_parts *= 2
                     else:
-                        self._receive_partial_image(s)
+                        self._receive_partial_feature(s)
                 for s in outputready:
                     self._send_partial_image(s)
                 for s in exceptready:
@@ -111,16 +114,17 @@ class MasterProxy(threading.Thread):
             LOG.warning(MASTER_TAG + "Server is disconnected unexpectedly")
         LOG.debug(MASTER_TAG + "Master thread terminated")
 
-    def _crop_image(self, image):
+    def _resize_and_split_image(self, image):
         img_array = np.asarray(bytearray(image), dtype=np.uint8)
         cv_image = cv2.imdecode(img_array, -1)
+        cv_image = cv2.resize(cv_image, (160, 120))
         height, width, depth = cv_image.shape
         h_block = height / self.h_parts
         w_block = width / self.w_parts
         overlap = 10
 
         image_parts = []
-        crop_config = []
+        split_config = []
         for i in xrange(self.h_parts):
             h_min = h_block * i
             h_max = h_min + h_block
@@ -137,13 +141,15 @@ class MasterProxy(threading.Thread):
                     w_max += overlap
                 image_part = cv_image[h_min:h_max, w_min:w_max]
                 # convert image_part to bytearrays
-                cv2.imwrite("part%d.jpg" % (i * self.w_parts + j), image_part)
-                with open("part%d.jpg" % (i * self.w_parts + j)) as f:
+                tmp_file_name = "tmp/part%d.jpg" % (i * self.w_parts + j)
+                cv2.imwrite(tmp_file_name, image_part)
+                with open(tmp_file_name) as f:
                     image_part = f.read()
+                os.remove(tmp_file_name)
                 image_parts.append(image_part)
-                crop_config.append((h_min, h_max, w_min, w_max))
+                split_config.append((h_min, h_max, w_min, w_max))
 
-        return image_parts, crop_config
+        return image_parts, split_config
 
     @staticmethod
     def _round_robin(l, counter):
@@ -169,26 +175,28 @@ class MasterProxy(threading.Thread):
         # check if any queue is full
         for queue in self.partial_data_queues:
             if queue.full():
+                LOG.warning(MASTER_TAG + "Partial data queue shouldn't be full")
                 return
         # check new image
         try:
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
+        frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
         # chop image and put image pairs to different queues
-        new_image_parts, crop_config = self._crop_image(new_image)
+        new_image_parts, split_config = self._resize_and_split_image(new_image)
         if not self.last_image_parts:
             self.last_image_parts = new_image_parts
             return
         image_pairs = zip(self.last_image_parts, new_image_parts)
         self.last_image_parts = new_image_parts
         image_pairs = self._round_robin(image_pairs, self.round_robin_counter)
-        crop_config = self._round_robin(crop_config, self.round_robin_counter)
+        split_config = self._round_robin(split_config, self.round_robin_counter)
         self.round_robin_counter += 1
         try:
             for idx in xrange(self.slave_num):
                 self.partial_data_queues[idx].put_nowait(image_pairs[idx])
-            self.crop_config_queue.put_nowait((self.slave_num, crop_config))
+            self.split_config_queue.put_nowait((frame_id, self.slave_num, split_config))
         except Queue.Full as e:
             LOG.warning(MASTER_TAG + "Image pair queue shouldn't be full")
 
@@ -205,17 +213,17 @@ class MasterProxy(threading.Thread):
         return data
 
     @staticmethod
-    def _uncrop_feature(feature, crop_config):
-        h_min, h_max, w_min, w_max = crop_config
+    def _integrate_feature(feature, split_config):
+        h_min, h_max, w_min, w_max = split_config
         new_feature = []
         for a_feature in feature:
             local_x, local_y, centers = a_feature.split(' ', 2)
             global_x = float(local_x) + w_min
-            global_y = float(local_y) + y_min
+            global_y = float(local_y) + h_min
             new_feature.append("%f %f " % (global_x, global_y) + centers)
         return new_feature
 
-    def _receive_partial_image(self, sock):
+    def _receive_partial_feature(self, sock):
         data_size = struct.unpack("!I", self._recv_all(sock, 4))[0]
         data = self._recv_all(sock, data_size)
         feature = json.loads(data)
@@ -225,21 +233,21 @@ class MasterProxy(threading.Thread):
             LOG.warning(MASTER_TAG + "Partial feature queue shouldn't be full")
 
         # check if features for one whole image pair are received
-        for queue in self.partial_feature_queues:
-            if queue.empty():
+        for idx in xrange(self.slave_num):
+            if self.partial_feature_queues[idx].empty():
                 return
-        # integrate features for one image pair an put into feature queue
+        # integrate features for one image pair and put into feature queue
         try:
-            n_parts, crop_config = self.crop_config_queue.get_nowait()
+            frame_id, n_parts, split_config = self.split_config_queue.get_nowait()
         except Queue.Empty as e:
-            LOG.warning(MASTER_TAG + "Crop config queue shouldn't be empty")
+            LOG.warning(MASTER_TAG + "Split config queue shouldn't be empty")
         try:
             features = []
             for idx in xrange(n_parts):
                 feature = self.partial_feature_queues[idx].get_nowait()
-                feature = self._uncrop_feature(feature, crop_config[idx])
+                feature = self._integrate_feature(feature, split_config[idx])
                 features += feature
-            self.feature_queue.put_nowait(features)
+            self.feature_queue.put_nowait((frame_id, features))
         except Queue.Empty as e:
             LOG.warning(MASTER_TAG + "Partial feature queue shouldn't be empty")
         except Queue.Full as e:
@@ -261,21 +269,21 @@ class MasterProcessing(threading.Thread):
     def run(self):
         while(not self.stop.wait(0.001)):
             try:
-                feature = self.feature_queue.get_nowait()
+                frame_id, features = self.feature_queue.get_nowait()
             except Queue.Empty as e:
                 continue
-            result = None
 
-            self.feature_list.append(feature)
+            result = None
+            self.feature_list.append(features)
             if len(self.feature_list) == self.window_len:
                 result = classify(self.feature_list)
-                for i in xrange(detect_period):
+                for i in xrange(self.detect_period):
                     del self.feature_list[0]
 
+            print result
             if result is not None:
                 return_message = dict()
                 return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
-                frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
                 if frame_id is not None:
                     return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
                 for output_queue in self.output_queue_list:
@@ -352,12 +360,7 @@ class SlaveProxy(threading.Thread):
     def handle(self, images):
         # receive data from control VM
         #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
-        # convert from image bytes to cv2 image
-        #frames = []
-        #for image in images:
-        #    img_array = np.asarray(bytearray(image), dtype=np.uint8)
-        #    cv_image = cv2.imdecode(img_array, -1)
-        #    frames.append(cv_image)
+
         # extract feature 
         result = extract_feature(images)
         #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
@@ -405,7 +408,7 @@ if __name__ == "__main__":
     video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
     return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
-    # master node discovery, not implemented yet
+    # master node discovery
     master_info_url = "http://%s:%d%s" % (video_ip, 8021, "/services/motion")
     try:
         master_info = GET(master_info_url)
@@ -414,10 +417,11 @@ if __name__ == "__main__":
         master_node_port = int(master_node_port)
         is_master = False
     except Exception as e:
+        LOG.info(MASTER_TAG + "Current node serves as master node")
         master_node_ip, master_node_port = register_as_master(master_info_url)
         is_master = True
 
-    print (master_node_ip, master_node_port)
+    LOG.info(SLAVE_TAG + "connected to %s:%d" % (master_node_ip, master_node_port))
 
     # Master proxy
     if is_master:
@@ -440,10 +444,6 @@ if __name__ == "__main__":
         LOG.info(MASTER_TAG + "Start receiving data")
 
     # Slave proxy
-    #slave_queue = Queue.Queue(1)
-    #slave_streaming = AppProxyStreamingClient((master_node_ip, master_node_port), slave_queue)
-    #slave_streaming.start()
-    #slave_streaming.isDaemon = True
     slave_proxy = SlaveProxy((master_node_ip, master_node_port))
     slave_proxy.start()
     slave_proxy.isDaemon = True

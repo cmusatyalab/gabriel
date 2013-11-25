@@ -65,17 +65,13 @@ def _format_convert(data):
 
 def extract_feature(images):
     # Write into a video chunk
-    #fd, video_path = tempfile.mkstemp(dir='tmp/all', prefix='image_pair_', suffix='.avi')
     #print "Process image pairs"
     time1 = time.time()
     #print "time1 %f" % time1
 
-    #videoWriter = cv2.VideoWriter(video_path, cv.CV_FOURCC('X', 'V', 'I', 'D'), 30, (160, 120), True)
-    #for frame in frames:
-    #    videoWriter.write(frame)
-    with open('tmp/test0.jpg', 'w') as f:
+    with open('tmp/tmp0.jpg', 'w') as f:
         f.write(images[0])
-    with open('tmp/test1.jpg', 'w') as f:
+    with open('tmp/tmp1.jpg', 'w') as f:
         f.write(images[1])
     time2 = time.time()
     #print time2
@@ -89,25 +85,21 @@ def extract_feature(images):
     center_file = "%s/centers_%s_%s_%d" % (centers_path, selected_feature, descriptor, n_clusters)
 
     DEVNULL = open(os.devnull, 'wb')
-    with open(raw_file, 'wb') as out:
-        if selected_feature == "mosift":
-            subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r',
-                             tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
+    if selected_feature == "mosift":
+        subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r',
+                         tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
     subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
     DEVNULL.close()
-    time4 = time.time()
-    #print time4
+    time3 = time.time()
+    #print time3
     with open(txyc_file) as f:
         result = f.readlines()
-    time5 = time.time()
-    #print time5
 
-    #os.remove(video_path)
     #os.remove(tmp_video_file)
     #os.remove(raw_file)
     #os.remove(txyc_file)
-    time6 = time.time()
-    #print time6
+    time4 = time.time()
+    #print time4
 
     return result
 
@@ -126,8 +118,11 @@ def classify(feature_list):
     DEVNULL = open(os.devnull, 'wb')
     txyc_file = "%s/%s_%s_%d_%s.txyc" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
     spbof_file = "%s/%s_%s_%d_%s.spbof" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
+    features = []
+    for feature in feature_list:
+        features += feature
     with open(txyc_file, 'w') as f:
-        for feature in feature_list:
+        for feature in features:
             f.write(feature)
     subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)   
     os.remove(txyc_file)
