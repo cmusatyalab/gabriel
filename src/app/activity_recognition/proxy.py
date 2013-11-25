@@ -136,7 +136,11 @@ class MasterProxy(threading.Thread):
                 if w_max < height:
                     w_max += overlap
                 image_part = cv_image[h_min:h_max, w_min:w_max]
-                image_parts.append(image_parts)
+                # convert image_part to bytearrays
+                cv2.imwrite("part%d.jpg" % (i * self.w_parts + j), image_part)
+                with open("part%d.jpg" % (i * self.w_parts + j)) as f:
+                    image_part = f.read()
+                image_parts.append(image_part)
                 crop_config.append((h_min, h_max, w_min, w_max))
 
         return image_parts, crop_config
@@ -151,7 +155,11 @@ class MasterProxy(threading.Thread):
         # send image pairs
         try:
             images = self.partial_data_queues[self.queue_mapping[sock]].get_nowait()
-            data = json.dumps(images)
+            data = images[0] + images[1]
+            header = {"images_length" : [len(images[0])]}
+            header_json = json.dumps(header)
+            packet = struct.pack("!I%ds" % len(header_json), len(header_json), header_json)
+            sock.sendall(packet)
             packet = struct.pack("!I%ds" % len(data), len(data), data)
             sock.sendall(packet)
             return
@@ -222,7 +230,7 @@ class MasterProxy(threading.Thread):
                 return
         # integrate features for one image pair an put into feature queue
         try:
-            n_parts, crop_config = self.crop_config_queue.get_nowaite()
+            n_parts, crop_config = self.crop_config_queue.get_nowait()
         except Queue.Empty as e:
             LOG.warning(MASTER_TAG + "Crop config queue shouldn't be empty")
         try:
@@ -256,12 +264,13 @@ class MasterProcessing(threading.Thread):
                 feature = self.feature_queue.get_nowait()
             except Queue.Empty as e:
                 continue
+            result = None
 
             self.feature_list.append(feature)
-            if len(feature_list) == self.window_len:
-                result = classify(feature_list)
+            if len(self.feature_list) == self.window_len:
+                result = classify(self.feature_list)
                 for i in xrange(detect_period):
-                    del feature_list[0]
+                    del self.feature_list[0]
 
             if result is not None:
                 return_message = dict()
@@ -308,15 +317,25 @@ class SlaveProxy(threading.Thread):
                         select.select(input_list, [], [], 0)
                 for s in inputready:
                     if s == socket_fd:
+                        LOG.info(SLAVE_TAG + "Start receiving new image pair at %f" % time.time())
+                        header_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
+                        header_json = self._recv_all(self.master_sock, header_size)
+                        header = json.loads(header_json)
                         data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         data = self._recv_all(self.master_sock, data_size)
-                        data = json.loads(data)
+                        images = []
+                        last_image_cut = 0
+                        for image_cut in header.get("images_length"):
+                            images.append(data[last_image_cut:image_cut])
+                            last_image_cut = image_cut
+                        images.append(data[last_image_cut:])
 
-                        result = self.handle(data) # results is a list of lines
+                        result = self.handle(images) # results is a list of lines
 
                         data_back = json.dumps(result)
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
+                        LOG.info(SLAVE_TAG + "Sent back features at %f" % time.time())
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -332,11 +351,16 @@ class SlaveProxy(threading.Thread):
     
     def handle(self, images):
         # receive data from control VM
-        LOG.info(SLAVE_TAG + "receiving new image pair")
-
+        #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
+        # convert from image bytes to cv2 image
+        frames = []
+        for image in images:
+            img_array = np.asarray(bytearray(image), dtype=np.uint8)
+            cv_image = cv2.imdecode(img_array, -1)
+            frames.append(cv_image)
         # extract feature 
-        result = extract_feature(images)
-        
+        result = extract_feature(frames)
+        #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
 def GET(url):

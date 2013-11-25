@@ -3,3 +3,4 @@ models/
 lib/
 cluster_centers/
 tmp/
+*.jpg

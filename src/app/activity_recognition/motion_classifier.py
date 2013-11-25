@@ -63,12 +63,18 @@ def _format_convert(data):
     cv.CvtColor(frame_bgr, frame, cv.CV_BGR2RGB)
     return frame
 
-def extract_feature(images):
+def extract_feature(frames):
     # Write into a video chunk
     #fd, video_path = tempfile.mkstemp(dir='tmp/all', prefix='image_pair_', suffix='.avi')
+    #print "Process image pairs"
+    time1 = time.time()
+    #print "time1 %f" % time1
+
     videoWriter = cv2.VideoWriter(video_path, cv.CV_FOURCC('X', 'V', 'I', 'D'), 30, (160, 120), True)
-    for frame in images:
+    for frame in frames:
         videoWriter.write(frame)
+    time2 = time.time()
+    #print time2
 
     # extract features
     raw_file = "%s/%s_raw_%s.txt" % (TMP_DIR, selected_feature, video_name)
@@ -81,20 +87,27 @@ def extract_feature(images):
     DEVNULL = open(os.devnull, 'wb')
     subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h),
                      '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
+    time3 = time.time()
+    #print time3
     with open(raw_file, 'wb') as out:
         if selected_feature == "mosift":
             subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r', '-t', '1', '-k', '2',
                              tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
     subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
     DEVNULL.close()
-
+    time4 = time.time()
+    #print time4
     with open(txyc_file) as f:
         result = f.readlines()
+    time5 = time.time()
+    #print time5
 
-    os.remove(video_path)
-    os.remove(tmp_video_file)
-    os.remove(raw_file)
-    os.remove(txyc_file)
+    #os.remove(video_path)
+    #os.remove(tmp_video_file)
+    #os.remove(raw_file)
+    #os.remove(txyc_file)
+    time6 = time.time()
+    #print time6
 
     return result
 
