@@ -127,7 +127,7 @@ class MasterProxy(threading.Thread):
         height, width, depth = cv_image.shape
         h_block = height / self.h_parts
         w_block = width / self.w_parts
-        overlap = 10
+        overlap = 0
 
         image_parts = []
         split_config = []

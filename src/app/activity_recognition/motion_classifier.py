@@ -96,8 +96,8 @@ def extract_feature(images):
         result = f.readlines()
 
     #os.remove(tmp_video_file)
-    #os.remove(raw_file)
-    #os.remove(txyc_file)
+    os.remove(raw_file)
+    os.remove(txyc_file)
     time4 = time.time()
     #print time4
 
@@ -116,7 +116,7 @@ def load_data(spbof_file):
 
 def classify(feature_list):
     DEVNULL = open(os.devnull, 'wb')
-    txyc_file = "%s/%s_%s_%d_%s.txyc" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
+    txyc_file = "%s/%s_%s_%d_%s_integrated.txyc" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
     spbof_file = "%s/%s_%s_%d_%s.spbof" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
     features = []
     for feature in feature_list:
