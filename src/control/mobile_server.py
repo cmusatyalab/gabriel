@@ -31,6 +31,7 @@ import traceback
 import Queue
 import struct
 import socket
+import multiprocessing
 
 from config import Const as Const
 import log as logging
@@ -59,7 +60,8 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         self.frame_count = 0
         self.totoal_recv_size = 0
         self.ret_frame_ids = Queue.Queue()
-        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
+        self.stop_queue = multiprocessing.Queue()
+        self.output_queue = None
 
     def _recv_all(self, recv_size):
         data = ''
@@ -78,38 +80,34 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
             self.previous_time = time.time()
 
             socket_fd = self.request.fileno()
-            stopfd = self.stop_file.fileno()
+            stopfd = self.stop_queue._reader.fileno()
             input_list = [socket_fd, stopfd]
-            output_list = [socket_fd, stopfd]
             except_list = [socket_fd, stopfd]
 
-            while True:
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list)
+                        select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
                     if s == stopfd:
-                        break
-                for output in outputready:
-                    if output == socket_fd:
-                        self._handle_output_result()
-                    if s == stopfd:
-                        break
+                        is_running = False
                 for e in exceptready:
-                    if s == stopfd:
-                        break
-                    if e == socket_fd:
-                        break
-
-                if not (inputready or outputready or exceptready):
-                    continue
-                time.sleep(0.0001)
+                    is_running = False
+                
+                # For output, check queue first. If we check output socket, 
+                # select will return immediately
+                if (self.output_queue is not None) and \
+                        (self.output_queue.empty() == False):
+                    self._handle_output_result()
         except Exception as e:
-            #LOG.info(traceback.format_exc())
+            LOG.info(traceback.format_exc())
             LOG.debug("%s\n" % str(e))
-            pass
-        self.terminate()
+
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
         LOG.info("%s\tterminate thread" % str(self))
 
     def _handle_input_data(self):
@@ -119,14 +117,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         pass
 
     def terminate(self):
-        if self.stop_file != None:
-            os.write(self.stop_file.fileno(), "stop\n")
-            self.stop_file.flush()
-            self.stop_file.close()
-            self.stop_file = None
-        if self.connection is not None:
-            self.connection.close()
-            self.connection = None
+        self.stop_queue.put("terminate\n")
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -225,11 +216,14 @@ class MobileAccHandler(MobileSensorHandler):
 
 class MobileResultHandler(MobileSensorHandler):
     def setup(self):
+        global result_queue
+
         super(MobileResultHandler, self).setup()
         self.control_app_latency = 0.0
         self.app_ucomm_latency = 0.0
         self.ucomm_control_latency = 0.0
         self.latency_count = 0
+        self.output_queue = result_queue
 
     def __str__(self):
         return "Mobile Result Handler"
@@ -248,8 +242,6 @@ class MobileResultHandler(MobileSensorHandler):
             raise MobileCommError("Client side is closed gracefullu at %s" % str(self))
 
     def _handle_output_result(self):
-        global result_queue
-
         def _post_header_process(header_message):
             header_json = json.loads(header_message)
             frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -258,10 +250,9 @@ class MobileResultHandler(MobileSensorHandler):
                 del header_json[Protocol_client.FRAME_MESSAGE_KEY]
             return json.dumps(frame_id)
 
-        if result_queue.empty() is False:
-            result_msg = None
+
             try:
-                result_msg = result_queue.get_nowait()
+                result_msg = self.output_queue.get(timeout=0.1)
                 # process header a little bit since we like to differenciate
                 # frame id that comes from an application with the frame id for
                 # the token bucket.

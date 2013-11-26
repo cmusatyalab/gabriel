@@ -23,6 +23,7 @@ class Protocol_client(object):
     RESULT_MESSAGE_KEY = "result"
     RESULT_ID_MESSAGE_KEY = "result_frame_id"
     FRAME_MESSAGE_KEY = "id"
+    OFFLOADING_ENGINE_NAME_KEY = "offload_name"
     TOKEN_INJECT_KEY = "token_inject"
 
 

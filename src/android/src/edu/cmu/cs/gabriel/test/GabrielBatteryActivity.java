@@ -13,6 +13,7 @@ import java.util.TimerTask;
 import edu.cmu.cs.gabriel.BatteryRecordingService;
 import edu.cmu.cs.gabriel.CameraConnector;
 import edu.cmu.cs.gabriel.CameraPreview;
+import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.ControlThread;
 import edu.cmu.cs.gabriel.R;
 import edu.cmu.cs.gabriel.SettingsActivity;
@@ -82,7 +83,7 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 	VideoStreamingThread videoStreamingThread;	
 	AccStreamingThread accStreamingThread;
 	ResultReceivingThread resultThread;
-	TokenController tokenController = new TokenController();
+	TokenController tokenController = null;
 
 	private SharedPreferences sharedPref;
 	private boolean hasStarted;
@@ -116,6 +117,10 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 
 	private void init() {
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
+		Const.ROOT_DIR.mkdirs();
+		if (tokenController == null){
+			tokenController = new TokenController(Const.LATENCY_FILE);
+		}
 
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);

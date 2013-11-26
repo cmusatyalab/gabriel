@@ -23,6 +23,7 @@ import sys
 import time
 import json
 import os
+import multiprocessing
 import tempfile
 from config import Const as Const
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
@@ -49,7 +50,7 @@ class AppServerError(Exception):
 class SensorHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(SensorHandler, self).setup()
-        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
+        self.stop_queue = multiprocessing.Queue()
 
     def _recv_all(self, recv_size):
         data = ''
@@ -74,43 +75,40 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
         try:
             LOG.info("Offloading engine is connected")
             socket_fd = self.request.fileno()
-            stopfd = self.stop_file.fileno()
+            stopfd = self.stop_queue._reader.fileno()
             input_list = [socket_fd, stopfd]
             output_list = [socket_fd, stopfd]
             except_list = [socket_fd, stopfd]
-            while True:
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
                         select.select(input_list, output_list, except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
                     if s == stopfd:
-                        break
+                        is_running = False;
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_sensor_stream()
-                    if s == stopfd:
-                        break
+                    if output == stopfd:
+                        is_running = False;
                 for output in exceptready:
-                    if output == socket_fd:
-                        break
-                    if s == stopfd:
-                        break
+                    is_running = False;
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
-        self.terminate()
-        LOG.info("%s\tterminate thread" % str(self))
 
-    def terminate(self):
-        if self.stop_file != None:
-            os.write(self.stop_file.fileno(), "stop\n")
-            self.stop_file.flush()
-            self.stop_file.close()
-            self.stop_file = None
         if self.connection is not None:
             self.connection.close()
             self.connection = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
+        LOG.info("%s\tterminate thread" % str(self))
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
 
 class VideoSensorHandler(SensorHandler):

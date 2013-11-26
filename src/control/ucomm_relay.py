@@ -23,6 +23,7 @@ import sys
 import json
 
 import SocketServer
+import multiprocessing
 import threading
 import select
 import Queue
@@ -36,16 +37,32 @@ from mobile_server import result_queue
 
 
 LOG = logging.getLogger(__name__)
+offload_engine_dict = dict()
 
 
 class UCommError(Exception):
     pass
 
 
+class OffloadingEngineInfo(object):
+    def __init__(self, name):
+        self.name = name
+        self.FPS = 0.0
+        self.first_recv_time = 0.0
+        self.recv_time_queue = Queue.Queue(100)
+
+    def append_time(self):
+        if self.recv_time_queue.full() is True:
+            self.recv_time_queue.qet()
+        self.recv_time_queue.put(time.time())
+
+
 class UCommHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
+
         super(UCommHandler, self).setup()
-        self.stop = threading.Event()
+        self.info = OffloadingEngineInfo(self.request.fileno())
+        self.stop_queue = multiprocessing.Queue()
 
     def _recv_all(self, recv_size):
         data = ''
@@ -58,9 +75,20 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
 
     def _handle_input_data(self):
         global result_queue
+        global offload_engine_dict
+
         result_size = struct.unpack("!I", self._recv_all(4))[0]
         result_data = self._recv_all(result_size)
         result_queue.put(str(result_data))
+
+        # record FPS
+        header_json = json.loads(result_data)
+        offload_name = header_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
+        engine_info = offload_engine_dict.get(offload_name, None)
+        if engine_info is None:
+            engine_info = OffloadingEngineInfo(offload_name)
+            offload_engine_dict[str(offload_name)] = engine_info
+            engine_info.first_recv_time = time.time()
 
     def handle(self):
         global image_queue_list
@@ -70,35 +98,37 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
             self.previous_time = time.time()
 
             socket_fd = self.request.fileno()
-            input_list = [socket_fd]
-            output_list = [socket_fd]
-            except_list = [socket_fd]
-
-            while(not self.stop.wait(0.001)):
+            stopfd = self.stop_queue._reader.fileno()
+            input_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list, 0.1)
+                        select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
+                    if s == stopfd:
+                        is_running = False
                 for e in exceptready:
-                    if e == socket_fd:
-                        break
-                if not (inputready or outputready or exceptready):
-                    continue
-                time.sleep(0.001)
+                    is_running = False
         except Exception as e:
             #LOG.info(traceback.format_exc())
             LOG.info("%s\n" % str(e))
             LOG.info("UComm module is disconnected")
-
-        if self.socket != -1:
-            self.socket.close()
+        
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
 
     def terminate(self):
-        self.stop.set()
+        self.stop_queue.put("terminate\n")
 
 
-class UCommServer(SocketServer.TCPServer):
+class UCommRelay(SocketServer.TCPServer):
     stopped = False
 
     def __init__(self, port, handler):
@@ -140,22 +170,22 @@ class UCommServer(SocketServer.TCPServer):
 
 
 def main():
-    ucomm_server = UCommServer(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
-    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
+    ucomm_relay = UCommRelay(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
+    ucomm_thread = threading.Thread(target=ucomm_relay.serve_forever)
     ucomm_thread.daemon = True
 
     try:
         ucomm_thread.start()
     except Exception as e:
         sys.stderr.write(str(e))
-        ucomm_server.terminate()
+        ucomm_relay.terminate()
         sys.exit(1)
     except KeyboardInterrupt as e:
         sys.stderr.write(str(e))
-        ucomm_server.terminate()
+        ucomm_relay.terminate()
         sys.exit(1)
     else:
-        ucomm_server.terminate()
+        ucomm_relay.terminate()
         sys.exit(0)
 
 
