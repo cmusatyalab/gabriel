@@ -183,6 +183,7 @@ class MasterProxy(threading.Thread):
         except Queue.Empty as e:
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        LOG.info(MASTER_TAG + "Got frame %d from input queue" % frame_id)
         # chop image and put image pairs to different queues
         new_image_parts, split_config = self._resize_and_split_image(new_image)
         if not self.last_image_parts:
@@ -273,6 +274,7 @@ class MasterProcessing(threading.Thread):
             except Queue.Empty as e:
                 continue
 
+            LOG.info(MASTER_TAG + "Got feature back of frame %d" % frame_id)
             result = None
             self.feature_list.append(features)
             if len(self.feature_list) == self.window_len:
@@ -280,8 +282,8 @@ class MasterProcessing(threading.Thread):
                 for i in xrange(self.detect_period):
                     del self.feature_list[0]
 
-            print result
             if result is not None:
+                print result
                 return_message = dict()
                 return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
                 if frame_id is not None:

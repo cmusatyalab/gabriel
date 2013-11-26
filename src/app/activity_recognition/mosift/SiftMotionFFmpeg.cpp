@@ -157,6 +157,13 @@ int main(int argc, char* argv[]) {
 	// Save the feature
 	MSF.export_video_features( fp, features, n, 1 );
 
+    // Show the MoSIFT feature if needed
+    if (display) {
+        MSF.draw_features( ipl_color1, features, n );
+        cvShowImage("MoSIFT", ipl_color1);
+        cvWaitKey(10);
+    }
+
 	// Update the image
 	cvReleaseImage(&ipl_color1);
     cvReleaseImage(&ipl_color2);
