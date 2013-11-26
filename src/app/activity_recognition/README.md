@@ -9,6 +9,8 @@ There are some resources (e.g. model/training files) that are needed to run moti
 Please contact zhuoc@cs.cmu.edu if you need them.
 Missing directories include:
 models/
-cluster_centers/
+cluster\_centers/
 bin/
 
+installation:
+sudo apt-get install pkg-config libopencv-dev python-opencv
