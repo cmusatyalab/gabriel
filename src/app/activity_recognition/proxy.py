@@ -68,6 +68,8 @@ class MasterProxy(threading.Thread):
         self.partial_data_queues = []
         self.partial_feature_queues = []
         self.split_config_queue = Queue.Queue()
+        self.tokens = []
+        self.frame_id_queues = []
         self.round_robin_counter = 0
         self.queue_mapping = {}
         self.stop = threading.Event()
@@ -89,10 +91,13 @@ class MasterProxy(threading.Thread):
                         input_list.append(client)
                         output_list.append(client)
                         error_list.append(client)
-                        queue = Queue.Queue(10)
+                        queue = Queue.Queue(4)
                         self.partial_data_queues.append(queue)
-                        queue = Queue.Queue(10)
+                        queue = Queue.Queue(5)
                         self.partial_feature_queues.append(queue)
+                        self.tokens.append(True)
+                        queue = []
+                        self.frame_id_queues.append(queue) # this is used only for debug
                         self.queue_mapping[client] = self.connection_num
                         self.connection_num += 1
                         if self.connection_num >= self.slave_num * 2:
@@ -104,7 +109,8 @@ class MasterProxy(threading.Thread):
                     else:
                         self._receive_partial_feature(s)
                 for s in outputready:
-                    self._send_partial_image(s)
+                    if self.tokens[self.queue_mapping[s]]:
+                        self._send_partial_image(s)
                 for s in exceptready:
                     pass
         except Exception as e:
@@ -161,6 +167,7 @@ class MasterProxy(threading.Thread):
         # send image pairs
         try:
             images = self.partial_data_queues[self.queue_mapping[sock]].get_nowait()
+            self.tokens[self.queue_mapping[sock]] = False
             data = images[0] + images[1]
             header = {"images_length" : [len(images[0])]}
             header_json = json.dumps(header)
@@ -175,14 +182,14 @@ class MasterProxy(threading.Thread):
         # check if any queue is full
         for queue in self.partial_data_queues:
             if queue.full():
-                LOG.warning(MASTER_TAG + "Partial data queue shouldn't be full")
+                #LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
                 return
         # check new image
         try:
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 1:
+        if self.slave_num < 2:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -200,6 +207,7 @@ class MasterProxy(threading.Thread):
         try:
             for idx in xrange(self.slave_num):
                 self.partial_data_queues[idx].put_nowait(image_pairs[idx])
+                self.frame_id_queues[idx].append(frame_id)
             self.split_config_queue.put_nowait((frame_id, self.slave_num, split_config))
         except Queue.Full as e:
             LOG.warning(MASTER_TAG + "Image pair queue shouldn't be full")
@@ -233,8 +241,13 @@ class MasterProxy(threading.Thread):
         feature = json.loads(data)
         try:
             self.partial_feature_queues[self.queue_mapping[sock]].put_nowait(feature)
+            self.tokens[self.queue_mapping[sock]] = True
+            del self.frame_id_queues[self.queue_mapping[sock]][0]
         except Queue.Full as e:
             LOG.warning(MASTER_TAG + "Partial feature queue shouldn't be full")
+            for idx in xrange(self.slave_num):
+                print self.frame_id_queues[idx]
+            return
 
         # check if features for one whole image pair are received
         for idx in xrange(self.slave_num):
