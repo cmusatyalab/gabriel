@@ -145,10 +145,9 @@ def run_ocr(image_data, force_return=False):
     if force_return:
         return return_str
     else:
-        if return_str.isalpha():
-            return return_str
-        else:
+        if return_str.isalpha() is False:
             print "OCR result is not letter"
+        return return_str
 
 
 if __name__ == "__main__":

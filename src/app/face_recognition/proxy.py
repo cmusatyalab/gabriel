@@ -18,6 +18,7 @@
 #   limitations under the License.
 #
 import sys
+sys.path.insert(0, "../common")
 import time
 import Queue
 
@@ -106,7 +107,7 @@ if __name__ == "__main__":
         service_list = get_service_list(sys.argv)
         video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
         video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-	return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+        return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
@@ -115,10 +116,10 @@ if __name__ == "__main__":
         face_thread.start()
         face_thread.isDaemon = True 
 	
-	# result pub/sub
-	result_pub = ResultpublishClient(return_addresses, output_queue_list)
-	result_pub.start()
-	result_pub.isDaemon = True
+        # result pub/sub
+        result_pub = ResultpublishClient(return_addresses, output_queue_list)
+        result_pub.start()
+        result_pub.isDaemon = True
 
         LOG.info("Start receiving data\n")
         while True:
@@ -126,9 +127,9 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
     except Exception as e:
-	import traceback
-	LOG.warning(traceback.format_exc())
-	LOG.warning("%s" % str(e))
+        import traceback
+        LOG.warning(traceback.format_exc())
+        LOG.warning("%s" % str(e))
         LOG.warning(str(e))
     finally:
         if client_thread != None:
@@ -137,6 +138,6 @@ if __name__ == "__main__":
             app_thread.terminate()
         if face_thread != None:
             face_thread.terminate()
-	if result_pub != None:
-	    result_pub.terminate()
+        if result_pub != None:
+            result_pub.terminate()
 

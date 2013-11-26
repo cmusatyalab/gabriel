@@ -36,7 +36,7 @@ from mobile_server import MobileResultHandler
 from app_server import ApplicationServer
 from app_server import VideoSensorHandler
 from app_server import AccSensorHandler
-from ucomm_server import UCommServer, UCommHandler
+from ucomm_relay import UCommRelay, UCommHandler
 from BaseHTTPServer import BaseHTTPRequestHandler
 from http_streaming_server import MJPEGStreamHandler
 from http_streaming_server import ThreadedHTTPServer
@@ -166,7 +166,7 @@ def main():
     m_video_server = None
     m_acc_server = None
     m_result_server = None
-    ucomm_server = None
+    ucomm_relay = None
     a_video_server = None
     a_acc_server = None
     if settings.image_dir:
@@ -177,7 +177,7 @@ def main():
     m_result_server = MobileCommServer(Const.MOBILE_SERVER_RESULT_PORT, MobileResultHandler)
     a_video_server = ApplicationServer(Const.APP_SERVER_VIDEO_PORT, VideoSensorHandler)
     a_acc_server = ApplicationServer(Const.APP_SERVER_ACC_PORT, AccSensorHandler)
-    ucomm_server = UCommServer(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
+    ucomm_relay = UCommRelay(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
     http_server = ThreadedHTTPServer(('0.0.0.0', 8080), MJPEGStreamHandler)
 
     m_video_server_thread = threading.Thread(target=m_video_server.serve_forever)
@@ -185,7 +185,7 @@ def main():
     m_result_server_thread = threading.Thread(target=m_result_server.serve_forever)
     a_video_server_thread = threading.Thread(target=a_video_server.serve_forever)
     a_acc_server_thread = threading.Thread(target=a_acc_server.serve_forever)
-    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
+    ucomm_thread = threading.Thread(target=ucomm_relay.serve_forever)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
@@ -225,8 +225,8 @@ def main():
             m_acc_server.terminate()
         if m_result_server is not None:
             m_result_server.terminate()
-        if ucomm_server is not None:
-            ucomm_server.terminate()
+        if ucomm_relay is not None:
+            ucomm_relay.terminate()
         if a_video_server is not None:
             a_video_server.terminate()
         if a_acc_server is not None:

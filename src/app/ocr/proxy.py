@@ -35,8 +35,8 @@ class OCRThread(AppProxyThread):
 
     def handle(self, header, data):
         ret_str = ocr_server.run_ocr(data)
-        if ret_str is not None and len(ret_str.strip()) > 0:
-            return ret_str.strip()
+        # return everything since the result will be filterd at ucomm
+        return ret_str.strip()
 
 
 if __name__ == "__main__":
@@ -45,10 +45,13 @@ if __name__ == "__main__":
     output_queue = Queue.Queue()
     output_queue_list = list()
 
-    service_list = get_service_list()
-    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
-    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-    return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+    #service_list = get_service_list()
+    #video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+    #video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+    #return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+    video_ip = "127.0.0.1"
+    video_port = 10101
+    return_addresses = ["127.0.0.1:10120"]
 
     client = AppProxyStreamingClient((video_ip, video_port), image_queue)
     client.start()

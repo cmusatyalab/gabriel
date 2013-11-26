@@ -49,6 +49,7 @@ class Const(object):
 
     # port number for the server modules
     UCOMM_COMMUNICATE_PORT = 9090
+    OFFLOADING_MONITOR_PORT = 9091
     MOBILE_SERVER_VIDEO_PORT = 9098
     MOBILE_SERVER_ACC_PORT = 9099
     MOBILE_SERVER_GPS_PORT = 9100

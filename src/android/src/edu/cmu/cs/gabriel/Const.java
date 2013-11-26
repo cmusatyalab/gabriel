@@ -19,14 +19,13 @@ public class Const {
 	//public static String GABRIEL_IP = "50.18.239.196";	// Amazon West
 	
 	// Token
-	public static int MAX_TOKEN_SIZE = 100000;
+	public static int MAX_TOKEN_SIZE = 10;
 	private static final String LATENCY_FILE_NAME = "latency_token_" + MAX_TOKEN_SIZE + ".txt";
 	
 	// image size and frame rate
 	public static int MIN_FPS = 50;
 	public static int IMAGE_WIDTH = 320;	
 
-	// Const
-	
+	// Const	
 	public static File LATENCY_FILE = new File (ROOT_DIR.getAbsolutePath() + File.separator + "exp" + File.separator + LATENCY_FILE_NAME);
 }

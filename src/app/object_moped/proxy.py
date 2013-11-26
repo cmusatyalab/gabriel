@@ -39,18 +39,17 @@ from app_proxy import LOG
 
 
 class MOPEDThread(AppProxyThread):
-    def __init__(self, app_addr, image_queue, output_queue):
-        super(MOPEDThread, self).__init__(image_queue, output_queue)
+    def __init__(self, app_addr, image_queue, output_queue_list):
+        super(MOPEDThread, self).__init__(image_queue, output_queue_list)
         self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.app_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.app_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.app_sock.connect(app_addr)
-        self.result_queue = output_queue
 
     def terminate(self):
-        super(AppProxyThread, self).terminate()
         if self.app_sock is not None:
             self.app_sock.close()
+        super(AppProxyThread, self).terminate()
 
     @staticmethod
     def _recv_all(socket, recv_size):
@@ -62,11 +61,9 @@ class MOPEDThread(AppProxyThread):
             data += tmp_data
         return data
 
-
     def handle(self, header, data):
         # receive data from control VM
         LOG.info("receiving new image")
-
         # feed data to the app
         packet = struct.pack("!I%ds" % len(data), len(data), data)
         self.app_sock.sendall(packet)
@@ -83,30 +80,34 @@ if __name__ == "__main__":
     APP_PATH = "./moped_server"
     APP_PORT = 9092
 
-    app_thread = AppLauncher(APP_PATH, is_print=False)
-    app_thread.start()
-    app_thread.isDaemon = True
-    time.sleep(3)
-
-    image_queue = Queue.Queue(1)
-    output_queue_list = list()
-    service_list = get_service_list()
-    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
-    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-    return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
-
-    client = AppProxyStreamingClient((video_ip, video_port), image_queue)
-    client.start()
-    client.isDaemon = True
-    proxy_thread = MOPEDThread(("127.0.0.1", APP_PORT), image_queue, output_queue_list)
-    proxy_thread.start()
-    proxy_thread.isDaemon = True
-    result_pub = ResultpublishClient(return_addresses, output_queue_list)
-    result_pub.start()
-    result_pub.isDaemon = True
-
-    LOG.info("Start receiving data\n")
+    app_thread = None
+    proxy_thread = None
+    client = None
+    result_pub = None
     try:
+        app_thread = AppLauncher(APP_PATH, is_print=False)
+        app_thread.start()
+        app_thread.isDaemon = True
+        time.sleep(3)
+
+        image_queue = Queue.Queue(1)
+        output_queue_list = list()
+        service_list = get_service_list()
+        video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+        video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+        return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+
+        client = AppProxyStreamingClient((video_ip, video_port), image_queue)
+        client.start()
+        client.isDaemon = True
+        proxy_thread = MOPEDThread(("127.0.0.1", APP_PORT), image_queue, output_queue_list)
+        proxy_thread.start()
+        proxy_thread.isDaemon = True
+        result_pub = ResultpublishClient(return_addresses, output_queue_list)
+        result_pub.start()
+        result_pub.isDaemon = True
+
+        LOG.info("Start receiving data\n")
         while True:
             time.sleep(1)
     except KeyboardInterrupt as e:
@@ -114,7 +115,12 @@ if __name__ == "__main__":
     except Exception as e:
         pass
     finally:
-        client.terminate()
-        app_thread.terminate()
-        result_pub.terminate()
+        if client is not None:
+            client.terminate()
+        if app_thread is not None:
+            app_thread.terminate()
+        if result_pub is not None:
+            result_pub.terminate()
+        if proxy_thread is not None:
+            proxy_thread.terminate()
 

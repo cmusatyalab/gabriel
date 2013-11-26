@@ -29,6 +29,7 @@ from control.config import ServiceMeta
 
 from optparse import OptionParser
 import os
+import multiprocessing
 import tempfile
 import traceback
 import threading
@@ -47,7 +48,7 @@ CONST = Const
 SERVICE_META = ServiceMeta
 
 
-def get_service_list(argv):
+def get_service_list(argv=None):
     settings, args = process_command_line(sys.argv[1:])
     service_list = None
     if settings.address is None:
@@ -108,40 +109,42 @@ class AppProxyStreamingClient(threading.Thread):
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.data_queue = data_queue
-        self.stop_file= tempfile.TemporaryFile(prefix="gabriel-threadfd-")
+        self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.streaming)
 
     def streaming(self):
         LOG.info("Start getting data from the server")
-        stopfd = self.stop_file.fileno()
-        socket_fd = self.sock.fileno()
-        input_list = [socket_fd, stopfd]
-        except_list = [socket_fd, stopfd]
         try:
-            while True:
+            stopfd = self.stop_queue._reader.fileno()
+            socket_fd = self.sock.fileno()
+            input_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
                         select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_streaming()
                     if s == stopfd:
-                        break
+                        is_running = False
+                for e in exceptready:
+                    is_running = False
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
             LOG.warning("handler raises exception")
             LOG.warning("Server is disconnected unexpectedly")
-        self.terminate()
-        LOG.debug("Streaming thread terminated")
-
-    def terminate(self):
-        if self.stop_file is not None:
-            os.write(self.stop_file.fileno(), "stop\n")
-            self.stop_file.flush()
-            self.stop_file.close()
-            self.stop_file = None
         if self.sock is not None:
             self.sock.close()
+            self.sock = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
+        LOG.info("Streaming thread terminated")
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
     def _recv_all(self, sock, recv_size):
         data = ''
@@ -174,72 +177,6 @@ class AppProxyStreamingClient(threading.Thread):
             pass
 
 
-class AppProxyBlockingClient(threading.Thread):
-    def __init__(self, control_addr):
-        self.stop = threading.Event()
-        self.port_number = None
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.sock.connect(control_addr)
-        self.result_queue = Queue.Queue()
-        threading.Thread.__init__(self, target=self.block_read)
-
-    def block_read(self):
-        LOG.info("Start getting data from the server")
-        socket_fd = self.sock.fileno()
-        input_list = [socket_fd]
-        try:
-            while(not self.stop.wait(0.01)):
-                inputready, outputready, exceptready = \
-                        select.select(input_list, [], [], 0)
-                for s in inputready:
-                    if s == socket_fd:
-                        self._handle_video_streaming()
-        except Exception as e:
-            LOG.info(traceback.format_exc())
-            LOG.info("%s" % str(e))
-            LOG.info("handler raises exception")
-            LOG.info("Server is disconnected unexpectedly")
-        self.sock.close()
-
-    def terminate(self):
-        self.stop.set()
-        if self.sock is not None:
-            self.sock.close()
-
-    def _recv_all(self, sock, recv_size):
-        data = ''
-        while len(data) < recv_size:
-            tmp_data = sock.recv(recv_size - len(data))
-            if tmp_data == None or len(tmp_data) == 0:
-                raise AppProxyError("Socket is closed")
-            data += tmp_data
-        return data
-
-    def handle_frame(self, data):
-        pass
-
-    def _handle_video_streaming(self):
-        # receive data from control VM
-        #LOG.info("receiving new image\n")
-        header_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
-        data_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
-        header = self._recv_all(self.sock, header_size)
-        data = self._recv_all(self.sock, data_size)
-        header_data = json.loads(header)
-        frame_id = header_data.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-
-        return_message = self.handle_frame(data)
-        if return_message is None:
-            return_message = dict()
-
-        if len(return_message) > 0:
-            if frame_id is not None:
-                return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
-            self.result_queue.put(json.dumps(return_message))
-
-
 class AppProxyThread(threading.Thread):
     def __init__(self, data_queue, output_queue_list):
         self.data_queue = data_queue
@@ -248,9 +185,9 @@ class AppProxyThread(threading.Thread):
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
-        while(not self.stop.wait(0.001)):
+        while(not self.stop.wait(0.0001)):
             try:
-                (header, data) = self.data_queue.get_nowait()
+                (header, data) = self.data_queue.get(timeout=0.0001)
             except Queue.Empty as e:
                 continue
             if header == None or data == None:
@@ -261,7 +198,7 @@ class AppProxyThread(threading.Thread):
                 header[Protocol_client.RESULT_MESSAGE_KEY] = result
                 for output_queue in self.output_queue_list:
                     output_queue.put(json.dumps(header))
-        LOG.debug("App thread terminated")
+        LOG.info("App thread terminated")
 
     def handle(self, header, data):
         return None
@@ -277,7 +214,7 @@ class ResultpublishClient(threading.Thread):
     """
 
     def __init__(self, publish_addr_list, result_queue_list):
-        self.stop = threading.Event()
+        self.stop_queue = multiprocessing.Queue()
         self.result_queue_list = result_queue_list
         self.publish_addr_list = list()
         for addr in publish_addr_list:
@@ -316,35 +253,40 @@ class ResultpublishClient(threading.Thread):
 
     def publish(self):
         self.update_connection()
-        output_list = self._get_all_socket_fd()
+        stopfd = self.stop_queue._reader.fileno()
+        input_list = [stopfd]
         error_list = self._get_all_socket_fd()
 
         LOG.info("Start publishing data")
         try:
-            while(not self.stop.wait(0.001)):
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, error_list, 0.1)
+                        select.select(input_list, [], error_list, 0.1)
                 for s in inputready:
-                    pass
-                for s in outputready:
-                    self._handle_result_output(s)
+                    if s == stopfd: 
+                        is_running = False;
                 for s in exceptready:
                     self._handle_error(s)
-                time.sleep(0.001)
+
+                # check output queue
+                for output_queue in self.result_queue_list:
+                    if output_queue.empty() == False:
+                        self._handle_result_output(output_queue)
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
             LOG.warning("handler raises exception")
             LOG.warning("Server is disconnected unexpectedly")
-        LOG.debug("Publish thread terminated")
-
-    def terminate(self):
-        self.stop.set()
+        LOG.info("Publish thread terminated")
         for index, (addr, port, app_sock, result_queue) in enumerate(self.publish_addr_list):
             if app_sock is None:
                 continue
             self.result_queue_list.remove(result_queue)
             app_sock.close()
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
     def _handle_error(self, socket_fd):
         for index, (addr, port, app_sock, result_queue) in enumerate(self.publish_addr_list):
@@ -355,30 +297,28 @@ class ResultpublishClient(threading.Thread):
                 del self.publish_addr_list[index]
                 break
 
-    def _handle_result_output(self, socket_fd):
-        sending_socket = None
-        output_queue = None
+    def _handle_result_output(self, output_queue):
         for (addr, port, app_sock, result_queue) in self.publish_addr_list:
             if app_sock is None:
                 continue
-            if app_sock.fileno() == socket_fd:
-                sending_socket = app_sock
-                output_queue = result_queue
-        if sending_socket is None:
-            return
+            if result_queue == output_queue:
+                try:
+                    return_data = output_queue.get_nowait()
+                    packet = struct.pack("!I%ds" % len(return_data),
+                            len(return_data), return_data)
+                    app_sock.sendall(packet)
+                    LOG.info("returning result: %s" % return_data)
+                except Queue.Empty as e:
+                    pass
+                finally:
+                    break
 
-        while output_queue.empty() is False:
-            return_data = output_queue.get()
-            packet = struct.pack("!I%ds" % len(return_data),
-                    len(return_data), return_data)
-            sending_socket.sendall(packet)
-            LOG.info("returning result: %s" % return_data)
 
 if __name__ == "__main__":
     LOG.info("Start receiving data")
     try:
         control_addr = ("128.2.210.197", 10101)
-        client = AppProxyBlockingClient(control_addr)
+        client = AppProxyStreamingClient(control_addr)
         client.start()
         client.isDaemon = True
         while True:

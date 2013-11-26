@@ -20,6 +20,9 @@
 
 import sys
 sys.path.insert(0, "../")
+import os
+import tempfile
+import multiprocessing
 from control.protocol import Protocol_client
 from control.protocol import Protocol_measurement
 from control.config import ServiceMeta
@@ -148,11 +151,11 @@ def register_ucomm(argv):
 
 class ResultForwardingClient(threading.Thread):
     """
-    This client will forward all the result received from the client
+    This client will forward offloading engine's processed 
+    result to the control VM.
     """
 
     def __init__(self, control_address, output_queue):
-        self.stop = threading.Event()
         self.output_queue = output_queue
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -161,32 +164,42 @@ class ResultForwardingClient(threading.Thread):
 
         self.previous_sent_time = time.time()
         self.previous_sent_data = ""
+        self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.forward)
 
     def forward(self):
-        output_list = [self.sock.fileno()]
-        error_list = [self.sock.fileno()]
-
-        LOG.info("Start forwardning data")
         try:
-            while(not self.stop.wait(0.0001)):
+            LOG.info("Start forwardning data")
+            socket_fd = self.sock.fileno()
+            stopfd = self.stop_queue._reader.fileno()
+            input_list = [socket_fd, stopfd]
+            output_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
-                        select.select([], output_list, error_list, 0)
+                        select.select(input_list, output_list, except_list)
                 for s in outputready:
-                    self._handle_result_output()
+                    if s == socket_fd:
+                        self._handle_result_output()
+                    if s == stopfd:
+                        is_running = False
                 for s in exceptready:
+                    is_running = False
                     break
-                time.sleep(0.001)
         except Exception as e:
-            LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
             LOG.debug("Result Forwading thread terminated")
-        self.terminate()
-
-    def terminate(self):
-        self.stop.set()
+        LOG.info("%s\tterminate thread" % str(self))
         if self.sock is not None:
             self.sock.close()
+            self.sock = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
     @staticmethod
     def _post_header_process(header_message):
@@ -198,39 +211,36 @@ class ResultForwardingClient(threading.Thread):
         return json.dumps(frame_id)
 
     def _handle_result_output(self):
-        while self.output_queue.empty() is False:
-            try:
-                return_data = self.output_queue.get_nowait()
+        try:
+            return_data = self.output_queue.get(timeout=0.1)
 
-                # ignore the result if same output is sent within 1 sec
-                return_json = json.loads(return_data)
-                result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
-                if result_str == None:
-                    continue
-                if self.previous_sent_data.lower() == result_str.lower():
-                    time_diff = time.time() - self.previous_sent_time 
-                    if time_diff < 2:
-                        LOG.info("Identical result (%s) is ignored" % result_str)
-                        return_json.pop(Protocol_client.RESULT_MESSAGE_KEY)
+            # ignore the result if same output is sent within 1 sec
+            return_json = json.loads(return_data)
+            result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
+            if result_str == None:
+                return
+            if self.previous_sent_data.lower() == result_str.lower():
+                time_diff = time.time() - self.previous_sent_time 
+                if time_diff < 2:
+                    LOG.info("Identical result (%s) is ignored" % result_str)
+                    #return
 
-                # add header data for measurement
-                #return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+            output = json.dumps(return_json)
+            packet = struct.pack("!I%ds" % len(output),
+                    len(output), output)
+            self.sock.sendall(packet)
+            self.previous_sent_time = time.time()
+            self.previous_sent_data = result_str
 
-                output = json.dumps(return_json)
-                packet = struct.pack("!I%ds" % len(output),
-                        len(output), output)
-                self.sock.sendall(packet)
-                self.previous_sent_time = time.time()
-                self.previous_sent_data = result_str
-
-                LOG.info("forward the result: %s" % output)
-            except Queue.Empty as e:
-                pass
+            LOG.info("forward the result: %s" % output)
+        except Queue.Empty as e:
+            pass
 
 
 class UCommServerHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
         super(UCommServerHandler, self).setup()
+        self.stop_queue = multiprocessing.Queue()
 
     def _recv_all(self, recv_size):
         data = ''
@@ -244,26 +254,47 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
     def handle(self):
         try:
             LOG.info("new Offlaoding Engine is connected")
+            stopfd = self.stop_queue._reader.fileno()
             socket_fd = self.request.fileno()
-            input_list = [socket_fd]
-            while True:
+            input_list = [socket_fd, stopfd]
+            output_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
+            is_running = True
+            while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, [], [], 100)
+                        select.select(input_list, output_list, except_list)
                 for insocket in inputready:
                     if insocket == socket_fd:
                         self._handle_input_stream()
-                time.sleep(0.00001)
+                    if insocket == stopfd:
+                        is_running = False;
+                for output in exceptready:
+                    is_running = False
         except Exception as e:
             #LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
             LOG.info("Offloading engine is disconnected")
-            self.terminate()
+        LOG.info("%s\tterminate thread" % str(self))
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
     def _handle_input_stream(self):
         global output_queue
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
-        output_queue.put(header_data)
+        header_json = json.loads(header_data)
+        offload_name = header_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
+        if offload_name is None:
+            header_json[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = \
+                    self.request.fileno()
+        output_queue.put(json.dumps(header_json))
 
 
 class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
@@ -300,7 +331,7 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         self.server_close()
         self.stopped = True
         
-        if self.socket != -1:
+        if self.socket is not None:
             self.socket.close()
         LOG.info("[TERMINATE] Finish ucomm server")
 
@@ -308,14 +339,16 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 def main():
     global output_queue
 
-    try:
-        service_list = register_ucomm(sys.argv)
-    except Exception as e:
-        LOG.info(str(e))
-        LOG.info("failed to register UCOMM to the control")
-        sys.exit(1)
-    control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
-    control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
+    #try:
+    #    service_list = register_ucomm(sys.argv)
+    #except Exception as e:
+    #    LOG.info(str(e))
+    #    LOG.info("failed to register UCOMM to the control")
+    #    sys.exit(1)
+    #control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
+    #control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
+    control_vm_ip = "127.0.0.1"
+    control_vm_port = 9090
 
     # result pub/sub
     try:
