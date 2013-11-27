@@ -65,11 +65,13 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
         """ No input expected.
         But blocked read will return 0 if the other side closed gracefully
         """
+        print "input handler"
         ret_data = self.request.recv(1)
         if ret_data is None:
             raise AppServerError("Cannot recv data at %s" % str(self))
         if len(ret_data) == 0:
             raise AppServerError("Client side is closed gracefullu at %s" % str(self))
+        print "input handler2"
 
     def handle(self):
         try:
@@ -87,14 +89,14 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
                     if s == socket_fd:
                         self._handle_input_data()
                     if s == stopfd:
-                        is_running = False;
+                        is_running = False
                 for output in outputready:
                     if output == socket_fd:
                         self._handle_sensor_stream()
                     if output == stopfd:
-                        is_running = False;
+                        is_running = False
                 for output in exceptready:
-                    is_running = False;
+                    is_running = False
         except Exception as e:
             LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
@@ -119,7 +121,7 @@ class VideoSensorHandler(SensorHandler):
 
     def _handle_sensor_stream(self):
         try:
-            (header, jpeg_data) = self.data_queue.get_nowait()
+            (header, jpeg_data) = self.data_queue.get(timeout=0.01)
             header = json.loads(header)
             header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
