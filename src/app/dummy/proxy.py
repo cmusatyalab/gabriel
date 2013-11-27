@@ -53,15 +53,12 @@ if __name__ == "__main__":
     output_queue_list = list()
 
     sys.stdout.write("Finding control VM\n")
-    #service_list = get_service_list(sys.argv)
-    #video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
-    #video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-    #acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)
-    #acc_port = service_list.get(SERVICE_META.ACC_TCP_STREAMING_PORT)
-    #return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
-    video_ip = "127.0.0.1"
-    video_port = 10101
-    return_addresses = ["127.0.0.1:10120"]
+    service_list = get_service_list(sys.argv)
+    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
+    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+    acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)
+    acc_port = service_list.get(SERVICE_META.ACC_TCP_STREAMING_PORT)
+    return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
     # dummy video app
     image_queue = Queue.Queue(1)

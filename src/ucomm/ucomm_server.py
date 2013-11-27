@@ -343,16 +343,14 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 def main():
     global output_queue
 
-    #try:
-    #    service_list = register_ucomm(sys.argv)
-    #except Exception as e:
-    #    LOG.info(str(e))
-    #    LOG.info("failed to register UCOMM to the control")
-    #    sys.exit(1)
-    #control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
-    #control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
-    control_vm_ip = "127.0.0.1"
-    control_vm_port = 9090
+    try:
+        service_list = register_ucomm(sys.argv)
+    except Exception as e:
+        LOG.info(str(e))
+        LOG.info("failed to register UCOMM to the control")
+        sys.exit(1)
+    control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
+    control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
 
     # result pub/sub
     try:
