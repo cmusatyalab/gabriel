@@ -262,7 +262,7 @@ class ResultpublishClient(threading.Thread):
             is_running = True
             while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, [], error_list, 0.1)
+                        select.select(input_list, [], error_list, 0.0001)
                 for s in inputready:
                     if s == stopfd: 
                         is_running = False;

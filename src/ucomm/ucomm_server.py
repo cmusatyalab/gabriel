@@ -179,6 +179,9 @@ class ResultForwardingClient(threading.Thread):
             while is_running:
                 inputready, outputready, exceptready = \
                         select.select(input_list, output_list, except_list)
+                for s in inputready:
+                    if s == stopfd:
+                        is_running = False
                 for s in outputready:
                     if s == socket_fd:
                         self._handle_result_output()
@@ -186,7 +189,6 @@ class ResultForwardingClient(threading.Thread):
                         is_running = False
                 for s in exceptready:
                     is_running = False
-                    break
         except Exception as e:
             LOG.warning("%s" % str(e))
             LOG.debug("Result Forwading thread terminated")
@@ -199,6 +201,7 @@ class ResultForwardingClient(threading.Thread):
             self.stop_queue = None
 
     def terminate(self):
+        LOG.info("request terminate result forward")
         self.stop_queue.put("terminate\n")
 
     @staticmethod
@@ -283,6 +286,7 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
             self.stop_queue = None
 
     def terminate(self):
+        LOG.info("request UCOMM server handler")
         self.stop_queue.put("terminate\n")
 
     def _handle_input_stream(self):
