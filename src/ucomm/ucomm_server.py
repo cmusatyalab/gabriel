@@ -260,19 +260,19 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
             stopfd = self.stop_queue._reader.fileno()
             socket_fd = self.request.fileno()
             input_list = [socket_fd, stopfd]
-            output_list = [socket_fd, stopfd]
             except_list = [socket_fd, stopfd]
             is_running = True
             while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list)
+                        select.select(input_list, [], except_list)
                 for insocket in inputready:
                     if insocket == socket_fd:
                         self._handle_input_stream()
                     if insocket == stopfd:
                         is_running = False;
-                for output in exceptready:
+                for s in exceptready:
                     is_running = False
+                    break
         except Exception as e:
             #LOG.debug(traceback.format_exc())
             LOG.debug("%s" % str(e))
