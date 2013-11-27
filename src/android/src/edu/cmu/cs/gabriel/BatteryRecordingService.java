@@ -15,7 +15,7 @@ import android.util.Log;
 
 public class BatteryRecordingService extends IntentService {
 	FileWriter mFileWriter = null;
-	String mOutputFileName = "batteryRecording";
+	static String mOutputFileName = "batteryRecording";
 	static public String AppName = "SampleApp";	
 	boolean stopped = false;
 	private Object lock = new Object();
@@ -28,6 +28,10 @@ public class BatteryRecordingService extends IntentService {
 	    stopped = false;
 	  }
 	  
+	public static void setOutputFileName(String outputFileName) {
+		mOutputFileName = outputFileName; 
+	}
+	
 	@Override
 	protected void onHandleIntent(Intent arg0) {
 		Log.i("BatteryRecordingService", "Got Intent, starting to record");

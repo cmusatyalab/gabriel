@@ -111,7 +111,7 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 			experimentStarted = true;
 			Log.i("Experiment", "startExperiment()");
 			init();
-			startBatteryRecording();
+			startBatteryRecording(repeatExperiment);
 		}
 	}
 
@@ -148,15 +148,7 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 
 		startCapture();
 		
-  	  	TimerTask autoStart = new TimerTask(){
-  	  		@Override
-  	  		public void run() {
-  				terminate();
-  	  		}
-  	  	};
- 		
-  	  	Timer startTiemr = new Timer();
-		startTiemr.schedule(autoStart, 2 * 60 * 1000); //2 min
+
 	}
 
 	// Implements TextToSpeech.OnInitListener
@@ -421,12 +413,32 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 	 * time Sample every 100ms
 	 */
 	Intent batteryRecordingService = null;
-
-	public void startBatteryRecording() {
+	private static int repeatExperiment = 1; //Configuration
+	public void startBatteryRecording(int nExp) {
 		BatteryRecordingService.AppName = "GabrielClient";
+		BatteryRecordingService.setOutputFileName("batExp_" + nExp);
 		Log.i("wenluh", "Starting Battery Recording Service");
+		
 		batteryRecordingService = new Intent(this, BatteryRecordingService.class);
 		startService(batteryRecordingService);
+		
+		
+  	  	TimerTask autoStart = new TimerTask(){
+  	  		@Override
+  	  		public void run() {
+  				repeatExperiment--;
+  				stopBatteryRecording();
+  				Log.i("wenluh", "Starting Experiment # " + repeatExperiment);
+  				if (repeatExperiment > 0) {
+  					startBatteryRecording(repeatExperiment);
+  				} else {
+  					terminate();
+  				}
+  	  		}
+  	  	};
+ 		
+  	  	Timer startTiemr = new Timer();
+		startTiemr.schedule(autoStart, 2 * 60 * 1000); //2 min
 	}
 
 	public void stopBatteryRecording() {
@@ -448,9 +460,7 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 	}
 
 	private void terminate() {
-		//TODO Wenlu
-		// is the battery recording service shutting down?
-		
+
 		// Don't forget to shutdown!
 		if (mTTS != null) {
 			Log.d(LOG_TAG, "TTS is closed");
@@ -490,7 +500,8 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 		if (tokenController != null){
 			tokenController.close();
 		}
-		finish();
+		//if (repeatExperiment == 0)
+			finish();
 	}
 
 	@Override
