@@ -40,8 +40,6 @@ public class VideoStreamingThread extends Thread {
 	protected File[] imageFiles = null;
 	protected int indexImageFile = 0;
 
-	private int protocolIndex; // may use a protocol other than UDP
-	static final int BUFFER_SIZE = 102400; // only for the UDP case
 	private boolean is_running = false;
 	private InetAddress remoteIP;
 	private int remotePort;
@@ -114,7 +112,8 @@ public class VideoStreamingThread extends Thread {
 			networkReceiver = new VideoControlThread(networkReader, this.networkHander, tokenController);
 			networkReceiver.start();
 		} catch (IOException e) {
-			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
+		    Log.e(LOG_TAG, Log.getStackTraceString(e));
+			Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
 			this.notifyError(e.getMessage());
 			this.is_running = false;
 			return;
@@ -147,9 +146,9 @@ public class VideoStreamingThread extends Thread {
 				
 				networkWriter.write(baos.toByteArray());
 				networkWriter.flush();
-				this.sequenceID++;
 				this.tokenController.sendData(this.sequenceID, data.length + header.length);
 				this.tokenController.decreaseToken();
+				this.sequenceID++;
 				
 				// measurement
 		        if (packet_firstUpdateTime == 0) {

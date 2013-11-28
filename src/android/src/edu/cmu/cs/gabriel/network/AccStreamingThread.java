@@ -79,7 +79,8 @@ public class AccStreamingThread extends Thread {
 			networkReceiver = new AccControlThread(networkReader, this.networkHander);
 			networkReceiver.start();
 		} catch (IOException e) {
-			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
+		    Log.e(LOG_TAG, Log.getStackTraceString(e));
+			Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
 			this.notifyError(e.getMessage());
 			this.is_running = false;
 			return;

@@ -53,7 +53,7 @@ public class CameraConnector {
 			
             Log.d(LOG_TAG, "Done: init()");
 		}catch(IOException e) {
-		    Log.e(LOG_TAG, "Error in initializing local socket: " + e.getMessage());
+		    Log.e(LOG_TAG, "Error in initializing local socket: " + e);
 		}
     }
     

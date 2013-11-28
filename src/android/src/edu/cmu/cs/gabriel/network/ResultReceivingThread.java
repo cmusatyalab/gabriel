@@ -65,7 +65,8 @@ public class ResultReceivingThread extends Thread {
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			networkReader = new DataInputStream(tcpSocket.getInputStream());
 		} catch (IOException e) {
-			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
+		    Log.e(LOG_TAG, Log.getStackTraceString(e));
+			Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
 			this.notifyError(e.getMessage());
 			this.is_running = false;
 			return;
@@ -155,8 +156,11 @@ public class ResultReceivingThread extends Thread {
 		} catch (IOException e) {
 		}
 		try {
-			if(this.tcpSocket != null)
-				this.tcpSocket.close();
+			if(this.tcpSocket != null){
+				this.tcpSocket.shutdownInput();
+				this.tcpSocket.shutdownOutput();			
+				this.tcpSocket.close();	
+			}
 		} catch (IOException e) {
 		}
 	}
