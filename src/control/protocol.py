@@ -36,5 +36,7 @@ class Protocol_application(object):
 
 class Protocol_measurement(object):
     JSON_KEY_CONTROL_SENT_TIME = "control_sent_time"
+    JSON_KEY_APP_RECV_TIME = "app_recv_time"
     JSON_KEY_APP_SENT_TIME = "app_sent_time"
+    JSON_KEY_UCOMM_RECV_TIME = "ucomm_recv_time"
     JSON_KEY_UCOMM_SENT_TIME = "ucomm_sent_time"

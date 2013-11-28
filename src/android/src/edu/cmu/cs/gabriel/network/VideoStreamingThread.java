@@ -53,11 +53,16 @@ public class VideoStreamingThread extends Thread {
 	private VideoControlThread networkReceiver = null;
 
 	private FileInputStream cameraInputStream;
-	private Vector<byte[]> frameBufferList = new Vector<byte[]>();
+	private byte[] frameBuffer = null;
+	private Object frameLock = new Object();
 	private Handler networkHander = null;
-	private long frameID = 0;
+	private long sequenceID = 0;
 
 	private TokenController tokenController;
+	private long packet_firstUpdateTime;
+	private long packet_currentUpdateTime;
+	private int packet_totalsize;
+	private long packet_prevUpdateTime;
 
 	public VideoStreamingThread(FileDescriptor fd, String IPString, int port, Handler handler, TokenController tokenController) {
 		is_running = false;
@@ -107,7 +112,7 @@ public class VideoStreamingThread extends Thread {
 			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
-			networkReceiver = new VideoControlThread(networkReader, this.networkHander);
+			networkReceiver = new VideoControlThread(networkReader, this.networkHander, tokenController);
 			networkReceiver.start();
 		} catch (IOException e) {
 			Log.e(LOG_TAG, "Error in initializing Data socket: " + e.getMessage());
@@ -118,19 +123,40 @@ public class VideoStreamingThread extends Thread {
 
 		while (this.is_running) {
 			try {
-				while (this.frameBufferList.size() > 0) {
-					byte[] header = ("{\"id\":" + this.frameID + "}").getBytes();
-					byte[] data = this.frameBufferList.remove(0);
-					networkWriter.writeInt(header.length);
-					networkWriter.writeInt(data.length);
-					networkWriter.write(header);
-					networkWriter.write(data, 0, data.length);
-					networkWriter.flush();
-					this.frameID++;
-					this.tokenController.sendData(this.frameID, data.length + header.length);
-					this.tokenController.decreaseToken();
+				if (this.tokenController.getCurrentToken() <= 0) {
+					continue;
 				}
+				// token exist
+				byte[] data = null;
+				synchronized(frameLock){
+					if (this.frameBuffer == null)
+						continue;					
+					data = this.frameBuffer;
+					this.frameBuffer = null;
+				}
+				byte[] header = ("{\"id\":" + this.sequenceID + "}").getBytes();
+				networkWriter.writeInt(header.length);
+				networkWriter.writeInt(data.length);
+				networkWriter.write(header);
+				networkWriter.write(data, 0, data.length);
+				networkWriter.flush();
+				this.sequenceID++;
+				this.tokenController.sendData(this.sequenceID, data.length + header.length);
+				this.tokenController.decreaseToken();
 				
+				// measurement
+		        if (packet_firstUpdateTime == 0) {
+		        	packet_firstUpdateTime = System.currentTimeMillis();
+		        }
+		        packet_currentUpdateTime = System.currentTimeMillis();
+		        packet_count++;
+		        packet_totalsize += data.length;
+		        if (packet_count % 10 == 0) {
+		        	Log.d(LOG_TAG, "(NET)\t" + "BW: " + 8.0*packet_totalsize / (packet_currentUpdateTime-packet_firstUpdateTime)/1000 + 
+		        			" Mbps\tCurrent FPS: " + 8.0*data.length/(packet_currentUpdateTime - packet_prevUpdateTime)/1000 + " Mbps\t" +
+		        			"FPS: " + 1000.0*packet_count/(packet_currentUpdateTime-packet_firstUpdateTime));
+				}
+		        packet_prevUpdateTime = packet_currentUpdateTime;
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
 				this.notifyError(e.getMessage());
@@ -178,15 +204,11 @@ public class VideoStreamingThread extends Thread {
 
 	
 	private Size cameraImageSize = null;
-    private long frameCount = 0, firstUpdateTime = 0;
-    private long prevUpdateTime = 0, currentUpdateTime = 0;
-    private long totalsize = 0;
+    private long frame_count = 0, frame_firstUpdateTime = 0;
+    private long frame_prevUpdateTime = 0, frame_currentUpdateTime = 0;
+    private long frame_totalsize = 0;
     
 	public void push(byte[] frame, Parameters parameters) {
-		if (this.tokenController.getCurrentToken() <= 0) {
-			return;
-		}		
-
         int datasize = 0;
         cameraImageSize = parameters.getPreviewSize();
         if (this.imageFiles == null){
@@ -194,7 +216,9 @@ public class VideoStreamingThread extends Thread {
             		cameraImageSize.height, null);
             ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
             image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 90, tmpBuffer);
-            this.frameBufferList.add(tmpBuffer.toByteArray());
+            synchronized (frameLock) {
+                this.frameBuffer = tmpBuffer.toByteArray();
+			}
             datasize = tmpBuffer.size();
         }else{
         	try {
@@ -203,7 +227,9 @@ public class VideoStreamingThread extends Thread {
 				FileInputStream fi = new FileInputStream(this.imageFiles[index]);
 				byte[] buffer = new byte[datasize];
 				fi.read(buffer, 0, datasize);
-	            this.frameBufferList.add(buffer);
+	            synchronized (frameLock) {
+		            this.frameBuffer = buffer;	            	
+	            }
 	            indexImageFile++;
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
@@ -212,19 +238,19 @@ public class VideoStreamingThread extends Thread {
 			}
         }
 		
-        if (firstUpdateTime == 0) {
-            firstUpdateTime = System.currentTimeMillis();
+        if (frame_firstUpdateTime == 0) {
+            frame_firstUpdateTime = System.currentTimeMillis();
         }
-        currentUpdateTime = System.currentTimeMillis();
-        frameCount++;
-        totalsize += datasize;
-        if (frameCount % 10 == 0) {
-        	Log.d(LOG_TAG, "(" + cameraImageSize.width + "," + cameraImageSize.height + ")" +
-        			"BW: " + 8.0*totalsize / (currentUpdateTime-firstUpdateTime)/1000 + 
-        			" Mbps\tCurrent FPS: " + 8.0*datasize/(currentUpdateTime - prevUpdateTime)/1000 + " Mbps\t" +
-        			"FPS: " + 1000.0*frameCount/(currentUpdateTime-firstUpdateTime));
+        frame_currentUpdateTime = System.currentTimeMillis();
+        frame_count++;
+        frame_totalsize += datasize;
+        if (frame_count % 10 == 0) {
+        	Log.d(LOG_TAG, "(IMG)\t" +
+        			"BW: " + 8.0*frame_totalsize / (frame_currentUpdateTime-frame_firstUpdateTime)/1000 + 
+        			" Mbps\tCurrent FPS: " + 8.0*datasize/(frame_currentUpdateTime - frame_prevUpdateTime)/1000 + " Mbps\t" +
+        			"FPS: " + 1000.0*frame_count/(frame_currentUpdateTime-frame_firstUpdateTime));
 		}
-        prevUpdateTime = currentUpdateTime;
+        frame_prevUpdateTime = frame_currentUpdateTime;
 	}
 
 	private void notifyError(String message) {

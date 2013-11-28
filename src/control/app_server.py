@@ -65,13 +65,11 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
         """ No input expected.
         But blocked read will return 0 if the other side closed gracefully
         """
-        print "input handler"
         ret_data = self.request.recv(1)
         if ret_data is None:
             raise AppServerError("Cannot recv data at %s" % str(self))
         if len(ret_data) == 0:
             raise AppServerError("Client side is closed gracefullu at %s" % str(self))
-        print "input handler2"
 
     def handle(self):
         try:
@@ -87,6 +85,7 @@ class SensorHandler(SocketServer.StreamRequestHandler, object):
                         select.select(input_list, output_list, except_list)
                 for s in inputready:
                     if s == socket_fd:
+                        LOG.e("Offload engine should not return directly")
                         self._handle_input_data()
                     if s == stopfd:
                         is_running = False

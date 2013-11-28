@@ -14,6 +14,8 @@ import java.util.Vector;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import edu.cmu.cs.gabriel.token.TokenController;
+
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -24,13 +26,15 @@ public class VideoControlThread extends Thread {
 	private static final String LOG_TAG = "krha";
 	
 	private Handler networkHandler;
+	TokenController tokenController;
 	private DataInputStream networkReader;
 	private boolean is_running = true;
 
 	
-	public VideoControlThread(DataInputStream dataInputStream, Handler networkHandler) {
+	public VideoControlThread(DataInputStream dataInputStream, Handler networkHandler, TokenController tokenController) {
 		this.networkReader = dataInputStream;
 		this.networkHandler = networkHandler;
+		this.tokenController = tokenController;
 	}
 
 	@Override
@@ -71,10 +75,14 @@ public class VideoControlThread extends Thread {
 		// convert the message to JSON
 		JSONObject obj;		
 		String controlMsg = null;
+		long frameID = -1;
 		obj = new JSONObject(recvData);
 		
 		try{
 			controlMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_CONTROL);
+		} catch(JSONException e){}
+		try{
+			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
 		} catch(JSONException e){}
 		
 		if (controlMsg != null){
@@ -82,6 +90,14 @@ public class VideoControlThread extends Thread {
 			msg.what = NetworkProtocol.NETWORK_RET_CONFIG;
 			msg.obj = controlMsg;			
 			this.networkHandler.sendMessage(msg);
+		}
+		if (frameID != -1){
+			Message msg = Message.obtain();
+			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
+			Bundle data = new Bundle();
+			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
+			msg.setData(data);
+			this.tokenController.tokenHandler.sendMessage(msg);
 		}
 	}
 

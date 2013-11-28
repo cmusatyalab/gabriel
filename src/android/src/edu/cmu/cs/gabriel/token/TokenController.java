@@ -55,7 +55,7 @@ public class TokenController {
 					frame_size += sentPacket.sentSize;
 					frame_latency_count++;
 					if (frame_latency_count % 100 == 0){
-						Log.d(LOG_TAG, recvFrameID + ", size: " + sentPacket.sentSize + "\tBandwidth : " + 8.0*frame_size/(now-firstSentTime)/1000 + "(MB/s)");					
+//						Log.d(LOG_TAG, recvFrameID + ", size: " + sentPacket.sentSize + "\tBandwidth : " + 8.0*frame_size/(now-firstSentTime)/1000 + "(MB/s)");					
 					}
 				}				
 				increaseToken();
