@@ -60,6 +60,7 @@ public class ResultReceivingThread extends Thread {
 
 		try {
 			tcpSocket = new Socket();
+			tcpSocket.setTcpNoDelay(true);
 			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5*1000);
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			networkReader = new DataInputStream(tcpSocket.getInputStream());
