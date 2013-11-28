@@ -241,6 +241,51 @@ int main(int argc, char** argv)
 			ptr1 = ptr2+1;
 		}
 
+		fprintf(fpOut, "%f %f", feature_global.x, feature_global.y);
+
+
+        float cdist, mindist = FLT_MAX;
+        int minindex = -1;
+        //hard assigment with early discard
+        /*
+        for (i = 0; i < n_clusters; i++) {
+            cdist = 0.0;
+            for (j = 0; j < dim; j++) {
+                cdist += (data[j]-ctrs[i][j])*(data[j]-ctrs[i][j]);
+                if (cdist >= mindist) break;
+            }
+            if (cdist < mindist) {
+                mindist = cdist;
+                minindex = i;
+            }
+        }
+        fprintf(fpOut, " %d", minindex);
+        */
+        float mindists[TOP_N_CLUSTERS + 1], swp_f;
+        int minindexes[TOP_N_CLUSTERS + 1], swp_i;
+        for (i = 0; i < TOP_N_CLUSTERS; i++) {
+            mindists[i] = FLT_MAX;
+            minindexes[i] = -1;
+        }
+        for (i = 0; i < n_clusters; i++) {
+            cdist = 0.0;
+            for (j = 0; j < dim; j++) {
+                cdist += (data[j]-ctrs[i][j])*(data[j]-ctrs[i][j]);
+                if (cdist >= mindists[TOP_N_CLUSTERS - 1]) break;
+            }
+            if (cdist >= mindists[TOP_N_CLUSTERS - 1]) continue;
+            mindists[TOP_N_CLUSTERS] = cdist;
+            minindexes[TOP_N_CLUSTERS] = i;
+            j = TOP_N_CLUSTERS;
+            while (j > 0 && mindists[j] < mindists[j - 1]) {
+                swp_f = mindists[j]; mindists[j] = mindists[j - 1]; mindists[j - 1] = swp_f;
+                swp_i = minindexes[j]; minindexes[j] = minindexes[j - 1]; minindexes[j - 1] = swp_i;
+                j--;
+            }
+        }
+        for (i = 0; i < TOP_N_CLUSTERS; i++)
+            fprintf(fpOut, " %d", minindexes[i]);
+        /*
 		for(i=0; i<n_clusters; i++)
 		{
 			float cdist = 0.0;
@@ -252,11 +297,7 @@ int main(int argc, char** argv)
 			}
 			dist[i] = cdist;
 		}
-
-		fprintf(fpOut, "%f %f", feature_global.x, feature_global.y);
 		
-		float mindist;
-		int minindex = 0;
 		for(i=0; i<TOP_N_CLUSTERS; i++)
 		{
 			mindist = FLT_MAX;
@@ -275,6 +316,7 @@ int main(int argc, char** argv)
 			//distance is not used, ignore..save space
 			fprintf(fpOut, " %d", minindex);
 		}
+        */
 		fprintf(fpOut, "\n");
 	}
 	printf("%d feature points\n", l);	

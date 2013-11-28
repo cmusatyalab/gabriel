@@ -74,7 +74,7 @@ def extract_feature(images):
     with open('tmp/tmp1.jpg', 'w') as f:
         f.write(images[1])
     time2 = time.time()
-    print time2
+    print "time2 %f" % time2
 
     # extract features
     raw_file = "%s/%s_raw_%s.txt" % (TMP_DIR, selected_feature, video_name)
@@ -89,11 +89,11 @@ def extract_feature(images):
         subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r',
                          tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
     time3 = time.time()
-    print time3
-    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
+    print "time3 %f" % time3
+    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     DEVNULL.close()
     time4 = time.time()
-    print time4
+    print "time4 %f" % time4
     with open(txyc_file) as f:
         result = f.readlines()
 
@@ -101,7 +101,7 @@ def extract_feature(images):
     #os.remove(raw_file)
     #os.remove(txyc_file)
     time5 = time.time()
-    print time5
+    print "time5 %f" % time5
 
     return result
 
