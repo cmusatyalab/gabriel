@@ -254,7 +254,7 @@ public class VideoStreamingThread extends Thread {
         frame_currentUpdateTime = System.currentTimeMillis();
         frame_count++;
         frame_totalsize += datasize;
-        if (frame_count % 10 == 0) {
+        if (frame_count % 50 == 0) {
         	Log.d(LOG_TAG, "(IMG)\t" +
         			"BW: " + 8.0*frame_totalsize / (frame_currentUpdateTime-frame_firstUpdateTime)/1000 + 
         			" Mbps\tCurrent FPS: " + 8.0*datasize/(frame_currentUpdateTime - frame_prevUpdateTime)/1000 + " Mbps\t" +

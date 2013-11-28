@@ -218,9 +218,12 @@ class MobileAccHandler(MobileSensorHandler):
 
 class MobileResultHandler(MobileSensorHandler):
     def setup(self):
-        global result_queue
-
         super(MobileResultHandler, self).setup()
+
+        global result_queue
+        # flush out old result at Queue
+        while result_queue.empty() is False:
+            result_queue.get()
         self.output_queue = result_queue
         if DEBUG.PACKET:
             self.control_app_latency = 0.0
