@@ -11,6 +11,7 @@ Missing directories include:
 models/
 cluster\_centers/
 bin/
+lib/
 
 installation:
 sudo apt-get install pkg-config libopencv-dev python-opencv

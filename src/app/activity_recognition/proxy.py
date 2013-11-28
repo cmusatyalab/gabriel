@@ -58,6 +58,8 @@ class MasterProxy(threading.Thread):
         self.data_queue = data_queue
         self.feature_queue = feature_queue
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.server.bind(("", MASTER_PORT)) 
         self.server.listen(10) # expect less then 10 connections... 
         self.last_image_parts = None
@@ -189,7 +191,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 2:
+        if self.slave_num < 4:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
