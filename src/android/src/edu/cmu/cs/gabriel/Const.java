@@ -15,12 +15,12 @@ public class Const {
 	public static File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images" + File.separator);	
 	
 	// control VM
-//	public static String GABRIEL_IP = "128.2.210.197";	// hail.elijah.cs.cmu.edu
+	public static String GABRIEL_IP = "128.2.210.197";	// hail.elijah.cs.cmu.edu
 //	public static String GABRIEL_IP = "128.2.213.102";	// Cloudlet
-	public static String GABRIEL_IP = "54.202.14.124";	// Amazon West
+//	public static String GABRIEL_IP = "54.202.14.124";	// Amazon West
 	
 	// Token
-	public static int MAX_TOKEN_SIZE = 1;
+	public static int MAX_TOKEN_SIZE = 10000;
 	private static final String LATENCY_FILE_NAME = "latency-" + GABRIEL_IP + "-" + MAX_TOKEN_SIZE + ".txt";
 	
 	// image size and frame rate

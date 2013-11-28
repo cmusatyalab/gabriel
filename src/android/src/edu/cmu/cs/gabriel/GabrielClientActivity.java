@@ -1,13 +1,8 @@
 package edu.cmu.cs.gabriel;
 
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Timer;
@@ -25,26 +20,18 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
 import android.hardware.Camera;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.Camera.PreviewCallback;
-import android.nfc.Tag;
-import android.opengl.GLSurfaceView;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
-import android.view.Display;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -75,7 +62,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	private SharedPreferences sharedPref;
 	private boolean hasStarted;
-	private TextView statView;
 	private CameraPreview mPreview;
 	private BufferedOutputStream localOutputStream;
 	AlertDialog errorAlertDialog;
@@ -92,16 +78,16 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 	
-		init_once();
-		init_experiement();
-//		runExperiements();
+//		init_once();
+//		init_experiement();
+		runExperiements();
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"128.2.210.197", "54.202.14.124"};
-			int[] tokenSize = {1000};
+			String[] ipList = {"128.2.210.197"};
+			int[] tokenSize = {1, 10, 10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
@@ -110,7 +96,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		            @Override
 		            public void run() {
 						// end condition
-						if ((ipIndex == ipList.length) && (tokenIndex == tokenSize.length)) {
+						if ((ipIndex == ipList.length) || (tokenIndex == tokenSize.length)) {
 							Log.d(LOG_TAG, "Finish all experiemets");
 							startTimer.cancel();
 							return;
@@ -132,15 +118,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 							tokenIndex = 0;
 							ipIndex++;
 						}
-						
 		            }
 		        });
 			}
 		};
 		
-		// run 60 seconds for each experiement
+		// run 3 minutes for each experiement
 		init_once();
-		startTimer.schedule(autoStart, 1000, 20*1000);
+		startTimer.schedule(autoStart, 1000, 3*60*1000);
 	}
 
 	private void init_once() {
@@ -300,7 +285,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
 				Bundle data = msg.getData();
 				String message = data.getString("message");
-				stopStreaming();
+//				stopStreaming();
 //				new AlertDialog.Builder(GabrielClientActivity.this).setTitle("INFO").setMessage(message)
 //						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
 			}
