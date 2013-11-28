@@ -1,6 +1,7 @@
 package edu.cmu.cs.gabriel;
 
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -76,18 +77,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		setContentView(R.layout.activity_main);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
-//		init_once();
-//		init_experiement();
-		runExperiements();
+		init_once();
+		init_experiement();
+//		runExperiements();
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
 			String[] ipList = {"128.2.210.197"};
-			int[] tokenSize = {1, 10, 10000};
+			int[] tokenSize = {1, 4, 10, 10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
@@ -105,6 +106,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 						// make a new configuration
 						Const.GABRIEL_IP = ipList[ipIndex];
 						Const.MAX_TOKEN_SIZE = tokenSize[tokenIndex];
+						Const.LATENCY_FILE_NAME = "latency-" + Const.GABRIEL_IP + "-" + Const.MAX_TOKEN_SIZE + ".txt";
+						Const.LATENCY_FILE = new File (Const.ROOT_DIR.getAbsolutePath() +
+								File.separator + "exp" +
+								File.separator + Const.LATENCY_FILE_NAME);
 						Log.d(LOG_TAG, "Start new experiemet");
 						Log.d(LOG_TAG, "ip: " + Const.GABRIEL_IP +"\tToken: " + Const.MAX_TOKEN_SIZE);
 
@@ -125,7 +130,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		
 		// run 3 minutes for each experiement
 		init_once();
-		startTimer.schedule(autoStart, 1000, 3*60*1000);
+		startTimer.schedule(autoStart, 1000, 2*60*1000);
 	}
 
 	private void init_once() {
@@ -202,8 +207,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		videoStreamingThread.start();
 		
 		accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
-		accStreamingThread.start();
-		
+		accStreamingThread.start();		
 	}
 	
 	// Implements TextToSpeech.OnInitListener
@@ -422,7 +426,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			stopService(batteryRecordingService);
 			batteryRecordingService = null;
 		}
-	}	
+	}
 	
 	private void terminate() {
 		// change only soft state
