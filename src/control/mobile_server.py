@@ -34,6 +34,7 @@ import socket
 import multiprocessing
 
 from config import Const as Const
+from config import DEBUG
 import log as logging
 from protocol import Protocol_client
 from protocol import Protocol_measurement
@@ -43,7 +44,7 @@ LOG = logging.getLogger(__name__)
 image_queue_list = list()
 acc_queue_list = list()
 gps_queue_list = list()
-result_queue = Queue.Queue()
+result_queue = multiprocessing.Queue()
 
 
 class MobileCommError(Exception):
@@ -61,7 +62,6 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         self.totoal_recv_size = 0
         self.ret_frame_ids = Queue.Queue()
         self.stop_queue = multiprocessing.Queue()
-        self.output_queue = None
 
     def _recv_all(self, recv_size):
         data = ''
@@ -82,6 +82,11 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
             socket_fd = self.request.fileno()
             stopfd = self.stop_queue._reader.fileno()
             input_list = [socket_fd, stopfd]
+            if hasattr(self, 'output_queue') == True:
+                result_fd = self.output_queue._reader.fileno()
+                input_list += [result_fd]
+            else:
+                result_fd = -1
             except_list = [socket_fd, stopfd]
 
             is_running = True
@@ -93,14 +98,13 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_input_data()
                     if s == stopfd:
                         is_running = False
+                    # For output, check queue first. If we check output socket, 
+                    # select will return immediately
+                    if s == result_fd:
+                        self._handle_output_result()
                 for e in exceptready:
                     is_running = False
                 
-                # For output, check queue first. If we check output socket, 
-                # select will return immediately
-                if (self.output_queue is not None) and \
-                        (self.output_queue.empty() == False):
-                    self._handle_output_result()
         except Exception as e:
             LOG.info(traceback.format_exc())
             LOG.debug("%s\n" % str(e))
@@ -135,9 +139,10 @@ class MobileVideoHandler(MobileSensorHandler):
         self.frame_count += 1
 
         # add header data for measurement
-        #header_json = json.loads(header_data)
-        #header_json[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME] = time.time()
-        #header_data = json.dumps(header_json)
+        if DEBUG.PACKET:
+            header_json = json.loads(header_data)
+            header_json[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME] = time.time()
+            header_data = json.dumps(header_json)
 
         # measurement
         self.current_time = time.time()
@@ -159,14 +164,12 @@ class MobileVideoHandler(MobileSensorHandler):
             image_queue.put((header_data, image_data))
 
         # return frame id to flow control
-        '''
-        json_header = json.loads(header_data)
-        frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        if frame_id is not None:
-            self.ret_frame_ids.put(frame_id)
-        global result_queue
-        result_queue.put(header_data)
-        '''
+        #json_header = json.loads(header_data)
+        #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        #if frame_id is not None:
+        #    self.ret_frame_ids.put(frame_id)
+        #global result_queue
+        #result_queue.put(header_data)
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -219,11 +222,14 @@ class MobileResultHandler(MobileSensorHandler):
         global result_queue
 
         super(MobileResultHandler, self).setup()
-        self.control_app_latency = 0.0
-        self.app_ucomm_latency = 0.0
-        self.ucomm_control_latency = 0.0
-        self.latency_count = 0
         self.output_queue = result_queue
+        if DEBUG.PACKET:
+            self.control_app_latency = 0.0
+            self.app_app_latency = 0.0
+            self.app_ucomm_latency = 0.0
+            self.ucomm_ucomm_latency = 0.0
+            self.ucomm_control_latency = 0.0
+            self.latency_count = 0
 
     def __str__(self):
         return "Mobile Result Handler"
@@ -242,44 +248,41 @@ class MobileResultHandler(MobileSensorHandler):
             raise MobileCommError("Client side is closed gracefullu at %s" % str(self))
 
     def _handle_output_result(self):
-        def _post_header_process(header_message):
-            header_json = json.loads(header_message)
-            frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-            if frame_id is not None:
-                header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
-                del header_json[Protocol_client.FRAME_MESSAGE_KEY]
-            return json.dumps(frame_id)
+        try:
+            result_msg = self.output_queue.get(timeout=0.0001)
+            # process header a little bit since we like to differenciate
+            # frame id that comes from an application with the frame id for
+            # the token bucket.
+            packet = struct.pack("!I%ds" % len(result_msg),
+                    len(result_msg),
+                    result_msg)
+            self.request.send(packet)
+            self.wfile.flush()
+            LOG.info("result message (%s) sent to the Glass", result_msg)
 
+            # check time
+            if DEBUG.PACKET:
+                header = json.loads(result_msg)
+                control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
+                app_recv_time = header.get(Protocol_measurement.JSON_KEY_APP_RECV_TIME)
+                app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
+                ucomm_recv_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME)
+                ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
+                self.control_app_latency += app_recv_time - control_sent_time
+                self.app_app_latency += app_sent_time - app_recv_time
+                self.app_ucomm_latency += ucomm_recv_time - app_sent_time
+                self.ucomm_ucomm_latency += ucomm_sent_time - ucomm_recv_time
+                self.ucomm_control_latency += time.time() - ucomm_sent_time
+                self.latency_count += 1
+                LOG.info("control-app:%f\tapp-app:%f\tapp-ucomm:%f\tucomm-ucomm:%f\tucomm-now:%f" % \
+                        (self.control_app_latency/self.latency_count,
+                            self.app_app_latency/self.latency_count,
+                            self.app_ucomm_latency/self.latency_count,
+                            self.ucomm_ucomm_latency/self.latency_count,
+                            self.ucomm_control_latency/self.latency_count))
 
-            try:
-                result_msg = self.output_queue.get(timeout=0.1)
-                # process header a little bit since we like to differenciate
-                # frame id that comes from an application with the frame id for
-                # the token bucket.
-                packet = struct.pack("!I%ds" % len(result_msg),
-                        len(result_msg),
-                        result_msg)
-                self.request.send(packet)
-                self.wfile.flush()
-
-                # check time
-                #header = json.loads(result_msg)
-                #control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
-                #app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
-                #ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
-                #self.control_app_latency += app_sent_time-control_sent_time
-                #self.app_ucomm_latency += ucomm_sent_time-app_sent_time
-                #self.ucomm_control_latency += time.time()-ucomm_sent_time
-                #self.latency_count += 1
-                #LOG.info("control-app:%f\tapp-ucomm:%f\tucomm-client:%f" % \
-                #        (self.control_app_latency/self.latency_count,
-                #            self.app_ucomm_latency/self.latency_count,
-                #            self.ucomm_control_latency/self.latency_count))
-
-                # send only one
-                #LOG.info("result message (%s) sent to the Glass", result_msg)
-            except Queue.Empty:
-                pass
+        except Queue.Empty:
+            pass
 
 
 class MobileCommServer(SocketServer.TCPServer):

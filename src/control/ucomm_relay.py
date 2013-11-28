@@ -59,7 +59,6 @@ class OffloadingEngineInfo(object):
 
 class UCommHandler(SocketServer.StreamRequestHandler, object):
     def setup(self):
-
         super(UCommHandler, self).setup()
         self.info = OffloadingEngineInfo(self.request.fileno())
         self.stop_queue = multiprocessing.Queue()

@@ -26,6 +26,7 @@ from control import log as logging
 from control.upnp_client import UPnPClient
 from control.config import Const
 from control.config import ServiceMeta
+from control.config import DEBUG
 
 from optparse import OptionParser
 import os
@@ -164,7 +165,8 @@ class AppProxyStreamingClient(threading.Thread):
         header_data = json.loads(header)
 
         # add header data for measurement
-        #header_data[Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
+        if DEBUG.PACKET:
+            header_data[Protocol_measurement.JSON_KEY_APP_RECV_TIME] = time.time()
 
         try:
             if self.data_queue.full() is True:
@@ -236,7 +238,7 @@ class ResultpublishClient(threading.Thread):
                 sock.connect((addr, port))
                 sock.settimeout(original_timeout)
                 # update
-                result_queue = Queue.Queue()
+                result_queue = multiprocessing.Queue()
                 self.result_queue_list.append(result_queue)
                 self.publish_addr_list[index] = (addr, port, sock, result_queue)
             except socket.error as e:
@@ -251,10 +253,18 @@ class ResultpublishClient(threading.Thread):
             fd_list.append(app_sock.fileno())
         return fd_list
 
+    def _get_all_queue_fd(self):
+        fd_list = list()
+        for (addr, port, app_sock, result_queue) in self.publish_addr_list:
+            if app_sock is None:
+                continue
+            fd_list.append(result_queue._reader.fileno())
+        return fd_list
+
     def publish(self):
         self.update_connection()
         stopfd = self.stop_queue._reader.fileno()
-        input_list = [stopfd]
+        input_list = self._get_all_queue_fd() + [stopfd]
         error_list = self._get_all_socket_fd()
 
         LOG.info("Start publishing data")
@@ -262,17 +272,14 @@ class ResultpublishClient(threading.Thread):
             is_running = True
             while is_running:
                 inputready, outputready, exceptready = \
-                        select.select(input_list, [], error_list, 0.0001)
+                        select.select(input_list, [], error_list)
                 for s in inputready:
-                    if s == stopfd: 
-                        is_running = False;
+                    if s == stopfd:
+                        is_running = False
+                    else:
+                        self._handle_result_output(s)
                 for s in exceptready:
                     self._handle_error(s)
-
-                # check output queue
-                for output_queue in self.result_queue_list:
-                    if output_queue.empty() == False:
-                        self._handle_result_output(output_queue)
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -297,21 +304,26 @@ class ResultpublishClient(threading.Thread):
                 del self.publish_addr_list[index]
                 break
 
-    def _handle_result_output(self, output_queue):
+    def _handle_result_output(self, output_queue_fd):
         for (addr, port, app_sock, result_queue) in self.publish_addr_list:
             if app_sock is None:
                 continue
-            if result_queue == output_queue:
+            if result_queue._reader.fileno() == output_queue_fd:
                 try:
-                    return_data = output_queue.get_nowait()
+                    return_data = result_queue.get_nowait()
+                    
+                    # measurement header
+                    if DEBUG.PACKET:
+                        header_data = json.loads(return_data)
+                        header_data[Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
+                        return_data = json.dumps(header_data)
+
                     packet = struct.pack("!I%ds" % len(return_data),
                             len(return_data), return_data)
                     app_sock.sendall(packet)
                     LOG.info("returning result: %s" % return_data)
                 except Queue.Empty as e:
                     pass
-                finally:
-                    break
 
 
 if __name__ == "__main__":

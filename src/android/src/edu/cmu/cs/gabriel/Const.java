@@ -16,7 +16,7 @@ public class Const {
 	
 	// control VM
 	public static String GABRIEL_IP = "128.2.210.197";
-	//public static String GABRIEL_IP = "50.18.239.196";	// Amazon West
+//	public static String GABRIEL_IP = "54.202.14.124";	// Amazon West
 	
 	// Token
 	public static int MAX_TOKEN_SIZE = 10;

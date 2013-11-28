@@ -78,3 +78,7 @@ class ServiceMeta(object):
     ACC_TCP_STREAMING_PORT = "acc_tcp_streaming_port"
     UCOMM_COMMUNICATE_ADDRESS = "ucomm_data_address"
     UCOMM_COMMUNICATE_PORT = "ucomm_data_port"
+
+
+class DEBUG(object):
+    PACKET = False

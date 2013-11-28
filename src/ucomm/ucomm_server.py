@@ -20,12 +20,16 @@
 
 import sys
 sys.path.insert(0, "../")
-import os
-import tempfile
-import multiprocessing
+# from control VM
 from control.protocol import Protocol_client
 from control.protocol import Protocol_measurement
 from control.config import ServiceMeta
+from control.config import DEBUG
+
+
+import os
+import tempfile
+import multiprocessing
 from urlparse import urlparse
 
 import httplib
@@ -172,7 +176,7 @@ class ResultForwardingClient(threading.Thread):
             LOG.info("Start forwardning data")
             socket_fd = self.sock.fileno()
             stopfd = self.stop_queue._reader.fileno()
-            input_list = [socket_fd, stopfd]
+            input_list = [stopfd]
             output_list = [socket_fd, stopfd]
             except_list = [socket_fd, stopfd]
             is_running = True
@@ -215,7 +219,7 @@ class ResultForwardingClient(threading.Thread):
 
     def _handle_result_output(self):
         try:
-            return_data = self.output_queue.get(timeout=0.1)
+            return_data = self.output_queue.get(timeout=0.0001)
 
             # ignore the result if same output is sent within 1 sec
             return_json = json.loads(return_data)
@@ -228,13 +232,14 @@ class ResultForwardingClient(threading.Thread):
                     LOG.info("Identical result (%s) is ignored" % result_str)
                     #return
 
+            if DEBUG.PACKET:
+                return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
             output = json.dumps(return_json)
             packet = struct.pack("!I%ds" % len(output),
                     len(output), output)
             self.sock.sendall(packet)
             self.previous_sent_time = time.time()
             self.previous_sent_data = result_str
-
             LOG.info("forward the result: %s" % output)
         except Queue.Empty as e:
             pass
@@ -298,6 +303,8 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
         if offload_name is None:
             header_json[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = \
                     self.request.fileno()
+        if DEBUG.PACKET:
+            header_json[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
         output_queue.put(json.dumps(header_json))
 
 
