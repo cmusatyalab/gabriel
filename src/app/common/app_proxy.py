@@ -179,6 +179,86 @@ class AppProxyStreamingClient(threading.Thread):
             pass
 
 
+class AppProxyBlockingClient(threading.Thread):
+    def __init__(self, control_addr, output_queue_list):
+        self.stop = threading.Event()
+        self.port_number = None
+        self.output_queue_list = output_queue_list
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.sock.connect(control_addr)
+            LOG.info("Success to connect to %s" % str(control_addr))
+        except socket.error as e:
+            raise AppProxyError("Failed to connect to %s" % str(control_addr))
+        self.stop_queue = multiprocessing.Queue()
+        threading.Thread.__init__(self, target=self.run)
+
+    def run(self):
+        LOG.info("Start getting data and run program")
+        try:
+            stopfd = self.stop_queue._reader.fileno()
+            socket_fd = self.sock.fileno()
+            input_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stopfd]
+            is_running = True
+            while is_running:
+                inputready, outputready, exceptready = \
+                        select.select(input_list, [], except_list)
+                for s in inputready:
+                    if s == socket_fd:
+                        self._process_input_data()
+                    if s == stopfd:
+                        is_running = False
+                for e in exceptready:
+                    is_running = False
+        except Exception as e:
+            LOG.warning(traceback.format_exc())
+            LOG.warning("%s" % str(e))
+            LOG.warning("handler raises exception")
+            LOG.warning("Server is disconnected unexpectedly")
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+        if self.stop_queue is not None:
+            self.stop_queue.close()
+            self.stop_queue = None
+        LOG.info("Streaming thread terminated")
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
+
+    def _recv_all(self, sock, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = sock.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise AppProxyError("Socket is closed")
+            data += tmp_data
+        return data
+
+    def _process_input_data(self):
+        # receive data from control VM
+        header_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
+        data_size = struct.unpack("!I", self._recv_all(self.sock, 4))[0]
+        header = self._recv_all(self.sock, header_size)
+        data = self._recv_all(self.sock, data_size)
+        header_data = json.loads(header)
+        result = self.handle(header_data, data)
+        if result is not None:
+            header_data[Protocol_client.RESULT_MESSAGE_KEY] = result
+            for output_queue in self.output_queue_list:
+                output_queue.put(json.dumps(header_data))
+
+        # add header data for measurement
+        if DEBUG.PACKET:
+            header_data[Protocol_measurement.JSON_KEY_APP_RECV_TIME] = time.time()
+
+    def handle(self, header, data):
+        pass
+
+
 class AppProxyThread(threading.Thread):
     def __init__(self, data_queue, output_queue_list):
         self.data_queue = data_queue

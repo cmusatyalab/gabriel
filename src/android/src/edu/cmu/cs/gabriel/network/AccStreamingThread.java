@@ -29,7 +29,6 @@ import android.util.Log;
 public class AccStreamingThread extends Thread {
 	private static final String LOG_TAG = "krha";
 
-
 	static final int BUFFER_SIZE = 102400; // only for the UDP case
 	private boolean is_running = false;
 	private InetAddress remoteIP;
@@ -73,6 +72,7 @@ public class AccStreamingThread extends Thread {
 
 		try {
 			tcpSocket = new Socket();
+			tcpSocket.setTcpNoDelay(true);
 			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5*1000);
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
@@ -94,7 +94,7 @@ public class AccStreamingThread extends Thread {
 					continue;
 				}
 				
-		        ByteArrayOutputStream baos =new ByteArrayOutputStream();
+		        ByteArrayOutputStream baos = new ByteArrayOutputStream();
 		        DataOutputStream dos=new DataOutputStream(baos);				
 				while (this.accDataList.size() > 0) {
 					AccData data = this.accDataList.remove(0);

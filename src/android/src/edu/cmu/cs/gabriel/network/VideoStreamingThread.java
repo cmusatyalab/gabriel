@@ -21,6 +21,7 @@ import java.util.TreeMap;
 import java.util.Vector;
 
 import edu.cmu.cs.gabriel.Const;
+import edu.cmu.cs.gabriel.network.AccStreamingThread.AccData;
 import edu.cmu.cs.gabriel.token.SentPacketInfo;
 import edu.cmu.cs.gabriel.token.TokenController;
 
@@ -59,10 +60,6 @@ public class VideoStreamingThread extends Thread {
 	private long sequenceID = 0;
 
 	private TokenController tokenController;
-	private long packet_firstUpdateTime;
-	private long packet_currentUpdateTime;
-	private int packet_totalsize;
-	private long packet_prevUpdateTime;
 
 	public VideoStreamingThread(FileDescriptor fd, String IPString, int port, Handler handler, TokenController tokenController) {
 		is_running = false;
@@ -102,13 +99,15 @@ public class VideoStreamingThread extends Thread {
 		this.is_running = true;
 		Log.i(LOG_TAG, "Streaming thread running");
 
-		byte[] buffer = new byte[BUFFER_SIZE];
-		int bytes_read = 0;
-		int bytes_count = 0;
 		int packet_count = 0;
+		long packet_firstUpdateTime = 0;
+		long packet_currentUpdateTime = 0;
+		int packet_totalsize = 0;
+		long packet_prevUpdateTime = 0;
 
 		try {
 			tcpSocket = new Socket();
+			tcpSocket.setTcpNoDelay(true);
 			tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
 			networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
 			DataInputStream networkReader = new DataInputStream(tcpSocket.getInputStream());
@@ -123,10 +122,12 @@ public class VideoStreamingThread extends Thread {
 
 		while (this.is_running) {
 			try {
+				// check token
 				if (this.tokenController.getCurrentToken() <= 0) {
 					continue;
 				}
-				// token exist
+				
+				// get data
 				byte[] data = null;
 				synchronized(frameLock){
 					if (this.frameBuffer == null)
@@ -134,11 +135,17 @@ public class VideoStreamingThread extends Thread {
 					data = this.frameBuffer;
 					this.frameBuffer = null;
 				}
+				
+				// make it as a single packet
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		        DataOutputStream dos=new DataOutputStream(baos);
 				byte[] header = ("{\"id\":" + this.sequenceID + "}").getBytes();
-				networkWriter.writeInt(header.length);
-				networkWriter.writeInt(data.length);
-				networkWriter.write(header);
-				networkWriter.write(data, 0, data.length);
+				dos.writeInt(header.length);
+				dos.writeInt(data.length);
+				dos.write(header);
+				dos.write(data);
+				
+				networkWriter.write(baos.toByteArray());
 				networkWriter.flush();
 				this.sequenceID++;
 				this.tokenController.sendData(this.sequenceID, data.length + header.length);

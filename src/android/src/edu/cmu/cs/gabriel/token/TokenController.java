@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import android.os.Bundle;
 import android.os.Environment;
@@ -17,7 +18,7 @@ public class TokenController {
 	private static final String LOG_TAG = "krha";
 	
 	private int currentToken = Const.MAX_TOKEN_SIZE;
-	private TreeMap<Long, SentPacketInfo> latencyStamps = new TreeMap<Long, SentPacketInfo>();
+	private ConcurrentHashMap<Long, SentPacketInfo> latencyStamps = new ConcurrentHashMap<Long, SentPacketInfo>();
     private Object tokenLock = new Object();
 	private FileWriter mFileWriter = null;
 
