@@ -42,7 +42,7 @@ h = 120
 video_path = "%s/tmp.avi" % TMP_DIR
 video_name = os.path.basename(video_path).split('.avi')[0]
 selected_feature = "mosift"
-descriptor = "all"
+descriptor = "MOTION"
 n_clusters = 1024
 
 model_names = ["SayHi", "Clapping", "TurnAround", "Squat", "ExtendingHands"]

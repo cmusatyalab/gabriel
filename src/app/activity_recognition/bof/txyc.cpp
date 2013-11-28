@@ -48,16 +48,8 @@ int main(int argc, char** argv)
 	sscanf(argv[2], "%d", &n_clusters);
 	assert( n_clusters > 0 );
 
-	bool zipped = false;
 	int len = strlen(argv[3]);
-	string tp_file = string(argv[3]) + ".txt";
-	if( argv[3][len - 3] == '.' && argv[3][len - 2] == 'g' && argv[3][len - 1] == 'z' ){
-		gzip2txt(argv[3], tp_file.c_str());
-		zipped = true;
-		fpIn = fopen(tp_file.c_str(), "r");
-	}else{
-		fpIn = fopen(argv[3], "r");
-	}
+	fpIn = fopen(argv[3], "r");
 	assert(fpIn);
 	
 	fpOut = fopen(argv[4], "w");
@@ -66,50 +58,7 @@ int main(int argc, char** argv)
 	// based on selected feature and descriptor, determine the fraction of feature vectors that are needed
 	// as well as which number in the feature file means x,y location of the feature, which might be useful in spbof
 	bool recognized = false;
-	if (strcmp(argv[5], "traj") == 0 || strcmp(argv[5], "trajS") == 0) {
-		x_loc = 2;
-		y_loc = 3;
-		if (strcmp(argv[6], "all") == 0) {
-			feature_start = 8;
-			feature_end = 433;
-			recognized = true;
-		}
-		if (strcmp(argv[6], "TRAJ") == 0) {
-                        feature_start = 8;
-                        feature_end = 37;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "HOG") == 0) {
-                        feature_start = 38;
-                        feature_end = 133;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "HOF") == 0) {
-                        feature_start = 134;
-                        feature_end = 241;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "MBHx") == 0) {
-                        feature_start = 242;
-                        feature_end = 337;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "MBHy") == 0) {
-                        feature_start = 338;
-                        feature_end = 433;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "MBH") == 0) {
-                        feature_start = 242;
-                        feature_end = 433;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "HOGHOF") == 0) {
-                        feature_start = 38;
-                        feature_end = 241;
-                        recognized = true;
-                }
-	}
+
 	if (strcmp(argv[5], "mosift") == 0) {
                 x_loc = 1;
                 y_loc = 2;
@@ -118,37 +67,12 @@ int main(int argc, char** argv)
                         feature_end = 262;
                         recognized = true;
                 }
-                if (strcmp(argv[6], "SIFT") == 0) {
-                        feature_start = 7;
-                        feature_end = 134;
-                        recognized = true;
-                }
                 if (strcmp(argv[6], "MOTION") == 0) {
                         feature_start = 135;
                         feature_end = 262;
                         recognized = true;
                 }
         }
-	if (strcmp(argv[5], "stip") == 0 || strcmp(argv[5], "stipS") == 0) {
-                x_loc = 6;
-                y_loc = 5;
-                if (strcmp(argv[6], "all") == 0 || strcmp(argv[6], "HOGHOF") == 0) {
-                        feature_start = 10;
-                        feature_end = 171;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "HOG") == 0) {
-                        feature_start = 10;
-                        feature_end = 81;
-                        recognized = true;
-                }
-		if (strcmp(argv[6], "HOF") == 0) {
-                        feature_start = 82;
-                        feature_end = 171;
-                        recognized = true;
-                }
-        }
-
 
 	if (!recognized) {
 		fprintf(stderr, "Feature or descriptor cannot be recognized!");
@@ -246,21 +170,6 @@ int main(int argc, char** argv)
 
         float cdist, mindist = FLT_MAX;
         int minindex = -1;
-        //hard assigment with early discard
-        /*
-        for (i = 0; i < n_clusters; i++) {
-            cdist = 0.0;
-            for (j = 0; j < dim; j++) {
-                cdist += (data[j]-ctrs[i][j])*(data[j]-ctrs[i][j]);
-                if (cdist >= mindist) break;
-            }
-            if (cdist < mindist) {
-                mindist = cdist;
-                minindex = i;
-            }
-        }
-        fprintf(fpOut, " %d", minindex);
-        */
         float mindists[TOP_N_CLUSTERS + 1], swp_f;
         int minindexes[TOP_N_CLUSTERS + 1], swp_i;
         for (i = 0; i < TOP_N_CLUSTERS; i++) {
@@ -329,11 +238,6 @@ int main(int argc, char** argv)
 	fclose(fpCtrs);
 	fclose(fpIn);
 	fclose(fpOut);	
-
-	if( zipped == true ){
-		string cmd = string("rm -rf ") + tp_file;
-		system(cmd.c_str());
-	}	
 
 	return 0;
 }
