@@ -18,7 +18,6 @@
 #   limitations under the License.
 #
 import sys
-sys.path.insert(0, "../common")
 import time
 import Queue
 
@@ -68,7 +67,6 @@ class FaceThread(AppProxyThread):
         # receive data from control VM
         # feed data to the app
         (found_name, position) = face_request(self.app_sock, data)
-        found_name = ''
         if found_name.find("\\u0000") != -1:
             found_name = ''
         return found_name.strip()
@@ -80,8 +78,8 @@ if __name__ == "__main__":
     image_queue = Queue.Queue(1)
     output_queue_list = list()
 
-    app_addr = ("10.2.4.11", APP_PORT)
-    #app_addr = ("127.0.0.1", APP_PORT)
+    #app_addr = ("10.2.4.11", APP_PORT)
+    app_addr = ("127.0.0.1", APP_PORT)
     app_thread = None
     face_thread = None
     client_thread = None
