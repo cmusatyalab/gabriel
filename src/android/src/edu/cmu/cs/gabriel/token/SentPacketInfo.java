@@ -1,11 +1,11 @@
 package edu.cmu.cs.gabriel.token;
 
 public class SentPacketInfo {
-	public long sentTime;
+	public long generatedTime;
 	public int sentSize;
 
 	public SentPacketInfo(long currentTimeMillis, int sentSize) {
-		this.sentTime = currentTimeMillis;
+		this.generatedTime = currentTimeMillis;
 		this.sentSize = sentSize;
 	}
 

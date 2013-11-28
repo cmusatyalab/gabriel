@@ -53,9 +53,10 @@ public class VideoStreamingThread extends Thread {
 
 	private FileInputStream cameraInputStream;
 	private byte[] frameBuffer = null;
+	private long frameGeneratedTime = 0;
 	private Object frameLock = new Object();
 	private Handler networkHander = null;
-	private long sequenceID = 0;
+	private long sequenceID = 1;	// must start from 1
 
 	private TokenController tokenController;
 
@@ -128,10 +129,12 @@ public class VideoStreamingThread extends Thread {
 				
 				// get data
 				byte[] data = null;
+				long dataTime = 0;
 				synchronized(frameLock){
 					if (this.frameBuffer == null)
 						continue;					
 					data = this.frameBuffer;
+					dataTime = this.frameGeneratedTime;
 					this.frameBuffer = null;
 				}
 				
@@ -143,12 +146,13 @@ public class VideoStreamingThread extends Thread {
 				dos.writeInt(data.length);
 				dos.write(header);
 				dos.write(data);
+
+				this.tokenController.sendData(this.sequenceID, dataTime, dos.size());
+				this.tokenController.decreaseToken();
+				this.sequenceID++;
 				
 				networkWriter.write(baos.toByteArray());
 				networkWriter.flush();
-				this.tokenController.sendData(this.sequenceID, data.length + header.length);
-				this.tokenController.decreaseToken();
-				this.sequenceID++;
 				
 				// measurement
 		        if (packet_firstUpdateTime == 0) {
@@ -224,6 +228,7 @@ public class VideoStreamingThread extends Thread {
             image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 90, tmpBuffer);
             synchronized (frameLock) {
                 this.frameBuffer = tmpBuffer.toByteArray();
+                this.frameGeneratedTime = System.currentTimeMillis();
 			}
             datasize = tmpBuffer.size();
         }else{
@@ -234,13 +239,12 @@ public class VideoStreamingThread extends Thread {
 				byte[] buffer = new byte[datasize];
 				fi.read(buffer, 0, datasize);
 	            synchronized (frameLock) {
-		            this.frameBuffer = buffer;	            	
+		            this.frameBuffer = buffer;
+	                this.frameGeneratedTime = System.currentTimeMillis();
 	            }
 	            indexImageFile++;
 			} catch (FileNotFoundException e) {
-				e.printStackTrace();
 			} catch (IOException e) {
-				e.printStackTrace();
 			}
         }
 		

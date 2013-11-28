@@ -22,6 +22,7 @@ public class TokenController {
     private Object tokenLock = new Object();
 	private FileWriter mFileWriter = null;
 
+	private long prevRecvedAck = 0;
 	private long firstSentTime = 0;
     
     public TokenController(File resultSavingPath){
@@ -40,32 +41,42 @@ public class TokenController {
 		private long frame_latency_count = 0;
 		
 		public void handleMessage(Message msg) {
-			if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {
+			if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {					
+				long now = System.currentTimeMillis();
 				Bundle bundle = msg.getData();
 				long recvFrameID = bundle.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-				SentPacketInfo sentPacket = latencyStamps.remove(recvFrameID);
-				if (sentPacket != null){
-					long now = System.currentTimeMillis();
-					long time_diff = now - sentPacket.sentTime;
-					String log = recvFrameID + "\t" + now + "\t" + sentPacket.sentTime + "\t" + time_diff;
-		    		try {
-						mFileWriter.write(log + "\n");
-					} catch (IOException e) {}
+				if (recvFrameID > prevRecvedAck){
+					long increaseCount = recvFrameID - prevRecvedAck;					
+					increaseTokens(increaseCount);
+					for (long index = prevRecvedAck+1; index < recvFrameID; index++){
+						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
+						latencyStamps.remove(index);
+					} 
+					prevRecvedAck = recvFrameID;
+					
+					// get the packet information
+					SentPacketInfo sentPacket = latencyStamps.remove(recvFrameID);
+					if (sentPacket != null){
+						long time_diff = now - sentPacket.generatedTime;
+						String log = recvFrameID + "\t" + now + "\t" + sentPacket.generatedTime + "\t" + time_diff;
+			    		try {
+							mFileWriter.write(log + "\n");
+						} catch (IOException e) {}
 
-					frame_latency += time_diff;
-					frame_size += sentPacket.sentSize;
-					frame_latency_count++;
-					if (frame_latency_count % 100 == 0){
-//						Log.d(LOG_TAG, recvFrameID + ", size: " + sentPacket.sentSize + "\tBandwidth : " + 8.0*frame_size/(now-firstSentTime)/1000 + "(MB/s)");					
+						frame_latency += time_diff;
+						frame_size += sentPacket.sentSize;
+						frame_latency_count++;
+						if (frame_latency_count % 100 == 0){
+//							Log.d(LOG_TAG, recvFrameID + ", size: " + sentPacket.sentSize + "\tBandwidth : " + 8.0*frame_size/(now-firstSentTime)/1000 + "(MB/s)");					
+						}						
 					}
-				}				
-				increaseToken();
+				}
 			}
 		}
 	};
 
-	public void sendData(long frameID, int sentSize) {
-		this.latencyStamps.put(frameID, new SentPacketInfo(System.currentTimeMillis(), sentSize));
+	public void sendData(long frameID, long dataTime, int sentSize) {
+		this.latencyStamps.put(frameID, new SentPacketInfo(dataTime, sentSize));
 		if (firstSentTime == 0){
 			firstSentTime = System.currentTimeMillis();
 		}		
@@ -77,13 +88,7 @@ public class TokenController {
 		}
 	}
 
-	public void increaseToken() {
-		synchronized(tokenLock){
-			this.currentToken++;
-		}
-	}
-
-	public void increaseTokens(int count) {
+	public void increaseTokens(long count) {
 		synchronized(tokenLock){
 			this.currentToken += count;		
 		}
@@ -100,5 +105,4 @@ public class TokenController {
 	public void close() {
 		latencyStamps.clear();
 	}
-
 }

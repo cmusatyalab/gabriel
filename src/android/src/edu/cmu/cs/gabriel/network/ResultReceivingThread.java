@@ -146,13 +146,17 @@ public class ResultReceivingThread extends Thread {
 	public void close() {
 		this.is_running = false;
 		try {
-			if(this.networkReader != null)
+			if(this.networkReader != null){
 				this.networkReader.close();
+				this.networkReader = null;
+			}
 		} catch (IOException e) {
 		}
 		try {
-			if(this.networkWriter != null)
+			if(this.networkWriter != null){
 				this.networkWriter.close();
+				this.networkWriter = null;
+			}
 		} catch (IOException e) {
 		}
 		try {
@@ -160,6 +164,7 @@ public class ResultReceivingThread extends Thread {
 				this.tcpSocket.shutdownInput();
 				this.tcpSocket.shutdownOutput();			
 				this.tcpSocket.close();	
+				this.tcpSocket = null;
 			}
 		} catch (IOException e) {
 		}
