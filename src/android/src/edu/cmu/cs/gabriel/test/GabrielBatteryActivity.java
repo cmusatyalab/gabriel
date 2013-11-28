@@ -14,7 +14,6 @@ import edu.cmu.cs.gabriel.BatteryRecordingService;
 import edu.cmu.cs.gabriel.CameraConnector;
 import edu.cmu.cs.gabriel.CameraPreview;
 import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.ControlThread;
 import edu.cmu.cs.gabriel.R;
 import edu.cmu.cs.gabriel.SettingsActivity;
 import edu.cmu.cs.gabriel.R.array;
@@ -78,7 +77,6 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 	public static final int RESULT_RECEIVING_PORT = 9101;
 
 	CameraConnector cameraRecorder;
-	ControlThread controlThread;
 	
 	VideoStreamingThread videoStreamingThread;	
 	AccStreamingThread accStreamingThread;
@@ -136,7 +134,6 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 		videoStreamingThread = null;
 		accStreamingThread = null;
 		resultThread = null;
-		controlThread = null;
 		hasStarted = false;
 		localOutputStream = null;
 
@@ -144,10 +141,7 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 			this.errorAlertDialog = new AlertDialog.Builder(GabrielBatteryActivity.this).create();
 			this.errorAlertDialog.setTitle("Error");
 			this.errorAlertDialog.setIcon(R.drawable.ic_launcher);
-		}
-
-		startCapture();
-		
+		}	
 
 	}
 
@@ -252,47 +246,6 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 		}
 	};
 
-	private Handler controlMsgHandler = new Handler() {
-		public void handleMessage(Message msg_in) {
-			if (msg_in.what == ControlThread.CODE_TCP_SETUP_SUCCESS) {
-				Handler handler = controlThread.getHandler();
-				// now ask the control channel to query streaming port
-				Message msg_out = Message.obtain();
-				Bundle data = new Bundle();
-				data.putString("serviceName", "streaming");
-				data.putString("resourceName", "video");
-				msg_out.what = ControlThread.CODE_QUERY_PORT;
-				msg_out.setData(data);
-				handler.sendMessage(msg_out);
-			} else if (msg_in.what == ControlThread.CODE_TCP_SETUP_FAIL) {
-				// nothing for now
-			} else if (msg_in.what == ControlThread.CODE_STREAM_PORT) {
-				int serverStreamPort = msg_in.arg1;
-				if (cameraRecorder == null) {
-					cameraRecorder = new CameraConnector();
-					cameraRecorder.init();
-				}
-
-				if (videoStreamingThread == null) {
-					videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
-							GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
-					videoStreamingThread.start();
-				}
-				if (accStreamingThread == null) {
-					accStreamingThread = new AccStreamingThread(GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
-					accStreamingThread.start();
-				}
-				if (resultThread == null) {
-					resultThread = new ResultReceivingThread(GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
-					resultThread.start();
-				}
-
-				localOutputStream = new BufferedOutputStream(new FileOutputStream(
-						cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
-				hasStarted = true;
-			}
-		}
-	};
 
 	protected int selectedRangeIndex = 0;
 
@@ -360,18 +313,6 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 			}
 		});
 		ab.show();
-	}
-
-	private void startCapture() {
-		if (hasStarted == false) {
-			mPreview.setPreviewCallback(previewCallback);
-			controlThread = new ControlThread(controlMsgHandler, GABRIEL_IP);
-			controlThread.start();
-		}
-	}
-
-	public void startStreaming(View view) throws IOException {
-		startCapture();
 	}
 
 	public void stopStreaming() {
@@ -467,13 +408,6 @@ public class GabrielBatteryActivity extends Activity implements TextToSpeech.OnI
 			mTTS.stop();
 			mTTS.shutdown();
 			mTTS = null;
-		}
-		if (controlThread != null) {
-			Message msg_out = Message.obtain();
-			msg_out.what = ControlThread.CODE_CLOSE_CONNECTION;
-			Handler controlHandler = controlThread.getHandler();
-			controlHandler.sendMessage(msg_out);
-			controlThread = null;
 		}
 		if (cameraRecorder != null) {
 			cameraRecorder.close();

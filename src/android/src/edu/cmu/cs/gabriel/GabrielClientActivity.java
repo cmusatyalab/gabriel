@@ -7,6 +7,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Timer;
@@ -37,6 +38,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
@@ -65,7 +67,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	public static final int RESULT_RECEIVING_PORT = 9101;
 
 	CameraConnector cameraRecorder;
-	ControlThread controlThread;
 	
 	VideoStreamingThread videoStreamingThread;
 	AccStreamingThread accStreamingThread;
@@ -90,45 +91,136 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+	
+		init_once();
+		init_experiement();
+//		runExperiements();
+	}
+	
+	protected void runExperiements(){
+		final Timer startTimer = new Timer();
+		TimerTask autoStart = new TimerTask(){
+			String[] ipList = {"128.2.210.197", "54.202.14.124"};
+			int[] tokenSize = {1000};
+			int ipIndex = 0;
+			int tokenIndex = 0;			
+			@Override
+			public void run() {
+				GabrielClientActivity.this.runOnUiThread(new Runnable() {
+		            @Override
+		            public void run() {
+						// end condition
+						if ((ipIndex == ipList.length) && (tokenIndex == tokenSize.length)) {
+							Log.d(LOG_TAG, "Finish all experiemets");
+							startTimer.cancel();
+							return;
+						}
+						
+						// make a new configuration
+						Const.GABRIEL_IP = ipList[ipIndex];
+						Const.MAX_TOKEN_SIZE = tokenSize[tokenIndex];
+						Log.d(LOG_TAG, "Start new experiemet");
+						Log.d(LOG_TAG, "ip: " + Const.GABRIEL_IP +"\tToken: " + Const.MAX_TOKEN_SIZE);
+
+						
+						// run the experiment
+						init_experiement();
+						
+						// move on the next experiment
+						tokenIndex++;
+						if (tokenIndex == tokenSize.length){
+							tokenIndex = 0;
+							ipIndex++;
+						}
+						
+		            }
+		        });
+			}
+		};
 		
-		init();
-		startBatteryRecording();
+		// run 60 seconds for each experiement
+		init_once();
+		startTimer.schedule(autoStart, 1000, 20*1000);
 	}
 
-	private void init() {
+	private void init_once() {
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
+		mPreview.setPreviewCallback(previewCallback);
 		Const.ROOT_DIR.mkdirs();
-
-		if (tokenController == null){
-			tokenController = new TokenController(Const.LATENCY_FILE);
+		// TextToSpeech.OnInitListener
+		if (mTTS == null) {
+			mTTS = new TextToSpeech(this, this);
 		}
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 			mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
 			mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
 		}
-
-		// TextToSpeech.OnInitListener
-		if (mTTS == null) {
-			mTTS = new TextToSpeech(this, this);
-		}
-		cameraRecorder = null;
-		videoStreamingThread = null;
-		accStreamingThread = null;
-		resultThread = null;
-		controlThread = null;
-		hasStarted = false;
-		localOutputStream = null;
-
 		if (this.errorAlertDialog == null) {
 			this.errorAlertDialog = new AlertDialog.Builder(GabrielClientActivity.this).create();
 			this.errorAlertDialog.setTitle("Error");
 			this.errorAlertDialog.setIcon(R.drawable.ic_launcher);
 		}
+		if (cameraRecorder != null) {
+			cameraRecorder.close();
+			cameraRecorder = null;
+		}
+		if (localOutputStream != null){
+			try {
+				localOutputStream.close();
+			} catch (IOException e) {}
+			localOutputStream = null;
+		}
+		
+		if (cameraRecorder == null) {
+			cameraRecorder = new CameraConnector();
+			cameraRecorder.init();
+			Log.d(LOG_TAG, "new cameraRecorder");
+		}
+		if (localOutputStream == null){
+			localOutputStream = new BufferedOutputStream(new FileOutputStream(
+					cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
 
-		startCapture();
+			Log.d(LOG_TAG, "new localoutputStream");
+		}
+		hasStarted = true;
 	}
-
+	
+	private void init_experiement() {
+		startBatteryRecording();
+		if (tokenController != null){
+			tokenController.close();
+		}
+		if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
+			videoStreamingThread.stopStreaming();
+			videoStreamingThread = null;
+		}
+		if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
+			accStreamingThread.stopStreaming();
+			accStreamingThread = null;
+		}
+		if ((resultThread != null) && (resultThread.isAlive())) {
+			resultThread.close();
+			resultThread = null;
+		}
+		
+		try {
+			Thread.sleep(5000);
+		} catch (InterruptedException e) {}
+		
+		tokenController = new TokenController(Const.LATENCY_FILE);
+		resultThread = new ResultReceivingThread(Const.GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+		resultThread.start();
+		
+		videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
+				Const.GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
+		videoStreamingThread.start();
+		
+		accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
+		accStreamingThread.start();
+		
+	}
+	
 	// Implements TextToSpeech.OnInitListener
 	public void onInit(int status) {
 		if (status == TextToSpeech.SUCCESS) {
@@ -148,20 +240,20 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	@Override
 	protected void onResume() {
 		super.onResume();
-		this.init();
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
 		this.terminate();
+		finish();
 	}
 
 	@Override
 	protected void onDestroy() {
-		stopBatteryRecording();
 		this.terminate();
 		super.onDestroy();
+		finish();
 	}
 
 	@Override
@@ -191,11 +283,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private PreviewCallback previewCallback = new PreviewCallback() {
-
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
+//			Log.d(LOG_TAG, "receiving new frame");
 			if (hasStarted && (localOutputStream != null)) {
 				Camera.Parameters parameters = mCamera.getParameters();
-				videoStreamingThread.push(frame, parameters);
+				if (videoStreamingThread != null){
+//					Log.d(LOG_TAG, "pushing new frame");
+					videoStreamingThread.push(frame, parameters);					
+				}
 			}
 		}
 	};
@@ -216,60 +311,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 				Log.d(LOG_TAG, "tts string origin: " + ttsMessage);
 				mTTS.setSpeechRate(1f);
 				mTTS.speak(ttsMessage, TextToSpeech.QUEUE_FLUSH, null);
-
-				// Bundle data = msg.getData();
-				// double avgfps = data.getDouble("avg_fps");
-				// double fps = data.getDouble("fps");
-				// if (fps != 0.0) {
-				// Log.e("krha", fps + " " + avgfps);
-				// statView.setText("FPS - " + String.format("%04.2f", fps) +
-				// "(current), "
-				// + String.format("%04.2f", avgfps) + "(avg)");
-				// }
 			}
 		}
 	};
 
-	private Handler controlMsgHandler = new Handler() {
-		public void handleMessage(Message msg_in) {
-			if (msg_in.what == ControlThread.CODE_TCP_SETUP_SUCCESS) {
-				Handler handler = controlThread.getHandler();
-				// now ask the control channel to query streaming port
-				Message msg_out = Message.obtain();
-				Bundle data = new Bundle();
-				data.putString("serviceName", "streaming");
-				data.putString("resourceName", "video");
-				msg_out.what = ControlThread.CODE_QUERY_PORT;
-				msg_out.setData(data);
-				handler.sendMessage(msg_out);
-			} else if (msg_in.what == ControlThread.CODE_TCP_SETUP_FAIL) {
-				// nothing for now
-			} else if (msg_in.what == ControlThread.CODE_STREAM_PORT) {
-				int serverStreamPort = msg_in.arg1;
-				if (cameraRecorder == null) {
-					cameraRecorder = new CameraConnector();
-					cameraRecorder.init();
-				}
-				if (resultThread == null) {
-					resultThread = new ResultReceivingThread(Const.GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
-					resultThread.start();
-				}
-				if (videoStreamingThread == null) {
-					videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
-							Const.GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
-					videoStreamingThread.start();
-				}
-				if (accStreamingThread == null) {
-					accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
-					accStreamingThread.start();
-				}
-
-				localOutputStream = new BufferedOutputStream(new FileOutputStream(
-						cameraRecorder.getInputFileDescriptor()), LOCAL_OUTPUT_BUFF_SIZE);
-				hasStarted = true;
-			}
-		}
-	};
 
 	protected int selectedRangeIndex = 0;
 
@@ -339,18 +384,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		ab.show();
 	}
 
-	private void startCapture() {
-		if (hasStarted == false) {
-			mPreview.setPreviewCallback(previewCallback);
-			controlThread = new ControlThread(controlMsgHandler, Const.GABRIEL_IP);
-			controlThread.start();
-		}
-	}
-
-	public void startStreaming(View view) throws IOException {
-		startCapture();
-	}
-
 	public void stopStreaming() {
 		hasStarted = false;
 		if (mPreview != null)
@@ -404,33 +437,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			stopService(batteryRecordingService);
 			batteryRecordingService = null;
 		}
-	}
-
-	@Override
-	public boolean onKeyDown(int keyCode, KeyEvent event) {
-		if (keyCode == KeyEvent.KEYCODE_BACK) {
-			this.terminate();
-			return true;
-		}
-
-		return super.onKeyDown(keyCode, event);
-	}
-
+	}	
+	
 	private void terminate() {
-		// Don't forget to shutdown!
-		if (mTTS != null) {
-			Log.d(LOG_TAG, "TTS is closed");
-			mTTS.stop();
-			mTTS.shutdown();
-			mTTS = null;
-		}
-		if (controlThread != null) {
-			Message msg_out = Message.obtain();
-			msg_out.what = ControlThread.CODE_CLOSE_CONNECTION;
-			Handler controlHandler = controlThread.getHandler();
-			controlHandler.sendMessage(msg_out);
-			controlThread = null;
-		}
+		// change only soft state
+		stopBatteryRecording();
+		
 		if (cameraRecorder != null) {
 			cameraRecorder.close();
 			cameraRecorder = null;
@@ -447,6 +459,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			accStreamingThread.stopStreaming();
 			accStreamingThread = null;
 		}
+		if (tokenController != null){
+			tokenController.close();
+			tokenController = null;
+		}
+		
+		// Don't forget to shutdown!
+		if (mTTS != null) {
+			Log.d(LOG_TAG, "TTS is closed");
+			mTTS.stop();
+			mTTS.shutdown();
+			mTTS = null;
+		}
 		if (mPreview != null) {
 			mPreview.setPreviewCallback(null);
 			mPreview.close();
@@ -457,10 +481,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 			mSensorManager = null;
 			mAccelerometer = null;
 		}
-		if (tokenController != null){
-			tokenController.close();
-		}
-		finish();
 	}
 
 	@Override

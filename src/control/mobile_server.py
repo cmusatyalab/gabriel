@@ -104,7 +104,6 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_output_result()
                 for e in exceptready:
                     is_running = False
-                
         except Exception as e:
             LOG.info(traceback.format_exc())
             LOG.debug("%s\n" % str(e))
@@ -245,7 +244,7 @@ class MobileResultHandler(MobileSensorHandler):
         if ret_data == None:
             raise MobileCommError("Cannot recv data at %s" % str(self))
         if len(ret_data) == 0:
-            raise MobileCommError("Client side is closed gracefullu at %s" % str(self))
+            raise MobileCommError("Client side is closed gracefully at %s" % str(self))
 
     def _handle_output_result(self):
         try:
