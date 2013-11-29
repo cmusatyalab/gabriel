@@ -162,7 +162,7 @@ class MobileVideoHandler(MobileSensorHandler):
                 image_queue.get()
             image_queue.put((header_data, image_data))
 
-        # return frame id to flow control
+        # return frame id directly to flow control
         #json_header = json.loads(header_data)
         #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
         #if frame_id is not None:
