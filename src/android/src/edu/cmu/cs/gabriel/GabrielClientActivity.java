@@ -2,6 +2,7 @@ package edu.cmu.cs.gabriel;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -79,16 +80,19 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
+		// one time run
 		init_once();
 		init_experiement();
+		
+		// scriptized experiement
 //		runExperiements();
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"128.2.210.197"};
-			int[] tokenSize = {1, 4, 10, 10000};
+			String[] ipList = {"54.202.14.124"};
+			int[] tokenSize = {10};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
@@ -195,14 +199,15 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		}
 		
 		try {
-			Thread.sleep(5000);
+			Thread.sleep(5*1000);
 		} catch (InterruptedException e) {}
 		
 		tokenController = new TokenController(Const.LATENCY_FILE);
 		resultThread = new ResultReceivingThread(Const.GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
 		resultThread.start();
 		
-		videoStreamingThread = new VideoStreamingThread(cameraRecorder.getOutputFileDescriptor(),
+		FileDescriptor fd = cameraRecorder.getOutputFileDescriptor();
+		videoStreamingThread = new VideoStreamingThread(fd,
 				Const.GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
 		videoStreamingThread.start();
 		
