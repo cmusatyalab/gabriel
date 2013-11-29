@@ -330,18 +330,11 @@ class ResultpublishClient(threading.Thread):
 
     def publish(self):
         self.update_connection()
-        input_list = self._get_all_queue_fd()
-        error_list = self._get_all_socket_fd()
 
         LOG.info("Start publishing data")
         try:
             while(not self.stop.wait(0.0001)):
-                inputready, outputready, exceptready = \
-                        select.select(input_list, [], error_list, 0.0001)
-                for s in inputready:
-                    self._handle_result_output(s)
-                for s in exceptready:
-                    self._handle_error(s)
+                self._handle_result_output()
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -366,26 +359,25 @@ class ResultpublishClient(threading.Thread):
                 del self.publish_addr_list[index]
                 break
 
-    def _handle_result_output(self, output_queue_fd):
+    def _handle_result_output(self):
         for (addr, port, app_sock, result_queue) in self.publish_addr_list:
             if app_sock is None:
                 continue
-            if result_queue._reader.fileno() == output_queue_fd:
-                try:
-                    return_data = result_queue.get_nowait()
-                    
-                    # measurement header
-                    if DEBUG.PACKET:
-                        header_data = json.loads(return_data)
-                        header_data[Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
-                        return_data = json.dumps(header_data)
+	    try:
+	    	return_data = result_queue.get_nowait() 
+		
+		# measurement header
+		if DEBUG.PACKET:
+		    header_data = json.loads(return_data)
+		    header_data[Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
+		    return_data = json.dumps(header_data) 
 
-                    packet = struct.pack("!I%ds" % len(return_data),
-                            len(return_data), return_data)
-                    app_sock.sendall(packet)
-                    LOG.info("returning result: %s" % return_data)
-                except Queue.Empty as e:
-                    pass
+		packet = struct.pack("!I%ds" % len(return_data),\
+			len(return_data), return_data)
+		app_sock.sendall(packet)
+		LOG.info("returning result: %s" % return_data)
+	    except Queue.Empty as e:
+	        pass
 
 
 if __name__ == "__main__":
