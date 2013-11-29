@@ -52,7 +52,7 @@ class UPnPClient(threading.Thread):
         cmd = ["java", "-jar", "%s" % (self.upnp_bin)]
         LOG.info("execute : %s" % ' '.join(cmd))
         _PIPE = subprocess.PIPE
-        self.proc = subprocess.Popen(cmd, close_fds=True, stdout=_PIPE, stderr=_PIPE)
+        self.proc = subprocess.Popen(cmd, stdout=_PIPE, stderr=_PIPE)
 
         while(not self.stop.wait(0.01)):
             self.proc.poll()
