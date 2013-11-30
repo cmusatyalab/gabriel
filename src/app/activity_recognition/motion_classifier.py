@@ -68,14 +68,14 @@ def extract_feature(images, txyc_sock):
     # Write into a video chunk
     #print "Process image pairs"
     time1 = time.time()
-    print "time1 %f" % time1
+    #print "time1 %f" % time1
 
     with open('tmp/tmp0.jpg', 'w') as f:
         f.write(images[0])
     with open('tmp/tmp1.jpg', 'w') as f:
         f.write(images[1])
     time2 = time.time()
-    print "time2 %f" % time2
+    #print "time2 %f" % time2
 
     # extract features
     raw_file = "%s/%s_raw_%s.txt" % (TMP_DIR, selected_feature, video_name)
@@ -91,7 +91,8 @@ def extract_feature(images, txyc_sock):
                          tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
     DEVNULL.close()
     time3 = time.time()
-    print "time3 %f" % time3
+    #print "time3 %f" % time3
+    print "time spent on extracting feature: %f" % (time3 - time2)
     #subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     result = []
     with open(raw_file) as f:
@@ -106,13 +107,14 @@ def extract_feature(images, txyc_sock):
             aresult = (' '.join(splits[:2]) + ' ' + got_centers).strip() + '\n'
             result.append(aresult)
     time4 = time.time()
-    print "time4 %f" % time4
+    #print "time4 %f" % time4
+    print "time spent on assigning feature to cluster: %f" % (time4 - time3)
 
     #os.remove(tmp_video_file)
     #os.remove(raw_file)
     #os.remove(txyc_file)
 
-    #print result
+    print "total features: %d" % len(result)
     return result
 
 def load_data(spbof_file):
