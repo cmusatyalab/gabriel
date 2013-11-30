@@ -38,6 +38,7 @@ from cStringIO import StringIO
 
 from control.protocol import Protocol_client
 
+from launcher import AppLauncher
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -49,6 +50,9 @@ from app_proxy import LOG
 from motion_classifier import extract_feature
 from motion_classifier import classify
 
+TXYC_PATH = "bin/txyc"
+TXYC_ARGS = ['cluster_centers/centers_mosift_all_1024', '1024', 'mosift', 'MOTION']
+TXYC_PORT = 8748
 MASTER_PORT = 8747
 MASTER_TAG = "Master Node: "
 SLAVE_TAG = "Slave Node: "
@@ -314,7 +318,7 @@ class MasterProcessing(threading.Thread):
         self.stop.set()
 
 class SlaveProxy(threading.Thread):
-    def __init__(self, master_addr):
+    def __init__(self, master_addr, txyc_addr):
         self.stop = threading.Event()
         try:
             self.master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -323,6 +327,13 @@ class SlaveProxy(threading.Thread):
             self.master_sock.connect(master_addr)
         except socket.error as e:
             LOG.warning(SLAVE_TAG + "Failed to connect to %s" % str(master_addr))
+        try:
+            self.txyc_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.txyc_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.txyc_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.txyc_sock.connect(txyc_addr)
+        except socket.error as e:
+            LOG.warning(SLAVE_TAG + "Failed to connect to %s" % str(txyc_addr))
         threading.Thread.__init__(self, target=self.run)
 
     @staticmethod
@@ -382,7 +393,7 @@ class SlaveProxy(threading.Thread):
         #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
 
         # extract feature 
-        result = extract_feature(images)
+        result = extract_feature(images, self.txyc_sock)
         #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
@@ -464,7 +475,11 @@ if __name__ == "__main__":
         LOG.info(MASTER_TAG + "Start receiving data")
 
     # Slave proxy
-    slave_proxy = SlaveProxy((master_node_ip, master_node_port))
+    txyc_thread = AppLauncher(TXYC_PATH, args = TXYC_ARGS, is_print=True)
+    txyc_thread.start()
+    txyc_thread.isDaemon = True
+    time.sleep(3)
+    slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT))
     slave_proxy.start()
     slave_proxy.isDaemon = True
 
@@ -478,9 +493,16 @@ if __name__ == "__main__":
         pass
     finally:
         if is_master:
-            master_streaming.terminate()
-            master_proxy.terminate()
-            master_processing.terminate()
-            result_pub.terminate()
-        slave_proxy.terminate()
+            if master_streaming:
+                master_streaming.terminate()
+            if master_proxy:
+                master_proxy.terminate()
+            if master_processing:
+                master_processing.terminate()
+            if result_pub:
+                result_pub.terminate()
+        if txyc_thread:
+            txyc_thread.terminate()
+        if slave_proxy:
+            slave_proxy.terminate()
 
