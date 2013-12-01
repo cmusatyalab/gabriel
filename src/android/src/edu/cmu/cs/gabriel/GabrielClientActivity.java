@@ -81,18 +81,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
 		// one time run
-		init_once();
-		init_experiement();
+//		init_once();
+//		init_experiement();
 		
 		// scriptized experiement
-//		runExperiements();
+		runExperiements();
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
 			String[] ipList = {"54.202.14.124"};
-			int[] tokenSize = {10};
+			int[] tokenSize = {1, 2, 4, 16, 32, 10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
@@ -134,7 +134,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		
 		// run 3 minutes for each experiement
 		init_once();
-		startTimer.schedule(autoStart, 1000, 2*60*1000);
+		startTimer.schedule(autoStart, 1000, 3*60*1000);
 	}
 
 	private void init_once() {
