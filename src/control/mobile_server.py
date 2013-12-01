@@ -159,7 +159,10 @@ class MobileVideoHandler(MobileSensorHandler):
             LOG.info(msg)
         for image_queue in image_queue_list:
             if image_queue.full() is True:
-                image_queue.get()
+                try:
+                    image_queue.get_nowait()
+                except Queue.Empty as e:
+                    pass
             image_queue.put((header_data, image_data))
 
         # return frame id directly to flow control
