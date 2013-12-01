@@ -26,6 +26,7 @@ import Queue
 from app_proxy import AppProxyBlockingClient
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
+from app_proxy import Protocol_client
 from app_proxy import SERVICE_META
 import struct
 
@@ -33,6 +34,11 @@ import struct
 class DummyVideoApp(AppProxyBlockingClient):
     processing_count = 0
     def handle(self, header, data):
+        frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        # new connection - reset
+        if frame_id == 1:
+            self.processing_count = 0
+
         self.processing_count += 1
         if (self.processing_count % 10 == 0):
             time.sleep(1)

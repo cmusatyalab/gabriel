@@ -28,6 +28,7 @@ from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
+from app_proxy import Protocol_client
 from app_proxy import SERVICE_META
 import struct
 
@@ -36,11 +37,15 @@ class DummyVideoApp(AppProxyThread):
     processing_count = 0
 
     def handle(self, header, data):
+        frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+        # new connection - reset
+        if frame_id == 1:
+            self.processing_count = 0
+
         self.processing_count += 1
+        # sleep 100 ms for every 10th frame
         if (self.processing_count % 10 == 0):
             time.sleep(1)
-        #compute_time = random.uniform(0.1, 0.2)
-        #time.sleep(compute_time)
         return "dummy"
 
 

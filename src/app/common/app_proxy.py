@@ -20,7 +20,7 @@
 
 import sys
 sys.path.insert(0, "../../")
-from control.protocol import Protocol_client
+from control.protocol import Protocol_client as Protocol_client
 from control.protocol import Protocol_measurement
 from control import log as logging
 from control.upnp_client import UPnPClient
