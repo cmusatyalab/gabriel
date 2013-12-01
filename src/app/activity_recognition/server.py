@@ -92,7 +92,7 @@ def detectActivity(frames, queue):
                             stdout = out)
             os.remove(stable_video_file)
         elif selected_feature == "mosift":
-            subprocess.call(['%s/siftmotionffmpeg_old' % bin_path, '-r', '-t', '1', '-k', '2',
+            subprocess.call(['%s/siftmotionffmpeg_old_unS' % bin_path, '-r', '-t', '1', '-k', '2',
                              tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
         elif selected_feature == "stip":
             with open(input_file, 'w') as f_input:
