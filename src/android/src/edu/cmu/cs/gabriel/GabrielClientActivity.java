@@ -91,8 +91,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"54.202.14.124"};
+			String[] ipList = {"128.2.213.102"};
 			int[] tokenSize = {1, 2, 4, 16, 32, 10000};
+//			int[] tokenSize = {10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
