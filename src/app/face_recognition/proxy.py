@@ -18,7 +18,6 @@
 #   limitations under the License.
 #
 import sys
-sys.path.insert(0, "../common")
 import time
 import Queue
 
@@ -38,13 +37,6 @@ from face_client import face_request
 
 
 class FaceThread(AppProxyThread):
-    def handle(self, header, data):
-        ret = "dummy"
-	print ret
-        return ret
-
-
-	'''
     def __init__(self, app_addr, image_queue, output_queue):
         super(FaceThread, self).__init__(image_queue, output_queue)
         self.result_queue = output_queue
@@ -73,16 +65,12 @@ class FaceThread(AppProxyThread):
 
     def handle(self, header, data):
         # receive data from control VM
-
         # feed data to the app
         (found_name, position) = face_request(self.app_sock, data)
         if found_name.find("\\u0000") != -1:
-            import pdb;pdb.set_trace()
+            found_name = ''
+        return found_name.strip()
 
-        if len(found_name.strip()) != 0:
-            return found_name
-        return None
-	'''
 
 if __name__ == "__main__":
     APP_PATH = "./FaceRecognitionServer.exe"
@@ -90,8 +78,8 @@ if __name__ == "__main__":
     image_queue = Queue.Queue(1)
     output_queue_list = list()
 
-    app_addr = ("128.2.213.131", APP_PORT)
-    #app_addr = ("127.0.0.1", APP_PORT)
+    #app_addr = ("10.2.4.11", APP_PORT)
+    app_addr = ("127.0.0.1", APP_PORT)
     app_thread = None
     face_thread = None
     client_thread = None
@@ -112,7 +100,7 @@ if __name__ == "__main__":
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
         client_thread.isDaemon = True
-        face_thread = FaceThread(image_queue, output_queue_list)
+        face_thread = FaceThread(app_addr, image_queue, output_queue_list)
         face_thread.start()
         face_thread.isDaemon = True 
 	

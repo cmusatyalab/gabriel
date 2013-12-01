@@ -224,9 +224,8 @@ class ResultForwardingClient(threading.Thread):
             # ignore the result if same output is sent within 1 sec
             return_json = json.loads(return_data)
             result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
-            if result_str == None:
-                return
-            if self.previous_sent_data.lower() == result_str.lower():
+            if (result_str != None) and \
+                    (self.previous_sent_data.lower() == result_str.lower()):
                 time_diff = time.time() - self.previous_sent_time 
                 if time_diff < 2:
                     LOG.info("Identical result (%s) is ignored" % result_str)
@@ -234,6 +233,10 @@ class ResultForwardingClient(threading.Thread):
 
             if DEBUG.PACKET:
                 return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+
+            # remove result if it is nothing
+            if result_str == None or len(result_str.strip()) == 0:
+                return_json.pop(Protocol_client.RESULT_MESSAGE_KEY, None)
             output = json.dumps(return_json)
             packet = struct.pack("!I%ds" % len(output),
                     len(output), output)

@@ -24,6 +24,7 @@ import svmutil
 import os
 import time
 import subprocess
+import struct
 import shutil
 import Image
 import cv
@@ -42,7 +43,7 @@ h = 120
 video_path = "%s/tmp.avi" % TMP_DIR
 video_name = os.path.basename(video_path).split('.avi')[0]
 selected_feature = "mosift"
-descriptor = "all"
+descriptor = "MOTION"
 n_clusters = 1024
 
 model_names = ["SayHi", "Clapping", "TurnAround", "Squat", "ExtendingHands"]
@@ -63,18 +64,18 @@ def _format_convert(data):
     cv.CvtColor(frame_bgr, frame, cv.CV_BGR2RGB)
     return frame
 
-def extract_feature(images):
+def extract_feature(images, txyc_sock):
     # Write into a video chunk
     #print "Process image pairs"
     time1 = time.time()
-    print "time1 %f" % time1
+    #print "time1 %f" % time1
 
     with open('tmp/tmp0.jpg', 'w') as f:
         f.write(images[0])
     with open('tmp/tmp1.jpg', 'w') as f:
         f.write(images[1])
     time2 = time.time()
-    print "time2 %f" % time2
+    #print "time2 %f" % time2
 
     # extract features
     raw_file = "%s/%s_raw_%s.txt" % (TMP_DIR, selected_feature, video_name)
@@ -88,21 +89,32 @@ def extract_feature(images):
     if selected_feature == "mosift":
         subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r',
                          tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
-    time3 = time.time()
-    print "time3 %f" % time3
-    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     DEVNULL.close()
+    time3 = time.time()
+    #print "time3 %f" % time3
+    print "time spent on extracting feature: %f" % (time3 - time2)
+    #subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
+    result = []
+    with open(raw_file) as f:
+        for line in f:
+            data = line.strip()
+            splits = data.split()
+            splits = splits[:2] + splits[134:]
+            data = ' '.join(splits)
+            packet = struct.pack("!I%ds" % len(data), len(data), data)
+            txyc_sock.sendall(packet)
+            got_centers = txyc_sock.recv(100)
+            aresult = (' '.join(splits[:2]) + ' ' + got_centers).strip() + '\n'
+            result.append(aresult)
     time4 = time.time()
-    print "time4 %f" % time4
-    with open(txyc_file) as f:
-        result = f.readlines()
+    #print "time4 %f" % time4
+    print "time spent on assigning feature to cluster: %f" % (time4 - time3)
 
     #os.remove(tmp_video_file)
     #os.remove(raw_file)
     #os.remove(txyc_file)
-    time5 = time.time()
-    print "time5 %f" % time5
 
+    print "total features: %d" % len(result)
     return result
 
 def load_data(spbof_file):

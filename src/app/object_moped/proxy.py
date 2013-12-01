@@ -49,7 +49,7 @@ class MOPEDThread(AppProxyThread):
     def terminate(self):
         if self.app_sock is not None:
             self.app_sock.close()
-        super(AppProxyThread, self).terminate()
+        super(MOPEDThread, self).terminate()
 
     @staticmethod
     def _recv_all(socket, recv_size):
@@ -71,9 +71,8 @@ class MOPEDThread(AppProxyThread):
         result_data = self._recv_all(self.app_sock, result_size)
         sys.stdout.write("result : %s\n" % result_data)
 
-        if len(result_data.strip()) != 0:
-            return result_data
-        return None
+        # always return result to measure the FPS
+        return result_data
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ import sys
 sys.path.insert(0, "../common")
 import time
 import Queue
+import random
 
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -32,7 +33,10 @@ import struct
 
 
 class DummyVideoApp(AppProxyThread):
+
     def handle(self, header, data):
+        #compute_time = random.uniform(0.1, 0.2)
+        #time.sleep(compute_time)
         return "dummy"
 
 
