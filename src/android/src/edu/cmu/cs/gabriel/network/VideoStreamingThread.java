@@ -124,6 +124,7 @@ public class VideoStreamingThread extends Thread {
 			try {
 				// check token
 				if (this.tokenController.getCurrentToken() <= 0) {
+					Log.d(LOG_TAG, "waiting");
 					continue;
 				}
 				
@@ -131,11 +132,15 @@ public class VideoStreamingThread extends Thread {
 				byte[] data = null;
 				long dataTime = 0;
 				synchronized(frameLock){
-					if (this.frameBuffer == null)
-						continue;					
+					while (this.frameBuffer == null){
+						try {
+							frameLock.wait();
+						} catch (InterruptedException e) {}						
+					}
+					
 					data = this.frameBuffer;
 					dataTime = this.frameGeneratedTime;
-					this.frameBuffer = null;
+					this.frameBuffer = null;			
 				}
 				
 				// make it as a single packet
@@ -147,12 +152,11 @@ public class VideoStreamingThread extends Thread {
 				dos.write(header);
 				dos.write(data);
 
-				this.tokenController.sendData(this.sequenceID, dataTime, dos.size());
-				this.tokenController.decreaseToken();
-				this.sequenceID++;
-				
+				this.tokenController.sendData(this.sequenceID, System.currentTimeMillis(), dos.size());	
 				networkWriter.write(baos.toByteArray());
 				networkWriter.flush();
+				this.tokenController.decreaseToken();
+				this.sequenceID++;
 				
 				// measurement
 		        if (packet_firstUpdateTime == 0) {
@@ -229,6 +233,7 @@ public class VideoStreamingThread extends Thread {
             synchronized (frameLock) {
                 this.frameBuffer = tmpBuffer.toByteArray();
                 this.frameGeneratedTime = System.currentTimeMillis();
+                frameLock.notify();
 			}
             datasize = tmpBuffer.size();
         }else{
@@ -241,6 +246,7 @@ public class VideoStreamingThread extends Thread {
 	            synchronized (frameLock) {
 		            this.frameBuffer = buffer;
 	                this.frameGeneratedTime = System.currentTimeMillis();
+	                frameLock.notify();
 	            }
 	            indexImageFile++;
 			} catch (FileNotFoundException e) {
@@ -254,12 +260,14 @@ public class VideoStreamingThread extends Thread {
         frame_currentUpdateTime = System.currentTimeMillis();
         frame_count++;
         frame_totalsize += datasize;
+    	/*
         if (frame_count % 50 == 0) {
         	Log.d(LOG_TAG, "(IMG)\t" +
         			"BW: " + 8.0*frame_totalsize / (frame_currentUpdateTime-frame_firstUpdateTime)/1000 + 
         			" Mbps\tCurrent FPS: " + 8.0*datasize/(frame_currentUpdateTime - frame_prevUpdateTime)/1000 + " Mbps\t" +
         			"FPS: " + 1000.0*frame_count/(frame_currentUpdateTime-frame_firstUpdateTime));
 		}
+		*/
         frame_prevUpdateTime = frame_currentUpdateTime;
 	}
 
