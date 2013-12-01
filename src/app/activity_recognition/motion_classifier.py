@@ -64,7 +64,7 @@ def _format_convert(data):
     cv.CvtColor(frame_bgr, frame, cv.CV_BGR2RGB)
     return frame
 
-def extract_feature(images, txyc_sock):
+def extract_feature(images, txyc_sock, is_print):
     # Write into a video chunk
     #print "Process image pairs"
     time1 = time.time()
@@ -92,7 +92,8 @@ def extract_feature(images, txyc_sock):
     DEVNULL.close()
     time3 = time.time()
     #print "time3 %f" % time3
-    print "time spent on extracting feature: %f" % (time3 - time2)
+    if is_print:
+        print "time spent on extracting feature: %f" % (time3 - time2)
     #subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     result = []
     with open(raw_file) as f:
@@ -108,13 +109,15 @@ def extract_feature(images, txyc_sock):
             result.append(aresult)
     time4 = time.time()
     #print "time4 %f" % time4
-    print "time spent on assigning feature to cluster: %f" % (time4 - time3)
+    if is_print:
+        print "time spent on assigning feature to cluster: %f" % (time4 - time3)
 
     #os.remove(tmp_video_file)
     #os.remove(raw_file)
     #os.remove(txyc_file)
 
-    print "total features: %d" % len(result)
+    if is_print:
+        print "total features: %d" % len(result)
     return result
 
 def load_data(spbof_file):
@@ -139,7 +142,7 @@ def classify(feature_list):
         for feature in features:
             f.write(feature)
     subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)   
-    os.remove(txyc_file)
+    #os.remove(txyc_file)
     DEVNULL.close()
 
     # Detect activity from MoSIFT feature vectors

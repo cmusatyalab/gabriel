@@ -195,7 +195,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 2:
+        if self.slave_num < 4:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -285,7 +285,7 @@ class MasterProcessing(threading.Thread):
         self.output_queue_list = output_queue_list
         self.stop = threading.Event()
         self.detect_period = detect_period
-        self.window_len = 90
+        self.window_len = 30
         self.feature_list = []
         threading.Thread.__init__(self, target=self.run)
 
@@ -318,8 +318,9 @@ class MasterProcessing(threading.Thread):
         self.stop.set()
 
 class SlaveProxy(threading.Thread):
-    def __init__(self, master_addr, txyc_addr):
+    def __init__(self, master_addr, txyc_addr, is_print = True):
         self.stop = threading.Event()
+        self.is_print = is_print
         try:
             self.master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.master_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -335,6 +336,10 @@ class SlaveProxy(threading.Thread):
         except socket.error as e:
             LOG.warning(SLAVE_TAG + "Failed to connect to %s" % str(txyc_addr))
         threading.Thread.__init__(self, target=self.run)
+
+    def _log(self, message):
+        if self.is_print:
+            LOG.info(SLAVE_TAG + message)
 
     @staticmethod
     def _recv_all(socket, recv_size):
@@ -356,7 +361,7 @@ class SlaveProxy(threading.Thread):
                         select.select(input_list, [], [], 0)
                 for s in inputready:
                     if s == socket_fd:
-                        LOG.info(SLAVE_TAG + "Start receiving new image pair at %f" % time.time())
+                        self._log(SLAVE_TAG + "Start receiving new image pair at %f" % time.time())
                         header_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         header_json = self._recv_all(self.master_sock, header_size)
                         header = json.loads(header_json)
@@ -374,7 +379,7 @@ class SlaveProxy(threading.Thread):
                         data_back = json.dumps(result)
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
-                        LOG.info(SLAVE_TAG + "Sent back features at %f" % time.time())
+                        self._log(SLAVE_TAG + "Sent back features at %f" % time.time())
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
@@ -393,7 +398,7 @@ class SlaveProxy(threading.Thread):
         #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
 
         # extract feature 
-        result = extract_feature(images, self.txyc_sock)
+        result = extract_feature(images, self.txyc_sock, self.is_print)
         #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
@@ -465,7 +470,7 @@ if __name__ == "__main__":
         master_proxy = MasterProxy(image_queue, feature_queue)
         master_proxy.start()
         master_proxy.isDaemon = True
-        master_processing = MasterProcessing(feature_queue, output_queue_list, 60)
+        master_processing = MasterProcessing(feature_queue, output_queue_list, 20)
         master_processing.start()
         master_processing.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list) # this is where output_queues are created according to each return_address
@@ -479,7 +484,10 @@ if __name__ == "__main__":
     txyc_thread.start()
     txyc_thread.isDaemon = True
     time.sleep(3)
-    slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT))
+    if is_master:
+        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = False)
+    else:
+        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = True)
     slave_proxy.start()
     slave_proxy.isDaemon = True
 
