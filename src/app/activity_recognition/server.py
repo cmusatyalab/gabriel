@@ -29,8 +29,8 @@ chop_counter = 60
 
 w = 160
 h = 120
-selected_feature = "trajS"
-descriptor = "MBH"
+selected_feature = "mosift"
+descriptor = "MOTION"
 n_clusters = 1024
 
 model_names = ["SayHi", "Clapping", "TurnAround", "Squat", "ExtendingHands"]
@@ -80,8 +80,7 @@ def detectActivity(frames, queue):
     center_file = "%s/centers_%s_%s_%d" % (centers_path, selected_feature, descriptor, n_clusters)
 
     DEVNULL = open(os.devnull, 'wb')
-    subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h),
-                     '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
+    subprocess.call(['avconv', '-i', video_path, '-c:v', 'libxvid', '-s', '%dx%d' % (w,h), '-r', '30', tmp_video_file], stdout=DEVNULL, stderr=DEVNULL)
     #tmp_video_file = video_path
     with open(raw_file, 'wb') as out:
         if selected_feature == "traj":
@@ -93,7 +92,7 @@ def detectActivity(frames, queue):
                             stdout = out)
             os.remove(stable_video_file)
         elif selected_feature == "mosift":
-            subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r', '-t', '1', '-k', '2',
+            subprocess.call(['%s/siftmotionffmpeg_old' % bin_path, '-r', '-t', '1', '-k', '2',
                              tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
         elif selected_feature == "stip":
             with open(input_file, 'w') as f_input:
@@ -110,15 +109,16 @@ def detectActivity(frames, queue):
             os.remove(stable_video_file)
             os.remove(input_file)
 
-    subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
+    subprocess.call(['%s/txyc_old' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor], stdout=DEVNULL, stderr=DEVNULL)
     subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)
 
-    os.remove(raw_file)
-    os.remove(txyc_file)
+    #os.remove(raw_file)
+    #os.remove(txyc_file)
 
     # Detect activity from MoSIFT feature vectors
     feature_vec = load_data(spbof_file)
-    os.remove(spbof_file)
+    #print feature_vec
+    #os.remove(spbof_file)
 
     model_idx = -1
     max_score = 0
@@ -219,7 +219,7 @@ def startTcpServer(host, port):
         received = conn.recv(4)
         while received:
             frame_size = struct.unpack("!I", received)[0]
-            #print "Frame size = %d" % frame_size
+            #print "frame size: %d" % frame_size
             data = ""
             received_size = 0
             while received_size < frame_size:
