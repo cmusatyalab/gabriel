@@ -116,7 +116,8 @@ def extract_feature(images, txyc_sock, is_print):
     #os.remove(raw_file)
     #os.remove(txyc_file)
 
-    print "total features: %d" % len(result)
+    if is_print:
+        print "total features: %d" % len(result)
     return result
 
 def load_data(spbof_file):
@@ -141,7 +142,7 @@ def classify(feature_list):
         for feature in features:
             f.write(feature)
     subprocess.call(['%s/spbof' % bin_path, txyc_file, str(w), str(h), str(n_clusters), '10', spbof_file, '1'], stdout=DEVNULL, stderr=DEVNULL)   
-    os.remove(txyc_file)
+    #os.remove(txyc_file)
     DEVNULL.close()
 
     # Detect activity from MoSIFT feature vectors

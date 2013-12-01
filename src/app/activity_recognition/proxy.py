@@ -195,7 +195,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 2:
+        if self.slave_num < 4:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -285,7 +285,7 @@ class MasterProcessing(threading.Thread):
         self.output_queue_list = output_queue_list
         self.stop = threading.Event()
         self.detect_period = detect_period
-        self.window_len = 90
+        self.window_len = 30
         self.feature_list = []
         threading.Thread.__init__(self, target=self.run)
 
@@ -470,7 +470,7 @@ if __name__ == "__main__":
         master_proxy = MasterProxy(image_queue, feature_queue)
         master_proxy.start()
         master_proxy.isDaemon = True
-        master_processing = MasterProcessing(feature_queue, output_queue_list, 60)
+        master_processing = MasterProcessing(feature_queue, output_queue_list, 20)
         master_processing.start()
         master_processing.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list) # this is where output_queues are created according to each return_address
