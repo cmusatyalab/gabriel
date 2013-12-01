@@ -66,7 +66,7 @@ class Const(object):
     REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "./gabriel_REST_server"))
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
-    MAX_FRAME_SIZE = 3
+    MAX_FRAME_SIZE = 1
     TOKEN_INJECTION_SIZE = 10
 
 
