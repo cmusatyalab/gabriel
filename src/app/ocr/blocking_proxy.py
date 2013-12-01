@@ -23,38 +23,38 @@ sys.path.insert(0, "../common")
 import time
 import Queue
 
-from app_proxy import AppProxyThread
-from app_proxy import AppProxyStreamingClient
+from app_proxy import AppProxyBlockingClient
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
 import ocr_server
 
 
-class OCRThread(AppProxyThread):
+class TCPOCR(AppProxyBlockingClient):
     def handle(self, header, data):
         ret_str = ocr_server.run_ocr(data)
         # return everything since the result will be filterd at ucomm
         return ret_str.strip()
 
 
+
 if __name__ == "__main__":
-    sys.stdout.write("Start OCR proxy\n")
-    image_queue = Queue.Queue(1)
-    output_queue = Queue.Queue()
     output_queue_list = list()
 
-    service_list = get_service_list()
+    sys.stdout.write("Finding control VM\n")
+    service_list = get_service_list(sys.argv)
     video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
     video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
+    acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)
+    acc_port = service_list.get(SERVICE_META.ACC_TCP_STREAMING_PORT)
     return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
-    client = AppProxyStreamingClient((video_ip, video_port), image_queue)
-    client.start()
-    client.isDaemon = True
-    app_thread = OCRThread(image_queue, output_queue_list)
-    app_thread.start()
-    app_thread.isDaemon = True
+    # dummy video app
+    video_client = TCPOCR((video_ip, video_port), output_queue_list)
+    video_client.start()
+    video_client.isDaemon = True
+
+    # result pub/sub
     result_pub = ResultpublishClient(return_addresses, output_queue_list)
     result_pub.start()
     result_pub.isDaemon = True
@@ -62,12 +62,11 @@ if __name__ == "__main__":
     try:
         while True:
             time.sleep(1)
-    except KeyboardInterrupt as e:
-        sys.stdout.write("user exits\n")
     except Exception as e:
         pass
+    except KeyboardInterrupt as e:
+        sys.stdout.write("user exits\n")
     finally:
-        client.terminate()
-        app_thread.terminate()
+        video_client.terminate()
         result_pub.terminate()
 
