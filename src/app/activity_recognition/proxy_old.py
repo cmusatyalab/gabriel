@@ -74,6 +74,7 @@ class ClientToControl(threading.Thread):
         json_header = json.loads(header)
         data = self._recv_all(data_size)
         self.sensor_queue.put((header, data))
+        print "received a frame"
 
     def _handle_result_output(self):
         while not self.result_queue.empty():
@@ -81,8 +82,8 @@ class ClientToControl(threading.Thread):
             data = json.dumps({"result" : message})
             print "message sent: %s" % data
             data_size = struct.pack("!I", len(data))
-            self.sock.sendall(data_size)
-            self.sock.sendall(data)
+            #self.sock.sendall(data_size)
+            #self.sock.sendall(data)
 
 
 class ClientToApp(threading.Thread):
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     try:
         image_queue = Queue.Queue()
         output_queue = Queue.Queue()
-        clientToControl = ClientToControl(image_queue, output_queue, "128.2.210.197", 10101)
+        clientToControl = ClientToControl(image_queue, output_queue, "54.202.91.97", 10101)
         clientToControl.start()
         clientToApp = ClientToApp(image_queue, output_queue, "localhost", 8080)
         clientToApp.start()

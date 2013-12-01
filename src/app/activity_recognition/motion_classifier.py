@@ -147,7 +147,7 @@ def classify(feature_list):
 
     # Detect activity from MoSIFT feature vectors
     feature_vec = load_data(spbof_file)
-    os.remove(spbof_file)
+    #os.remove(spbof_file)
 
     model_idx = -1
     max_score = 0
