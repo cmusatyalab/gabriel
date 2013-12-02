@@ -1,0 +1,12 @@
+resources/
+stf/
+svmnet/
+visionnet/
+build/
+dist/
+python_stf.egg-info/
+python_stf.egg
+src/pstf/innerloop_cy.c
+*~
+*.swp
+*.pyc

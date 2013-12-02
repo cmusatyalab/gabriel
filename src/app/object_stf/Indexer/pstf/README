@@ -1,0 +1,65 @@
+Toolchain:
+
+    src/stage1  -- Training Stage 1 (Preprocessing) Scripts
+        cielab.py               -- convert images to CIELAB colorspace
+        splitcombined.py        -- split GT images into PPM per class
+        transform.py            -- perform random transformations on images
+
+    src/stage2  -- Training Stage 2 (Forest 1) Scripts
+        train_forest1.py        -- train STF forest from training set
+        fill_forest1.py         -- fill STF forest with entire training set
+        validate_fores1.py      -- sanity check trees and normalize histograms
+        expand_images.py        -- expand images to eliminate border issues
+        segment_forest1.py      -- perform segmentation on test set
+
+    src/stage3  -- Training Stage 3 (PMK SVM) Scripts
+        bost.py                 -- produce Bag of Semantic Textons
+        pmk_svm.py              -- produce kernel matrix per class for SVM
+        prior_svm.py            -- produce image-level prior on test set
+
+    src/stage4  -- Training Stage 4 (Forest 2) Scripts
+        Pass
+
+    src/util    -- Helper Scripts/Code
+        common.py               -- common tree, loading, serialization code
+        draw_tree.py            -- produce DOT visualization of a tree
+        draw_trees.sh           -- draw an entire forest
+        files.py                -- load labels of classes from labels.txt
+        progressmeter.py        -- utility script displaying progress
+        stats.py                -- produce statistics over a set of images
+        test_patch_creator.py   -- visualize and save test patch image to /tmp
+
+Training Usage:
+        export PSTF=/home/wolf/Dropbox/Projects/WolfParallelSTF/src/
+        export PYTHONPATH=${PSTF}
+
+        python ${PSTF}/stage1/cielab.py index.train > index.train.cielab
+        python ${PSTF}/stage1/splitcombined.py index.train.cielab > index.train.splitcombined
+        python ${PSTF}/stage1/transform.py index.train.splitcombined > index.train.transform
+
+        python ${PSTF}/stage2/train_forest1.py index.train.splitcombined > index.stf1
+        python ${PSTF}/stage2/fill_forest1.py index.stf1 index.train.transform > index.stf1fill
+        python ${PSTF}/stage2/validate_forest1.py index.stf1fill > index.stf1normal
+
+Testing Usage:
+        1) Forest 1
+                export PSTF=/home/wolf/Dropbox/Projects/WolfParallelSTF/src/
+                export PYTHONPATH=${PSTF}
+                
+                python ${PSTF}/stage2/expand_images.py index.test.splitcombined > index.test.expanded
+                python ${PSTF}/stage2/segment_forest1.py index.stf1normal index.test.expanded > index.test.segmented
+
+        2) SVM
+
+        3) Forest 2
+
+TODO:
+
+    - Migrate reading of indexes/data to common function library
+    - Migrate saving of indexes/data to common function library
+    - Consolidate, refactor, code cleanup
+    - Make BoST code work on generic-sized regions
+    - Implement segmentation forest training
+    - Implement PMK SVM training
+    - Make BoST code train on all input images (index file)
+    - Make BoST code output BoST index file

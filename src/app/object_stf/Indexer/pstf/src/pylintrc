@@ -1,0 +1,8 @@
+[MESSAGES CONTROL]
+# C0103: Invalid name
+# E1101: nonexistent class member
+disable=C0103
+
+[REPORTS]
+include-ids=yes
+

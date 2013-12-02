@@ -1,0 +1,12 @@
+- store histogram in forest so we can pass it to a leafimage
+- use a distimage class or named tuple?
+
+- transform images when training/filling forest1
+- optimize training
+- void class in included in forest1 training weights, does this affect tree balance?
+- should we normalize distimage0 before training forest1?
+- check bounds on forest1 parameters
+- use libbabl for colorspace conversions? (http://gegl.org/babl/)
+- should we use cielab float instead of cielab u8?
+- support H&E/arbitrary color deconvolution?
+

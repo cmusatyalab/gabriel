@@ -1,0 +1,11 @@
+# requirements for stf_train_classifier
+Fabric>=1.4.0
+PIL>=1.1.6
+PyYAML>=3.08
+argparse>=1.1
+boto>=1.2.2
+numpy>=1.6.0
+requests>=0.6.6
+#libsvm>=3.0 # not in pypi?
+#Cython>=0.15.1
+#opendiamond
