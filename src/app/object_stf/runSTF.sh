@@ -7,7 +7,7 @@ mv $PIC_FN $APP_DIR/
 # echo $APP_DIR
 cd $APP_DIR
 
-python -m pstf.scripts.run msrc21_Lab.pred 6
+python -m pstf.scripts.runSTF msrc21_Lab.pred 6
 
 # echo $CURRENT_DIR
 cd $CURRENT_DIR

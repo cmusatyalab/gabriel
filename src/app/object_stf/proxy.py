@@ -49,10 +49,10 @@ class FaceThread(AppProxyThread):
         f.write(data)
         f.close()
 
-        # run.py: run STF on the image file 
+        # runSTF.py: run STF on the image file 
         # TODO test
         import subprocess
-        output = subprocess.check_output(". ./run.sh", shell=True)
+        output = subprocess.check_output(". ./runSTF.sh", shell=True)
         '''
         output example:
         ['sky', 'bird']
@@ -65,7 +65,7 @@ class FaceThread(AppProxyThread):
         
 
         return output
-#        os.system(". ./run.sh")
+#        os.system(". ./runSTF.sh")
 
     def __init__(self, image_queue, output_queue):
         super(FaceThread, self).__init__(image_queue, output_queue)
