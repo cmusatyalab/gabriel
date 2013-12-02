@@ -1,4 +1,4 @@
-APP_DIR=/usr0/home/wenluh/Development/Indexer/pstf/src/
+APP_DIR=/usr0/home/wenluh/Development/gabriel/src/app/object_stf/Indexer/pstf/src/
 CURRENT_DIR=`pwd`
 PIC_FN=testpic1.bmp
 
