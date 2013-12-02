@@ -1,0 +1,18 @@
+Author: Wenlu Hu
+Description: This is what I did to make STF run. It does not guarantee this would work elsewhere.
+
+in setup.py
+- enable libsvm # Doesn't work
+- install libsvm
+  1. From source code: https://github.com/cjlin1/libsvm 
+  2. OR: sudo apt-get install libsvm-dev
+         sudo apt-get install python-libsvm
+- install opencv
+  1. sudo apt-get install libopencv-dev
+  2. sudo apt-get install python-opencv 
+
+in "python setup.py install"
+- sudo chown wenluh:users build/bdist.linux-x86_64/
+- sudo chown wenluh:users dist -R
+
+
