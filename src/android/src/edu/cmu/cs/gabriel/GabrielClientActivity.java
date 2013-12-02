@@ -142,6 +142,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
 		mPreview.setPreviewCallback(previewCallback);
 		Const.ROOT_DIR.mkdirs();
+		Const.LATENCY_DIR.mkdirs();
 		// TextToSpeech.OnInitListener
 		if (mTTS == null) {
 			mTTS = new TextToSpeech(this, this);
