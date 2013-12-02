@@ -1,8 +1,8 @@
-APP_DIR=/usr0/home/wenluh/Development/gabriel/src/app/object_stf/Indexer/pstf/src/
+APP_DIR=~/Development/gabriel/src/app/object_stf/Indexer/pstf/src/
 CURRENT_DIR=`pwd`
 PIC_FN=testpic1.bmp
 
-mv $PIC_FN $APP_DIR/
+mv $PIC_FN $APP_DIR
 
 # echo $APP_DIR
 cd $APP_DIR
