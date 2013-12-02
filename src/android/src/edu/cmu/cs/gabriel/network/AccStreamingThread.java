@@ -113,6 +113,10 @@ public class AccStreamingThread extends Thread {
 				networkWriter.write(data);
 				networkWriter.flush();
 				this.frameID++;
+
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e) {}
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
 				this.notifyError(e.getMessage());
@@ -149,15 +153,13 @@ public class AccStreamingThread extends Thread {
 
 
 	public void push(float[] sensor) {
-		if (this.tokenController.getCurrentToken() > 0) {
-			if (firstStartTime == 0) {
-				firstStartTime = System.currentTimeMillis();
-			}
-			currentUpdateTime = System.currentTimeMillis();
-			sentframeCount++;
-			this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor[0], sensor[1], sensor[2]));
-			prevUpdateTime = currentUpdateTime;
+		if (firstStartTime == 0) {
+			firstStartTime = System.currentTimeMillis();
 		}
+		currentUpdateTime = System.currentTimeMillis();
+		sentframeCount++;
+		this.accDataList.add(new AccData((int)(currentUpdateTime-firstStartTime), sensor[0], sensor[1], sensor[2]));
+		prevUpdateTime = currentUpdateTime;
 	}
 	
 	private void notifyError(String message) {
