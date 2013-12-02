@@ -51,7 +51,7 @@ from motion_classifier import extract_feature
 from motion_classifier import classify
 
 TXYC_PATH = "bin/txyc"
-TXYC_ARGS = ['cluster_centers/centers_mosift_all_1024', '1024', 'mosift', 'MOTION']
+TXYC_ARGS = ['cluster_centers/centers_mosift_MOTION_1024', '1024', 'mosift', 'MOTION']
 TXYC_PORT = 8748
 MASTER_PORT = 8747
 MASTER_TAG = "Master Node: "
@@ -195,7 +195,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 4:
+        if self.slave_num < 1:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -470,7 +470,7 @@ if __name__ == "__main__":
         master_proxy = MasterProxy(image_queue, feature_queue)
         master_proxy.start()
         master_proxy.isDaemon = True
-        master_processing = MasterProcessing(feature_queue, output_queue_list, 20)
+        master_processing = MasterProcessing(feature_queue, output_queue_list, 10)
         master_processing.start()
         master_processing.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list) # this is where output_queues are created according to each return_address
@@ -484,10 +484,7 @@ if __name__ == "__main__":
     txyc_thread.start()
     txyc_thread.isDaemon = True
     time.sleep(3)
-    if is_master:
-        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = False)
-    else:
-        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = True)
+    slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = not is_master)
     slave_proxy.start()
     slave_proxy.isDaemon = True
 

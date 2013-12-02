@@ -26,6 +26,7 @@ import socket
 import sys
 import time
 import os 
+sys.path.insert(0, "../common")
 
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
@@ -41,36 +42,36 @@ class FaceThread(AppProxyThread):
 
         # TODO Write data to file
         self.imagecount += 1
+#       app_dir = "/usr0/home/wenluh/Development/Indexer/pstf/src/"
         # fn = 'testimage' + str(self.imagecount) + '.jpg'
         fn = 'testpic1.bmp'
         f = open(fn, 'wb')
         f.write(data)
         f.close()
 
-        # run.py: run STF on the image file 
+        # runSTF.py: run STF on the image file 
         # TODO test
-        from ..run import main 
-        main(classifier, cores) #TODO get return value ret = 
+        import subprocess
+        output = subprocess.check_output(". ./runSTF.sh", shell=True)
+        '''
+        output example:
+        ['sky', 'bird']
+        '''
+        output = output.replace("', '", " ")
+        output = output.replace("['", "")
+        output = output.replace("']", "")
+        output = output.replace("[]", "") # if empty
+        print "New frame: " + output[:-1]
+        
+
+        return output
+#        os.system(". ./runSTF.sh")
 
     def __init__(self, image_queue, output_queue):
         super(FaceThread, self).__init__(image_queue, output_queue)
         self.imagecount = 0
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('classifier')
-    parser.add_argument('--postprocess', action="store_true",
-                        help='Run postprocessing, close blobs and remove noise')
-    parser.add_argument('cores', type=int, help='Number of processes of paralellism')
-    args = parser.parse_args()
-    
-    global classifier
-    classifier = args.classifier
-    global cores
-    cores = args.cores
-    print "classifier: " + classifier
-    print "cores: " + cores
 
     image_queue = Queue.Queue(1)
     output_queue_list = list()
@@ -84,7 +85,7 @@ if __name__ == "__main__":
         service_list = get_service_list(sys.argv)
         video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
         video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-	return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
+        return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
@@ -94,9 +95,9 @@ if __name__ == "__main__":
         face_thread.isDaemon = True 
 	
 	# result pub/sub
-	result_pub = ResultpublishClient(return_addresses, output_queue_list)
-	result_pub.start()
-	result_pub.isDaemon = True
+        result_pub = ResultpublishClient(return_addresses, output_queue_list)
+        result_pub.start()
+        result_pub.isDaemon = True
 
         LOG.info("Start receiving data\n")
         while True:
@@ -111,8 +112,6 @@ if __name__ == "__main__":
     finally:
         if client_thread != None:
             client_thread.terminate()
-        if app_thread != None:
-            app_thread.terminate()
         if face_thread != None:
             face_thread.terminate()
 	if result_pub != None:

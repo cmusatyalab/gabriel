@@ -82,7 +82,7 @@ class EmulatedMobileDevice(object):
         from os import listdir
         self.stop = threading.Event()
         self.filelist = [os.path.join(image_dir, f) for f in listdir(image_dir)
-                if f.lower().endswith("jpeg") or f.lower().endswith("jpg")]
+                if f.lower().endswith("jpeg") or f.lower().endswith("jpg") or f.lower().endswith("bmp")]
         self.filelist.sort()
 
     def serve_forever(self):
