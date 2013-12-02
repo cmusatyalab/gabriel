@@ -21,7 +21,7 @@
 import sys
 sys.path.insert(0, "../../")
 from control.protocol import Protocol_client as Protocol_client
-from control.protocol import Protocol_measurement
+from control.protocol import Protocol_measurement as Protocol_measurement
 from control import log as logging
 from control.upnp_client import UPnPClient
 from control.config import Const
@@ -98,20 +98,32 @@ class AppProxyStreamingClient(threading.Thread):
     And put the data into the queue, so that other thread can use the image
     """
 
-    def __init__(self, control_addr, data_queue):
+    def __init__(self, control_addr, data_queue, app_id=None):
         self.stop = threading.Event()
         self.port_number = None
+        self.app_id = app_id
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.connect(control_addr)
             LOG.info("Success to connect to %s" % str(control_addr))
+            if self.app_id is not None:
+                # send app name information
+                self._send_appid(self.app_id)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.data_queue = data_queue
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.streaming)
+
+    def _send_appid(self, app_id):
+        header = json.dumps({
+            Protocol_measurement.JSON_KEY_REGISTER_APP_UUID: str(app_id),
+            })
+        packet = struct.pack("!I%ds" % len(header),
+                len(header), header)
+        self.sock.sendall(packet)
 
     def streaming(self):
         LOG.info("Start getting data from the server")
@@ -145,7 +157,8 @@ class AppProxyStreamingClient(threading.Thread):
         LOG.info("Streaming thread terminated")
 
     def terminate(self):
-        self.stop_queue.put("terminate\n")
+        if self.stop_queue is not None:
+            self.stop_queue.put("terminate\n")
 
     def _recv_all(self, sock, recv_size):
         data = ''
@@ -180,20 +193,32 @@ class AppProxyStreamingClient(threading.Thread):
 
 
 class AppProxyBlockingClient(threading.Thread):
-    def __init__(self, control_addr, output_queue_list):
+    def __init__(self, control_addr, output_queue_list, app_id=None):
         self.stop = threading.Event()
         self.port_number = None
         self.output_queue_list = output_queue_list
+        self.app_id = app_id
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.connect(control_addr)
             LOG.info("Success to connect to %s" % str(control_addr))
+            if self.app_id is not None:
+                # send app name information
+                self._send_appid(self.app_id)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.run)
+
+    def _send_appid(self, app_id):
+        header = json.dumps({
+            Protocol_measurement.JSON_KEY_REGISTER_APP_UUID: str(app_id),
+            })
+        packet = struct.pack("!I%ds" % len(header),
+                len(header), header)
+        self.sock.sendall(packet)
 
     def run(self):
         LOG.info("Start getting data and run program")

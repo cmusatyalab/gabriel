@@ -81,11 +81,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
 		// one time run
-//		init_once();
-//		init_experiement();
+		init_once();
+		init_experiement();
 		
 		// scriptized experiement
-		runExperiements();
+//		runExperiements();
 	}
 	
 	protected void runExperiements(){
@@ -142,6 +142,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
 		mPreview.setPreviewCallback(previewCallback);
 		Const.ROOT_DIR.mkdirs();
+		Const.LATENCY_DIR.mkdirs();
 		// TextToSpeech.OnInitListener
 		if (mTTS == null) {
 			mTTS = new TextToSpeech(this, this);
@@ -487,7 +488,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-//			accStreamingThread.push(event.values);
+			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}

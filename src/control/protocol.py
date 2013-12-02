@@ -40,3 +40,20 @@ class Protocol_measurement(object):
     JSON_KEY_APP_SENT_TIME = "app_sent_time"
     JSON_KEY_UCOMM_RECV_TIME = "ucomm_recv_time"
     JSON_KEY_UCOMM_SENT_TIME = "ucomm_sent_time"
+
+    JSON_KEY_ALLOWED_APP_LIST = "allowed_app_list"
+    JSON_KEY_REGISTER_APP_UUID = "register_app"
+
+    APP_MOTION = "motion-classifier"
+    APP_MOPED = "moped"
+    APP_STF = "stf"
+    APP_FACE = "face"
+    APP_TESSERACT = "ocr-tesseract"
+    APP_OCR_COMM = "ocr-comm"
+    APP_ACTIVITY = "activity"
+    APP_AR = "ar"
+    APP_DUMMY = "dummy"
+    APP_DUMMY_SYNTHETIC = "dummy-synthetic"
+    APP_NAME_LIST = (APP_MOTION, APP_MOPED, APP_STF, APP_FACE, \
+            APP_TESSERACT, APP_OCR_COMM, APP_ACTIVITY, APP_AR, \
+            APP_DUMMY, APP_DUMMY_SYNTHETIC)

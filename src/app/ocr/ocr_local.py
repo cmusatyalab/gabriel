@@ -73,18 +73,25 @@ if __name__ == "__main__":
     from os import listdir
 
     settings, args = process_command_line(sys.argv[1:])
+    if settings.image_dir is None:
+        sys.stderr.write("need input directory\n")
+        sys.exit(1)
     image_dir = settings.image_dir
     filelist = [os.path.join(image_dir, f) for f in listdir(image_dir)
             if f.lower().endswith("jpeg") or f.lower().endswith("jpg")]
     filelist.sort()
     execution_time =list()
+    ocr_result_file = open("local_run", "w")
     for image in filelist:
         data = open(image, 'rb').read()
         s_time = time.time()
         run_ocr(data, force_return=True)
         e_time = time.time()
-        print "%s\t(%f-%f=%f)" % (image, e_time, s_time, e_time-s_time)
+        log = "%s\t%f\t%f\t%f" % (image, e_time, s_time, e_time-s_time)
+        ocr_result_file.write(log + "\n")
+        print log
         execution_time.append(e_time-s_time)
+    ocr_result_file.close()
 
     time_sum = 0.0
     for item in execution_time:
