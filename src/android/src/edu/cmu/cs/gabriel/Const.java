@@ -32,5 +32,6 @@ public class Const {
 
 	// Result File
 	public static String LATENCY_FILE_NAME = "latency-" + GABRIEL_IP + "-" + MAX_TOKEN_SIZE + ".txt";
-	public static File LATENCY_FILE = new File (ROOT_DIR.getAbsolutePath() + File.separator + "exp" + File.separator + LATENCY_FILE_NAME);
+	public static File LATENCY_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
+	public static File LATENCY_FILE = new File (LATENCY_DIR.getAbsolutePath() + File.separator + LATENCY_FILE_NAME);
 }
