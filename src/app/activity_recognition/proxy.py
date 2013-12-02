@@ -181,7 +181,7 @@ class MasterProxy(threading.Thread):
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        LOG.info(MASTER_TAG + "Got frame %d from input queue" % frame_id)
+        #LOG.info(MASTER_TAG + "Got frame %d from input queue" % frame_id)
         # chop image and put image pairs to different queues
         new_image_parts, split_config = self._resize_and_split_image(new_image)
         if not self.last_image_parts:
@@ -191,7 +191,7 @@ class MasterProxy(threading.Thread):
         self.last_image_parts = None
         image_pairs = self._round_robin(image_pairs, self.round_robin_counter)
         split_config = self._round_robin(split_config, self.round_robin_counter)
-        self.round_robin_counter += 1
+        self.round_robin_counter = (self.round_robin_counter + 1) % self.slave_num
         try:
             for idx in xrange(self.slave_num):
                 self.partial_data_queues[idx].put_nowait(image_pairs[idx])
