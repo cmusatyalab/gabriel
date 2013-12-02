@@ -81,11 +81,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
 		// one time run
-//		init_once();
-//		init_experiement();
+		init_once();
+		init_experiement();
 		
 		// scriptized experiement
-		runExperiements();
+//		runExperiements();
 	}
 	
 	protected void runExperiements(){
@@ -487,7 +487,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-//			accStreamingThread.push(event.values);
+			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}
