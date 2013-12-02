@@ -87,7 +87,7 @@ def extract_feature(images, txyc_sock, is_print):
 
     DEVNULL = open(os.devnull, 'wb')
     if selected_feature == "mosift":
-        subprocess.call(['%s/siftmotionffmpeg' % bin_path, '-r',
+        subprocess.call(['%s/siftmotionffmpeg_unS' % bin_path, '-r',
                          tmp_video_file, raw_file], stdout=DEVNULL, stderr=DEVNULL)
     DEVNULL.close()
     time3 = time.time()
