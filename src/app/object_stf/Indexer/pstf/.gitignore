@@ -1,5 +1,3 @@
-resources/MSRC21/*
-!resources/MSRC21/pstf/
 stf/
 svmnet/
 visionnet/

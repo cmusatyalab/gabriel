@@ -7,7 +7,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelavent variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV "/usr0/home/wenluh/Development/Indexer/pstf/env"
+setenv VIRTUAL_ENV "/usr0/home/wenluh/Development/gabriel/src/app/object_stf/Indexer/pstf/env"
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/bin:$PATH"

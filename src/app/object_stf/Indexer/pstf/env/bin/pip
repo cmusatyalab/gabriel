@@ -1,4 +1,4 @@
-#!/usr0/home/wenluh/Development/Indexer/pstf/env/bin/python
+#!/usr0/home/wenluh/Development/gabriel/src/app/object_stf/Indexer/pstf/env/bin/python
 # EASY-INSTALL-ENTRY-SCRIPT: 'pip==1.1','console_scripts','pip'
 __requires__ = 'pip==1.1'
 import sys
