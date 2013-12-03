@@ -181,12 +181,12 @@ class MasterProxy(threading.Thread):
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        #LOG.info(MASTER_TAG + "Got frame %d from input queue" % frame_id)
         # chop image and put image pairs to different queues
         new_image_parts, split_config = self._resize_and_split_image(new_image)
         if not self.last_image_parts:
             self.last_image_parts = new_image_parts
             return
+        LOG.info(MASTER_TAG + "Got frame %d from input queue at time %f" % (frame_id, time.time()))
         image_pairs = zip(self.last_image_parts, new_image_parts)
         self.last_image_parts = None
         image_pairs = self._round_robin(image_pairs, self.round_robin_counter)
@@ -206,7 +206,8 @@ class MasterProxy(threading.Thread):
             images = self.partial_data_queues[self.queue_mapping[sock]].get_nowait()
             self.tokens[self.queue_mapping[sock]] = False
             data = images[0] + images[1]
-            header = {"images_length" : [len(images[0])]}
+            header = {"images_length" : [len(images[0])],
+                      "frame_id" : self.frame_id_queues[self.queue_mapping[sock]][-1]}
             header_json = json.dumps(header)
             packet = struct.pack("!I%ds" % len(header_json), len(header_json), header_json)
             sock.sendall(packet)
@@ -219,7 +220,7 @@ class MasterProxy(threading.Thread):
         # check if any queue is full
         for queue in self.partial_data_queues:
             if queue.full():
-                #LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
+                LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
                 return
         self._get_new_image()
 
@@ -301,11 +302,12 @@ class MasterProcessing(threading.Thread):
             except Queue.Empty as e:
                 continue
 
-            LOG.info(MASTER_TAG + "Got feature back of frame %d" % frame_id)
+            LOG.info(MASTER_TAG + "Got feature back of frame %d at time %f" % (frame_id, time.time()))
             result = None
             self.feature_list.append(features)
             if len(self.feature_list) == self.window_len:
                 result = classify(self.feature_list)
+                LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
                 for i in xrange(self.detect_period):
                     del self.feature_list[0]
 
@@ -372,6 +374,7 @@ class SlaveProxy(threading.Thread):
                         header = json.loads(header_json)
                         data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         data = self._recv_all(self.master_sock, data_size)
+                        frame_id = header.get("frame_id")
                         images = []
                         last_image_cut = 0
                         for image_cut in header.get("images_length"):
@@ -384,7 +387,7 @@ class SlaveProxy(threading.Thread):
                         data_back = json.dumps(result)
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
-                        self._log(SLAVE_TAG + "Sent back features at %f" % time.time())
+                        self._log(SLAVE_TAG + "Sent back features of frame %d at %f" % (frame_id, time.time()))
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
