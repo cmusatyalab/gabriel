@@ -102,7 +102,8 @@ def load_from_classifier(classifier):
 
 def calculate_class(key_frame_counter):
 #    print name + "%d." % (key_frame_counter % processes) + pic_suffix
-    image = Image.open(name + "%d." % (key_frame_counter % processes) + pic_suffix)
+#    image = Image.open(name + "%d." % (key_frame_counter % processes) + pic_suffix)
+    image = Image.open(name)
     #nx, ny = image.size
     #image = image.resize((int(nx/2), int(ny/2)), Image.ANTIALIAS)
     rgb = np.asarray(image)
@@ -143,6 +144,7 @@ def main():
                         help='Run postprocessing, close blobs and remove noise')
 #    parser.add_argument('dataset', help='Algum formatted trainingset or image')
     parser.add_argument('cores', type=int, help='Number of processes of paralellism')
+    parser.add_argument('imagefilename', help='Name of the image file')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING,
@@ -150,9 +152,9 @@ def main():
 
     global name
 #    name = os.path.splitext(args.dataset)[0] 
-    name = "testpic"
-    global pic_suffix
-    pic_suffix = "bmp"
+    name = args.imagefilename
+#    global pic_suffix
+#    pic_suffix = "bmp"
 
     classifier = zipfile.ZipFile(args.classifier)
     global forest0, svmmodels, training_bosts, hist0
