@@ -81,19 +81,19 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
 		// one time run
-		init_once();
-		init_experiement();
+//		init_once();
+//		init_experiement();
 		
 		// scriptized experiement
-//		runExperiements();
+		runExperiements();
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
 			String[] ipList = {"128.2.213.102"};
-			int[] tokenSize = {1, 2, 4, 16, 32, 10000};
-//			int[] tokenSize = {10000};
+//			int[] tokenSize = {1, 4, 16, 32, 64};
+			int[] tokenSize = {10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;			
 			@Override
@@ -135,7 +135,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		
 		// run 3 minutes for each experiement
 		init_once();
-		startTimer.schedule(autoStart, 1000, 3*60*1000);
+		startTimer.schedule(autoStart, 1000, 5*60*1000);
 	}
 
 	private void init_once() {
@@ -145,7 +145,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		Const.LATENCY_DIR.mkdirs();
 		// TextToSpeech.OnInitListener
 		if (mTTS == null) {
-			mTTS = new TextToSpeech(this, this);
+//			mTTS = new TextToSpeech(this, this);
 		}
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -280,11 +280,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	private PreviewCallback previewCallback = new PreviewCallback() {
 		public void onPreviewFrame(byte[] frame, Camera mCamera) {
-//			Log.d(LOG_TAG, "receiving new frame");
 			if (hasStarted && (localOutputStream != null)) {
 				Camera.Parameters parameters = mCamera.getParameters();
 				if (videoStreamingThread != null){
-//					Log.d(LOG_TAG, "pushing new frame");
+//					Log.d(LOG_TAG, "in");
 					videoStreamingThread.push(frame, parameters);					
 				}
 			}
@@ -301,12 +300,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //						.setIcon(R.drawable.ic_launcher).setNegativeButton("Confirm", null).show();
 			}
 			if (msg.what == NetworkProtocol.NETWORK_RET_RESULT) {
-				String ttsMessage = (String) msg.obj;
+				if (mTTS != null){
+					String ttsMessage = (String) msg.obj;
 
-				// Select a random hello.
-				Log.d(LOG_TAG, "tts string origin: " + ttsMessage);
-				mTTS.setSpeechRate(1f);
-				mTTS.speak(ttsMessage, TextToSpeech.QUEUE_FLUSH, null);
+					// Select a random hello.
+					Log.d(LOG_TAG, "tts string origin: " + ttsMessage);
+					mTTS.setSpeechRate(1f);
+					mTTS.speak(ttsMessage, TextToSpeech.QUEUE_FLUSH, null);					
+				}
 			}
 		}
 	};
@@ -488,7 +489,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-			accStreamingThread.push(event.values);
+//			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}

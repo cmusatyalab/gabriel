@@ -49,7 +49,7 @@ public class TokenController {
 					long increaseCount = recvFrameID - prevRecvedAck;
 					increaseTokens(increaseCount);
 					for (long index = prevRecvedAck + 1; index < recvFrameID; index++) {
-						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
+//						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
 						latencyStamps.remove(index);
 					}
 					prevRecvedAck = recvFrameID;

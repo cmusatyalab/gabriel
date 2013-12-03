@@ -67,8 +67,10 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
         data = ''
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data == None or len(tmp_data) == 0:
+            if tmp_data == None:
                 raise MobileCommError("Cannot recv data at %s" % str(self))
+            if len(tmp_data) == 0:
+                raise MobileCommError("Recv 0 data at %s" % str(self))
             data += tmp_data
         return data
 
