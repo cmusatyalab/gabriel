@@ -15,3 +15,4 @@ lib/
 
 installation:
 sudo apt-get install pkg-config libopencv-dev python-opencv
+sudo pip install numpy
