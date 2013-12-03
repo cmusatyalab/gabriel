@@ -22,6 +22,7 @@ import sys
 sys.path.insert(0, "../common")
 import time
 import Queue
+import hashlib
 
 from app_proxy import AppProxyBlockingClient
 from app_proxy import ResultpublishClient
@@ -32,16 +33,32 @@ import struct
 
 
 class DummyVideoApp(AppProxyBlockingClient):
-    processing_count = 0
-    def handle(self, header, data):
-        frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        # new connection - reset
-        if frame_id == 1:
-            self.processing_count = 0
+    THRESHOLD = 90
+    long_computation = 0
+    short_computation = 0
+    total_count = 0
 
-        self.processing_count += 1
-        if (self.processing_count % 10 == 0):
-            time.sleep(1)
+    def get_compute_time(self, data):
+        value = int(hashlib.sha1(data).hexdigest(), 16) % 100
+        if value >= self.THRESHOLD:
+            computation_time = 0.1
+            self.long_computation += 1
+        else:
+            computation_time = 0.01
+            self.short_computation += 1
+        self.total_count += 1
+
+        if self.total_count % 100 == 0:
+            print "Long comutation: %f, short computation: %f" %\
+                    (100.0*self.long_computation/self.total_count, \
+                    100.0*self.short_computation/self.total_count)
+        return computation_time
+
+    def handle(self, header, data):
+        s_time = time.time()
+        compute_time = self.get_compute_time(data)
+        left_time = compute_time - (time.time() - s_time)
+        time.sleep(left_time)
         return "dummy"
 
 
