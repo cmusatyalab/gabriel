@@ -75,9 +75,8 @@ int compare (const void * a, const void * b)
                 return -1;
 }
 
-bool is_too_center (Point2f p)
+bool is_too_center (Point2f p, int w, int h)
 {
-        int w = 160, h = 120;
         return p.x > w/4 && p.x < w/4*3 && p.y > h/6;
 }
 
@@ -133,7 +132,7 @@ int main(int argc, char* argv[]) {
 	for (int i=0; i<corners.rows; i++) {
 		if ( status.at<char>(i)==1) {
 			Point2f dd = newcorners.at<Point2f>(i) - corners.at<Point2f>(i);
-			if (dd.x*dd.x + dd.y*dd.y < SHAKE_THRESH*SHAKE_THRESH && !is_too_center(corners.at<Point2f>(i))) {
+			if (dd.x*dd.x + dd.y*dd.y < SHAKE_THRESH*SHAKE_THRESH && !is_too_center(corners.at<Point2f>(i), width, height)) {
 				list_x[count] = dd.x;
 				list_y[count] = dd.y;
 				s+=dd; count++;

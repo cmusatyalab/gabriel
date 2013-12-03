@@ -1,0 +1,6 @@
+# requirements for pstf.classifier
+PIL>=1.1.6
+numpy>=1.6.0
+#libsvm>=3.0 # not in pypi
+#opendiamond>=7.0.1
+#pymorph>=0.96

@@ -1,0 +1,15 @@
+MANIFEST.in
+README.rst
+setup.cfg
+setup.py
+pymorph/__init__.py
+pymorph/compat.py
+pymorph/mmorph.py
+pymorph/notimplemented.py
+pymorph/pymorph_version.py
+pymorph/text.py
+pymorph.egg-info/PKG-INFO
+pymorph.egg-info/SOURCES.txt
+pymorph.egg-info/dependency_links.txt
+pymorph.egg-info/stdeb.cfg
+pymorph.egg-info/top_level.txt

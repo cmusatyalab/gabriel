@@ -1,0 +1,9 @@
+#!/usr0/home/wenluh/Development/Indexer/pstf/env/bin/python
+# EASY-INSTALL-ENTRY-SCRIPT: 'python-stf==0.1.dev','console_scripts','build_trainingset'
+__requires__ = 'python-stf==0.1.dev'
+import sys
+from pkg_resources import load_entry_point
+
+sys.exit(
+   load_entry_point('python-stf==0.1.dev', 'console_scripts', 'build_trainingset')()
+)

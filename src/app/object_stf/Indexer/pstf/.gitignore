@@ -1,0 +1,10 @@
+stf/
+svmnet/
+visionnet/
+build/
+dist/
+python_stf.egg-info/
+python_stf.egg
+*~
+*.swp
+*.pyc
