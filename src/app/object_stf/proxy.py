@@ -44,7 +44,11 @@ class FaceThread(AppProxyThread):
         self.imagecount += 1
 #       app_dir = "/usr0/home/wenluh/Development/Indexer/pstf/src/"
         # fn = 'testimage' + str(self.imagecount) + '.jpg'
-        fn = 'testpic1.bmp'
+        DEBUG=False
+        if DEBUG:
+            fn = 'testpic' + str(self.imagecount) +'.bmp'
+        else:
+            fn = 'testpic' + '0'  +'.bmp'
         f = open(fn, 'wb')
         f.write(data)
         f.close()
@@ -52,7 +56,8 @@ class FaceThread(AppProxyThread):
         # runSTF.py: run STF on the image file 
         # TODO test
         import subprocess
-        output = subprocess.check_output(". ./runSTF.sh", shell=True)
+	output = subprocess.check_output(["bash", "./runSTF.sh", fn])
+#	output = subprocess.check_output(["echo", fn])
         '''
         output example:
         ['sky', 'bird']
