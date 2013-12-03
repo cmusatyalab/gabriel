@@ -99,7 +99,7 @@ class EmulatedMobileDevice(object):
                     pass
                     #LOG.info("pushing emualted image to the queue (%d)" % frame_count)
                 frame_count += 1
-                time.sleep(0.02)
+                time.sleep(0.04)
 
     def terminate(self):
         self.stop.set()
