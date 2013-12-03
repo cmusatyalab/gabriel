@@ -35,6 +35,7 @@ from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
+from app_proxy import Const
 from app_proxy import LOG
 
 
@@ -89,7 +90,8 @@ if __name__ == "__main__":
         app_thread.isDaemon = True
         time.sleep(3)
 
-        image_queue = Queue.Queue(1)
+        image_queue = Queue.Queue(Const.APP_LEVEL_TOKEN_SIZE)
+        print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % Const.APP_LEVEL_TOKEN_SIZE
         output_queue_list = list()
         service_list = get_service_list()
         video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)

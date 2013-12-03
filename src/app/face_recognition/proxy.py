@@ -32,6 +32,7 @@ from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
 from app_proxy import LOG
 from app_proxy import get_service_list
+from app_proxy import Const
 from app_proxy import SERVICE_META
 from face_client import face_request
 
@@ -75,7 +76,8 @@ class FaceThread(AppProxyThread):
 if __name__ == "__main__":
     APP_PATH = "./FaceRecognitionServer.exe"
     APP_PORT = 9876
-    image_queue = Queue.Queue(1)
+    image_queue = Queue.Queue(Const.APP_LEVEL_TOKEN_SIZE)
+    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % Const.APP_LEVEL_TOKEN_SIZE
     output_queue_list = list()
 
     #app_addr = ("10.2.4.11", APP_PORT)

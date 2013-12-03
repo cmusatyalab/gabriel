@@ -28,6 +28,7 @@ from app_proxy import AppProxyStreamingClient
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
+from app_proxy import Const
 import ocr_server
 
 
@@ -40,7 +41,8 @@ class OCRThread(AppProxyThread):
 
 if __name__ == "__main__":
     sys.stdout.write("Start OCR proxy\n")
-    image_queue = Queue.Queue(1)
+    image_queue = Queue.Queue(Const.APP_LEVEL_TOKEN_SIZE)
+    sys.stdout.write("TOKEN SIZE OF OFFLOADING ENGINE: %d\n" % Const.APP_LEVEL_TOKEN_SIZE)
     output_queue = Queue.Queue()
     output_queue_list = list()
 
