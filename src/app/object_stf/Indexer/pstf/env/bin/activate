@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelavent variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/usr0/home/wenluh/Development/Indexer/pstf/env"
+VIRTUAL_ENV="/usr0/home/wenluh/Development/gabriel/src/app/object_stf/Indexer/pstf/env"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
