@@ -1,0 +1,142 @@
+STF for Dummies
+--------------------------------------------------------------------------------
+
+Disclaimer: This is a simplistic and crude description of the Semantic Texton
+Forests algorithm as described in:
+
+@article{10.1109/CVPR.2008.4587503,
+         author = {Jamie Shotton and Matthew Johnson and Roberto Cipolla},
+         title = {Semantic texton forests for image categorization and
+                  segmentation},
+         journal = {Computer Vision and Pattern Recognition, IEEE Computer
+                    Society Conference on},
+         volume = {0},
+         isbn = {978-1-4244-2242-5},
+         year = {2008},
+         pages = {1-8},
+         doi = {http://doi.ieeecomputersociety.org/10.1109/CVPR.2008.4587503},
+         publisher = {IEEE Computer Society},
+         address = {Los Alamitos, CA, USA},
+        }
+
+This description may be blatantly wrong as it is not the expert opinion from a
+computer vision researcher.
+
+
+
+What is STF for?
+--------------------------------------------------------------------------------
+
+STF is a computer vision algorithm that has multiple stages of training and
+classification.  The algorithm supports both categorization of an entire image
+and a pixel-level segmentation for multiclass datasets.  It builds off of prior
+machine learning and vision research including Random Decision Forests, and the
+Support Vector Machine.
+
+
+
+Review: What is a Random Decision Forest?
+--------------------------------------------------------------------------------
+
+A Random Decision Forest consists of an arbitrary number of decision trees that
+are trained individually on random subsets of the input data, choosing random
+split points at each branch of the tree that maximize information gain.  The
+split points are defined on the input into a branch, a randomly chosen function,
+a randomly chosen threshold value, and normally allowed some number of random
+choices during training to search for good choices in the function and threshold
+space.  Basically, a Random Decision Forest is just a group of Random Decision
+Trees.  Random Decision Forests are used as an ensemble-type classifier that
+decrease the variance in classifying test data.  They are generally more
+robust---meaning they are less influenced by outliers---than single Random
+Decision Tree.
+
+
+
+Review: What is the Support Vector Machine?
+--------------------------------------------------------------------------------
+
+
+
+
+
+What is a semantic texton?
+--------------------------------------------------------------------------------
+
+A Semantic Texton is a single node in a Semantic Texton Forest.
+
+
+
+What is a semantic texton forest?
+--------------------------------------------------------------------------------
+
+A Semantic Texton Forest is just a Random Decision Forest with Random Decision
+Trees trained on patches from the input training data set and a set of four
+functions that are picked from randomly at branch points.  Each node in the tree
+tracks a histogram of training classes that pass through it.  An STF is the
+first forest trained in the overall algorithm.
+
+
+
+What are the phases of computation described in the paper?
+--------------------------------------------------------------------------------
+
+The phases I have identified are preprocessing, forest 1 (STF) training, SVM
+training, and forest 2 (segmentation forest) training.  Preprocessing is
+designed to augment an input training set to include images that have random
+geometric and affine transformations performed on them.  This is to reduce any
+training bias that could arise from using images that are always taken, for
+example, right side up.  The preprocessing phase basically just grows the input
+training set.
+
+The training of forest 1 (STF) has sub-phases within it.  First, we need to
+randomly train the trees of the forest on the input training data.  This phase
+is usually done not including the augmented data to save time.  After this,
+there is a filling phase where all data, including the augmented data, is used
+as input to the trees.  Filling produces accurate histograms of classes that
+reach given nodes in a tree using all available training data.  Essentially,
+this provides the most accurate view of the training data from the trees.  The
+last step is a normalizing step.  All values in the tree are normalized
+according to how many examples exist.  This is done to prevent classes with many
+examples from making the trees biased.  For example, at a leaf node in the tree
+proportionally more 'water' labels arrived than 'grass' labels; however, because
+we had 100x more 'grass' labels than 'water' labels overall, that node has
+become biased towards 'grass' and the magnitude of 'grass' labels recorded
+during training overpowers 'water'.  Normalizing removes this bias.
+
+SVM training also has sub-phases within it: first BoSTs are computed over the
+images.  Then SVM kernel matrices are computed using a modified Pyramid Match
+Kernel (math included in the STF paper; no actual need to reference PMK).  These
+can be given to off-the-shelf SVM libraries to train 1-vs-all SVM classifiers.
+There is one classifier per class and they are designed to do
+classification/categorization on an entire image at once.
+
+Forest 2 is trained similarly to forest 1; however, the functions available at
+split points in the tree have changed to be BoST/histogram-based and over
+square regions shifted around the image.
+
+Finally, there are both classification and segmentation phases which use
+artifacts produced during the training phases.  Classification is done by
+producing a Bag of Semantic Textons signature for an input image and running it
+through all of the SVM classifiers.  Each classifier then produces a prior for
+each class.  This forms what is referred to as the image-level prior.  It can be
+directly used for categorizing an entire image---its output is of the form
+[class:probability...] per image.
+
+Segmentation can be done with either forest 1 or forest 2.  Forest 2 has been
+experimentally more accurate than forest 1, especially when coupled with the
+image-level prior.
+
+
+ 
+How does training work with STF?
+--------------------------------------------------------------------------------
+
+What are the important outputs from training?
+--------------------------------------------------------------------------------
+
+How does categorization work with STF?
+--------------------------------------------------------------------------------
+
+How does segmentation work with STF?
+--------------------------------------------------------------------------------
+
