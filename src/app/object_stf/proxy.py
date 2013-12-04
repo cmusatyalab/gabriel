@@ -35,7 +35,7 @@ from app_proxy import ResultpublishClient
 from app_proxy import LOG
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
-
+from energy import EnergyRecordingThread
 
 class stfThread(AppProxyThread):
     def handle(self, header, data):

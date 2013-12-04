@@ -31,7 +31,11 @@ class EnergyRecordingThread(threading.Thread):
         global last_average_power
 
         # Start WattsUP through SSH
-        command = "sudo %s /dev/ttyUSB0" % WATTS_BIN
+        # If it complains about permission, try this and restart
+        #   sudo chown wenluh:users /dev/ttyUSB0 
+        #
+        command = "%s /dev/ttyUSB0" % WATTS_BIN
+        # command = "sudo %s /dev/ttyUSB0" % WATTS_BIN
         print command
     #    ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command)
         import subprocess
@@ -47,7 +51,7 @@ class EnergyRecordingThread(threading.Thread):
             ret = p.stdout.readline()
             if not ret:
                 continue
-            print ret
+            # print ret
             power_value = float(ret.split(",")[0])
             if power_value == 0.0:
                 continue
