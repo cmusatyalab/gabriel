@@ -24,6 +24,7 @@ import socket
 import select
 import struct
 import os
+import random
 import Queue
 import time
 import traceback
@@ -225,7 +226,8 @@ class MasterProxy(threading.Thread):
         # check if any queue is full
         for queue in self.partial_data_queues:
             if queue.full():
-                LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
+                if random.random() < 0.01:
+                    LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
                 return
         self._get_new_image()
 
@@ -482,6 +484,7 @@ class SlaveProxy(threading.Thread):
                         header = json.loads(header_json)
                         data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         data = self._recv_all(self.master_sock, data_size)
+                        self._log("Finished receiving image pair at %f" % time.time())
                         frame_id = header.get("frame_id")
                         images = []
                         last_image_cut = 0
@@ -492,6 +495,7 @@ class SlaveProxy(threading.Thread):
 
                         result = self.handle(images) # results is a list of lines
 
+                        self._log("Start sending back features at %f" % time.time())
                         data_back = json.dumps(result)
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
@@ -510,12 +514,8 @@ class SlaveProxy(threading.Thread):
             self.master_sock.close()
     
     def handle(self, images):
-        # receive data from control VM
-        #LOG.info(SLAVE_TAG + "Handle new image pair at %f" % time.time())
-
         # extract feature 
         result = extract_feature(images, self.txyc_sock, self.is_print)
-        #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
 class SlaveClassification(threading.Thread):
@@ -560,12 +560,14 @@ class SlaveClassification(threading.Thread):
                         data_json = self._recv_all(self.master_sock, data_size)
                         model_idxes, feature_vec = json.loads(data_json)
                         feature_vec = dict(feature_vec)
+                        self._log("Finished receiving feature vector at %f" % time.time())
                         
                         confidences = []
                         for model_idx in model_idxes:
                             confidences.append(compute_confidence(feature_vec, model_idx))
 
                         data_back = json.dumps(confidences)
+                        self._log("Starting to send back confidence scores at %f" % time.time())
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
                         self._log("Sent back confidences at %f" % time.time())
