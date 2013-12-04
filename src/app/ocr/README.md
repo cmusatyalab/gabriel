@@ -18,4 +18,6 @@ library dependecies
 	>
 
 Installation
+http://stackoverflow.com/questions/4632261/pil-jpeg-library-help
+
 https://code.google.com/p/tesseract-ocr/wiki/Compiling

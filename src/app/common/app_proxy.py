@@ -181,14 +181,11 @@ class AppProxyStreamingClient(threading.Thread):
         if DEBUG.PACKET:
             header_data[Protocol_measurement.JSON_KEY_APP_RECV_TIME] = time.time()
 
-        try:
-            if self.data_queue.full() is True:
-                self.data_queue.get_nowait()
-        except Queue.Empty as e:
-            pass
+        # token buffer - discard if the token(queue) is not available
         try:
             self.data_queue.put_nowait((header_data, data))
         except Queue.Full as e:
+            LOG.info("Packet is discarded since no token is valid")
             pass
 
 

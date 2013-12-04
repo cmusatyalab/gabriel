@@ -23,6 +23,7 @@ sys.path.insert(0, "../common")
 import time
 import Queue
 import random
+import hashlib
 
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
@@ -30,22 +31,38 @@ from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import Protocol_client
 from app_proxy import SERVICE_META
+from app_proxy import Const
 import struct
 
 
 class DummyVideoApp(AppProxyThread):
-    processing_count = 0
+    THRESHOLD = 90
+    long_computation = 0
+    short_computation = 0
+    total_count = 0
+
+    def get_compute_time(self, data):
+        value = int(hashlib.sha1(data).hexdigest(), 16) % 100
+        if value >= self.THRESHOLD:
+            computation_time = 0.2
+            self.long_computation += 1
+        else:
+            computation_time = 0.02
+            self.short_computation += 1
+        self.total_count += 1
+
+        if self.total_count % 100 == 0:
+            print "Long comutation: %f, short computation: %f" %\
+                    (100.0*self.long_computation/self.total_count, \
+                    100.0*self.short_computation/self.total_count)
+        return computation_time
 
     def handle(self, header, data):
-        frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        # new connection - reset
-        if frame_id == 1:
-            self.processing_count = 0
-
-        self.processing_count += 1
-        # sleep 100 ms for every 10th frame
-        if (self.processing_count % 10 == 0):
-            time.sleep(1)
+        # new connection - rese        time.sleep(computation_time)
+        s_time = time.time()
+        compute_time = self.get_compute_time(data)
+        left_time = compute_time - (time.time() - s_time)
+        time.sleep(left_time)
         return "dummy"
 
 
@@ -74,7 +91,8 @@ if __name__ == "__main__":
     return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
 
     # dummy video app
-    image_queue = Queue.Queue(1)
+    image_queue = Queue.Queue(Const.APP_LEVEL_TOKEN_SIZE)
+    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % Const.APP_LEVEL_TOKEN_SIZE
     video_client = AppProxyStreamingClient((video_ip, video_port), image_queue)
     video_client.start()
     video_client.isDaemon = True
