@@ -92,7 +92,7 @@ def extract_feature(images, txyc_sock, is_print):
     DEVNULL.close()
     time3 = time.time()
     #print "time3 %f" % time3
-    if is_print:
+    if is_print and (time3 - time2 > 0.1):
         print "time spent on extracting feature: %f" % (time3 - time2)
     #subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     result = []

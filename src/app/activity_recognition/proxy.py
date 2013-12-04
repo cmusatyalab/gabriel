@@ -374,6 +374,7 @@ class MasterClassification(threading.Thread):
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
+            LOG.info(MASTER_TAG + "Sent all features at time %f" % time.time())
 
             # now receiving
             if self.slave_num == 1:
@@ -393,6 +394,7 @@ class MasterClassification(threading.Thread):
                     data = self._recv_all(output_list[model_idx], data_size)
                     confidences += json.loads(data)
             print confidences
+            LOG.info(MASTER_TAG + "Got all confidences back at time %f" % time.time())
 
             max_score = 0
             model_idx = -1
@@ -553,7 +555,7 @@ class SlaveClassification(threading.Thread):
                         select.select(input_list, [], [], 0)
                 for s in inputready:
                     if s == socket_fd:
-                        self._log(SLAVE_TAG + "Start receiving new feature vecture at %f" % time.time())
+                        self._log("Start receiving new feature vecture at %f" % time.time())
                         data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         data_json = self._recv_all(self.master_sock, data_size)
                         model_idxes, feature_vec = json.loads(data_json)
@@ -566,7 +568,7 @@ class SlaveClassification(threading.Thread):
                         data_back = json.dumps(confidences)
                         packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
                         self.master_sock.sendall(packet)
-                        self._log(SLAVE_TAG + "Sent back confidences at %f" % time.time())
+                        self._log("Sent back confidences at %f" % time.time())
         except Exception as e:
             LOG.warning(traceback.format_exc())
             LOG.warning("%s" % str(e))
