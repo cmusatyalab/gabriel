@@ -68,6 +68,7 @@ class Const(object):
 
     MAX_FRAME_SIZE = 1
     TOKEN_INJECTION_SIZE = 10
+    APP_LEVEL_TOKEN_SIZE = 2
 
 
 class ServiceMeta(object):
