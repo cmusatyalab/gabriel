@@ -48,14 +48,19 @@ from app_proxy import SERVICE_META
 from app_proxy import LOG
 
 from motion_classifier import extract_feature
-from motion_classifier import classify
+from motion_classifier import compute_hist
+from motion_classifier import compute_confidence
 
 TXYC_PATH = "bin/txyc"
 TXYC_ARGS = ['cluster_centers/centers_mosift_MOTION_1024', '1024', 'mosift', 'MOTION']
 TXYC_PORT = 8748
 MASTER_PORT = 8747
+MASTER_CLASSIFICATION_PORT = 8749
 MASTER_TAG = "Master Node: "
 SLAVE_TAG = "Slave Node: "
+
+model_names = ["SayHi", "Clapping", "TurnAround", "Squat"]
+MESSAGES = ["Someone is waving to you.", "Someone is clapping.", "Someone is turning around.", "Someone just squated."]
 
 class MasterProxy(threading.Thread):
     def __init__(self, data_queue, feature_queue):
@@ -198,7 +203,7 @@ class MasterProxy(threading.Thread):
                 self.frame_id_queues[idx].append(frame_id)
             self.split_config_queue.put_nowait((frame_id, self.slave_num, split_config))
         except Queue.Full as e:
-            LOG.warning(MASTER_TAG + "Image pair queue shouldn't be full")
+            LOG.warning(MASTER_TAG + "!!!!!!!!!!!!!!!!!!Image pair queue shouldn't be full!!!!!!!!!!!!!!!!!")
 
     def _send_partial_image(self, sock):
         # send image pairs
@@ -285,7 +290,7 @@ class MasterProxy(threading.Thread):
     def terminate(self):
         self.stop.set()
 
-class MasterProcessing(threading.Thread):
+class MasterClassification(threading.Thread):
     def __init__(self, feature_queue, output_queue_list, detect_period):
         self.feature_queue = feature_queue
         self.output_queue_list = output_queue_list
@@ -293,32 +298,135 @@ class MasterProcessing(threading.Thread):
         self.detect_period = detect_period
         self.window_len = 30
         self.feature_list = []
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.server.bind(("", MASTER_CLASSIFICATION_PORT))
+        self.server.listen(10) # expect less then 10 connections...
+        self.connection_num = 0
+        self.slave_num = 1
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
-        while(not self.stop.wait(0.001)):
-            try:
-                frame_id, features = self.feature_queue.get_nowait()
-            except Queue.Empty as e:
-                continue
+        input_list = [self.server]
+        output_list = []
+        error_list = []
 
-            LOG.info(MASTER_TAG + "Got feature back of frame %d at time %f" % (frame_id, time.time()))
-            result = None
-            self.feature_list.append(features)
-            if len(self.feature_list) == self.window_len:
-                result = classify(self.feature_list)
-                LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
-                for i in xrange(self.detect_period):
-                    del self.feature_list[0]
+        LOG.info(MASTER_TAG + "Master node started")
+        try:
+            while(not self.stop.wait(0.001)):
+                inputready, outputready, exceptready = \
+                        select.select(input_list, output_list, error_list, 0.001)
+                for s in inputready:
+                    if s == self.server:
+                        print "client connected"
+                        client, address = self.server.accept()
+                        input_list.append(client)
+                        output_list.append(client)
+                        error_list.append(client)
+                        self.connection_num += 1
+                        if self.connection_num >= self.slave_num * 2:
+                            self.slave_num *= 2
+                self._try_classify(output_list)
+        except Exception as e:
+            LOG.warning(MASTER_TAG + traceback.format_exc())
+            LOG.warning(MASTER_TAG + "%s" % str(e))
+            LOG.warning(MASTER_TAG + "handler raises exception")
+            LOG.warning(MASTER_TAG + "Server is disconnected unexpectedly")
+        LOG.debug(MASTER_TAG + "Master thread terminated")
 
-            if result is not None:
-                print result
-                return_message = dict()
-                return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
-                if frame_id is not None:
-                    return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
-                for output_queue in self.output_queue_list:
-                    output_queue.put(json.dumps(return_message))
+    @staticmethod
+    def _recv_all(socket, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = socket.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise AppProxyError("Socket is closed")
+            data += tmp_data
+        return data
+
+    def _try_classify(self, output_list):
+        try:
+            frame_id, features = self.feature_queue.get_nowait()
+        except Queue.Empty as e:
+            return
+
+        LOG.info(MASTER_TAG + "Got feature back of frame %d at time %f" % (frame_id, time.time()))
+        result = None
+        self.feature_list.append(features)
+        if len(self.feature_list) == self.window_len:
+            feature_vec = compute_hist(self.feature_list)
+            feature_vec = list(feature_vec.items())
+            if self.slave_num == 1:
+                data = ((0,1,2,3), feature_vec)
+                data_json = json.dumps(data)
+                packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
+                output_list[0].sendall(packet)
+            elif self.slave_num >= 4:
+                for model_idx in xrange(4):
+                    data = ((model_idx, ), feature_vec)
+                    data_json = json.dumps(data)
+                    packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
+                    output_list[model_idx].sendall(packet)
+            else:
+                for model_idx in xrange(2):
+                    data = ((model_idx * 2, model_idx * 2 + 1), feature_vec)
+                    data_json = json.dumps(data)
+                    packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
+                    output_list[model_idx].sendall(packet)
+            LOG.info(MASTER_TAG + "Sent all features at time %f" % time.time())
+
+            # now receiving
+            if self.slave_num == 1:
+                data_size = struct.unpack("!I", self._recv_all(output_list[0], 4))[0]
+                data = self._recv_all(output_list[0], data_size)
+                confidences = json.loads(data)
+            elif self.slave_num >= 4:
+                confidences = []
+                for model_idx in xrange(4):
+                    data_size = struct.unpack("!I", self._recv_all(output_list[model_idx], 4))[0]
+                    data = self._recv_all(output_list[model_idx], data_size)
+                    confidences += json.loads(data)
+            else:
+                confidences = []
+                for model_idx in xrange(2):
+                    data_size = struct.unpack("!I", self._recv_all(output_list[model_idx], 4))[0]
+                    data = self._recv_all(output_list[model_idx], data_size)
+                    confidences += json.loads(data)
+            print confidences
+            LOG.info(MASTER_TAG + "Got all confidences back at time %f" % time.time())
+
+            max_score = 0
+            model_idx = -1
+            for idx in xrange(4):
+                if confidences[idx] > max_score:
+                    max_score = confidences[idx]
+                    model_idx = idx
+            model_name = model_names[model_idx]
+            if max_score > 0.5: # Activity is detected
+                print
+                print "ACTIVITY DETECTED: %s!" % model_name
+                print "Confidence score: %f" % max_score
+                print
+
+                result = MESSAGES[model_idx]
+            else:
+                print "\nMax confidence score: %f, activity is: %s\n" % (max_score, model_name)
+                result = "nothing"
+
+            for i in xrange(self.detect_period):
+                del self.feature_list[0]
+
+            LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
+
+        if result is not None:
+            print result
+            return_message = dict()
+            return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
+            if frame_id is not None:
+                return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
+            for output_queue in self.output_queue_list:
+                output_queue.put(json.dumps(return_message))
         LOG.debug("App thread terminated")
 
     def terminate(self):
@@ -410,6 +518,71 @@ class SlaveProxy(threading.Thread):
         #LOG.info(SLAVE_TAG + "Finished extracting feature for one image pair at %f" % time.time())
         return result
 
+class SlaveClassification(threading.Thread):
+    def __init__(self, master_addr, is_print = True):
+        self.stop = threading.Event()
+        self.is_print = is_print
+        try:
+            self.master_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.master_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.master_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.master_sock.connect(master_addr)
+        except socket.error as e:
+            LOG.warning(SLAVE_TAG + "Failed to connect to %s" % str(master_addr))
+        threading.Thread.__init__(self, target=self.run)
+
+    def _log(self, message):
+        if self.is_print:
+            LOG.info(SLAVE_TAG + message)
+
+    @staticmethod
+    def _recv_all(socket, recv_size):
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = socket.recv(recv_size - len(data))
+            if tmp_data == None or len(tmp_data) == 0:
+                raise AppProxyError("Socket is closed")
+            data += tmp_data
+        return data
+
+    def run(self):
+        LOG.info(SLAVE_TAG + "Start getting data from master classification node")
+        socket_fd = self.master_sock.fileno()
+        input_list = [socket_fd]
+        try:
+            while(not self.stop.wait(0.001)):
+                inputready, outputready, exceptready = \
+                        select.select(input_list, [], [], 0)
+                for s in inputready:
+                    if s == socket_fd:
+                        self._log("Start receiving new feature vecture at %f" % time.time())
+                        data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
+                        data_json = self._recv_all(self.master_sock, data_size)
+                        model_idxes, feature_vec = json.loads(data_json)
+                        feature_vec = dict(feature_vec)
+                        
+                        confidences = []
+                        for model_idx in model_idxes:
+                            confidences.append(compute_confidence(feature_vec, model_idx))
+
+                        data_back = json.dumps(confidences)
+                        packet = struct.pack("!I%ds" % len(data_back), len(data_back), data_back)
+                        self.master_sock.sendall(packet)
+                        self._log("Sent back confidences at %f" % time.time())
+        except Exception as e:
+            LOG.warning(traceback.format_exc())
+            LOG.warning("%s" % str(e))
+            LOG.warning("handler raises exception")
+            LOG.warning("Server is disconnected unexpectedly")
+        self.master_sock.close()
+        LOG.debug("Proxy thread terminated")
+
+    def terminate(self):
+        self.stop.set()
+        if self.master_sock is not None:
+            self.master_sock.close()
+    
+
 def GET(url):
     meta_stream = urllib2.urlopen(url)
     meta_raw = meta_stream.read()
@@ -478,25 +651,27 @@ if __name__ == "__main__":
         master_proxy = MasterProxy(image_queue, feature_queue)
         master_proxy.start()
         master_proxy.isDaemon = True
-        master_processing = MasterProcessing(feature_queue, output_queue_list, 10)
-        master_processing.start()
-        master_processing.isDaemon = True
+        master_classification = MasterClassification(feature_queue, output_queue_list, 10)
+        master_classification.start()
+        master_classification.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list) # this is where output_queues are created according to each return_address
         result_pub.start()
         result_pub.isDaemon = True
 
         LOG.info(MASTER_TAG + "Start receiving data")
+    else: # Slave proxy
+        txyc_thread = AppLauncher(TXYC_PATH, args = TXYC_ARGS, is_print=True)
+        txyc_thread.start()
+        txyc_thread.isDaemon = True
+        time.sleep(3)
+        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = True)
+        slave_proxy.start()
+        slave_proxy.isDaemon = True
+        slave_classification = SlaveClassification((master_node_ip, MASTER_CLASSIFICATION_PORT), is_print = not is_master)
+        slave_classification.start()
+        slave_classification.isDaemon = True
 
-    # Slave proxy
-    txyc_thread = AppLauncher(TXYC_PATH, args = TXYC_ARGS, is_print=True)
-    txyc_thread.start()
-    txyc_thread.isDaemon = True
-    time.sleep(3)
-    slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = not is_master)
-    slave_proxy.start()
-    slave_proxy.isDaemon = True
-
-    LOG.info(SLAVE_TAG + "Start receiving data")
+        LOG.info(SLAVE_TAG + "Start receiving data")
     try:
         while True:
             time.sleep(1)
@@ -510,12 +685,15 @@ if __name__ == "__main__":
                 master_streaming.terminate()
             if master_proxy:
                 master_proxy.terminate()
-            if master_processing:
-                master_processing.terminate()
+            if master_classification:
+                master_classification.terminate()
             if result_pub:
                 result_pub.terminate()
-        if txyc_thread:
-            txyc_thread.terminate()
-        if slave_proxy:
-            slave_proxy.terminate()
+        else:
+            if txyc_thread:
+                txyc_thread.terminate()
+            if slave_proxy:
+                slave_proxy.terminate()
+            if slave_classification:
+                slave_classification.terminate()
 

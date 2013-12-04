@@ -92,7 +92,7 @@ def extract_feature(images, txyc_sock, is_print):
     DEVNULL.close()
     time3 = time.time()
     #print "time3 %f" % time3
-    if is_print:
+    if is_print and (time3 - time2 > 0.1):
         print "time spent on extracting feature: %f" % (time3 - time2)
     #subprocess.call(['%s/txyc' % bin_path, center_file, str(n_clusters), raw_file, txyc_file, selected_feature, descriptor])
     result = []
@@ -109,7 +109,7 @@ def extract_feature(images, txyc_sock, is_print):
             result.append(aresult)
     time4 = time.time()
     #print "time4 %f" % time4
-    if is_print:
+    if is_print and (time4 - time3 > 0.05):
         print "time spent on assigning feature to cluster: %f" % (time4 - time3)
 
     #os.remove(tmp_video_file)
@@ -131,7 +131,7 @@ def load_data(spbof_file):
             v[idx] = val
     return v
 
-def classify(feature_list):
+def compute_hist(feature_list):
     DEVNULL = open(os.devnull, 'wb')
     txyc_file = "%s/%s_%s_%d_%s_integrated.txyc" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
     spbof_file = "%s/%s_%s_%d_%s.spbof" % (TMP_DIR, selected_feature, descriptor, n_clusters, video_name)
@@ -148,29 +148,10 @@ def classify(feature_list):
     # Detect activity from MoSIFT feature vectors
     feature_vec = load_data(spbof_file)
     #os.remove(spbof_file)
+    return feature_vec
 
-    model_idx = -1
-    max_score = 0
-    for idx, model_name in enumerate(model_names):
-        if idx == len(model_names) - 1:  # exclude "ExtendingHands"
-            break
-        p_labs, p_acc, p_vals = svmutil.svm_predict([1], [feature_vec], svmmodels[idx], "-b 1 -q")
-        labels = svmmodels[idx].get_labels()
-        val = p_vals[0][0] * labels[0] + p_vals[0][1] * labels[1]
-        if val > max_score:
-            max_score = val 
-            model_idx = idx
-
-    model_name = model_names[model_idx]
-    if max_score > 0.5: # Activity is detected
-        current_time = time.time()    
-        print "ACTIVITY DETECTED: %s!" % model_name
-        print "Current time: %f" % current_time
-        print "Confidence score: %f" % max_score
-
-        MESSAGE = MESSAGES[model_idx]
-        return MESSAGE
-    else:
-        print "Max confidence score: %f, activity is: %s" % (max_score, model_name)
-        return "nothing"
-
+def compute_confidence(feature_vec, model_idx):
+    p_labs, p_acc, p_vals = svmutil.svm_predict([1], [feature_vec], svmmodels[model_idx], "-b 1 -q")
+    labels = svmmodels[model_idx].get_labels()
+    val = p_vals[0][0] * labels[0] + p_vals[0][1] * labels[1]
+    return val

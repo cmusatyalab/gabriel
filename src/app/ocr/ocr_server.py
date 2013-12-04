@@ -151,8 +151,8 @@ def run_ocr(image_data, force_return=False):
 
 
 if __name__ == "__main__":
-    #data = open('test.jpg', 'rb').read()
-    #print run_ocr(data, force_return=True)
+    data = open('test.jpg', 'rb').read()
+    print run_ocr(data, force_return=True)
     server = OCRServer(sys.argv[1:])
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True

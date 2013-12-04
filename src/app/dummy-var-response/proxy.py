@@ -44,10 +44,10 @@ class DummyVideoApp(AppProxyThread):
     def get_compute_time(self, data):
         value = int(hashlib.sha1(data).hexdigest(), 16) % 100
         if value >= self.THRESHOLD:
-            computation_time = 0.1
+            computation_time = 0.2
             self.long_computation += 1
         else:
-            computation_time = 0.01
+            computation_time = 0.02
             self.short_computation += 1
         self.total_count += 1
 
