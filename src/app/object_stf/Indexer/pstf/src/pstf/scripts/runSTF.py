@@ -100,9 +100,7 @@ def load_from_classifier(classifier):
         training_bosts = None
     return forest0, hist0, forest1, hist1, training_bosts, svmmodels, prior
 
-def calculate_class(key_frame_counter):
-#    print name + "%d." % (key_frame_counter % processes) + pic_suffix
-#    image = Image.open(name + "%d." % (key_frame_counter % processes) + pic_suffix)
+def calculate_class():
     image = Image.open(name)
     #nx, ny = image.size
     #image = image.resize((int(nx/2), int(ny/2)), Image.ANTIALIAS)
@@ -153,8 +151,6 @@ def main():
     global name
 #    name = os.path.splitext(args.dataset)[0] 
     name = args.imagefilename
-#    global pic_suffix
-#    pic_suffix = "bmp"
 
     classifier = zipfile.ZipFile(args.classifier)
     global forest0, svmmodels, training_bosts, hist0
@@ -183,7 +179,7 @@ def main():
 #        pool.map(calculate_class, range(key_frame_counter_base, key_frame_counter_base + process_num))
         
     key_frame_counter_base = 1;
-    calculate_class(1);    
+    calculate_class();    
 
     elapse_time = time.time() - start_time
 #    print "total time: %.2f, key frames: %d, frame per sec: %.2f" \

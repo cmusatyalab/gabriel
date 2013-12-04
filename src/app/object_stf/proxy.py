@@ -40,15 +40,16 @@ from app_proxy import SERVICE_META
 class FaceThread(AppProxyThread):
     def handle(self, header, data):
 
-        # TODO Write data to file
+        # Write data to file
         self.imagecount += 1
 #       app_dir = "/usr0/home/wenluh/Development/Indexer/pstf/src/"
         # fn = 'testimage' + str(self.imagecount) + '.jpg'
         DEBUG=False
+        imageSuff = ".bmp" #TODO use ".jpg" for real data from glass
         if DEBUG:
-            fn = 'testpic' + str(self.imagecount) +'.bmp'
+            fn = 'testpic' + str(self.imagecount) + imageSuff
         else:
-            fn = 'testpic' + '0'  +'.bmp'
+            fn = 'testpic' + '0'  + imageSuff
         f = open(fn, 'wb')
         f.write(data)
         f.close()
