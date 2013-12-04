@@ -182,7 +182,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 1:
+        if self.slave_num < 4:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -364,7 +364,7 @@ class MasterClassification(threading.Thread):
                 output_list[0].sendall(packet)
             elif self.slave_num >= 4:
                 for model_idx in xrange(4):
-                    data = ((model_idx), feature_vec)
+                    data = ((model_idx, ), feature_vec)
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
@@ -396,7 +396,7 @@ class MasterClassification(threading.Thread):
 
             max_score = 0
             model_idx = -1
-            for idx, model_name in enumerate(model_names):
+            for idx in xrange(4):
                 if confidences[idx] > max_score:
                     max_score = confidences[idx]
                     model_idx = idx
@@ -412,9 +412,10 @@ class MasterClassification(threading.Thread):
                 print "\nMax confidence score: %f, activity is: %s\n" % (max_score, model_name)
                 result = "nothing"
 
-            LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
             for i in xrange(self.detect_period):
                 del self.feature_list[0]
+
+            LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
 
         if result is not None:
             print result
@@ -656,20 +657,19 @@ if __name__ == "__main__":
         result_pub.isDaemon = True
 
         LOG.info(MASTER_TAG + "Start receiving data")
+    else: # Slave proxy
+        txyc_thread = AppLauncher(TXYC_PATH, args = TXYC_ARGS, is_print=True)
+        txyc_thread.start()
+        txyc_thread.isDaemon = True
+        time.sleep(3)
+        slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = True)
+        slave_proxy.start()
+        slave_proxy.isDaemon = True
+        slave_classification = SlaveClassification((master_node_ip, MASTER_CLASSIFICATION_PORT), is_print = not is_master)
+        slave_classification.start()
+        slave_classification.isDaemon = True
 
-    # Slave proxy
-    txyc_thread = AppLauncher(TXYC_PATH, args = TXYC_ARGS, is_print=True)
-    txyc_thread.start()
-    txyc_thread.isDaemon = True
-    time.sleep(3)
-    slave_proxy = SlaveProxy((master_node_ip, master_node_port), ("localhost", TXYC_PORT), is_print = not is_master)
-    slave_proxy.start()
-    slave_proxy.isDaemon = True
-    slave_classification = SlaveClassification((master_node_ip, MASTER_CLASSIFICATION_PORT), is_print = not is_master)
-    slave_classification.start()
-    slave_classification.isDaemon = True
-
-    LOG.info(SLAVE_TAG + "Start receiving data")
+        LOG.info(SLAVE_TAG + "Start receiving data")
     try:
         while True:
             time.sleep(1)
@@ -687,10 +687,11 @@ if __name__ == "__main__":
                 master_classification.terminate()
             if result_pub:
                 result_pub.terminate()
-        if txyc_thread:
-            txyc_thread.terminate()
-        if slave_proxy:
-            slave_proxy.terminate()
-        if slave_classification:
-            slave_classification.terminate()
+        else:
+            if txyc_thread:
+                txyc_thread.terminate()
+            if slave_proxy:
+                slave_proxy.terminate()
+            if slave_classification:
+                slave_classification.terminate()
 
