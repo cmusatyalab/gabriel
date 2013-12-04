@@ -1,0 +1,19 @@
+From: Patrick Mochel [mochel@digitalimplant.org]
+Sent: Wednesday, April 05, 2006 6:27 PM
+To: bvorin@doubleed.com
+Subject: Re: Watts Up Feature Requests
+
+
+
+On Wed, 5 Apr 2006, Patrick Mochel wrote:
+
+> P.S. I am attaching the command line utility that I wrote for Linux to 
+> interact with the Watts Up. Please feel free to do with it what you like, 
+> though any improvements or fixes would be greatly appreciated.
+
+Woops, here it is this time.
+
+Thanks,
+
+
+ 	Patrick
