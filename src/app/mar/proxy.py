@@ -77,7 +77,7 @@ if __name__ == "__main__":
     print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % Const.APP_LEVEL_TOKEN_SIZE
     output_queue_list = list()
 
-    app_addr = ("54.212.182.9", APP_PORT)
+    app_addr = ("127.0.0.1", APP_PORT)
     app_thread = None
     mar_thread = None
     client_thread = None
