@@ -203,7 +203,7 @@ class MasterProxy(threading.Thread):
                 self.frame_id_queues[idx].append(frame_id)
             self.split_config_queue.put_nowait((frame_id, self.slave_num, split_config))
         except Queue.Full as e:
-            LOG.warning(MASTER_TAG + "Image pair queue shouldn't be full")
+            LOG.warning(MASTER_TAG + "!!!!!!!!!!!!!!!!!!Image pair queue shouldn't be full!!!!!!!!!!!!!!!!!")
 
     def _send_partial_image(self, sock):
         # send image pairs

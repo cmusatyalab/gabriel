@@ -109,7 +109,7 @@ def extract_feature(images, txyc_sock, is_print):
             result.append(aresult)
     time4 = time.time()
     #print "time4 %f" % time4
-    if is_print:
+    if is_print and (time4 - time3 > 0.05):
         print "time spent on assigning feature to cluster: %f" % (time4 - time3)
 
     #os.remove(tmp_video_file)
