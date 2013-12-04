@@ -37,8 +37,13 @@ from app_proxy import get_service_list
 from app_proxy import SERVICE_META
 
 
-class FaceThread(AppProxyThread):
+class stfThread(AppProxyThread):
     def handle(self, header, data):
+        
+        if self.firstFrame:
+            #TODO start energy recording
+            energy_thread.start()
+            self.firstFrame = False
 
         # Write data to file
         self.imagecount += 1
@@ -55,10 +60,9 @@ class FaceThread(AppProxyThread):
         f.close()
 
         # runSTF.py: run STF on the image file 
-        # TODO test
         import subprocess
-	output = subprocess.check_output(["bash", "./runSTF.sh", fn])
-#	output = subprocess.check_output(["echo", fn])
+        output = subprocess.check_output(["bash", "./runSTF.sh", fn])
+#       output = subprocess.check_output(["echo", fn])
         '''
         output example:
         ['sky', 'bird']
@@ -74,19 +78,24 @@ class FaceThread(AppProxyThread):
 #        os.system(". ./runSTF.sh")
 
     def __init__(self, image_queue, output_queue):
-        super(FaceThread, self).__init__(image_queue, output_queue)
+        super(stfThread, self).__init__(image_queue, output_queue)
         self.imagecount = 0
+        self.firstFrame = True
 
 if __name__ == "__main__":
 
     image_queue = Queue.Queue(1)
     output_queue_list = list()
 
-    face_thread = None
+    stf_thread = None
     client_thread = None
     result_pub = None
 
+    global energy_thread
+    energy_thread = None
+
     try:
+        energy_thread = EnergyRecordingThread("energy_log")
         sys.stdout.write("Finding control VM\n")
         service_list = get_service_list(sys.argv)
         video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
@@ -96,9 +105,9 @@ if __name__ == "__main__":
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
         client_thread.isDaemon = True
-        face_thread = FaceThread(image_queue, output_queue_list)
-        face_thread.start()
-        face_thread.isDaemon = True 
+        stf_thread = stfThread(image_queue, output_queue_list)
+        stf_thread.start()
+        stf_thread.isDaemon = True 
 	
 	# result pub/sub
         result_pub = ResultpublishClient(return_addresses, output_queue_list)
@@ -111,15 +120,17 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         sys.stdout.write("user exits\n")
     except Exception as e:
-	import traceback
-	LOG.warning(traceback.format_exc())
-	LOG.warning("%s" % str(e))
+        import traceback
+        LOG.warning(traceback.format_exc())
+        LOG.warning("%s" % str(e))
         LOG.warning(str(e))
     finally:
+        if energy_thread != None:
+            energy_thread.stop()
         if client_thread != None:
             client_thread.terminate()
-        if face_thread != None:
-            face_thread.terminate()
+        if stf_thread != None:
+            stf_thread.terminate()
 	if result_pub != None:
 	    result_pub.terminate()
 
