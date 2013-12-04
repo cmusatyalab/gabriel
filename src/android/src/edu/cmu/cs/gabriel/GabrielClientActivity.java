@@ -85,17 +85,26 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //		init_experiement();
 		
 		// scriptized experiement
-		runExperiements();
+//		runExperiements();
+	}
+
+	boolean experimentStarted = false;
+	public void startExperiment(View view) {
+		if (!experimentStarted) {
+			// scriptized experiement	
+			experimentStarted = true;
+			runExperiements();
+		}
 	}
 	
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"128.2.213.102"};
-//			int[] tokenSize = {1, 4, 16, 32, 64};
-			int[] tokenSize = {10000};
+			String[] ipList = {"54.212.234.69", "128.2.213.102"};
+			int[] tokenSize = {2};
+//			int[] tokenSize = {10000};
 			int ipIndex = 0;
-			int tokenIndex = 0;			
+			int tokenIndex = 0;
 			@Override
 			public void run() {
 				GabrielClientActivity.this.runOnUiThread(new Runnable() {
@@ -183,7 +192,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 	
 	private void init_experiement() {
-		startBatteryRecording();
 		if (tokenController != null){
 			tokenController.close();
 		}
@@ -214,7 +222,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		videoStreamingThread.start();
 		
 		accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
-		accStreamingThread.start();		
+		accStreamingThread.start();
+
+		stopBatteryRecording();
+		startBatteryRecording();
 	}
 	
 	// Implements TextToSpeech.OnInitListener
@@ -422,7 +433,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	Intent batteryRecordingService = null;
 
 	public void startBatteryRecording() {
-		BatteryRecordingService.AppName = "GabrielClient";
+		BatteryRecordingService.AppName = "Gabriel" + File.separator + "exp";
+		BatteryRecordingService.setOutputFileName("Battery-" + Const.LATENCY_FILE.getName());
 		Log.i("wenluh", "Starting Battery Recording Service");
 		batteryRecordingService = new Intent(this, BatteryRecordingService.class);
 		startService(batteryRecordingService);

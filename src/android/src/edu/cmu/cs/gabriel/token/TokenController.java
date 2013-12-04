@@ -46,17 +46,27 @@ public class TokenController {
 				Bundle bundle = msg.getData();
 				long recvFrameID = bundle.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
 				if (recvFrameID > prevRecvedAck) {
-					long increaseCount = recvFrameID - prevRecvedAck;
-					increaseTokens(increaseCount);
+					long increaseCount = 0;
 					for (long index = prevRecvedAck + 1; index < recvFrameID; index++) {
-//						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
-						latencyStamps.remove(index);
+						SentPacketInfo sentPacket = latencyStamps.remove(index);
+						if (sentPacket != null) {
+							increaseCount++;
+							Log.d(LOG_TAG, "dump consumped but not acked :" + index);
+							// discarded at application
+							String log = index + "\t0\t" + sentPacket.generatedTime + "\t-100000";
+							try {
+								mFileWriter.write(log + "\n");
+							} catch (IOException e) {
+							}							
+						}
 					}
+					increaseTokens(increaseCount);
 					prevRecvedAck = recvFrameID;
 
 					// get the packet information
 					SentPacketInfo sentPacket = latencyStamps.remove(recvFrameID);
 					if (sentPacket != null) {
+						increaseTokens(1);
 						long time_diff = now - sentPacket.generatedTime;
 						String log = recvFrameID + "\t" + now + "\t" + sentPacket.generatedTime + "\t" + time_diff;
 						try {
