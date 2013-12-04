@@ -183,7 +183,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 4:
+        if self.slave_num < 2:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -357,22 +357,22 @@ class MasterClassification(threading.Thread):
         result = None
         self.feature_list.append(features)
         if len(self.feature_list) == self.window_len:
-            feature_vec = compute_hist(self.feature_list)
-            feature_vec = list(feature_vec.items())
+            #feature_vec = compute_hist(self.feature_list)
+            #feature_vec = list(feature_vec.items())
             if self.slave_num == 1:
-                data = ((0,1,2,3), feature_vec)
+                data = ((0,1,2,3), feature_list)
                 data_json = json.dumps(data)
                 packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                 output_list[0].sendall(packet)
             elif self.slave_num >= 4:
                 for model_idx in xrange(4):
-                    data = ((model_idx, ), feature_vec)
+                    data = ((model_idx, ), feature_list)
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
             else:
                 for model_idx in xrange(2):
-                    data = ((model_idx * 2, model_idx * 2 + 1), feature_vec)
+                    data = ((model_idx * 2, model_idx * 2 + 1), feature_list)
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
@@ -558,8 +558,10 @@ class SlaveClassification(threading.Thread):
                         self._log("Start receiving new feature vecture at %f" % time.time())
                         data_size = struct.unpack("!I", self._recv_all(self.master_sock, 4))[0]
                         data_json = self._recv_all(self.master_sock, data_size)
-                        model_idxes, feature_vec = json.loads(data_json)
-                        feature_vec = dict(feature_vec)
+                        model_idxes, feature_list = json.loads(data_json)
+                        feature_vec = compute_hist(self.feature_list)
+                        #feature_vec = list(feature_vec.items())
+                        #feature_vec = dict(feature_vec)
                         self._log("Finished receiving feature vector at %f" % time.time())
                         
                         confidences = []
