@@ -56,7 +56,7 @@ public class VideoStreamingThread extends Thread {
 	private long frameGeneratedTime = 0;
 	private Object frameLock = new Object();
 	private Handler networkHander = null;
-	private long sequenceID = 1;	// must start from 1
+	private long frameID = 1;	// must start from 1
 
 	private TokenController tokenController;
 
@@ -124,13 +124,14 @@ public class VideoStreamingThread extends Thread {
 			try {
 				// check token
 				if (this.tokenController.getCurrentToken() <= 0) {
-					Log.d(LOG_TAG, "waiting");
+//					Log.d(LOG_TAG, "waiting");
 					continue;
 				}
 				
 				// get data
 				byte[] data = null;
 				long dataTime = 0;
+				long sendingFrameID = 0;
 				synchronized(frameLock){
 					while (this.frameBuffer == null){
 						try {
@@ -140,23 +141,23 @@ public class VideoStreamingThread extends Thread {
 					
 					data = this.frameBuffer;
 					dataTime = this.frameGeneratedTime;
-					this.frameBuffer = null;			
+					sendingFrameID = this.frameID;
+					this.frameBuffer = null;
 				}
 				
 				// make it as a single packet
 				ByteArrayOutputStream baos = new ByteArrayOutputStream();
 		        DataOutputStream dos=new DataOutputStream(baos);
-				byte[] header = ("{\"id\":" + this.sequenceID + "}").getBytes();
+				byte[] header = ("{\"id\":" + sendingFrameID + "}").getBytes();
 				dos.writeInt(header.length);
 				dos.writeInt(data.length);
 				dos.write(header);
 				dos.write(data);
 
-				this.tokenController.sendData(this.sequenceID, System.currentTimeMillis(), dos.size());	
+				this.tokenController.sendData(sendingFrameID, System.currentTimeMillis(), dos.size());	
 				networkWriter.write(baos.toByteArray());
 				networkWriter.flush();
 				this.tokenController.decreaseToken();
-				this.sequenceID++;
 				
 				// measurement
 		        if (packet_firstUpdateTime == 0) {
@@ -233,6 +234,7 @@ public class VideoStreamingThread extends Thread {
             synchronized (frameLock) {
                 this.frameBuffer = tmpBuffer.toByteArray();
                 this.frameGeneratedTime = System.currentTimeMillis();
+                this.frameID++;
                 frameLock.notify();
 			}
             datasize = tmpBuffer.size();
@@ -246,6 +248,7 @@ public class VideoStreamingThread extends Thread {
 	            synchronized (frameLock) {
 		            this.frameBuffer = buffer;
 	                this.frameGeneratedTime = System.currentTimeMillis();
+	                this.frameID++;
 	                frameLock.notify();
 	            }
 	            indexImageFile++;
