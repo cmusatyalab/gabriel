@@ -82,4 +82,5 @@ class ServiceMeta(object):
 
 
 class DEBUG(object):
+    DIRECT_RETURN = False
     PACKET = False
