@@ -100,8 +100,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"54.212.234.69", "128.2.213.102"};
-			int[] tokenSize = {2};
+			String[] ipList = {"128.2.213.102"}; //"54.212.234.69"   
+			int[] tokenSize = {1};
 //			int[] tokenSize = {10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;
@@ -144,7 +144,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		
 		// run 3 minutes for each experiement
 		init_once();
-		startTimer.schedule(autoStart, 1000, 5*60*1000);
+		startTimer.schedule(autoStart, 1000, 10*60*1000);
 	}
 
 	private void init_once() {
@@ -434,7 +434,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
 	public void startBatteryRecording() {
 		BatteryRecordingService.AppName = "Gabriel" + File.separator + "exp";
-		BatteryRecordingService.setOutputFileName("Battery-" + Const.LATENCY_FILE.getName());
+		BatteryRecordingService.setOutputFileNames("Battery-" + Const.LATENCY_FILE.getName(), 
+				"CPU-" + Const.LATENCY_FILE.getName());
 		Log.i("wenluh", "Starting Battery Recording Service");
 		batteryRecordingService = new Intent(this, BatteryRecordingService.class);
 		startService(batteryRecordingService);

@@ -15,7 +15,10 @@ import android.util.Log;
 
 public class BatteryRecordingService extends IntentService {
 	FileWriter mFileWriter = null;
+	FileWriter mCpuFileWriter = null;
 	static String mOutputFileName = "batteryRecording";
+	static String mCpuOutputFileName = null;
+	
 	static public String AppName = "SampleApp";	
 	boolean stopped = false;
 	private Object lock = new Object();
@@ -32,6 +35,11 @@ public class BatteryRecordingService extends IntentService {
 		mOutputFileName = outputFileName; 
 	}
 	
+	public static void setOutputFileNames(String batteryFileName, String cpuFileName) {
+		mOutputFileName = batteryFileName;
+		mCpuOutputFileName = cpuFileName;
+	}
+	
 	@Override
 	protected void onHandleIntent(Intent arg0) {
 		Log.i("BatteryRecordingService", "Got Intent, starting to record");
@@ -44,14 +52,18 @@ public class BatteryRecordingService extends IntentService {
 			mFileWriter = new FileWriter(file); //New Empty File
 //			mFileWriter.write("Time/ms\tCurrent/mA\tVoltage/V\n");
 			mFileWriter.close();
-			
-			int TotalTimes = 400;
+			if (mCpuOutputFileName != null){
+				File cpuFile = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mCpuOutputFileName);
+				mCpuFileWriter = new FileWriter(cpuFile); //New Empty File
+			}
+			int TotalTimes = 4000;
 			int count = 0;
 			while ((!stopped) && (count < TotalTimes))
 			{
 				try {
 					Thread.sleep(100);
 					checkBattery();
+					checkCpuFrequency();
 				}
 				catch (InterruptedException ex) {
 				}
@@ -69,10 +81,55 @@ public class BatteryRecordingService extends IntentService {
 			return;
 		}
 	}
+	private void checkCpuFrequency() {
+
+		float cpuFreq = 0;
+		int temperature = 0;
+		try {
+			String frequencyFileName = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq";
+			String tempFileName = "/sys/class/power_supply/bq27520-0/temp";
+			File frequencyFile = new File(frequencyFileName);
+			File tempFile = new File(tempFileName);
+			
+	        if (frequencyFile.exists())
+	        {
+	        	FileReader reader = new FileReader(frequencyFile);
+	        	BufferedReader br = new BufferedReader(reader);
+	        	cpuFreq = Float.parseFloat(br.readLine());
+	            reader.close();
+	        }
+	        if (tempFile.exists())
+	        {
+	        	FileReader reader = new FileReader(tempFile);
+	        	BufferedReader br = new BufferedReader(reader);
+	        	temperature = Integer.parseInt(br.readLine());
+	            reader.close();
+	        }
+	        
+            long time = System.currentTimeMillis();
+			File file = new File(Environment.getExternalStorageDirectory() + File.separator + AppName + File.separator + mCpuOutputFileName);
+			mCpuFileWriter = new FileWriter(file, true); //Append
+			String cpuInfo = time + "\t" + cpuFreq + "\t" + temperature + "\n"; 
+            mCpuFileWriter.write(cpuInfo);
+            mCpuFileWriter.close();
+//            Log.i("krha", cpuInfo);
+		} catch (IOException ex) {
+			Log.e("Battery", "Why IOException?", ex);
+		}
+
+	}
+
 	@Override
 	public void onDestroy() {
 		Log.i("Battery", "Setting flag 'stopped' in onDestroy()");
 		stopped = true;
+		
+		if (mCpuFileWriter != null){
+			try {
+				mCpuFileWriter.close();
+			} catch (IOException e) {}
+			mCpuFileWriter = null;
+		}
 	}
 	
 	enum PhoneModel {

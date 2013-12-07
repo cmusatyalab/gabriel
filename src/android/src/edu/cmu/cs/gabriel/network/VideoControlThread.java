@@ -81,9 +81,9 @@ public class VideoControlThread extends Thread {
 		try{
 			controlMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_CONTROL);
 		} catch(JSONException e){}
-		try{
-			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-		} catch(JSONException e){}
+//		try{
+//			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
+//		} catch(JSONException e){}
 		
 		if (controlMsg != null){
 			Message msg = Message.obtain();
@@ -91,14 +91,14 @@ public class VideoControlThread extends Thread {
 			msg.obj = controlMsg;			
 			this.networkHandler.sendMessage(msg);
 		}
-		if (frameID != -1){
-			Message msg = Message.obtain();
-			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-			Bundle data = new Bundle();
-			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
-			msg.setData(data);
-			this.tokenController.tokenHandler.sendMessage(msg);
-		}
+//		if (frameID != -1){
+//			Message msg = Message.obtain();
+//			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
+//			Bundle data = new Bundle();
+//			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
+//			msg.setData(data);
+//			this.tokenController.tokenHandler.sendMessage(msg);
+//		}
 	}
 
 	private void notifyError(String errorMessage) {		
