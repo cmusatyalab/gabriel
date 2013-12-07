@@ -167,13 +167,14 @@ class MobileVideoHandler(MobileSensorHandler):
                     pass
             image_queue.put((header_data, image_data))
 
-        # return frame id directly to flow control
-        #json_header = json.loads(header_data)
-        #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        #if frame_id is not None:
-        #    self.ret_frame_ids.put(frame_id)
-        #global result_queue
-        #result_queue.put(header_data)
+        if DEBUG.DIRECT_RETURN:
+            # return frame id directly to flow control
+            json_header = json.loads(header_data)
+            frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+            if frame_id is not None:
+                self.ret_frame_ids.put(frame_id)
+            global result_queue
+            result_queue.put(header_data)
 
 
 class MobileAccHandler(MobileSensorHandler):
@@ -231,6 +232,8 @@ class MobileResultHandler(MobileSensorHandler):
             result_queue.get()
         self.output_queue = result_queue
         if DEBUG.PACKET:
+            self.performance_overhead_log = open("log-performance-overhead", "w")
+            self.total_overhead = 0.0
             self.control_app_latency = 0.0
             self.app_app_latency = 0.0
             self.app_ucomm_latency = 0.0
@@ -257,6 +260,40 @@ class MobileResultHandler(MobileSensorHandler):
     def _handle_output_result(self):
         try:
             result_msg = self.output_queue.get(timeout=0.0001)
+            # check time
+
+            if DEBUG.PACKET:
+                header = json.loads(result_msg)
+                now = time.time()
+                control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
+                del header[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME]
+                overhead = now - control_sent_time
+                self.total_overhead += overhead
+                self.latency_count += 1
+                log = "%d\t%f\t%f\t%f\n" % (self.latency_count, now, control_sent_time, overhead)
+                if self.performance_overhead_log != None:
+                    self.performance_overhead_log.write(log)
+                #app_recv_time = header.get(Protocol_measurement.JSON_KEY_APP_RECV_TIME)
+                #app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
+                #ucomm_recv_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME)
+                #ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
+                #self.control_app_latency += app_recv_time - control_sent_time
+                #self.app_app_latency += app_sent_time - app_recv_time
+                #self.app_ucomm_latency += ucomm_recv_time - app_sent_time
+                #self.ucomm_ucomm_latency += ucomm_sent_time - ucomm_recv_time
+                #self.ucomm_control_latency +=  now - ucomm_sent_time
+                #LOG.info("control-app:%f\tapp-app:%f\tapp-ucomm:%f\tucomm-ucomm:%f\tucomm-now:%f" % \
+                #        (self.control_app_latency/self.latency_count,
+                #            self.app_app_latency/self.latency_count,
+                #            self.app_ucomm_latency/self.latency_count,
+                #            self.ucomm_ucomm_latency/self.latency_count,
+                #            self.ucomm_control_latency/self.latency_count))
+                #del header[Protocol_measurement.JSON_KEY_APP_SENT_TIME]
+                #del header[Protocol_measurement.JSON_KEY_APP_RECV_TIME]
+                #del header[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
+                #del header[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
+                result_msg = json.dumps(header)
+
             # process header a little bit since we like to differenciate
             # frame id that comes from an application with the frame id for
             # the token bucket.
@@ -267,26 +304,6 @@ class MobileResultHandler(MobileSensorHandler):
             self.wfile.flush()
             LOG.info("result message (%s) sent to the Glass", result_msg)
 
-            # check time
-            if DEBUG.PACKET:
-                header = json.loads(result_msg)
-                control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
-                app_recv_time = header.get(Protocol_measurement.JSON_KEY_APP_RECV_TIME)
-                app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
-                ucomm_recv_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME)
-                ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
-                self.control_app_latency += app_recv_time - control_sent_time
-                self.app_app_latency += app_sent_time - app_recv_time
-                self.app_ucomm_latency += ucomm_recv_time - app_sent_time
-                self.ucomm_ucomm_latency += ucomm_sent_time - ucomm_recv_time
-                self.ucomm_control_latency += time.time() - ucomm_sent_time
-                self.latency_count += 1
-                LOG.info("control-app:%f\tapp-app:%f\tapp-ucomm:%f\tucomm-ucomm:%f\tucomm-now:%f" % \
-                        (self.control_app_latency/self.latency_count,
-                            self.app_app_latency/self.latency_count,
-                            self.app_ucomm_latency/self.latency_count,
-                            self.ucomm_ucomm_latency/self.latency_count,
-                            self.ucomm_control_latency/self.latency_count))
 
         except Queue.Empty:
             pass
