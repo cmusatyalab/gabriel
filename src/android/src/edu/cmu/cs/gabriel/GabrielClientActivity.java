@@ -100,8 +100,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"54.212.234.69", "128.2.213.102"};
-			int[] tokenSize = {2};
+			String[] ipList = {"192.168.150.1"}; //Laptop in its hotspot
+			int[] tokenSize = {1};
 //			int[] tokenSize = {10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;
@@ -114,13 +114,16 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 						if ((ipIndex == ipList.length) || (tokenIndex == tokenSize.length)) {
 							Log.d(LOG_TAG, "Finish all experiemets");
 							startTimer.cancel();
+							
+							terminate();
+							
 							return;
 						}
 						
 						// make a new configuration
 						Const.GABRIEL_IP = ipList[ipIndex];
 						Const.MAX_TOKEN_SIZE = tokenSize[tokenIndex];
-						Const.LATENCY_FILE_NAME = "latency-" + Const.GABRIEL_IP + "-" + Const.MAX_TOKEN_SIZE + ".txt";
+						Const.LATENCY_FILE_NAME = "latency-" + ipIndex + "-" + Const.GABRIEL_IP + "-" + Const.MAX_TOKEN_SIZE + ".txt";
 						Const.LATENCY_FILE = new File (Const.ROOT_DIR.getAbsolutePath() +
 								File.separator + "exp" +
 								File.separator + Const.LATENCY_FILE_NAME);

@@ -16,7 +16,7 @@ public class Const {
 	
 	// control VM
 //	public static String GABRIEL_IP = "128.2.210.197";	// hail.elijah.cs.cmu.edu
-	public static String GABRIEL_IP = "128.2.213.102";	// Cloudlet
+	public static String GABRIEL_IP = "192.168.150.1";	// Cloudlet
 //	public static String GABRIEL_IP = "54.212.234.69";	// Amazon West
 	
 	// Token
