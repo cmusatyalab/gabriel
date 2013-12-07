@@ -224,6 +224,11 @@ public class VideoStreamingThread extends Thread {
     private long frame_totalsize = 0;
     
 	public void push(byte[] frame, Parameters parameters) {
+        if (frame_firstUpdateTime == 0) {
+            frame_firstUpdateTime = System.currentTimeMillis();
+        }
+        frame_currentUpdateTime = System.currentTimeMillis();
+        
         int datasize = 0;
         cameraImageSize = parameters.getPreviewSize();
         if (this.imageFiles == null){
@@ -256,21 +261,15 @@ public class VideoStreamingThread extends Thread {
 			} catch (IOException e) {
 			}
         }
-		
-        if (frame_firstUpdateTime == 0) {
-            frame_firstUpdateTime = System.currentTimeMillis();
-        }
-        frame_currentUpdateTime = System.currentTimeMillis();
+
         frame_count++;
         frame_totalsize += datasize;
-    	/*
         if (frame_count % 50 == 0) {
         	Log.d(LOG_TAG, "(IMG)\t" +
         			"BW: " + 8.0*frame_totalsize / (frame_currentUpdateTime-frame_firstUpdateTime)/1000 + 
         			" Mbps\tCurrent FPS: " + 8.0*datasize/(frame_currentUpdateTime - frame_prevUpdateTime)/1000 + " Mbps\t" +
         			"FPS: " + 1000.0*frame_count/(frame_currentUpdateTime-frame_firstUpdateTime));
 		}
-		*/
         frame_prevUpdateTime = frame_currentUpdateTime;
 	}
 
