@@ -98,32 +98,20 @@ class AppProxyStreamingClient(threading.Thread):
     And put the data into the queue, so that other thread can use the image
     """
 
-    def __init__(self, control_addr, data_queue, app_id=None):
+    def __init__(self, control_addr, data_queue):
         self.stop = threading.Event()
         self.port_number = None
-        self.app_id = app_id
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.connect(control_addr)
             LOG.info("Success to connect to %s" % str(control_addr))
-            if self.app_id is not None:
-                # send app name information
-                self._send_appid(self.app_id)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.data_queue = data_queue
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.streaming)
-
-    def _send_appid(self, app_id):
-        header = json.dumps({
-            Protocol_measurement.JSON_KEY_REGISTER_APP_UUID: str(app_id),
-            })
-        packet = struct.pack("!I%ds" % len(header),
-                len(header), header)
-        self.sock.sendall(packet)
 
     def streaming(self):
         LOG.info("Start getting data from the server")
@@ -190,32 +178,20 @@ class AppProxyStreamingClient(threading.Thread):
 
 
 class AppProxyBlockingClient(threading.Thread):
-    def __init__(self, control_addr, output_queue_list, app_id=None):
+    def __init__(self, control_addr, output_queue_list):
         self.stop = threading.Event()
         self.port_number = None
         self.output_queue_list = output_queue_list
-        self.app_id = app_id
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.connect(control_addr)
             LOG.info("Success to connect to %s" % str(control_addr))
-            if self.app_id is not None:
-                # send app name information
-                self._send_appid(self.app_id)
         except socket.error as e:
             raise AppProxyError("Failed to connect to %s" % str(control_addr))
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.run)
-
-    def _send_appid(self, app_id):
-        header = json.dumps({
-            Protocol_measurement.JSON_KEY_REGISTER_APP_UUID: str(app_id),
-            })
-        packet = struct.pack("!I%ds" % len(header),
-                len(header), header)
-        self.sock.sendall(packet)
 
     def run(self):
         LOG.info("Start getting data and run program")
@@ -282,10 +258,11 @@ class AppProxyBlockingClient(threading.Thread):
 
 
 class AppProxyThread(threading.Thread):
-    def __init__(self, data_queue, output_queue_list):
+    def __init__(self, data_queue, output_queue_list, app_id=None):
         self.data_queue = data_queue
         self.output_queue_list = output_queue_list
         self.stop = threading.Event()
+        self.app_id = app_id
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
@@ -298,6 +275,8 @@ class AppProxyThread(threading.Thread):
                 continue
 
             result = self.handle(header, data)
+            if self.app_id is not None:
+                header[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = self.app_id
             if result is not None:
                 header[Protocol_client.RESULT_MESSAGE_KEY] = result
                 for output_queue in self.output_queue_list:
