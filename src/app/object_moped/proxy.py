@@ -103,7 +103,7 @@ if __name__ == "__main__":
         client.start()
         client.isDaemon = True
         proxy_thread = MOPEDThread(("127.0.0.1", APP_PORT), image_queue, output_queue_list,
-            app_id=Protocol_measurement.APP_DUMMY)
+            app_id=Protocol_measurement.APP_MOPED)
         proxy_thread.start()
         proxy_thread.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list)
