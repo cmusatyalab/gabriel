@@ -27,6 +27,7 @@ import random
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
+from app_proxy import Protocol_measurement
 from app_proxy import get_service_list
 from app_proxy import Const
 from app_proxy import SERVICE_META
@@ -38,6 +39,7 @@ class DummyVideoApp(AppProxyThread):
     def handle(self, header, data):
         #compute_time = random.uniform(0.1, 0.2)
         #time.sleep(compute_time)
+        time.sleep(1)
         return "dummy"
 
 
@@ -71,7 +73,8 @@ if __name__ == "__main__":
     video_client = AppProxyStreamingClient((video_ip, video_port), image_queue)
     video_client.start()
     video_client.isDaemon = True
-    app_thread = DummyVideoApp(image_queue, output_queue_list)
+    app_thread = DummyVideoApp(image_queue, output_queue_list, \
+            app_id=Protocol_measurement.APP_DUMMY)
     app_thread.start()
     app_thread.isDaemon = True
 
