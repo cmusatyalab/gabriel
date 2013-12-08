@@ -110,6 +110,7 @@ public class ResultReceivingThread extends Thread {
 		JSONObject obj;
 		String returnMsg = null;
 		int injectedToken = 0;
+		String engineID = "";
 		long frameID = -1;
 		obj = new JSONObject(recvData);
 		
@@ -121,6 +122,7 @@ public class ResultReceivingThread extends Thread {
 		} catch(JSONException e){}
 		try{
 			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
+			engineID = obj.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
 		} catch(JSONException e){}
 
 		if (frameID != -1){
@@ -128,6 +130,7 @@ public class ResultReceivingThread extends Thread {
 			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
 			Bundle data = new Bundle();
 			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
+			data.putString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID, engineID);
 			msg.setData(data);
 			this.tokenController.tokenHandler.sendMessage(msg);
 		}
