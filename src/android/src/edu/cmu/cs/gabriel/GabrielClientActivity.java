@@ -100,7 +100,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"192.168.150.1"}; //Laptop in its hotspot
+			String[] ipList = {"128.2.213.102"};
 			int[] tokenSize = {1};
 //			int[] tokenSize = {10000};
 			int ipIndex = 0;
