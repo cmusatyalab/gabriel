@@ -185,7 +185,7 @@ class AppProxyStreamingClient(threading.Thread):
         try:
             self.data_queue.put_nowait((header_data, data))
         except Queue.Full as e:
-            LOG.info("Packet is discarded since no token is valid")
+            #LOG.info("Packet is discarded since no token is valid")
             pass
 
 
