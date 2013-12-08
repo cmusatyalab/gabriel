@@ -20,8 +20,8 @@
 
 import sys
 sys.path.insert(0, "../../")
-from control.protocol import Protocol_client
-from control.protocol import Protocol_measurement
+from control.protocol import Protocol_client as Protocol_client
+from control.protocol import Protocol_measurement as Protocol_measurement
 from control import log as logging
 from control.upnp_client import UPnPClient
 from control.config import Const
@@ -238,10 +238,11 @@ class AppProxyBlockingClient(threading.Thread):
 
 
 class AppProxyThread(threading.Thread):
-    def __init__(self, data_queue, output_queue_list):
+    def __init__(self, data_queue, output_queue_list, app_id=None):
         self.data_queue = data_queue
         self.output_queue_list = output_queue_list
         self.stop = threading.Event()
+        self.app_id = app_id
         threading.Thread.__init__(self, target=self.run)
 
     def run(self):
@@ -255,6 +256,8 @@ class AppProxyThread(threading.Thread):
                     continue
 
                 result = self.handle(header, data)
+                if self.app_id is not None:
+                    header[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = self.app_id
                 if result is not None:
                     header[Protocol_client.RESULT_MESSAGE_KEY] = result
                     for output_queue in self.output_queue_list:
