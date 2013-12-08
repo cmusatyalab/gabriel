@@ -81,6 +81,7 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
         result_queue.put(str(result_data))
 
         # record FPS
+        '''
         header_json = json.loads(result_data)
         offload_name = header_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
         engine_info = offload_engine_dict.get(offload_name, None)
@@ -88,6 +89,7 @@ class UCommHandler(SocketServer.StreamRequestHandler, object):
             engine_info = OffloadingEngineInfo(offload_name)
             offload_engine_dict[str(offload_name)] = engine_info
             engine_info.first_recv_time = time.time()
+        '''
 
     def handle(self):
         global image_queue_list

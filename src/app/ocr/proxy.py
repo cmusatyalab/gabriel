@@ -26,6 +26,7 @@ import Queue
 from app_proxy import AppProxyThread
 from app_proxy import AppProxyStreamingClient
 from app_proxy import ResultpublishClient
+from app_proxy import Protocol_measurement
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
 from app_proxy import Const
@@ -54,7 +55,8 @@ if __name__ == "__main__":
     client = AppProxyStreamingClient((video_ip, video_port), image_queue)
     client.start()
     client.isDaemon = True
-    app_thread = OCRThread(image_queue, output_queue_list)
+    app_thread = OCRThread(image_queue, output_queue_list,
+            app_id=Protocol_measurement.APP_TESSERACT)
     app_thread.start()
     app_thread.isDaemon = True
     result_pub = ResultpublishClient(return_addresses, output_queue_list)
