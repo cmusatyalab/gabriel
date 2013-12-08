@@ -31,6 +31,7 @@ sys.path.insert(0, "../common")
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
+from app_proxy import Protocol_measurement
 from app_proxy import ResultpublishClient
 from app_proxy import LOG
 from app_proxy import get_service_list
@@ -42,7 +43,7 @@ class stfThread(AppProxyThread):
         
         if self.firstFrame:
             #TODO start energy recording
-            energy_thread.start()
+            # energy_thread.start()
             self.firstFrame = False
 
         # Write data to file
@@ -77,8 +78,8 @@ class stfThread(AppProxyThread):
         return output
 #        os.system(". ./runSTF.sh")
 
-    def __init__(self, image_queue, output_queue):
-        super(stfThread, self).__init__(image_queue, output_queue)
+    def __init__(self, image_queue, output_queue, app_id):
+        super(stfThread, self).__init__(image_queue, output_queue, app_id=app_id)
         self.imagecount = 0
         self.firstFrame = True
 
@@ -105,7 +106,8 @@ if __name__ == "__main__":
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
         client_thread.isDaemon = True
-        stf_thread = stfThread(image_queue, output_queue_list)
+        stf_thread = stfThread(image_queue, output_queue_list,
+            app_id=Protocol_measurement.APP_STF)
         stf_thread.start()
         stf_thread.isDaemon = True 
 	
