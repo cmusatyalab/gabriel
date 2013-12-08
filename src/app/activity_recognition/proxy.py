@@ -96,7 +96,7 @@ class MasterProxy(threading.Thread):
         try:
             while(not self.stop.wait(0.001)):
                 inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, error_list, 0.1) 
+                        select.select(input_list, output_list, error_list, 0.001) 
                 if self.last_image_parts: # whenever get a new image, get a new image pair
                     self._get_new_image()
                 for s in inputready:
@@ -105,9 +105,9 @@ class MasterProxy(threading.Thread):
                         input_list.append(client)
                         output_list.append(client)
                         error_list.append(client)
-                        queue = Queue.Queue(4)
+                        queue = Queue.Queue(1)
                         self.partial_data_queues.append(queue)
-                        queue = Queue.Queue(5)
+                        queue = Queue.Queue(2)
                         self.partial_feature_queues.append(queue)
                         self.tokens.append(True)
                         queue = []
@@ -123,8 +123,8 @@ class MasterProxy(threading.Thread):
                     else:
                         self._receive_partial_feature(s)
                 for s in outputready:
-                    if self.tokens[self.queue_mapping[s]]:
-                        self._send_partial_image(s)
+                    #if self.tokens[self.queue_mapping[s]]:
+                    self._send_partial_image(s)
                 for s in exceptready:
                     pass
         except Exception as e:
@@ -183,7 +183,7 @@ class MasterProxy(threading.Thread):
             (header, new_image) = self.data_queue.get_nowait()
         except Queue.Empty as e:
             return
-        if self.slave_num < 2:
+        if self.slave_num < 4:
             LOG.warning(MASTER_TAG + "Discard incoming images because not all slave nodes are ready")
             return
         frame_id = header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
@@ -224,10 +224,13 @@ class MasterProxy(threading.Thread):
             pass
 
         # check if any queue is full
-        for queue in self.partial_data_queues:
-            if queue.full():
-                if random.random() < 0.01:
-                    LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
+        #for queue in self.partial_data_queues:
+        #    if queue.full():
+        #        #if random.random() < 0.01:
+        #        LOG.warning(MASTER_TAG + "Partial data queue full, slave nodes are seriously inbalanced")
+        #        return
+        for token in self.tokens:
+            if not token:
                 return
         self._get_new_image()
 
@@ -270,7 +273,8 @@ class MasterProxy(threading.Thread):
 
         # check if features for one whole image pair are received
         for idx in xrange(self.slave_num):
-            if self.partial_feature_queues[idx].empty():
+            #if self.partial_feature_queues[idx].empty():
+            if not self.tokens[idx]:
                 return
         # integrate features for one image pair and put into feature queue
         try:
@@ -300,11 +304,15 @@ class MasterClassification(threading.Thread):
         self.detect_period = detect_period
         self.window_len = 30
         self.feature_list = []
+        self.tokens = []
+        self.confidences = [0, 0, 0, 0]
+        self.frame_id = None
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.server.bind(("", MASTER_CLASSIFICATION_PORT))
         self.server.listen(10) # expect less then 10 connections...
+        self.queue_mapping = {}
         self.connection_num = 0
         self.slave_num = 1
         threading.Thread.__init__(self, target=self.run)
@@ -326,9 +334,13 @@ class MasterClassification(threading.Thread):
                         input_list.append(client)
                         output_list.append(client)
                         error_list.append(client)
+                        self.tokens.append(True)
+                        self.queue_mapping[client] = self.connection_num
                         self.connection_num += 1
                         if self.connection_num >= self.slave_num * 2:
                             self.slave_num *= 2
+                    else:
+                        self._receive(s)
                 self._try_classify(output_list)
         except Exception as e:
             LOG.warning(MASTER_TAG + traceback.format_exc())
@@ -349,14 +361,16 @@ class MasterClassification(threading.Thread):
 
     def _try_classify(self, output_list):
         try:
-            frame_id, features = self.feature_queue.get_nowait()
+            curr_frame_id, features = self.feature_queue.get_nowait()
         except Queue.Empty as e:
             return
 
-        LOG.info(MASTER_TAG + "Got feature back of frame %d at time %f" % (frame_id, time.time()))
-        result = None
+        LOG.info(MASTER_TAG + "Got feature back of frame %d at time %f" % (curr_frame_id, time.time()))
+        #result = None
         self.feature_list.append(features)
         if len(self.feature_list) == self.window_len:
+            self.frame_id = curr_frame_id
+
             #feature_vec = compute_hist(self.feature_list)
             #feature_vec = list(feature_vec.items())
             if self.slave_num == 1:
@@ -366,71 +380,78 @@ class MasterClassification(threading.Thread):
                 output_list[0].sendall(packet)
             elif self.slave_num >= 4:
                 for model_idx in xrange(4):
+                    if not self.tokens[model_idx]:
+                        sys.exit()
                     data = ((model_idx, ), self.feature_list)
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
+                    self.tokens[model_idx] = False
             else:
                 for model_idx in xrange(2):
+                    if not self.tokens[model_idx]:
+                        sys.exit()
                     data = ((model_idx * 2, model_idx * 2 + 1), self.feature_list)
                     data_json = json.dumps(data)
                     packet = struct.pack("!I%ds" % len(data_json), len(data_json), data_json)
                     output_list[model_idx].sendall(packet)
+                    self.tokens[model_idx] = False
             LOG.info(MASTER_TAG + "Sent all features at time %f" % time.time())
 
-            # now receiving
-            if self.slave_num == 1:
-                data_size = struct.unpack("!I", self._recv_all(output_list[0], 4))[0]
-                data = self._recv_all(output_list[0], data_size)
-                confidences = json.loads(data)
-            elif self.slave_num >= 4:
-                confidences = []
-                for model_idx in xrange(4):
-                    data_size = struct.unpack("!I", self._recv_all(output_list[model_idx], 4))[0]
-                    data = self._recv_all(output_list[model_idx], data_size)
-                    confidences += json.loads(data)
-            else:
-                confidences = []
-                for model_idx in xrange(2):
-                    data_size = struct.unpack("!I", self._recv_all(output_list[model_idx], 4))[0]
-                    data = self._recv_all(output_list[model_idx], data_size)
-                    confidences += json.loads(data)
-            print confidences
-            LOG.info(MASTER_TAG + "Got all confidences back at time %f" % time.time())
+    def _receive(self, sock):
+        data_size = struct.unpack("!I", self._recv_all(sock, 4))[0]
+        data = self._recv_all(sock, data_size)
+        if self.slave_num == 2:
+            confidence = json.loads(data)
+            idx = self.queue_mapping[sock]
+            self.confidences[idx * 2] = confidence[0]
+            self.confidences[idx * 2 + 1] = confidence[1]
+        elif self.slave_num == 4:
+            self.confidences[self.queue_mapping[sock]] = json.loads(data)[0]
+        else:
+            self.confidences = json.loads(data)
+        self.tokens[self.queue_mapping[sock]] = True
 
-            max_score = 0
-            model_idx = -1
-            for idx in xrange(4):
-                if confidences[idx] > max_score:
-                    max_score = confidences[idx]
-                    model_idx = idx
-            model_name = model_names[model_idx]
-            if max_score > 0.5: # Activity is detected
-                print
-                print "ACTIVITY DETECTED: %s!" % model_name
-                print "Confidence score: %f" % max_score
-                print
+        for token in self.tokens:
+            if not token:
+                return
 
-                result = MESSAGES[model_idx]
-            else:
-                print "\nMax confidence score: %f, activity is: %s\n" % (max_score, model_name)
-                result = "nothing"
+        print self.confidences
+        LOG.info(MASTER_TAG + "Got all confidences back at time %f" % time.time())
+        result = None
 
-            for i in xrange(self.detect_period):
-                del self.feature_list[0]
+        max_score = 0
+        model_idx = -1
+        for idx in xrange(4):
+            if self.confidences[idx] > max_score:
+                max_score = self.confidences[idx]
+                model_idx = idx
+        model_name = model_names[model_idx]
+        if max_score > 0.5: # Activity is detected
+            print
+            print "ACTIVITY DETECTED: %s!" % model_name
+            print "Confidence score: %f" % max_score
+            print
 
-            LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
+            result = MESSAGES[model_idx]
+        else:
+            print "\nMax confidence score: %f, activity is: %s\n" % (max_score, model_name)
+            result = "nothing"
+
+        for i in xrange(self.detect_period):
+            del self.feature_list[0]
+
+        LOG.info(MASTER_TAG + "Classification done at time %f" % (time.time()))
 
         if result is not None:
             print result
             return_message = dict()
             return_message[Protocol_client.RESULT_MESSAGE_KEY] = result
-            if frame_id is not None:
-                return_message[Protocol_client.FRAME_MESSAGE_KEY] = frame_id
+            if self.frame_id is not None:
+                return_message[Protocol_client.FRAME_MESSAGE_KEY] = self.frame_id
             for output_queue in self.output_queue_list:
                 output_queue.put(json.dumps(return_message))
-        LOG.debug("App thread terminated")
-
+    
     def terminate(self):
         self.stop.set()
 
