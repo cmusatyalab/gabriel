@@ -32,6 +32,7 @@ from launcher import AppLauncher
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
+from app_proxy import Protocol_measurement
 from app_proxy import ResultpublishClient
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
@@ -40,8 +41,8 @@ from app_proxy import LOG
 
 
 class MOPEDThread(AppProxyThread):
-    def __init__(self, app_addr, image_queue, output_queue_list):
-        super(MOPEDThread, self).__init__(image_queue, output_queue_list)
+    def __init__(self, app_addr, image_queue, output_queue_list, app_id):
+        super(MOPEDThread, self).__init__(image_queue, output_queue_list, app_id=app_id)
         self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.app_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.app_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -101,7 +102,8 @@ if __name__ == "__main__":
         client = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client.start()
         client.isDaemon = True
-        proxy_thread = MOPEDThread(("127.0.0.1", APP_PORT), image_queue, output_queue_list)
+        proxy_thread = MOPEDThread(("127.0.0.1", APP_PORT), image_queue, output_queue_list,
+            app_id=Protocol_measurement.APP_DUMMY)
         proxy_thread.start()
         proxy_thread.isDaemon = True
         result_pub = ResultpublishClient(return_addresses, output_queue_list)
