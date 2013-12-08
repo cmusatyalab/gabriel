@@ -76,6 +76,7 @@ public class VideoControlThread extends Thread {
 		JSONObject obj;		
 		String controlMsg = null;
 		long frameID = -1;
+		String engineID = "";
 		obj = new JSONObject(recvData);
 		
 		try{
@@ -83,6 +84,7 @@ public class VideoControlThread extends Thread {
 		} catch(JSONException e){}
 //		try{
 //			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
+//			engineID = obj.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
 //		} catch(JSONException e){}
 		
 		if (controlMsg != null){
@@ -96,6 +98,7 @@ public class VideoControlThread extends Thread {
 //			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
 //			Bundle data = new Bundle();
 //			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
+//			data.putString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID, engineID);
 //			msg.setData(data);
 //			this.tokenController.tokenHandler.sendMessage(msg);
 //		}
