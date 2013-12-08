@@ -120,7 +120,7 @@ class VideoSensorHandler(SensorHandler):
 
     def _handle_sensor_stream(self):
         try:
-            (header, jpeg_data) = self.data_queue.get(timeout=0.01)
+            (header, jpeg_data) = self.data_queue.get(timeout=0.001)
             header = json.loads(header)
             header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
@@ -151,7 +151,7 @@ class AccSensorHandler(SensorHandler):
 
     def _handle_sensor_stream(self):
         try:
-            (header, acc_data) = self.data_queue.get_nowait()
+            (header, acc_data) = self.data_queue.get(timeout=0.001)
             header = json.loads(header)
             header.update({
                 Protocol_application.JSON_KEY_SENSOR_TYPE:
