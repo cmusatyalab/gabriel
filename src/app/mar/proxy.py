@@ -30,6 +30,7 @@ from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
+from app_proxy import Protocol_measurement
 from app_proxy import LOG
 from app_proxy import get_service_list
 from app_proxy import Const
@@ -39,7 +40,8 @@ from mar_client import send_request
 
 class MARThread(AppProxyThread):
     def __init__(self, app_addr, image_queue, output_queue):
-        super(MARThread, self).__init__(image_queue, output_queue)
+        super(MARThread, self).__init__(image_queue, output_queue, \
+                Protocol_measurement.APP_AR)
         self.result_queue = output_queue
         self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:

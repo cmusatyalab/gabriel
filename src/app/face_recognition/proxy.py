@@ -29,6 +29,7 @@ from launcher import AppLauncher
 from app_proxy import AppProxyError
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
+from app_proxy import Protocol_measurement
 from app_proxy import ResultpublishClient
 from app_proxy import LOG
 from app_proxy import get_service_list
@@ -38,8 +39,8 @@ from face_client import face_request
 
 
 class FaceThread(AppProxyThread):
-    def __init__(self, app_addr, image_queue, output_queue):
-        super(FaceThread, self).__init__(image_queue, output_queue)
+    def __init__(self, app_addr, image_queue, output_queue, app_id):
+        super(FaceThread, self).__init__(image_queue, output_queue, app_id=app_id)
         self.result_queue = output_queue
         self.app_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -102,7 +103,8 @@ if __name__ == "__main__":
         client_thread = AppProxyStreamingClient((video_ip, video_port), image_queue)
         client_thread.start()
         client_thread.isDaemon = True
-        face_thread = FaceThread(app_addr, image_queue, output_queue_list)
+        face_thread = FaceThread(app_addr, image_queue, output_queue_list,
+            app_id=Protocol_measurement.APP_FACE)
         face_thread.start()
         face_thread.isDaemon = True 
 	
