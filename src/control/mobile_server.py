@@ -168,13 +168,16 @@ class MobileVideoHandler(MobileSensorHandler):
             image_queue.put((header_data, image_data))
 
         if DEBUG.DIRECT_RETURN:
-            # return frame id directly to flow control
-            json_header = json.loads(header_data)
-            frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-            if frame_id is not None:
-                self.ret_frame_ids.put(frame_id)
-            global result_queue
-            result_queue.put(header_data)
+            packet = struct.pack("!I%ds" % len(header_data),
+                    len(header_data), header_data)
+            self.request.send(packet)
+            self.wfile.flush()
+            
+            #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
+            #if frame_id is not None:
+            #    self.ret_frame_ids.put(frame_id)
+            #global result_queue
+            #result_queue.put(header_data)
 
 
 class MobileAccHandler(MobileSensorHandler):

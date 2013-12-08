@@ -305,7 +305,7 @@ class UCommServerHandler(SocketServer.StreamRequestHandler, object):
         offload_name = header_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
         if offload_name is None:
             header_json[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = \
-                    self.request.fileno()
+                    str(self.request.fileno())
         if DEBUG.PACKET:
             header_json[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
         output_queue.put(json.dumps(header_json))
