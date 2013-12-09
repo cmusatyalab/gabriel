@@ -27,6 +27,7 @@ import Queue
 from app_proxy import AppProxyStreamingClient
 from app_proxy import AppProxyThread
 from app_proxy import ResultpublishClient
+from app_proxy import Protocol_measurement
 from app_proxy import get_service_list
 from app_proxy import SERVICE_META
 import struct
@@ -43,12 +44,13 @@ class DummyAccApp(AppProxyThread):
             yield l[i:i + n]
 
     def handle(self, header, acc_data):
+        print "aa"
         ACC_SEGMENT_SIZE = 16# (int, float, float, float)
         global acc_data_list
         for chunk in self.chunks(acc_data, ACC_SEGMENT_SIZE):
             (acc_time, acc_x, acc_y, acc_z) = struct.unpack("!ifff", chunk)
-            #print "time: %d, acc_x: %f, acc_y: %f, acc_x: %f" % \
-                    #                (acc_time, acc_x, acc_y, acc_z)
+            print "time: %d, acc_x: %f, acc_y: %f, acc_x: %f" % \
+                                    (acc_time, acc_x, acc_y, acc_z)
             acc_data_list.append([acc_time, acc_x, acc_y, acc_z])
             if len(acc_data_list) == WID_SIZE:
                 feature_levels, feature_level0 = extract_feature(acc_data_list)
@@ -84,7 +86,8 @@ if __name__ == "__main__":
     acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
     acc_client.start()
     acc_client.isDaemon = True
-    acc_app = DummyAccApp(acc_queue, output_queue_list)
+    acc_app = DummyAccApp(acc_queue, output_queue_list,
+            app_id=Protocol_measurement.APP_ACTIVITY)
     acc_app.start()
     acc_app.isDaemon = True
 
