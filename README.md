@@ -17,6 +17,7 @@ cloudlet open source project are licensed under the [Apache License, Version
 Installation
 -------------
 * parallel-ssh
+* psutil >= 0.4.1
 
-	> sudo apt-get install pssh
+	> sudo apt-get install pssh python-psutil
 
