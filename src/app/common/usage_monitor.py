@@ -41,12 +41,11 @@ class UsageMonitor(threading.Thread):
         count = 1
         while(not self.stop.wait(0.5)):
             cpu_percent = psutil.cpu_percent(interval=0.5)
-            memory = psutil.virtual_memory()
+            #memory = psutil.virtual_memory()
             self.cpu_avg += cpu_percent
-            self.mem_avg += memory.percent
-            log = "[usage]\t%f\tcpu\t%s\t%s\t%f\t%f\n" %\
-                    (time.time(), str(cpu_percent), str(memory),\
-                    self.cpu_avg/count, self.mem_avg/count)
+            #self.mem_avg += memory.percent
+            log = "[usage]\t%f\t%s\t%f\n" %\
+                    (time.time(), str(cpu_percent),self.cpu_avg/count)
             sys.stdout.write(log)
             if self.outfile is not None:
                 self.outfile.write(log)
