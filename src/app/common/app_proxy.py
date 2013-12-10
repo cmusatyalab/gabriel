@@ -180,6 +180,7 @@ class AppProxyStreamingClient(threading.Thread):
 class AppProxyBlockingClient(threading.Thread):
     def __init__(self, control_addr, output_queue_list):
         self.stop = threading.Event()
+        self.frameid = 0
         self.port_number = None
         self.output_queue_list = output_queue_list
         try:
@@ -243,6 +244,13 @@ class AppProxyBlockingClient(threading.Thread):
         header = self._recv_all(self.sock, header_size)
         data = self._recv_all(self.sock, data_size)
         header_data = json.loads(header)
+        new_frameid = header_data.get(Protocol_client.MESSAGE_KEY)
+        if new_frameid <= self.frameid:
+            # need logging to find the for new start 
+            # time time is used for usage monitoring
+            LOG.info("New connection is starting at %f" % time.time())
+        self.frameid = new_frameid
+
         result = self.handle(header_data, data)
         if result is not None:
             header_data[Protocol_client.RESULT_MESSAGE_KEY] = result
