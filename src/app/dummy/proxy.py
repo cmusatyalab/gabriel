@@ -39,7 +39,6 @@ class DummyVideoApp(AppProxyThread):
     def handle(self, header, data):
         #compute_time = random.uniform(0.1, 0.2)
         #time.sleep(compute_time)
-        time.sleep(1)
         return "dummy"
 
 
@@ -81,13 +80,13 @@ if __name__ == "__main__":
     # dummy acc app
     acc_client = None
     acc_app = None
-    acc_queue = Queue.Queue(1)
-    acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
-    acc_client.start()
-    acc_client.isDaemon = True
-    acc_app = DummyAccApp(acc_queue, output_queue_list)
-    acc_app.start()
-    acc_app.isDaemon = True
+    #acc_queue = Queue.Queue(1)
+    #acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
+    #acc_client.start()
+    #acc_client.isDaemon = True
+    #acc_app = DummyAccApp(acc_queue, output_queue_list)
+    #acc_app.start()
+    #acc_app.isDaemon = True
 
     # result pub/sub
     result_pub = ResultpublishClient(return_addresses, output_queue_list)
