@@ -51,7 +51,7 @@ public class TokenController {
 					SentPacketInfo sentPacket = latencyStamps.get(index);
 					if (sentPacket != null) {
 						increaseCount++;
-						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
+//						Log.d(LOG_TAG, "dump consumped but not acked :" + index);
 					}
 				}
 				increaseTokens(increaseCount);
@@ -70,6 +70,7 @@ public class TokenController {
 							+ "\t" + time_diff;
 					try {
 						mFileWriter.write(log + "\n");
+//						Log.i(LOG_TAG, log);
 					} catch (IOException e) {
 					}
 
