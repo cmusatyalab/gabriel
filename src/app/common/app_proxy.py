@@ -276,7 +276,7 @@ class AppProxyThread(threading.Thread):
                 continue
 
             new_frameid = header.get(Protocol_client.FRAME_MESSAGE_KEY)
-            if new_frameid <= 1 or new_frameid <= self.frameid:
+            if self.frameid == 0 or new_frameid <= 1 or new_frameid <= self.frameid:
                 # need logging to find the for new start 
                 # time time is used for usage monitoring
                 LOG.info("New connection is starting at %f" % time.time())
