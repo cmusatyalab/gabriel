@@ -100,9 +100,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"128.2.213.102"};
-			int[] tokenSize = {1};
-//			int[] tokenSize = {10000};
+			String[] ipList = {"128.2.213.102"};	//"54.203.73.67" 
+//			int[] tokenSize = {1};
+			int[] tokenSize = {10000};
 			int ipIndex = 0;
 			int tokenIndex = 0;
 			@Override
@@ -505,7 +505,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-//			accStreamingThread.push(event.values);
+			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}
