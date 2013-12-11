@@ -115,7 +115,7 @@ public class AccStreamingThread extends Thread {
 				this.frameID++;
 
 				try {
-					Thread.sleep(1000);
+					Thread.sleep(10);
 				} catch (InterruptedException e) {}
 			} catch (IOException e) {
 				Log.e(LOG_TAG, e.getMessage());
