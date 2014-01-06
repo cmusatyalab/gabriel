@@ -114,7 +114,7 @@ How to use
 	a log message __"INFO     User communication module is connected"__ at
 	`control server`.
 
-3. run cognitive engines
+3. Run cognitive engines
 
 	Here is a sample cognitive engine which displays received frame from a
 	mobile device.
@@ -133,7 +133,7 @@ How to use
 	see a log message __"INFO    new Offlaoding Engine is connected"__ at
 	`ucomm server`.
 
-4. Run mobile client using source code at GABRIEL/src/android/. Make sure to
+4. Run a mobile client using source code at GABRIEL/src/android/. Make sure to
    change IP address of GABRIEL_IP variable at
    src/edu/cmu/cs/gabriel/Const.java
 
