@@ -166,8 +166,8 @@ class ResultForwardingClient(threading.Thread):
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock.connect(control_address)
 
-        self.previous_sent_time = time.time()
-        self.previous_sent_data = ""
+        self.previous_sent_time_dict = dict()
+        self.previous_sent_dict = dict()
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target=self.forward)
 
@@ -224,15 +224,18 @@ class ResultForwardingClient(threading.Thread):
             # ignore the result if same output is sent within 1 sec
             return_json = json.loads(return_data)
             result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
-            if (result_str != None) and \
-                    (self.previous_sent_data.lower() == result_str.lower()):
-                time_diff = time.time() - self.previous_sent_time 
-                if time_diff < 2:
-                    LOG.info("Identical result (%s) is ignored" % result_str)
-                    #return
-
+            engine_name = return_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
             if DEBUG.PACKET:
                 return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+            
+            prev_sent_data = self.previous_sent_dict.get(engine_name, None)
+            if (result_str != None) and (prev_sent_data != None) and \
+                    (prev_sent_data.lower() == result_str.lower()):
+                prev_sent_time = self.previous_sent_time_dict.get(engine_name, 0)
+                time_diff = time.time() - prev_sent_time
+                if time_diff < 2:
+                    LOG.info("Identical result (%s) is ignored" % result_str)
+                    return_json.pop(Protocol_client.RESULT_MESSAGE_KEY, None)
 
             # remove result if it is nothing
             if result_str == None or len(result_str.strip()) == 0:
@@ -241,8 +244,8 @@ class ResultForwardingClient(threading.Thread):
             packet = struct.pack("!I%ds" % len(output),
                     len(output), output)
             self.sock.sendall(packet)
-            self.previous_sent_time = time.time()
-            self.previous_sent_data = result_str
+            self.previous_sent_time_dict[engine_name] = time.time()
+            self.previous_sent_dict[engine_name] = result_str
             LOG.info("forward the result: %s" % output)
         except Queue.Empty as e:
             pass
