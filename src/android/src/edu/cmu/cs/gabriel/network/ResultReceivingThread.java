@@ -19,6 +19,7 @@ import java.util.Vector;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.token.TokenController;
 
 import android.os.Bundle;
@@ -124,6 +125,16 @@ public class ResultReceivingThread extends Thread {
 			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
 			engineID = obj.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
 		} catch(JSONException e){}
+		
+		// DO NOT run TTS at experiment
+		if (Const.IS_EXPERIMENT != true){
+			if (returnMsg != null){
+				Message msg = Message.obtain();
+				msg.what = NetworkProtocol.NETWORK_RET_RESULT;
+				msg.obj = returnMsg;
+				this.returnMsgHandler.sendMessage(msg);
+			}
+		}
 
 		if (frameID != -1){
 			Message msg = Message.obtain();

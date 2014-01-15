@@ -9,22 +9,23 @@ public class Const {
 	 * Experiement variable
 	 */
 	
+	public static final boolean IS_EXPERIMENT = false;
+	
 	// Transfer from the file list
 	// If TEST_IMAGE_DIR is not none, transmit from the image
 	public static File ROOT_DIR = new File(Environment.getExternalStorageDirectory() + File.separator + "Gabriel" + File.separator);
 	public static File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images" + File.separator);	
 	
 	// control VM
-//	public static String GABRIEL_IP = "128.2.210.197";	// hail.elijah.cs.cmu.edu
-	public static String GABRIEL_IP = "192.168.150.1";	// Cloudlet
+	public static String GABRIEL_IP = "128.2.213.104";	// Cloudlet
 //	public static String GABRIEL_IP = "54.203.73.67";	// Amazon West
 	
 	// Token
-	public static int MAX_TOKEN_SIZE = 1;		
+	public static int MAX_TOKEN_SIZE = 1000;		
 	
 	// image size and frame rate
 	public static int MIN_FPS = 30;
-	public static int IMAGE_WIDTH = 320;
+	public static int IMAGE_WIDTH = 160;
 
 	// Result File
 	public static String LATENCY_FILE_NAME = "latency-" + GABRIEL_IP + "-" + MAX_TOKEN_SIZE + ".txt";

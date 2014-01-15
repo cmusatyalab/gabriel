@@ -69,20 +69,14 @@ public class TokenController {
 							+ sentPacket.generatedTime + "\t" + recvEngineID
 							+ "\t" + time_diff;
 					try {
-						mFileWriter.write(log + "\n");
-//						Log.i(LOG_TAG, log);
-					} catch (IOException e) {
-					}
+						if (Const.IS_EXPERIMENT == true){
+							mFileWriter.write(log + "\n");
+						}
+					} catch (IOException e) {}
 
 					frame_latency += time_diff;
 					frame_size += sentPacket.sentSize;
 					frame_latency_count++;
-					if (frame_latency_count % 100 == 0) {
-						// Log.d(LOG_TAG, recvFrameID + ", size: " +
-						// sentPacket.sentSize + "\tBandwidth : " +
-						// 8.0*frame_size/(now-firstSentTime)/1000 +
-						// "(MB/s)");
-					}
 				}
 				prevRecvedAck = recvFrameID;
 			}

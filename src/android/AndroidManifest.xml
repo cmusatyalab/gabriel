@@ -5,8 +5,8 @@
     android:versionName="1.0" >
 
     <uses-sdk
-        android:minSdkVersion="9"
-        android:targetSdkVersion="17"/>
+        android:minSdkVersion="15"
+        android:targetSdkVersion="15" />
     
     <uses-feature android:name="android.hardware.camera" />
 
@@ -28,10 +28,23 @@
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:label="@string/title_activity_main" >
+            
+            <!-- Enable this intent-filter for regular Android Application
+                 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>        
+             -->
+             
+            <!-- Enable below for Google Glass
+             -->
+            <intent-filter>
+                <action android:name="com.google.android.glass.action.VOICE_TRIGGER" />
             </intent-filter>
+            <meta-data
+                android:name="com.google.android.glass.VoiceTrigger"
+                android:resource="@xml/gabriel_start" />
         </activity>
         <activity
             android:name="edu.cmu.cs.gabriel.test.GabrielBatteryActivity"  

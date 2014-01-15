@@ -36,8 +36,14 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
 	public CameraPreview(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		Log.d("krha", "context : " + context);
+		Log.d("krha_debug", "context : " + context);
 		if (mCamera == null) {
+
+			// Launching Camera App using voice command need to wait.  
+			// See more at https://code.google.com/p/google-glass-api/issues/list
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {}
 			mCamera = Camera.open();
 		}
 

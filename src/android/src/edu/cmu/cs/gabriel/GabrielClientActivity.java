@@ -37,13 +37,16 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener {
 	
 	private static final String LOG_TAG = "krha";
+	private static final String DEBUG_TAG = "krha_debug";
 
 	private static final int SETTINGS_ID = Menu.FIRST;
 	private static final int EXIT_ID = SETTINGS_ID + 1;
@@ -74,18 +77,21 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
+		Log.d(DEBUG_TAG, "on onCreate");
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		
 	
-		// one time run
-//		init_once();
-//		init_experiement();
 		
-		// scriptized experiement
-//		runExperiements();
+		// Connect to Gabriel Server if it's not experiment
+		if (Const.IS_EXPERIMENT == false){
+			final Button expButton = (Button) findViewById(R.id.button_runexperiment);
+			expButton.setVisibility(View.GONE);
+			init_once();
+			init_experiement();			
+		}
 	}
 
 	boolean experimentStarted = false;
@@ -100,7 +106,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	protected void runExperiements(){
 		final Timer startTimer = new Timer();
 		TimerTask autoStart = new TimerTask(){
-			String[] ipList = {"128.2.213.102"};	//"54.203.73.67" 
+			String[] ipList = {"128.2.213.104"};	//"54.203.73.67" 
 //			int[] tokenSize = {1};
 			int[] tokenSize = {10000};
 			int ipIndex = 0;
@@ -151,13 +157,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 
 	private void init_once() {
+		Log.d(DEBUG_TAG, "on init once");
 		mPreview = (CameraPreview) findViewById(R.id.camera_preview);
 		mPreview.setPreviewCallback(previewCallback);
 		Const.ROOT_DIR.mkdirs();
 		Const.LATENCY_DIR.mkdirs();
 		// TextToSpeech.OnInitListener
 		if (mTTS == null) {
-//			mTTS = new TextToSpeech(this, this);
+			mTTS = new TextToSpeech(this, this);
 		}
 		if (mSensorManager == null) {
 			mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -195,6 +202,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 	
 	private void init_experiement() {
+
+		Log.d(DEBUG_TAG, "on init experiment");
 		if (tokenController != null){
 			tokenController.close();
 		}
@@ -212,7 +221,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		}
 		
 		try {
-			Thread.sleep(5*1000);
+			Thread.sleep(3*1000);
 		} catch (InterruptedException e) {}
 		
 		tokenController = new TokenController(Const.LATENCY_FILE);
@@ -250,29 +259,21 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	@Override
 	protected void onResume() {
 		super.onResume();
+		Log.d(DEBUG_TAG, "on resume");
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
+		Log.d(DEBUG_TAG, "on pause");
 		this.terminate();
-		finish();
+		Log.d(DEBUG_TAG, "out pause");
 	}
 
 	@Override
 	protected void onDestroy() {
 		this.terminate();
 		super.onDestroy();
-		finish();
-	}
-
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main, menu);
-		menu.add(0, SETTINGS_ID, 0, "Settings").setIcon(android.R.drawable.ic_menu_preferences);
-		menu.add(0, EXIT_ID, 1, "Exit").setIcon(android.R.drawable.ic_menu_close_clear_cancel);
-		return true;
 	}
 
 	@Override
@@ -283,9 +284,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		case SETTINGS_ID:
 			intent = new Intent().setClass(this, SettingsActivity.class);
 			startActivityForResult(intent, CHANGE_SETTING_CODE);
-			break;
-		case EXIT_ID:
-			finish();
 			break;
 		}
 
@@ -453,6 +451,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	}
 	
 	private void terminate() {
+		Log.d(DEBUG_TAG, "on terminate");
 		// change only soft state
 		stopBatteryRecording();
 		
@@ -505,7 +504,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 		if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
 			return;
 		if (accStreamingThread != null) {
-			accStreamingThread.push(event.values);
+//			accStreamingThread.push(event.values);
 		}
 		// Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
 	}
