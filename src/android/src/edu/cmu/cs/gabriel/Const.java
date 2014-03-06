@@ -21,11 +21,11 @@ public class Const {
 //	public static String GABRIEL_IP = "54.203.73.67";	// Amazon West
 	
 	// Token
-	public static int MAX_TOKEN_SIZE = 1000;		
+	public static int MAX_TOKEN_SIZE = 5;
 	
 	// image size and frame rate
-	public static int MIN_FPS = 30;
-	public static int IMAGE_WIDTH = 160;
+	public static int MIN_FPS = 20;
+	public static int IMAGE_WIDTH = 320;
 
 	// Result File
 	public static String LATENCY_FILE_NAME = "latency-" + GABRIEL_IP + "-" + MAX_TOKEN_SIZE + ".txt";

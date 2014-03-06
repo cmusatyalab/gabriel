@@ -1,15 +1,14 @@
 # moped
-128.2.213.104 cloudlet
-# ocr
-128.2.213.114 cloudlet 
-# stf
-128.2.213.116 wenlu
+128.2.213.106 cloudlet
 # motion-slave
-128.2.213.108 zhuoc
-128.2.213.109 zhuoc
-128.2.213.110 zhuoc
-128.2.213.115 zhuoc
-# activity recognition
-128.2.213.106 zhuoc
+128.2.213.108 cloudlet
+128.2.213.109 cloudlet
+128.2.213.110 cloudlet
+128.2.213.111 cloudlet
+# http streaming
+128.2.213.112 cloudlet
 
-
+# ocr
+#128.2.213.114 cloudlet 
+# stf
+#128.2.213.116 wenlu

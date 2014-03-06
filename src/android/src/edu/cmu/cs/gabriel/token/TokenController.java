@@ -48,7 +48,13 @@ public class TokenController {
 				String recvEngineID = bundle.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
 				long increaseCount = 0;
 				for (long index = prevRecvedAck + 1; index < recvFrameID; index++) {
-					SentPacketInfo sentPacket = latencyStamps.get(index);
+					SentPacketInfo sentPacket = null; 
+					if (Const.IS_EXPERIMENT){
+						// Do not remove since we need to measure latency even for the late response
+						sentPacket = latencyStamps.get(index);
+					}else{
+						sentPacket = latencyStamps.remove(index);						
+					}
 					if (sentPacket != null) {
 						increaseCount++;
 //						Log.d(LOG_TAG, "dump consumped but not acked :" + index);

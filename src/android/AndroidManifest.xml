@@ -29,15 +29,15 @@
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:label="@string/title_activity_main" >
             
-            <!-- Enable this intent-filter for regular Android Application
-                 
+            <!-- Enable this intent-filter for regular Android Application        
+             -->                 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>        
-             -->
+            </intent-filter>
+            
              
-            <!-- Enable below for Google Glass
+            <!-- Enable below for Google Glass                
              -->
             <intent-filter>
                 <action android:name="com.google.android.glass.action.VOICE_TRIGGER" />
