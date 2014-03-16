@@ -143,6 +143,11 @@ def packaging_apps():
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/object_moped/"]
         _tar_files("gabriel-moped.tar.gz", filelist)
 
+        # OCR (open source) 
+        filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/activity_recognition/"]
+        exclude_list = ["./src/app/activity_recognition/proxy_old.py", "./src/app/activity_recognition/proxy_oldold.py"]
+        _tar_files("gabriel-motion.tar.gz", filelist, exclude_list=exclude_list)
+
         # OCR (open source)
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/ocr/"]
         exclude_list = ["./src/app/ocr/results", "./src/app/ocr/glass-client"]
