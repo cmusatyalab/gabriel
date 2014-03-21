@@ -127,11 +127,11 @@ def packaging_apps():
         # dummy
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/http_display/"]
         _tar_files("gabriel-dummy.tar.gz", filelist)
+        '''
 
         # face recognition
-        filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/face_recognition/"]
+        filelist = COMMON_FILES + ["./src/app/face_recognition/"]
         _tar_files("gabriel-face.tar.gz", filelist)
-        '''
 
         # moped
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/object_moped/"]
