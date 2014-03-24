@@ -54,13 +54,6 @@ def install():
     sys.stdout.write("[SUCCESS] Finish installing Gabriel\n")
 
 
-def _tar_dir(tarballname, dirname):
-    if run("tar -cvf %s %s" % (tarballname, dirname)).failed:
-        msg = "Failed to compress directories:\n"
-        msg += "%s\n" % (CONTROL_DIR)
-        abort(msg)
-
-
 def _tar_files(tarballname, filelist, exclude_list=list(), comp_tool="tar"):
     global BUILD_DIR
     
@@ -97,7 +90,7 @@ def packaging():
 
     packaging_control()
     packaging_ucomm()
-    packaging_appcomm()
+    packaging_apps()
 
 
 @task
@@ -107,7 +100,8 @@ def packaging_control():
 
     tarfile_name = "gabriel-control.tar.gz"
     with cd(HOME_DIR):
-        _tar_dir(tarfile_name, CONTROL_DIR) 
+        filelist = [CONTROL_DIR]
+        _tar_files(tarfile_name, filelist) 
 
 @task
 def packaging_ucomm():
