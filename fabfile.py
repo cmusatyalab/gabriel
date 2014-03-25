@@ -148,6 +148,7 @@ def packaging_apps():
         exclude_list = ["./src/app/ocr/results", "./src/app/ocr/glass-client"]
         _tar_files("gabriel-ocr.tar.gz", filelist, exclude_list=exclude_list)
 
+        '''
         # face recognition (Windows)
         filelist = ["./src/app/face_recognition/dist"]
         _tar_files("gabriel-face.zip", filelist, comp_tool="zip")
@@ -155,3 +156,4 @@ def packaging_apps():
         # AR (Windows)
         filelist = ["./src/app/mar/dist"]
         _tar_files("gabriel-mar.zip", filelist, comp_tool="zip")
+        '''
