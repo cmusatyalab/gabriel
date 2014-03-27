@@ -12,7 +12,7 @@ from fabric.context_managers import cd
 import os
 import sys
 
-HOME_DIR = "cloudlet/gabriel/"
+HOME_DIR = "~/Development/gabriel/"
 CONTROL_DIR = "./src/control"
 UCOMM_DIR = "./src/ucomm"
 APP_COMM_DIR = "./src/app/common"
@@ -24,7 +24,6 @@ COMMON_FILES = ["./src/control/__init__.py",
                 "./src/control/lib/gabriel_upnp_client.jar",
                 ]
 BUILD_DIR = "./dist"
-
 
 def check_support():
     # check ubuntu
@@ -147,6 +146,20 @@ def packaging_apps():
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/ocr/"]
         exclude_list = ["./src/app/ocr/results", "./src/app/ocr/glass-client"]
         _tar_files("gabriel-ocr.tar.gz", filelist, exclude_list=exclude_list)
+        
+
+        # STF
+        filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/object_stf"]
+        exclude_list = ["./src/app/object_stf/Indexer/pstf/env", 
+                        "./src/app/object_stf/Indexer/pstf/svmnet",
+                        "./src/app/object_stf/Indexer/pstf/visionnet",
+                        "./src/app/object_stf/Indexer/pstf/build",
+                        "./src/app/object_stf/Indexer/pstf/src/build",
+                        "./src/app/object_stf/Indexer/pstf/dist",
+                        "./src/app/object_stf/Indexer/pstf/src/python_stf.egg-info",
+                        "./src/app/object_stf/Indexer/pstf/tagfiles",
+                        "./src/app/object_stf/Indexer/pstf/resources"]
+        _tar_files("gabriel-object_stf.tar.gz", filelist, exclude_list=exclude_list)
 
         '''
         # face recognition (Windows)
@@ -157,3 +170,5 @@ def packaging_apps():
         filelist = ["./src/app/mar/dist"]
         _tar_files("gabriel-mar.zip", filelist, comp_tool="zip")
         '''
+
+#packaging_apps()
