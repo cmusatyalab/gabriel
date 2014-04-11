@@ -12,7 +12,7 @@ from fabric.context_managers import cd
 import os
 import sys
 
-HOME_DIR = "~/Development/gabriel/"
+HOME_DIR = "cloudlet/gabriel/"
 CONTROL_DIR = "./src/control"
 UCOMM_DIR = "./src/ucomm"
 APP_COMM_DIR = "./src/app/common"
@@ -142,7 +142,7 @@ def packaging_apps():
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/object_moped/"]
         _tar_files("gabriel-moped.tar.gz", filelist)
 
-        # OCR (open source) 
+        # Motion Classifier
         filelist = COMMON_FILES + [APP_COMM_DIR] + ["./src/app/activity_recognition/"]
         exclude_list = ["./src/app/activity_recognition/proxy_old.py", "./src/app/activity_recognition/proxy_oldold.py"]
         _tar_files("gabriel-motion.tar.gz", filelist, exclude_list=exclude_list)
@@ -176,4 +176,3 @@ def packaging_apps():
         _tar_files("gabriel-mar.zip", filelist, comp_tool="zip")
         '''
 
-#packaging_apps()
