@@ -2,6 +2,7 @@ MANIFEST
 TODO.md
 dist/
 build/
+test-image/
 *.a
 *.o
 *.cproject
