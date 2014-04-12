@@ -19,34 +19,35 @@
 #
 
 
-import time
-import sys
 import os
+import sys
+if os.path.isdir("../gabriel") == True:
+    sys.path.insert(0, "..")
 from optparse import OptionParser
 
-from os import curdir, sep
+import time
 import threading
 import Queue
 import re
 import json
-from mobile_server import MobileCommServer
-from mobile_server import MobileVideoHandler
-from mobile_server import MobileAccHandler
-from mobile_server import MobileResultHandler
-from app_server import ApplicationServer
-from app_server import VideoSensorHandler
-from app_server import AccSensorHandler
-from ucomm_relay import UCommRelay, UCommHandler
-from BaseHTTPServer import BaseHTTPRequestHandler
-from http_streaming_server import MJPEGStreamHandler
-from http_streaming_server import ThreadedHTTPServer
-import mobile_server
+from os import curdir, sep
 
-import log as logging
-from config import Const
-from RESTServer_binder import RESTServer, RESTServerError
-from upnp_server import UPnPServer, UPnPError
-from app_server import OffloadingEngineMonitor
+from gabriel.control.mobile_server import MobileCommServer
+from gabriel.control.mobile_server import MobileVideoHandler
+from gabriel.control.mobile_server import MobileAccHandler
+from gabriel.control.mobile_server import MobileResultHandler
+from gabriel.control.app_server import ApplicationServer
+from gabriel.control.app_server import VideoSensorHandler
+from gabriel.control.app_server import AccSensorHandler
+from gabriel.control.ucomm_relay import UCommRelay, UCommHandler
+from gabriel.control.http_streaming_server import MJPEGStreamHandler
+from gabriel.control.http_streaming_server import ThreadedHTTPServer
+from gabriel.control.RESTServer_binder import RESTServer, RESTServerError
+from gabriel.control.upnp_server import UPnPServer, UPnPError
+from gabriel.control.app_server import OffloadingEngineMonitor
+from gabriel.control.config import Const
+from gabriel.control import mobile_server
+from gabriel.control import log as logging
 
 
 LOG = logging.getLogger(__name__)

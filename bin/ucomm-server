@@ -18,19 +18,17 @@
 #   limitations under the License.
 #
 
-import sys
-sys.path.insert(0, "../")
-# from control VM
-from control.protocol import Protocol_client
-from control.protocol import Protocol_measurement
-from control.config import ServiceMeta
-from control.config import DEBUG
-
-
 import os
-import tempfile
-import multiprocessing
-from urlparse import urlparse
+import sys
+if os.path.isdir("../gabriel") == True:
+    sys.path.insert(0, "..")
+
+# from control VM
+from gabriel.control.protocol import Protocol_client
+from gabriel.control.protocol import Protocol_measurement
+from gabriel.control.config import ServiceMeta as SERVICE_META
+from gabriel.control.config import DEBUG
+from gabriel.control.upnp_client import UPnPClient
 
 import httplib
 import urllib2
@@ -38,16 +36,15 @@ import time
 import SocketServer
 import socket
 import select
-import traceback
 import struct
 import json
 import Queue
 import threading
 import pprint
+import multiprocessing
+from urlparse import urlparse
 from optparse import OptionParser
 
-from control.config import ServiceMeta as SERVICE_META
-from control.upnp_client import UPnPClient
 
 
 class tempLOG(object):
@@ -145,7 +142,7 @@ def register_ucomm(argv):
         service_list = json.loads(meta_raw)
     pstr = pprint.pformat(service_list)
     json_info = {
-        ServiceMeta.RESULT_RETURN_SERVER_LIST: "%s:%d" % (get_ip(), UCommConst.RESULT_RECEIVE_PORT),
+        SERVICE_META.RESULT_RETURN_SERVER_LIST: "%s:%d" % (get_ip(), UCommConst.RESULT_RECEIVE_PORT),
         }
     put(directory_url, json_info)
     LOG.info("Gabriel Server :")
