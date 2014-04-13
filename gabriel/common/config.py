@@ -44,9 +44,6 @@ def which(program):
 class Const(object):
     VERSION = "0.1.1"
 
-    # UComm Server
-    UCOMM_SERVER_LIST = []
-
     # port number for the server modules
     UCOMM_COMMUNICATE_PORT = 9090
     OFFLOADING_MONITOR_PORT = 9091

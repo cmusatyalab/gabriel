@@ -142,7 +142,7 @@ class GabrielInfo(Resource):
     parser.add_argument('task', type=str)
     ip_addr = get_ip(iface="eth0")
     service_info = {
-            ServiceMeta.RESULT_RETURN_SERVER_LIST: Const.UCOMM_SERVER_LIST,
+            ServiceMeta.RESULT_RETURN_SERVER_LIST: list(),
             ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
             ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(Const.APP_SERVER_VIDEO_PORT),
             ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
@@ -152,7 +152,6 @@ class GabrielInfo(Resource):
             }
 
     def get(self):
-        self.service_info[ServiceMeta.RESULT_RETURN_SERVER_LIST] = Const.UCOMM_SERVER_LIST
         return self.service_info, 200
 
     def put(self):

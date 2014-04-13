@@ -114,7 +114,8 @@ def start_background_services():
     # start REST server for meta info
     try:
         rest_server.start()
-        LOG.info("Start RESTful API Server")
+        LOG.info("Start RESTful API Server (port :%s)" % \
+                Const.SERVICE_DISCOVERY_HTTP_PORT)
     except RESTServerError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start REST API Server")
