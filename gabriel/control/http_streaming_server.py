@@ -22,16 +22,16 @@
 import time
 import Queue
 import re
-import mobile_server
 
 from os import curdir
 from os import sep
+from gabriel.control import mobile_server
+from gabriel.common import log as logging
+from gabriel.common.config import Const as Const
 from BaseHTTPServer import BaseHTTPRequestHandler
-from SocketServer import ThreadingMixIn
 from BaseHTTPServer import HTTPServer
+from SocketServer import ThreadingMixIn
 
-import log as logging
-from config import Const
 
 
 LOG = logging.getLogger(__name__)

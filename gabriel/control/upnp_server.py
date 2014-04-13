@@ -21,9 +21,8 @@
 import subprocess
 import threading
 import os
-import sys
-from config import Const as Const
-import log as logging
+from gabriel.common import log as logging
+from gabriel.common.config import Const as Const
 
 LOG = logging.getLogger(__name__)
 

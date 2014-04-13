@@ -18,9 +18,7 @@
 #   limitations under the License.
 #
 
-import os
 import logging
-import sys
 
 loggers = dict()
 DEFAULT_FORMATTER = '%(asctime)s %(name)s %(levelname)s %(message)s'

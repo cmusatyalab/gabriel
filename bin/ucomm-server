@@ -24,11 +24,11 @@ if os.path.isdir("../gabriel") == True:
     sys.path.insert(0, "..")
 
 # from control VM
-from gabriel.control.protocol import Protocol_client
-from gabriel.control.protocol import Protocol_measurement
-from gabriel.control.config import ServiceMeta as SERVICE_META
-from gabriel.control.config import DEBUG
-from gabriel.control.upnp_client import UPnPClient
+from gabriel.common.protocol import Protocol_client
+from gabriel.common.protocol import Protocol_measurement
+from gabriel.common.config import ServiceMeta as SERVICE_META
+from gabriel.common.config import DEBUG
+from gabriel.common.upnp_client import UPnPClient
 
 import httplib
 import urllib2

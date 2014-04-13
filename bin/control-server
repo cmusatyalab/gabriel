@@ -32,6 +32,8 @@ import re
 import json
 from os import curdir, sep
 
+from gabriel.common import log as logging
+from gabriel.common.config import Const
 from gabriel.control.mobile_server import MobileCommServer
 from gabriel.control.mobile_server import MobileVideoHandler
 from gabriel.control.mobile_server import MobileAccHandler
@@ -45,9 +47,7 @@ from gabriel.control.http_streaming_server import ThreadedHTTPServer
 from gabriel.control.RESTServer_binder import RESTServer, RESTServerError
 from gabriel.control.upnp_server import UPnPServer, UPnPError
 from gabriel.control.app_server import OffloadingEngineMonitor
-from gabriel.control.config import Const
 from gabriel.control import mobile_server
-from gabriel.control import log as logging
 
 
 LOG = logging.getLogger(__name__)

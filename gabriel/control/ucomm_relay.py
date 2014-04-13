@@ -30,10 +30,10 @@ import Queue
 import struct
 import socket
 
-import log as logging
-from config import Const as Const
-from protocol import Protocol_client
-from mobile_server import result_queue
+from gabriel.common import log as logging
+from gabriel.common.config import Const as Const
+from gabriel.common.protocol import Protocol_client
+from gabriel.control.mobile_server import result_queue
 
 
 LOG = logging.getLogger(__name__)

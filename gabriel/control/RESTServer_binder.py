@@ -22,7 +22,7 @@ import subprocess
 import threading
 import os
 import sys
-from config import Const as Const
+from gabriel.common.config import Const as Const
 
 
 class RESTServerError(Exception):
@@ -44,7 +44,7 @@ class RESTServer(threading.Thread):
         self.proc = subprocess.Popen(cmd, close_fds=True, \
                 stdin=_PIPE, stdout=_PIPE, stderr=_PIPE)
         try:
-            while(not self.stop.wait(10)):
+            while(not self.stop.wait(1)):
                 self.proc.poll()
                 return_code = self.proc.returncode
                 if return_code != None:

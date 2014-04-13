@@ -18,26 +18,22 @@
 #   limitations under the License.
 #
 
+from gabriel.common.protocol import Protocol_application
+from gabriel.common.protocol import Protocol_client
+from gabriel.common import log as logging
+from gabriel.control import mobile_server
+from gabriel.common.config import Const as Const
+
 import Queue
 import sys
-import time
 import json
-import os
 import multiprocessing
-import tempfile
-from config import Const as Const
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import SocketServer
 import socket
 import select
 import traceback
 import struct
-
-import mobile_server
-import log as logging
 import threading
-from protocol import Protocol_application
-from protocol import Protocol_client
 
 
 LOG = logging.getLogger(__name__)

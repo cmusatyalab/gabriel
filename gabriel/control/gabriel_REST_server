@@ -9,8 +9,13 @@ from flask.ext.restful import reqparse
 from flask.ext.restful import Resource
 from flask.ext.restful import abort
 
-from config import Const
-from config import ServiceMeta
+try:
+    from gabriel.common.config import Const as Const
+    from gabriel.common.config import ServiceMeta
+except ImportError as e:
+    sys.path.insert(0, "../common")
+    from config import Const as Const
+    from config import ServiceMeta
 
 
 custom_service_list = list()
@@ -147,6 +152,7 @@ class GabrielInfo(Resource):
             }
 
     def get(self):
+        self.service_info[ServiceMeta.RESULT_RETURN_SERVER_LIST] = Const.UCOMM_SERVER_LIST
         return self.service_info, 200
 
     def put(self):

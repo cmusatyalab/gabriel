@@ -21,8 +21,6 @@
 import time
 import sys
 import json
-import tempfile
-import os
 
 import SocketServer
 import threading
@@ -33,11 +31,11 @@ import struct
 import socket
 import multiprocessing
 
-from config import Const as Const
-from config import DEBUG
-import log as logging
-from protocol import Protocol_client
-from protocol import Protocol_measurement
+from gabriel.common import log as logging
+from gabriel.common.config import Const as Const
+from gabriel.common.config import DEBUG
+from gabriel.common.protocol import Protocol_client
+from gabriel.common.protocol import Protocol_measurement
 
 
 LOG = logging.getLogger(__name__)
