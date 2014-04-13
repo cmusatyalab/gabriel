@@ -13,9 +13,9 @@ try:
     from gabriel.common.config import Const as Const
     from gabriel.common.config import ServiceMeta
 except ImportError as e:
-    sys.path.insert(0, "../common")
-    from config import Const as Const
-    from config import ServiceMeta
+    sys.path.insert(0, "..")
+    from gabriel.common.config import Const as Const
+    from gabriel.common.config import ServiceMeta
 
 
 custom_service_list = list()

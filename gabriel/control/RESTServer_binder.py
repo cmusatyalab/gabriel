@@ -49,10 +49,12 @@ class RESTServer(threading.Thread):
                 return_code = self.proc.returncode
                 if return_code != None:
                     if return_code == 0:
+                        msg = "[INFO] REST API Server is finished\n"
+                        sys.stdout.write(msg)
                         self.proc = None
                         break
                     if return_code != 0:
-                        msg = "[Error] RESTful API Server is closed unexpectedly\n"
+                        msg = "[Error] REST API Server is closed unexpectedly\n"
                         sys.stderr.write(msg)
                         break
         except KeyboardInterrupt, e:
