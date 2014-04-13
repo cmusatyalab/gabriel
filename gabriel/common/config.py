@@ -57,10 +57,13 @@ class Const(object):
     SERVICE_DISCOVERY_HTTP_PORT = 8021
 
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-    #which("gabriel_upnp_server.jar")
-    UPnP_SERVER_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../control/lib/gabriel_upnp_server.jar"))
-    UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../common/gabriel_upnp_client.jar")) 
-    REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "../control/gabriel_REST_server"))
+    UPnP_SERVER_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_server.jar"))
+    UPnP_SERVER_PATH = UPnP_SERVER_PATH if os.path.exists(UPnP_SERVER_PATH) else which("gabriel_upnp_server.jar")
+    UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_client.jar"))
+    UPnP_CLIENT_PATH = UPnP_CLIENT_PATH if os.path.exists(UPnP_CLIENT_PATH) else which("gabriel_upnp_client.jar")
+    REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_REST_server"))
+    REST_SERVER_BIN = REST_SERVER_BIN if os.path.exists(REST_SERVER_BIN) else which("gabriel_REST_server")
+
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
     MAX_FRAME_SIZE = 1
