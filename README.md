@@ -85,52 +85,51 @@ How to use
 
 1. Run the `control server` from the binary directory.
 
-    > $ cd <gabriel-repo>/bin
-    > $ ./gabriel-control.py
-    > INFO     Start RESTful API Server
-    > INFO     Start UPnP Server
-    > INFO     Start monitoring offload engines
-    > INFO     * Mobile server(<class 'mobile_server.MobileVideoHandler'>) configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 9098)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
-    > INFO     * Mobile server(<class 'mobile_server.MobileAccHandler'>) configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 9099)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
-    > INFO     * Mobile server(<class 'mobile_server.MobileResultHandler'>) configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 9101)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
-    > INFO     * Application server(<class 'app_server.VideoSensorHandler'>) configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 10101)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
-    > INFO     * Application server(<class 'app_server.AccSensorHandler'>) configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 10102)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
-    > INFO     * UComm server configuration
-    > INFO      - Open TCP Server at ('0.0.0.0', 9090)
-    > INFO      - Disable nagle (No TCP delay)  : 1
-    > INFO     --------------------------------------------------
+    $ cd <gabriel-repo>/bin
+    $ ./gabriel-control.py
+    INFO     Start RESTful API Server
+    INFO     Start UPnP Server
+    INFO     Start monitoring offload engines
+    INFO     * Mobile server(<class 'mobile_server.MobileVideoHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9098)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Mobile server(<class 'mobile_server.MobileAccHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9099)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Mobile server(<class 'mobile_server.MobileResultHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9101)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Application server(<class 'app_server.VideoSensorHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 10101)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Application server(<class 'app_server.AccSensorHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 10102)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * UComm server configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9090)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
 
 
 2. Run `ucomm server` from the binary directory.
 
-    > $ cd <gabriel-repo>/bin
-    > $ ./ucomm_server.py
-    > INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
-    >  ...
-    > INFO    Gabriel Server :
-    >  ...
-    > INFO    connecting to x.x.x.x:9090
-    > INFO    * UCOMM server configuration
-    > INFO     - Open TCP Server at ('0.0.0.0', 10120)
-    > INFO     - Disable nagle (No TCP delay)  : 1
-    > INFO    --------------------------------------------------
-    > INFO    Start forwardning data
-    >
+    $ cd <gabriel-repo>/bin
+    $ ./ucomm_server.py
+    INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
+     ...
+    INFO    Gabriel Server :
+     ...
+    INFO    connecting to x.x.x.x:9090
+    INFO    * UCOMM server configuration
+    INFO     - Open TCP Server at ('0.0.0.0', 10120)
+    INFO     - Disable nagle (No TCP delay)  : 1
+    INFO    --------------------------------------------------
+    INFO    Start forwardning data
 
 	If `ucomm server` is successfully connected to `control server`, you can see
 	a log message __"INFO     User communication module is connected"__ at
@@ -141,15 +140,15 @@ How to use
 	Here is a sample cognitive engine which displays received frame from a
 	mobile device.
 
-    > cd <gabriel-repo>/src/app/http_display/
-    > ./proxy.py
-    > Finding control VM
-    > INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
-    > INFO     Gabriel Server :
-    >  ...
-    > INFO     Success to connect to (u'x.x.x.x', 10101)
-    > INFO     Start getting data from the server
-    > INFO     Start publishing data
+    cd <gabriel-repo>/src/app/http_display/
+    ./proxy.py
+    Finding control VM
+    INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
+    INFO     Gabriel Server :
+     ...
+    INFO     Success to connect to (u'x.x.x.x', 10101)
+    INFO     Start getting data from the server
+    INFO     Start publishing data
 
 	If `cognitive engine` is successfully connected to `ucomm server`, you can
 	see a log message __"INFO    new Offlaoding Engine is connected"__ at
