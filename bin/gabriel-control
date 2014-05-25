@@ -68,8 +68,11 @@ def process_command_line(argv):
     parser.add_option(
             '-e', '--emulation', action='store', dest='image_dir',
             help="emulate mobile device using series of jpeg images")
+    parser.add_option(
+            '-r', '--frame_rate', type="int", action='store', dest='frame_rate', default=15,
+            help="the frame rate for loading jpeg images")
     settings, args = parser.parse_args(argv)
-    if len(args) >= 1:
+    if len(args) >= 2:
         parser.error("invalid arguement")
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
@@ -79,12 +82,13 @@ def process_command_line(argv):
 
 
 class EmulatedMobileDevice(object):
-    def __init__(self, image_dir):
+    def __init__(self, image_dir, frame_rate):
         from os import listdir
         self.stop = threading.Event()
         self.filelist = [os.path.join(image_dir, f) for f in listdir(image_dir)
                 if f.lower().endswith("jpeg") or f.lower().endswith("jpg") or f.lower().endswith("bmp")]
         self.filelist.sort()
+        self.wait_time = 1.0 / frame_rate
 
     def serve_forever(self):
         frame_count = 0;
@@ -100,7 +104,7 @@ class EmulatedMobileDevice(object):
                     pass
                     #LOG.info("pushing emualted image to the queue (%d)" % frame_count)
                 frame_count += 1
-                time.sleep(0.04)
+                time.sleep(self.wait_time)
 
     def terminate(self):
         self.stop.set()
@@ -172,7 +176,7 @@ def main():
     a_video_server = None
     a_acc_server = None
     if settings.image_dir:
-        m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir))
+        m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir), settings.frame_rate)
     else:
         m_video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
     m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileAccHandler)
