@@ -87,7 +87,7 @@ How to use
 
     ```
     $ cd <gabriel-repo>/bin
-    $ ./gabriel-control.py
+    $ ./gabriel-control
     INFO     Start RESTful API Server
     INFO     Start UPnP Server
     INFO     Start monitoring offload engines
@@ -121,7 +121,7 @@ How to use
 
     ```
     $ cd <gabriel-repo>/bin
-    $ ./ucomm_server.py
+    $ ./gabriel-ucomm
     INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
       ...
     INFO    Gabriel Server :
@@ -140,20 +140,25 @@ How to use
 
 3. Run cognitive engines.
 
-    Here is a sample cognitive engine which displays received frame from a
-    mobile device.
+    Here is a sample cognitive engine which returns the word "dummy" for every received 
+    frame from a mobile device.
 
     ```
-    cd <gabriel-repo>/src/app/http_display/
-    ./proxy.py
-    Finding control VM
-    INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
+    $ cd <gabriel-repo>/bin
+    $ ./gabriel-proxy-sample.py
+    Discovery Control VM
+    INFO     execute : java -jar /home/ubuntu/gabriel/gabriel/lib/gabriel_upnp_client.jar
     INFO     Gabriel Server :
       ...
     INFO     Success to connect to (u'x.x.x.x', 10101)
     INFO     Start getting data from the server
     INFO     Start publishing data
+    INFO     New connection is starting at 1404328176.629762
+    processing: {u'sensor_type': u'mjepg', u'type': u'emulated', u'id': 6503}
+    INFO     returning result: {"result": "dummy", "sensor_type": "mjepg", "type": "emulated", "id": 6503, "engine_id": "dummy"}
+      ...
     ```
+ 
 
     If `cognitive engine` is successfully connected to `ucomm server`, you can
     see a log message __"INFO    new Offlaoding Engine is connected"__ at
