@@ -8,10 +8,11 @@ Please visit our website at [Elijah page](http://elijah.cs.cmu.edu/).
 
 License
 ----------
-DO NOT MAKE THIS REPO OPEN BEFORE CLEAN UP THE PROPRIETARY CODE AT
-APP DIRECTORY. MAKE A NEW REPO FOR OPEN SOURCE SINCE IT HAS PROPRIETARY
-CODE IN COMMIT HISTORY.
+All source code, documentation, and related artifacts associated with the
+Gabriel open source project are licensed under the [Apache License, Version
+2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
+A copy of this license is reproduced in the [LICENSE](LICENSE) file.
 
 
 Installation - Gabriel System
