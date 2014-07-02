@@ -170,7 +170,7 @@ class ResultForwardingClient(threading.Thread):
 
     def forward(self):
         try:
-            LOG.info("Start forwardning data")
+            LOG.info("Start forwarding data")
             socket_fd = self.sock.fileno()
             stopfd = self.stop_queue._reader.fileno()
             input_list = [stopfd]

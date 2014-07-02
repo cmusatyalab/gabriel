@@ -131,7 +131,7 @@ How to use
     INFO     - Open TCP Server at ('0.0.0.0', 10120)
     INFO     - Disable nagle (No TCP delay)  : 1
     INFO    --------------------------------------------------
-    INFO    Start forwardning data
+    INFO    Start forwarding data
     ```
 
     If `ucomm server` is successfully connected to `control server`, you can see
