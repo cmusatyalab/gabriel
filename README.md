@@ -179,4 +179,4 @@ using your browser.
 Related research works
 --------------------------
 
-* [Towards Wearable Cognitive Assistance](http://reports-archive.adm.cs.cmu.edu/anon/2013/CMU-CS-13-134.pdf)
+* [Towards Wearable Cognitive Assistance](http://dl.acm.org/citation.cfm?id=2594383)
