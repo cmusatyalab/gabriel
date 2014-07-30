@@ -169,10 +169,20 @@ How to use
    change IP address of `GABRIEL_IP` variable at
    `src/edu/cmu/cs/gabriel/Const.java`.
 
+5. HTTP display
 
-After these steps, you should be able to see the camera images of mobile
-devices by connecting to `http://gabriel_ip:7070/index.html`
-using your browser.
+    If you want to have a quick test of whether your image stream transmission 
+    is working fine, you can run another cognitive engine by
+
+    ```
+    $ cd <gabriel-repo>/bin
+    $ ./gabriel-proxy-http-display/proxy.py
+    ```
+    
+    This cognitive engine sets up an HTTP server to publish the received images.
+	If all properly set, you should now be able to see the camera images from 
+	mobile devices by connecting to `http://gabriel_ip:7070/index.html`
+	using your browser.
 
 
 
