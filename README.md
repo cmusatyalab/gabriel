@@ -47,11 +47,13 @@ To install, you can either
 * run a installation script::
 
     > $ sudo apt-get install fabric openssh-server
+    
     > $ fab localhost install
 
 * install manually::
 
-    > sudo apt-get install default-jre python-pip pssh python-psutil
+    > sudo apt-get install gcc python-dev default-jre python-pip pssh python-psutil
+    
     > sudo pip install flask==0.9 flask-restful==0.2.1 six==1.1.0
 
 
