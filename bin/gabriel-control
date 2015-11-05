@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
@@ -62,7 +62,7 @@ def process_command_line(argv):
     VERSION = 'gabriel server : %s' % Const.VERSION
     DESCRIPTION = "Gabriel cognitive assistance"
 
-    parser = OptionParser(usage='%prog [option]', version=VERSION, 
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
             description=DESCRIPTION)
 
     parser.add_option(

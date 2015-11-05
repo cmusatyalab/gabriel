@@ -276,7 +276,7 @@ class AppProxyThread(threading.Thread):
 
             new_frameid = header.get(Protocol_client.FRAME_MESSAGE_KEY)
             if self.frameid == 0 or new_frameid <= 1 or new_frameid <= self.frameid:
-                # need logging to find the for new start 
+                # need logging to find the for new start
                 # time time is used for usage monitoring
                 LOG.info("New connection is starting at %f" % time.time())
             self.frameid = new_frameid
@@ -399,7 +399,7 @@ class ResultpublishClient(threading.Thread):
             if result_queue._reader.fileno() == output_queue_fd:
                 try:
                     return_data = result_queue.get_nowait()
-                    
+
                     # measurement header
                     if DEBUG.PACKET:
                         header_data = json.loads(return_data)

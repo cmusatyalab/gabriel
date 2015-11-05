@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
@@ -98,7 +98,7 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_input_data()
                     if s == stopfd:
                         is_running = False
-                    # For output, check queue first. If we check output socket, 
+                    # For output, check queue first. If we check output socket,
                     # select will return immediately
                     if s == result_fd:
                         self._handle_output_result()
@@ -125,8 +125,8 @@ class MobileSensorHandler(SocketServer.StreamRequestHandler, object):
 
 class MobileVideoHandler(MobileSensorHandler):
     def setup(self):
-        super(MobileVideoHandler, self).setup() 
-        
+        super(MobileVideoHandler, self).setup()
+
     def __repr__(self):
         return "Mobile Video Server"
 
@@ -140,7 +140,7 @@ class MobileVideoHandler(MobileSensorHandler):
         # add header data for measurement
         if DEBUG.PACKET:
             header_json = json.loads(header_data)
-            header_json[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME] = time.time()
+            header_json[Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME] = time.time()
             header_data = json.dumps(header_json)
 
         # measurement
@@ -170,7 +170,7 @@ class MobileVideoHandler(MobileSensorHandler):
                     len(header_data), header_data)
             self.request.send(packet)
             self.wfile.flush()
-            
+
             #frame_id = json_header.get(Protocol_client.FRAME_MESSAGE_KEY, None)
             #if frame_id is not None:
             #    self.ret_frame_ids.put(frame_id)
@@ -181,7 +181,7 @@ class MobileVideoHandler(MobileSensorHandler):
 class MobileAccHandler(MobileSensorHandler):
     def setup(self):
         super(MobileAccHandler, self).setup()
-        
+
     def __str__(self):
         return "Mobile Acc Server"
 
@@ -233,14 +233,7 @@ class MobileResultHandler(MobileSensorHandler):
             result_queue.get()
         self.output_queue = result_queue
         if DEBUG.PACKET:
-            self.performance_overhead_log = open("log-performance-overhead", "w")
-            self.total_overhead = 0.0
-            self.control_app_latency = 0.0
-            self.app_app_latency = 0.0
-            self.app_ucomm_latency = 0.0
-            self.ucomm_ucomm_latency = 0.0
-            self.ucomm_control_latency = 0.0
-            self.latency_count = 0
+            self.time_breakdown_log = open("log-time-breakdown.txt", "w")
 
     def __str__(self):
         return "Mobile Result Handler"
@@ -261,43 +254,37 @@ class MobileResultHandler(MobileSensorHandler):
     def _handle_output_result(self):
         try:
             result_msg = self.output_queue.get(timeout=0.0001)
-            # check time
 
+            # check time
             if DEBUG.PACKET:
                 header = json.loads(result_msg)
+                result_str = header['result']
+                result_json = json.loads(result_str)
                 now = time.time()
-                control_sent_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME)
-                del header[Protocol_measurement.JSON_KEY_CONTROL_SENT_TIME]
-                overhead = now - control_sent_time
-                self.total_overhead += overhead
-                self.latency_count += 1
-                log = "%d\t%f\t%f\t%f\n" % (self.latency_count, now, control_sent_time, overhead)
-                if self.performance_overhead_log != None:
-                    self.performance_overhead_log.write(log)
-                #app_recv_time = header.get(Protocol_measurement.JSON_KEY_APP_RECV_TIME)
-                #app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME)
-                #ucomm_recv_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME)
-                #ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME)
-                #self.control_app_latency += app_recv_time - control_sent_time
-                #self.app_app_latency += app_sent_time - app_recv_time
-                #self.app_ucomm_latency += ucomm_recv_time - app_sent_time
-                #self.ucomm_ucomm_latency += ucomm_sent_time - ucomm_recv_time
-                #self.ucomm_control_latency +=  now - ucomm_sent_time
-                #LOG.info("control-app:%f\tapp-app:%f\tapp-ucomm:%f\tucomm-ucomm:%f\tucomm-now:%f" % \
-                #        (self.control_app_latency/self.latency_count,
-                #            self.app_app_latency/self.latency_count,
-                #            self.app_ucomm_latency/self.latency_count,
-                #            self.ucomm_ucomm_latency/self.latency_count,
-                #            self.ucomm_control_latency/self.latency_count))
-                #del header[Protocol_measurement.JSON_KEY_APP_SENT_TIME]
-                #del header[Protocol_measurement.JSON_KEY_APP_RECV_TIME]
-                #del header[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
-                #del header[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
+
+                control_recv_from_mobile_time = header.get(Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME)
+                ucomm_recv_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME, -1)
+                ucomm_sent_time = header.get(Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME, -1)
+                app_recv_time = header.get(Protocol_measurement.JSON_KEY_APP_RECV_TIME, -1)
+                app_sent_time = header.get(Protocol_measurement.JSON_KEY_APP_SENT_TIME, -1)
+
+                symbolic_time = result_json.get(Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
+
+                del header[Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME]
+                del header[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
+                del header[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
+                del header[Protocol_measurement.JSON_KEY_APP_SENT_TIME]
+                del header[Protocol_measurement.JSON_KEY_APP_RECV_TIME]
+                try:
+                    del header[Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
+                except KeyError:
+                    pass
+
+                if self.time_breakdown_log != None:
+                    self.time_breakdown_log.write("%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (control_recv_from_mobile_time, app_recv_time, symbolic_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
+
                 result_msg = json.dumps(header)
 
-            # process header a little bit since we like to differenciate
-            # frame id that comes from an application with the frame id for
-            # the token bucket.
             packet = struct.pack("!I%ds" % len(result_msg),
                     len(result_msg),
                     result_msg)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
@@ -152,7 +152,7 @@ def register_ucomm(argv):
 
 class ResultForwardingClient(threading.Thread):
     """
-    This client will forward offloading engine's processed 
+    This client will forward offloading engine's processed
     result to the control VM.
     """
 
@@ -218,25 +218,31 @@ class ResultForwardingClient(threading.Thread):
         try:
             return_data = self.output_queue.get(timeout=0.0001)
 
-            # ignore the result if same output is sent within 1 sec
             return_json = json.loads(return_data)
             result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
             engine_name = return_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
+
+            if result_str is None or len(result_str.strip()) == 0 or result_str == 'nothing':
+                result_json = {'status': 'nothing'}
+            else:
+                result_json = json.loads(result_str)
+            status = result_json.get('status')
+
+            if status == "success":
+                prev_sent_data = self.previous_sent_dict.get(engine_name, None)
+                if prev_sent_data is not None and prev_sent_data.lower() == result_str.lower():
+                    prev_sent_time = self.previous_sent_time_dict.get(engine_name, 0)
+                    time_diff = time.time() - prev_sent_time
+                    if time_diff < 5: # ignore the result if same output is sent within some time
+                        result_json['status'] = "duplicate"
+                        LOG.info("Identical result (%s) is ignored" % result_str)
+
+            result_str = json.dumps(result_json)
+            return_json[Protocol_client.RESULT_MESSAGE_KEY] = result_str
+
             if DEBUG.PACKET:
                 return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
-            
-            prev_sent_data = self.previous_sent_dict.get(engine_name, None)
-            if (result_str != None) and (prev_sent_data != None) and \
-                    (prev_sent_data.lower() == result_str.lower()):
-                prev_sent_time = self.previous_sent_time_dict.get(engine_name, 0)
-                time_diff = time.time() - prev_sent_time
-                if time_diff < 2:
-                    LOG.info("Identical result (%s) is ignored" % result_str)
-                    return_json.pop(Protocol_client.RESULT_MESSAGE_KEY, None)
 
-            # remove result if it is nothing
-            if result_str == None or len(result_str.strip()) == 0:
-                return_json.pop(Protocol_client.RESULT_MESSAGE_KEY, None)
             output = json.dumps(return_json)
             packet = struct.pack("!I%ds" % len(output),
                     len(output), output)
@@ -344,7 +350,7 @@ class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     def terminate(self):
         self.server_close()
         self.stopped = True
-        
+
         if self.socket is not None:
             self.socket.close()
         LOG.info("[TERMINATE] Finish ucomm server")

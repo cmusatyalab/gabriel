@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
@@ -35,11 +35,13 @@ class Protocol_application(object):
     JSON_VALUE_SENSOR_TYPE_AUDIO = "wave"
 
 class Protocol_measurement(object):
-    JSON_KEY_CONTROL_SENT_TIME = "control_sent_time"
+    JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME = "control_recv_from_mobile_time"
     JSON_KEY_APP_RECV_TIME = "app_recv_time"
+    JSON_KEY_APP_SYMBOLIC_TIME = "app_symbolic_time"
     JSON_KEY_APP_SENT_TIME = "app_sent_time"
     JSON_KEY_UCOMM_RECV_TIME = "ucomm_recv_time"
     JSON_KEY_UCOMM_SENT_TIME = "ucomm_sent_time"
+    JSON_KEY_CONTROL_SENT_TO_MOBILE_TIME = "control_sent_to_mobile_time"
 
     JSON_KEY_ALLOWED_APP_LIST = "allowed_app_list"
     JSON_KEY_REGISTER_APP_UUID = "register_app"
