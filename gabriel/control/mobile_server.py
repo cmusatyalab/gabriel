@@ -132,14 +132,23 @@ class MobileVideoHandler(MobileSensorHandler):
 
     def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
-        img_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
+        header_json = json.loads(header_data)
+        if header_json.get("sync_time") is not None:
+            header_json["sync_time"] = int(time.time() * 1000)
+            header_data = json.dumps(header_json)
+            packet = struct.pack("!I%ds" % len(header_data),
+                    len(header_data), header_data)
+            self.request.send(packet)
+            self.wfile.flush()
+            return
+
+        img_size = struct.unpack("!I", self._recv_all(4))[0]
         image_data = self._recv_all(img_size)
         self.frame_count += 1
 
         # add header data for measurement
         if DEBUG.PACKET:
-            header_json = json.loads(header_data)
             header_json[Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME] = time.time()
             header_data = json.dumps(header_json)
 
@@ -258,6 +267,7 @@ class MobileResultHandler(MobileSensorHandler):
             # check time
             if DEBUG.PACKET:
                 header = json.loads(result_msg)
+                frame_id = header[Protocol_client.FRAME_MESSAGE_KEY]
                 result_str = header['result']
                 result_json = json.loads(result_str)
                 now = time.time()
@@ -281,7 +291,7 @@ class MobileResultHandler(MobileSensorHandler):
                     pass
 
                 if self.time_breakdown_log != None:
-                    self.time_breakdown_log.write("%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (control_recv_from_mobile_time, app_recv_time, symbolic_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
+                    self.time_breakdown_log.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" % (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
                 result_msg = json.dumps(header)
 

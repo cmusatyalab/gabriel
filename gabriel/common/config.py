@@ -27,7 +27,7 @@ class ConfigurationError(Exception):
 
 def which(program):
     def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK) 
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
     fpath, fname = os.path.split(program)
     if fpath:
         if is_exe(program):
@@ -83,4 +83,4 @@ class ServiceMeta(object):
 
 class DEBUG(object):
     DIRECT_RETURN = False
-    PACKET = False
+    PACKET = True
