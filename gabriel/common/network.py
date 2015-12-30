@@ -41,14 +41,14 @@ class CommonServer(SocketServer.TCPServer):
     is_running = True
 
     def __init__(self, port, handler):
-        server_address = ('0.0.0.0', port)
+        self.server_address = ('0.0.0.0', port)
         self.allow_reuse_address = True
         self.handler = handler
         try:
-            SocketServer.TCPServer.__init__(self, server_address, handler)
+            SocketServer.TCPServer.__init__(self, self.server_address, handler)
         except socket.error as e:
             LOG.error("socket error: %s" % str(e))
-            raise NetworkError("Check IP/Port : %s\n" % (str(server_address)))
+            raise NetworkError("Check IP/Port : %s\n" % (str(self.server_address)))
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 

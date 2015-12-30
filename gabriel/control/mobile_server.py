@@ -243,9 +243,9 @@ class MobileResultHandler(MobileSensorHandler):
 
 class MobileCommServer(gabriel.network.CommonServer):
     def __init__(self, port, handler):
-        super(MobileCommServer, self).__init__(port, handler)
+        gabriel.network.CommonServer.__init__(self, port, handler) # cannot use super because it's old style class
         LOG.info("* Mobile server(%s) configuration" % str(self.handler))
-        LOG.info(" - Open TCP Server at %s" % (str(server_address)))
+        LOG.info(" - Open TCP Server at %s" % (str(self.server_address)))
         LOG.info(" - Disable nagle (No TCP delay)  : %s" %
                 str(self.socket.getsockopt(
                     socket.IPPROTO_TCP,
@@ -253,34 +253,36 @@ class MobileCommServer(gabriel.network.CommonServer):
         LOG.info("-" * 50)
 
     def terminate(self):
-        super(MobileCommServer, self).terminate()
+        gabriel.network.CommonServer.terminate(self)
 
 
 def main():
-    video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
-    acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
-
+    video_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
     video_thread = threading.Thread(target=video_server.serve_forever)
-    acc_thread = threading.Thread(target=acc_server.serve_forever)
     video_thread.daemon = True
-    acc_thread.daemon = True
+
+    #acc_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
+    #acc_thread = threading.Thread(target=acc_server.serve_forever)
+    #acc_thread.daemon = True
 
     try:
         video_thread.start()
-        acc_thread.start()
-    except Exception as e:
-        sys.stderr.write(str(e))
-        video_server.terminate()
-        acc_server.terminate()
-        sys.exit(1)
+        #acc_thread.start()
+        while True:
+            time.sleep(100)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
         video_server.terminate()
-        acc_server.terminate()
+        #acc_server.terminate()
+        sys.exit(1)
+    except Exception as e:
+        sys.stderr.write(str(e))
+        video_server.terminate()
+        #acc_server.terminate()
         sys.exit(1)
     else:
         video_server.terminate()
-        acc_server.terminate()
+        #acc_server.terminate()
         sys.exit(0)
 
 

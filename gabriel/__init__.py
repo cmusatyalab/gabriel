@@ -21,5 +21,5 @@
 from .common import log as logging
 from .common.config import Const, Debug
 from .common.protocol import Protocol_client, Protocol_measurement, Protocol_result
-import .common.network as network
-import .common.util as util
+from .common import network
+from .common import util
