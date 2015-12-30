@@ -1,8 +1,9 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,33 +22,29 @@
 import os
 import logging
 import sys
-from config import Const as Const
+from config import Const, Debug
 
 loggers = dict()
 DEFAULT_FORMATTER = '%(asctime)s %(name)s %(levelname)s %(message)s'
 
-def getLogger(name='unknown'):
-    if loggers.get(name, None) == None:
-        # default file logging
-        if os.path.exists(os.path.dirname(Const.LOG_FILE_PATH)) == False:
+def getLogger(name = 'unknown', log_level_file = Debug.LOG_LEVEL_FILE, log_level_console = Debug.LOG_LEVEL_CONSOLE):
+    if loggers.get(name, None) is None:
+        ## default file logging
+        if not os.path.exists(os.path.dirname(Const.LOG_FILE_PATH)):
             os.makedirs(os.path.dirname(Const.LOG_FILE_PATH))
             os.chmod(os.path.dirname(Const.LOG_FILE_PATH), 0o777)
             open(Const.LOG_FILE_PATH, "w+").close()
             os.chmod(Const.LOG_FILE_PATH, 0o666)
-        logging.basicConfig(level=logging.DEBUG,
-                format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                datefmt='%m-%d %H:%M',
-                filename=Const.LOG_FILE_PATH,
-                filemode='a')
         logger = logging.getLogger(name)
-        hdlr = logging.FileHandler(Const.LOG_FILE_PATH)
-        hdlr.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(DEFAULT_FORMATTER)
-        hdlr.setFormatter(formatter)
+        logging.basicConfig(level = log_level_file,
+                format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                datefmt = '%m-%d %H:%M',
+                filename = Const.LOG_FILE_PATH,
+                filemode = 'a')
 
-        # add stdout logging with INFO level
-        console = logging.StreamHandler(sys.stdout)
-        console.setLevel(logging.INFO)
+        ## add stdout logging with INFO level
+        console = logging.StreamHandler(sys.stderr)
+        console.setLevel(log_level_console)
         formatter = logging.Formatter('%(levelname)-8s %(message)s')
         console.setFormatter(formatter)
         logger.addHandler(console)

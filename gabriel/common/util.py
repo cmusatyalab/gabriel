@@ -18,8 +18,24 @@
 #   limitations under the License.
 #
 
-from .common import log as logging
-from .common.config import Const, Debug
-from .common.protocol import Protocol_client, Protocol_measurement, Protocol_result
-import .common.network as network
-import .common.util as util
+import json
+import pprint
+
+import gabriel
+LOG = gabriel.logging.getLogger(__name__)
+
+def print_rtn(rtn_json):
+    '''
+    print return message in a nicer way:
+    replace random bytes in image data with summarized info
+    '''
+    result_str = rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]
+    result_json = json.loads(result_str)
+    image_str = result_json.get(gabriel.Protocol_result.JSON_KEY_IMAGE, None)
+    if image_str is not None:
+        result_json[gabriel.Protocol_client.RESULT_MESSAGE_KEY] = "an image of %d bytes" % len(image_str)
+    result_str = json.dumps(result_json)
+    rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result_str
+
+    return pprint.pformat(rtn_json)
+
