@@ -45,16 +45,21 @@ def which(program):
 class Const(object):
     VERSION = "0.1.1"
 
-    # port number for the server modules
-    UCOMM_COMMUNICATE_PORT = 9090
-    OFFLOADING_MONITOR_PORT = 9091
+    ## port number for the server modules
+    # communication with mobile
     MOBILE_SERVER_VIDEO_PORT = 9098
     MOBILE_SERVER_ACC_PORT = 9099
     MOBILE_SERVER_GPS_PORT = 9100
     MOBILE_SERVER_RESULT_PORT = 9101
-    APP_SERVER_VIDEO_PORT = 10101
-    APP_SERVER_ACC_PORT = 10102
-    APP_SERVER_GPS_PORT = 10103
+
+    # servers that publish streams
+    PUBLISH_SERVER_VIDEO_PORT = 10101
+    PUBLISH_SERVER_ACC_PORT = 10102
+    PUBLISH_SERVER_GPS_PORT = 10103
+
+    # others
+    UCOMM_COMMUNICATE_PORT = 9090
+    OFFLOADING_MONITOR_PORT = 9091
     SERVICE_DISCOVERY_HTTP_PORT = 8021
 
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))

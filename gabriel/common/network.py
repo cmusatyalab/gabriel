@@ -33,7 +33,7 @@ class NetworkError(Exception):
     pass
 
 
-class CommonServer(SocketServer.TCPServer):
+class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
     '''
     A basic TCP server.
     It handles each TCP connection in the @handler provided to __init__.
@@ -58,8 +58,7 @@ class CommonServer(SocketServer.TCPServer):
 
     def handle_error(self, request, client_address):
         #SocketServer.TCPServer.handle_error(self, request, client_address)
-        #LOG.error("handling error from client")
-        pass
+        LOG.warning("handling error from client")
 
     def terminate(self):
         self.server_close()
@@ -123,7 +122,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
                     if s == stopfd:
                         is_running = False
                     # For output, check queue first. If we check output socket,
-                    # select will return immediately
+                    # select may return immediately (in case when nothing is sent out)
                     if s == data_queue_fd:
                         self._handle_queue_data()
                 for e in exceptready:

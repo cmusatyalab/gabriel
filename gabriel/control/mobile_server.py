@@ -196,11 +196,11 @@ class MobileResultHandler(MobileSensorHandler):
 
     def _handle_queue_data(self):
         try:
-            rtn_str = self.data_queue.get(timeout = 0.0001)
+            rtn_data = self.data_queue.get(timeout = 0.0001)
 
             # log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
-                rtn_json = json.loads(rtn_str)
+                rtn_json = json.loads(rtn_data)
                 frame_id = rtn_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
                 result_str = rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]
                 result_json = json.loads(result_str)
@@ -229,10 +229,10 @@ class MobileResultHandler(MobileSensorHandler):
                     self.time_breakdown_log.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
                             (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
-                rtn_str = json.dumps(rtn_json)
+                rtn_data = json.dumps(rtn_json)
 
-            packet = struct.pack("!I%ds" % len(rtn_str),
-                    len(rtn_str), rtn_str)
+            packet = struct.pack("!I%ds" % len(rtn_data),
+                    len(rtn_data), rtn_data)
             self.request.send(packet)
             self.wfile.flush()
             LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_json))
@@ -247,9 +247,7 @@ class MobileCommServer(gabriel.network.CommonServer):
         LOG.info("* Mobile server(%s) configuration" % str(self.handler))
         LOG.info(" - Open TCP Server at %s" % (str(self.server_address)))
         LOG.info(" - Disable nagle (No TCP delay)  : %s" %
-                str(self.socket.getsockopt(
-                    socket.IPPROTO_TCP,
-                    socket.TCP_NODELAY)))
+                str(self.socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)))
         LOG.info("-" * 50)
 
     def terminate(self):
