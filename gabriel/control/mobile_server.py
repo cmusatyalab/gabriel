@@ -198,7 +198,7 @@ class MobileResultHandler(MobileSensorHandler):
         try:
             rtn_data = self.data_queue.get(timeout = 0.0001)
 
-            # log measured time
+            ## log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
                 rtn_json = json.loads(rtn_data)
                 frame_id = rtn_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
@@ -231,6 +231,7 @@ class MobileResultHandler(MobileSensorHandler):
 
                 rtn_data = json.dumps(rtn_json)
 
+            ## send return data to the mobile device
             packet = struct.pack("!I%ds" % len(rtn_data),
                     len(rtn_data), rtn_data)
             self.request.send(packet)

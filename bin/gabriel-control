@@ -3,6 +3,7 @@
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,57 +20,39 @@
 #
 
 
-import os
-import sys
-if os.path.isdir("../gabriel") == True:
-    sys.path.insert(0, "..")
+import json
 from optparse import OptionParser
-
-import time
-import threading
+import os
 import Queue
 import re
-import json
-from os import curdir, sep
+import sys
+import threading
+import time
 
-from gabriel.common import log as logging
-from gabriel.common.config import Const
-from gabriel.control.mobile_server import MobileCommServer
-from gabriel.control.mobile_server import MobileVideoHandler
-from gabriel.control.mobile_server import MobileAccHandler
-from gabriel.control.mobile_server import MobileResultHandler
-from gabriel.control.app_server import ApplicationServer
-from gabriel.control.app_server import VideoSensorHandler
-from gabriel.control.app_server import AccSensorHandler
-from gabriel.control.ucomm_relay import UCommRelay, UCommHandler
-from gabriel.control.http_streaming_server import MJPEGStreamHandler
-from gabriel.control.http_streaming_server import ThreadedHTTPServer
-from gabriel.control.RESTServer_binder import RESTServer, RESTServerError
-from gabriel.control.upnp_server import UPnPServer, UPnPError
-from gabriel.control.app_server import OffloadingEngineMonitor
-from gabriel.control import mobile_server
+if os.path.isdir("../gabriel"):
+    sys.path.insert(0, "..")
+import gabriel
+import gabriel.control
+LOG = gabriel.logging.getLogger(__name__)
 
-
-LOG = logging.getLogger(__name__)
-rest_server = RESTServer()
-upnp_server = UPnPServer()
-service_monitor = OffloadingEngineMonitor(mobile_server.image_queue_list,
-        mobile_server.acc_queue_list, mobile_server.gps_queue_list,
-        mobile_server.result_queue)
+rest_server = gabriel.control.RESTServer()
+upnp_server = gabriel.control.UPnPServer()
+service_monitor = gabriel.control.OffloadingEngineMonitor(gabriel.control.image_queue_list,
+        gabriel.control.acc_queue_list, gabriel.control.gps_queue_list, gabriel.control.result_queue)
 
 
 def process_command_line(argv):
-    VERSION = 'gabriel server : %s' % Const.VERSION
+    VERSION = 'gabriel server : %s' % gabriel.Const.VERSION
     DESCRIPTION = "Gabriel cognitive assistance"
 
-    parser = OptionParser(usage='%prog [option]', version=VERSION,
-            description=DESCRIPTION)
+    parser = OptionParser(usage = '%prog [option]', version = VERSION,
+            description = DESCRIPTION)
 
     parser.add_option(
-            '-e', '--emulation', action='store', dest='image_dir',
+            '-e', '--emulation', action = 'store', dest = 'image_dir',
             help="emulate mobile device using series of jpeg images")
     parser.add_option(
-            '-r', '--frame_rate', type="int", action='store', dest='frame_rate', default=15,
+            '-r', '--frame_rate', type = "int", action = 'store', dest = 'frame_rate', default = 15,
             help="the frame rate for loading jpeg images")
     settings, args = parser.parse_args(argv)
     if len(args) >= 2:
@@ -82,6 +65,10 @@ def process_command_line(argv):
 
 
 class EmulatedMobileDevice(object):
+    '''
+    Emulation of a mobile device that generates images.
+    Put the images into queues to be published to all cognitive engines in the same way as if they are coming from a real device.
+    '''
     def __init__(self, image_dir, frame_rate):
         from os import listdir
         self.stop = threading.Event()
@@ -95,12 +82,12 @@ class EmulatedMobileDevice(object):
         while(not self.stop.wait(0.01)):
             for image_file in self.filelist:
                 image_data = open(image_file, "r").read()
-                for image_queue in mobile_server.image_queue_list:
-                    header_data = json.dumps({"type":"emulated", "id":frame_count})
+                for image_queue in gabriel.control.image_queue_list:
+                    header_data = json.dumps({"type" : "emulated", "id" : frame_count})
                     if image_queue.full() is True:
                         image_queue.get()
                     image_queue.put((header_data, image_data))
-                if frame_count%100 == 0:
+                if frame_count % 100 == 0:
                     pass
                     #LOG.info("pushing emualted image to the queue (%d)" % frame_count)
                 frame_count += 1
@@ -111,6 +98,7 @@ class EmulatedMobileDevice(object):
         pass
 
 
+## TODO
 def start_background_services():
     global rest_server
     global upnp_server
@@ -119,7 +107,7 @@ def start_background_services():
     try:
         rest_server.start()
         LOG.info("Start RESTful API Server (port :%s)" % \
-                Const.SERVICE_DISCOVERY_HTTP_PORT)
+                gabriel.Const.SERVICE_DISCOVERY_HTTP_PORT)
     except RESTServerError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start REST API Server")
@@ -144,6 +132,7 @@ def start_background_services():
         service_monitor = None
 
 
+## TODO
 def finish_background_services():
     global rest_server
     global upnp_server
@@ -163,66 +152,66 @@ def finish_background_services():
         service_monitor.join()
 
 
-
 def main():
     settings, args = process_command_line(sys.argv[1:])
 
     start_background_services()
 
-    m_video_server = None
-    m_acc_server = None
-    m_result_server = None
-    ucomm_relay = None
-    a_video_server = None
-    a_acc_server = None
+    ## mobile servers that communicate with the mobile device (start with m_)
     if settings.image_dir:
         m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir), settings.frame_rate)
     else:
-        m_video_server = MobileCommServer(Const.MOBILE_SERVER_VIDEO_PORT, MobileVideoHandler)
-    m_acc_server = MobileCommServer(Const.MOBILE_SERVER_ACC_PORT, MobileAccHandler)
-    m_result_server = MobileCommServer(Const.MOBILE_SERVER_RESULT_PORT, MobileResultHandler)
-    a_video_server = ApplicationServer(Const.APP_SERVER_VIDEO_PORT, VideoSensorHandler)
-    a_acc_server = ApplicationServer(Const.APP_SERVER_ACC_PORT, AccSensorHandler)
-    ucomm_relay = UCommRelay(Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
-    http_server = ThreadedHTTPServer(('0.0.0.0', 8080), MJPEGStreamHandler)
+        m_video_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, gabriel.control.MobileVideoHandler)
+    m_acc_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, gabriel.control.MobileAccHandler)
+    m_result_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_RESULT_PORT, gabriel.control.MobileResultHandler)
+    ucomm_relay = gabriel.control.UCommRelay(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommHandler)
 
-    m_video_server_thread = threading.Thread(target=m_video_server.serve_forever)
-    m_acc_server_thread = threading.Thread(target=m_acc_server.serve_forever)
-    m_result_server_thread = threading.Thread(target=m_result_server.serve_forever)
-    a_video_server_thread = threading.Thread(target=a_video_server.serve_forever)
-    a_acc_server_thread = threading.Thread(target=a_acc_server.serve_forever)
-    ucomm_thread = threading.Thread(target=ucomm_relay.serve_forever)
-    http_server_thread = threading.Thread(target=http_server.serve_forever)
+    ## publish servers that publish sensor streams to offloading engines (start with p_)
+    p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
+    p_acc_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, gabriel.control.AccPublishHandler)
+    http_server = gabriel.control.ThreadedHTTPServer(('0.0.0.0', 8080), gabriel.control.MJPEGStreamHandler) # TODO
+
+    ## create a thread for each server
+    # mobile
+    m_video_server_thread = threading.Thread(target = m_video_server.serve_forever)
+    m_acc_server_thread = threading.Thread(target = m_acc_server.serve_forever)
+    m_result_server_thread = threading.Thread(target = m_result_server.serve_forever)
+    ucomm_thread = threading.Thread(target = ucomm_relay.serve_forever)
+
+    # publish
+    p_video_server_thread = threading.Thread(target = p_video_server.serve_forever)
+    p_acc_server_thread = threading.Thread(target = p_acc_server.serve_forever)
+    http_server_thread = threading.Thread(target = http_server.serve_forever)
+
+    # set daemon
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
     m_result_server_thread.daemon = True
-    a_video_server_thread.daemon = True
-    a_acc_server_thread.daemon = True
     ucomm_thread.daemon = True
+    p_video_server_thread.daemon = True
+    p_acc_server_thread.daemon = True
     http_server_thread.daemon = True
 
-    all_thread_list = [m_video_server_thread, m_acc_server_thread, \
-            m_result_server_thread, a_video_server_thread, a_acc_server_thread, \
-            ucomm_thread, http_server_thread]
+    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_thread, http_server_thread]
 
-    exit_status = 1
+    ## start!
     try:
         m_video_server_thread.start()
         m_acc_server_thread.start()
         m_result_server_thread.start()
-        a_video_server_thread.start()
-        a_acc_server_thread.start()
         ucomm_thread.start()
+        p_video_server_thread.start()
+        p_acc_server_thread.start()
         http_server_thread.start()
 
         while True:
             time.sleep(100)
-    except Exception as e:
-        sys.stderr.write(str(e))
-        exit_status = 1
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
-        exit_status = 0
+        sys.exit(0)
+    except Exception as e:
+        sys.stderr.write(str(e))
+        sys.exit(1)
     finally:
         finish_background_services()
         if m_video_server is not None:
@@ -233,18 +222,17 @@ def main():
             m_result_server.terminate()
         if ucomm_relay is not None:
             ucomm_relay.terminate()
-        if a_video_server is not None:
-            a_video_server.terminate()
-        if a_acc_server is not None:
-            a_acc_server.terminate()
+        if p_video_server is not None:
+            p_video_server.terminate()
+        if p_acc_server is not None:
+            p_acc_server.terminate()
 
     '''
     for each_thread in all_thread_list:
         if each_thread.is_alive() == True:
             import pdb;pdb.set_trace()
     '''
-    return exit_status
+
 
 if __name__ == '__main__':
-    ret = main()
-    sys.exit(ret)
+    main()

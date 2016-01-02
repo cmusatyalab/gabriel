@@ -3,6 +3,7 @@
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,9 +28,16 @@ class ConfigurationError(Exception):
 
 
 def which(program):
+    '''
+    Find the system program with name @program.
+    Similar to the "which" command in bash.
+    Returns the runnable app with correct path.
+    Returns None is program doesn't exist.
+    '''
     def is_exe(fpath):
         return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
     fpath, fname = os.path.split(program)
+    exe_file = None
     if fpath:
         if is_exe(program):
             return program
@@ -43,7 +51,9 @@ def which(program):
 
 
 class Const(object):
-    VERSION = "0.1.1"
+    VERSION = "0.2"
+
+    LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
     ## port number for the server modules
     # communication with mobile
@@ -57,24 +67,33 @@ class Const(object):
     PUBLISH_SERVER_ACC_PORT = 10102
     PUBLISH_SERVER_GPS_PORT = 10103
 
-    # others
-    UCOMM_COMMUNICATE_PORT = 9090
-    OFFLOADING_MONITOR_PORT = 9091
+    # service discovery http server
     SERVICE_DISCOVERY_HTTP_PORT = 8021
 
+    # communication between control and ucomm
+    UCOMM_COMMUNICATE_PORT = 9090
+
+    # TODO: what's this?
+    OFFLOADING_MONITOR_PORT = 9091
+
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+    ## REST server
+    # The REST server is currently implemented using flask.
+    # No 3rd party implementation is used.
+    #REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_REST_server"))
+    #REST_SERVER_BIN = REST_SERVER_BIN if os.path.exists(REST_SERVER_BIN) else which("gabriel_REST_server")
+
+    ## UPnP server & client
     UPnP_SERVER_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_server.jar"))
     UPnP_SERVER_PATH = UPnP_SERVER_PATH if os.path.exists(UPnP_SERVER_PATH) else which("gabriel_upnp_server.jar")
     UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_client.jar"))
     UPnP_CLIENT_PATH = UPnP_CLIENT_PATH if os.path.exists(UPnP_CLIENT_PATH) else which("gabriel_upnp_client.jar")
-    REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_REST_server"))
-    REST_SERVER_BIN = REST_SERVER_BIN if os.path.exists(REST_SERVER_BIN) else which("gabriel_REST_server")
 
-    LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
 
+    # TODO
     MAX_FRAME_SIZE = 1
-    TOKEN_INJECTION_SIZE = 10
     APP_LEVEL_TOKEN_SIZE = 1
+    TOKEN_INJECTION_SIZE = 10
 
 
 class ServiceMeta(object):

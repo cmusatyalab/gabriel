@@ -1,8 +1,9 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +19,13 @@
 #   limitations under the License.
 #
 
-import subprocess
-import threading
 import os
+import subprocess
 import sys
-from gabriel.common.config import Const as Const
+import threading
+
+import gabriel
+LOG = gabriel.logging.getLogger(__name__)
 
 
 class RESTServerError(Exception):
@@ -32,30 +35,32 @@ class RESTServerError(Exception):
 class RESTServer(threading.Thread):
     def __init__(self):
         self.stop = threading.Event()
-        self.REST_bin = Const.REST_SERVER_BIN
         self.proc = None
-        if os.path.exists(self.REST_bin) == False:
+
+        # find the REST server binary
+        file_path = os.path.dirname(os.path.abspath(__file__))
+        self.REST_bin = os.path.abspath(os.path.join(file_path, "RESTServer.py"))
+        if not os.path.exists(self.REST_bin):
             raise RESTServerError("Cannot find binary: %s" % self.REST_bin)
-        threading.Thread.__init__(self, target=self.run_exec)
+
+        threading.Thread.__init__(self, target = self.run_exec)
 
     def run_exec(self):
         cmd = ["python", "%s" % (self.REST_bin)]
         _PIPE = subprocess.PIPE
-        self.proc = subprocess.Popen(cmd, close_fds=True, \
-                stdin=_PIPE, stdout=_PIPE, stderr=_PIPE)
+        self.proc = subprocess.Popen(cmd, close_fds = True,
+                stdin = _PIPE, stdout = _PIPE, stderr = _PIPE)
         try:
-            while(not self.stop.wait(1)):
+            while (not self.stop.wait(1)):
                 self.proc.poll()
-                return_code = self.proc.returncode
-                if return_code != None:
-                    if return_code == 0:
-                        msg = "[INFO] REST API Server is finished\n"
-                        sys.stdout.write(msg)
+                if self.proc.returncode is not None:
+                    if self.proc.returncode == 0:
+                        LOG.info("REST API server has finished")
                         self.proc = None
                         break
-                    if return_code != 0:
-                        msg = "[Error] REST API Server is closed unexpectedly\n"
-                        sys.stderr.write(msg)
+                    if self.proc.returncode != 0:
+                        LOG.error("REST API server closed unexpectedly. Return code is %d" % self.proc.returncode)
+                        self.proc = None
                         break
         except KeyboardInterrupt, e:
             pass
@@ -63,15 +68,14 @@ class RESTServer(threading.Thread):
     def terminate(self):
         self.stop.set()
         try:
-            if self.proc != None:
+            if self.proc is not None:
                 import signal
-                self.proc.send_signal(signal.SIGINT) 
+                self.proc.send_signal(signal.SIGINT)
                 self.proc.wait()
-                if self.proc.returncode == None:
+                if self.proc.returncode is None:
                     self.proc.terminate()
                 elif self.proc.returncode != 0:
-                    msg = "[Error] RESTful Server closed unexpectedly: %d\n" % \
-                            self.proc.returncode
+                    LOG.error("REST API server closed unexpectedly. Return code is %d" % self.proc.returncode)
         except Exception as e:
             pass
 
