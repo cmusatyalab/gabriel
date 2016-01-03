@@ -22,6 +22,7 @@ import multiprocessing
 import socket
 import SocketServer
 import sys
+import threading
 import time
 import traceback
 
@@ -31,6 +32,93 @@ LOG = gabriel.logging.getLogger(__name__)
 
 class NetworkError(Exception):
     pass
+
+
+class CommonHandler(SocketServer.StreamRequestHandler, object):
+    '''
+    A basic handler to be used with TCP server.
+    A real handler can extend this class by implementing interesting stuff in
+        _handle_input_data, which is triggered by input transmission, or
+        _handle_queue_data, which is triggered by putting anything in self.data_queue
+    '''
+    def setup(self):
+        super(CommonHandler, self).setup()
+        self.stop_queue = multiprocessing.Queue()
+
+    def _recv_all(self, recv_size):
+        '''
+        Received data till a specified size.
+        '''
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = self.request.recv(recv_size - len(data))
+            if tmp_data is None:
+                raise NetworkError("Cannot recv data at %s" % str(self))
+            if len(tmp_data) == 0:
+                raise NetworkError("Recv 0 data at %s" % str(self))
+            data += tmp_data
+        return data
+
+    def handle(self):
+        try:
+            ## input list
+            # 1) react whenever there's input data from client
+            # 2) (optional) a data queue may trigger some processing
+            # 3) a stop queue to notify termination
+            socket_fd = self.request.fileno()
+            stop_fd = self.stop_queue._reader.fileno()
+            input_list = [socket_fd, stop_fd]
+            data_queue_fd = -1
+            if hasattr(self, 'data_queue'):
+                data_queue_fd = self.data_queue._reader.fileno()
+                input_list += [data_queue_fd]
+
+            ## except list
+            except_list = [socket_fd, stop_fd]
+
+            is_running = True
+            while is_running:
+                inputready, outputready, exceptready = \
+                        select.select(input_list, [], except_list)
+                for s in inputready:
+                    if s == socket_fd:
+                        self._handle_input_data()
+                    if s == stop_fd:
+                        is_running = False
+                    # For output, check queue first. If we check output socket,
+                    # select may return immediately (in case when nothing is sent out)
+                    if s == data_queue_fd:
+                        self._handle_queue_data()
+                for e in exceptready:
+                    is_running = False
+        except Exception as e:
+            LOG.info(traceback.format_exc())
+            LOG.warning("connection closed: %s\n" % str(e))
+
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+        LOG.info("%s\tterminate thread" % str(self))
+
+    def _handle_input_data(self):
+        """
+        By default, no input is expected.
+        But blocked read will return 0 if the other side closes gracefully
+        """
+        data = self.request.recv(1)
+        if data is None:
+            raise NetworkError("Cannot recv data at %s" % str(self))
+        if len(data) == 0:
+            LOG.info("Client side is closed gracefully at %s" % str(self))
+        else:
+            LOG.error("unexpected network input")
+            self.terminate()
+
+    def _handle_queue_data(self):
+        pass
+
+    def terminate(self):
+        self.stop_queue.put("terminate\n")
 
 
 class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
@@ -70,47 +158,40 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         LOG.info("[TERMINATE] Finish %s" % str(self.handler))
 
 
-class CommonHandler(SocketServer.StreamRequestHandler, object):
-    '''
-    A basic handler to be used with TCP server.
-    A real handler can extend this class by implementing interesting stuff in
-        _handle_input_data, which is triggered by input transimision, or
+class CommonClient(threading.Thread):
+    """
+    A basic TCP client that connects to the server at @server_address.
+    A real client can extend this class by implementing interesting stuff in
+        _handle_input_data, which is triggered by input transmission, or
         _handle_queue_data, which is triggered by putting anything in self.data_queue
-    '''
-    def setup(self):
-        super(CommonHandler, self).setup()
+    """
+    def __init__(self, server_address):
+        self.server_address = server_address
+        # set up socket connection to the server
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock.connect(server_address)
+
         self.stop_queue = multiprocessing.Queue()
+        threading.Thread.__init__(self, target = self.run)
 
-    def _recv_all(self, recv_size):
-        '''
-        Received data till a specified size.
-        '''
-        data = ''
-        while len(data) < recv_size:
-            tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data is None:
-                raise NetworkError("Cannot recv data at %s" % str(self))
-            if len(tmp_data) == 0:
-                raise NetworkError("Recv 0 data at %s" % str(self))
-            data += tmp_data
-        return data
-
-    def handle(self):
+    def run(self):
         try:
             ## input list
             # 1) react whenever there's input data from client
             # 2) (optional) a data queue may trigger some processing
             # 3) a stop queue to notify termination
-            socket_fd = self.request.fileno()
-            stopfd = self.stop_queue._reader.fileno()
-            input_list = [socket_fd, stopfd]
+            socket_fd = self.sock.fileno()
+            stop_fd = self.stop_queue._reader.fileno()
+            input_list = [socket_fd, stop_fd]
             data_queue_fd = -1
             if hasattr(self, 'data_queue'):
                 data_queue_fd = self.data_queue._reader.fileno()
                 input_list += [data_queue_fd]
 
             ## except list
-            except_list = [socket_fd, stopfd]
+            except_list = [socket_fd, stop_fd]
 
             is_running = True
             while is_running:
@@ -119,7 +200,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
-                    if s == stopfd:
+                    if s == stop_fd:
                         is_running = False
                     # For output, check queue first. If we check output socket,
                     # select may return immediately (in case when nothing is sent out)
@@ -129,11 +210,11 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
                     is_running = False
         except Exception as e:
             LOG.info(traceback.format_exc())
-            LOG.warning("connection closed: %s\n" % str(e))
+            LOG.warning("connection to (%s) closed: %s\n" % (self.server_address, str(e)))
 
-        if self.connection is not None:
-            self.connection.close()
-            self.connection = None
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
         LOG.info("%s\tterminate thread" % str(self))
 
     def _handle_input_data(self):
@@ -141,11 +222,14 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         By default, no input is expected.
         But blocked read will return 0 if the other side closes gracefully
         """
-        ret_data = self.request.recv(1)
-        if ret_data is None:
+        data = self.sock.recv(1)
+        if data is None:
             raise NetworkError("Cannot recv data at %s" % str(self))
-        if len(ret_data) == 0:
-            LOG.info("Client side is closed gracefully at %s" % str(self))
+        if len(data) == 0:
+            LOG.info("Server side is closed gracefully at %s" % str(self))
+        else:
+            LOG.error("unexpected network input")
+            self.terminate()
 
     def _handle_queue_data(self):
         pass

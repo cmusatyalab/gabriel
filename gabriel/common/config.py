@@ -73,6 +73,9 @@ class Const(object):
     # communication between control and ucomm
     UCOMM_COMMUNICATE_PORT = 9090
 
+    # communication between ucomm and engines
+    UCOMM_SERVER_PORT = 10120
+
     # TODO: what's this?
     OFFLOADING_MONITOR_PORT = 9091
 
@@ -89,11 +92,13 @@ class Const(object):
     UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_client.jar"))
     UPnP_CLIENT_PATH = UPnP_CLIENT_PATH if os.path.exists(UPnP_CLIENT_PATH) else which("gabriel_upnp_client.jar")
 
-
-    # TODO
+    ## TODO
     MAX_FRAME_SIZE = 1
     APP_LEVEL_TOKEN_SIZE = 1
     TOKEN_INJECTION_SIZE = 10
+
+    ## min allowed time between two identical messages
+    DUPLICATE_MIN_INTERVAL = 5
 
 
 class ServiceMeta(object):
