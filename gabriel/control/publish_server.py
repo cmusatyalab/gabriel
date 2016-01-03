@@ -43,7 +43,6 @@ class EngineServerError(Exception):
 class SensorPublishHandler(gabriel.network.CommonHandler):
     def setup(self):
         super(PublishHandler, self).setup()
-        self.stop_queue = multiprocessing.Queue()
 
 
 class VideoPublishHandler(SensorPublishHandler):

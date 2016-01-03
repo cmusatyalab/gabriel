@@ -3,7 +3,7 @@ from .mobile_server import MobileCommServer, MobileVideoHandler, MobileAccHandle
 
 from .publish_server import SensorPublishServer, VideoPublishHandler, AccPublishHandler, OffloadingEngineMonitor
 
-from .ucomm_relay_server import UCommRelayServer, UCommHandler
+from .ucomm_relay_server import UCommRelayServer, UCommRelayHandler
 
 from .http_streaming_server import MJPEGStreamHandler, ThreadedHTTPServer
 

@@ -208,10 +208,9 @@ class MobileResultHandler(MobileSensorHandler):
                 control_recv_from_mobile_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME)
                 app_recv_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME, -1)
                 app_sent_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME, -1)
+                symbolic_done_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
                 ucomm_recv_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME, -1)
                 ucomm_sent_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME, -1)
-
-                symbolic_done_time = result_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
 
                 # no need to send the time info back to the client
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME]
@@ -219,10 +218,7 @@ class MobileResultHandler(MobileSensorHandler):
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME]
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
-                try:
-                    del header[Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
-                except KeyError:
-                    pass
+                del header[Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
 
                 if self.time_breakdown_log is not None:
                     self.time_breakdown_log.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %

@@ -39,19 +39,19 @@ class UCommError(Exception):
     pass
 
 
-class UCommHandler(gabriel.network.CommonHandler):
+class UCommRelayHandler(gabriel.network.CommonHandler):
     '''
     The server that is connected with ucomm module.
     It receives return messages and put them into @result_queue,
     which are then picked up by mobile result handler (in mobile_server.py) to be sent to the mobile device
     '''
     def setup(self):
-        super(UCommHandler, self).setup()
+        super(UCommRelayHandler, self).setup()
         self.info = OffloadingEngineInfo(self.request.fileno())
 
     def handle(self):
         LOG.info("User communication module is connected")
-        super(UCommHandler, self).handle()
+        super(UCommRelayHandler, self).handle()
 
     def _handle_input_data(self):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
@@ -73,7 +73,7 @@ class UCommRelayServer(gabriel.network.CommonServer):
 
 
 def main():
-    ucomm_relay_server = UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, UCommHandler)
+    ucomm_relay_server = UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, UCommRelayHandler)
     ucomm_relay_thread = threading.Thread(target = ucomm_relay_server.serve_forever)
     ucomm_relay_thread.daemon = True
 

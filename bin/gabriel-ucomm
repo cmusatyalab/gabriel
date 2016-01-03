@@ -24,10 +24,6 @@ if os.path.isdir("../gabriel") == True:
     sys.path.insert(0, "..")
 
 # from control VM
-from gabriel.common.protocol import Protocol_client
-from gabriel.common.protocol import Protocol_measurement
-from gabriel.common.config import ServiceMeta as SERVICE_META
-from gabriel.common.config import DEBUG
 from gabriel.common.upnp_client import UPnPClient
 
 import httplib
@@ -46,25 +42,12 @@ from urlparse import urlparse
 from optparse import OptionParser
 
 
+import gabriel
+import gabriel.ucomm
+LOG = gabriel.logging.getLogger()
 
-class tempLOG(object):
-    def info(self, data):
-        sys.stdout.write("INFO\t" + data + "\n")
-    def warning(self, data):
-        sys.stdout.write("warning\t" + data + "\n")
-    def debug(self, data):
-        sys.stdout.write("DEBUG\t" + data + "\n")
-    def error(self, data):
-        sys.stderr.write("ERROR\t" + data + "\n")
-
-
-LOG = tempLOG()
 upnp_client = UPnPClient()
 output_queue = Queue.Queue()
-
-
-class UCommConst(object):
-    RESULT_RECEIVE_PORT     =   10120
 
 
 class UCommError(Exception):
@@ -72,8 +55,8 @@ class UCommError(Exception):
 
 
 def process_command_line(argv):
-    VERSION = 'gabriel discovery'
-    DESCRIPTION = "Gabriel service discovery"
+    VERSION = 'gabriel ucomm server : %s' % gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel cognitive assistance"
 
     parser = OptionParser(usage='%prog [option]', version=VERSION,
             description=DESCRIPTION)
@@ -148,212 +131,6 @@ def register_ucomm(argv):
     LOG.info("Gabriel Server :")
     LOG.info(pstr)
     return service_list
-
-
-class ResultForwardingClient(threading.Thread):
-    """
-    This client will forward offloading engine's processed
-    result to the control VM.
-    """
-
-    def __init__(self, control_address, output_queue):
-        self.output_queue = output_queue
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.sock.connect(control_address)
-
-        self.previous_sent_time_dict = dict()
-        self.previous_sent_dict = dict()
-        self.stop_queue = multiprocessing.Queue()
-        threading.Thread.__init__(self, target=self.forward)
-
-    def forward(self):
-        try:
-            LOG.info("Start forwarding data")
-            socket_fd = self.sock.fileno()
-            stopfd = self.stop_queue._reader.fileno()
-            input_list = [stopfd]
-            output_list = [socket_fd, stopfd]
-            except_list = [socket_fd, stopfd]
-            is_running = True
-            while is_running:
-                inputready, outputready, exceptready = \
-                        select.select(input_list, output_list, except_list)
-                for s in inputready:
-                    if s == stopfd:
-                        is_running = False
-                for s in outputready:
-                    if s == socket_fd:
-                        self._handle_result_output()
-                    if s == stopfd:
-                        is_running = False
-                for s in exceptready:
-                    is_running = False
-        except Exception as e:
-            LOG.warning("%s" % str(e))
-            LOG.debug("Result Forwading thread terminated")
-        LOG.info("%s\tterminate thread" % str(self))
-        if self.sock is not None:
-            self.sock.close()
-            self.sock = None
-        if self.stop_queue is not None:
-            self.stop_queue.close()
-            self.stop_queue = None
-
-    def terminate(self):
-        LOG.info("request terminate result forward")
-        self.stop_queue.put("terminate\n")
-
-    @staticmethod
-    def _post_header_process(header_message):
-        header_json = json.loads(header_message)
-        frame_id = header_json.get(Protocol_client.FRAME_MESSAGE_KEY, None)
-        if frame_id is not None:
-            header_json[Protocol_client.RESULT_ID_MESSAGE_KEY] = frame_id
-            del header_json[Protocol_client.FRAME_MESSAGE_KEY]
-        return json.dumps(frame_id)
-
-    def _handle_result_output(self):
-        try:
-            return_data = self.output_queue.get(timeout=0.0001)
-
-            return_json = json.loads(return_data)
-            result_str = return_json.get(Protocol_client.RESULT_MESSAGE_KEY, None)
-            engine_name = return_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
-
-            if result_str is None or len(result_str.strip()) == 0 or result_str == 'nothing':
-                result_json = {'status': 'nothing'}
-            else:
-                result_json = json.loads(result_str)
-            status = result_json.get('status')
-
-            if status == "success":
-                prev_sent_data = self.previous_sent_dict.get(engine_name, None)
-                if prev_sent_data is not None and prev_sent_data.lower() == result_str.lower():
-                    prev_sent_time = self.previous_sent_time_dict.get(engine_name, 0)
-                    time_diff = time.time() - prev_sent_time
-                    if time_diff < 5: # ignore the result if same output is sent within some time
-                        result_json['status'] = "duplicate"
-                        LOG.info("Identical result (%s) is ignored" % result_str)
-
-            result_str = json.dumps(result_json)
-            return_json[Protocol_client.RESULT_MESSAGE_KEY] = result_str
-
-            if DEBUG.PACKET:
-                return_json[Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
-
-            output = json.dumps(return_json)
-            packet = struct.pack("!I%ds" % len(output),
-                    len(output), output)
-            self.sock.sendall(packet)
-            self.previous_sent_time_dict[engine_name] = time.time()
-            self.previous_sent_dict[engine_name] = result_str
-            LOG.info("forward the result: %s" % output)
-        except Queue.Empty as e:
-            pass
-
-
-class UCommServerHandler(SocketServer.StreamRequestHandler, object):
-    def setup(self):
-        super(UCommServerHandler, self).setup()
-        self.stop_queue = multiprocessing.Queue()
-
-    def _recv_all(self, recv_size):
-        data = ''
-        while len(data) < recv_size:
-            tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data == None or len(tmp_data) == 0:
-                raise UCommError("Socket is closed")
-            data += tmp_data
-        return data
-
-    def handle(self):
-        try:
-            LOG.info("new Offlaoding Engine is connected")
-            stopfd = self.stop_queue._reader.fileno()
-            socket_fd = self.request.fileno()
-            input_list = [socket_fd, stopfd]
-            except_list = [socket_fd, stopfd]
-            is_running = True
-            while is_running:
-                inputready, outputready, exceptready = \
-                        select.select(input_list, [], except_list)
-                for insocket in inputready:
-                    if insocket == socket_fd:
-                        self._handle_input_stream()
-                    if insocket == stopfd:
-                        is_running = False;
-                for s in exceptready:
-                    is_running = False
-                    break
-        except Exception as e:
-            #LOG.debug(traceback.format_exc())
-            LOG.debug("%s" % str(e))
-            LOG.info("Offloading engine is disconnected")
-        LOG.info("%s\tterminate thread" % str(self))
-        if self.connection is not None:
-            self.connection.close()
-            self.connection = None
-        if self.stop_queue is not None:
-            self.stop_queue.close()
-            self.stop_queue = None
-
-    def terminate(self):
-        LOG.info("request UCOMM server handler")
-        self.stop_queue.put("terminate\n")
-
-    def _handle_input_stream(self):
-        global output_queue
-        header_size = struct.unpack("!I", self._recv_all(4))[0]
-        header_data = self._recv_all(header_size)
-        header_json = json.loads(header_data)
-        offload_name = header_json.get(Protocol_client.OFFLOADING_ENGINE_NAME_KEY, None)
-        if offload_name is None:
-            header_json[Protocol_client.OFFLOADING_ENGINE_NAME_KEY] = \
-                    str(self.request.fileno())
-        if DEBUG.PACKET:
-            header_json[Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
-        output_queue.put(json.dumps(header_json))
-
-
-class UCommServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
-    stopped = False
-
-    def __init__(self, port, handler):
-        server_address = ('0.0.0.0', port)
-        self.allow_reuse_address = True
-        self.handler = handler
-        try:
-            SocketServer.TCPServer.__init__(self, server_address, handler)
-        except socket.error as e:
-            sys.stderr.write(str(e))
-            sys.stderr.write("Check IP/Port : %s\n" % (str(server_address)))
-            sys.exit(1)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        LOG.info("* UCOMM server configuration")
-        LOG.info(" - Open TCP Server at %s" % (str(server_address)))
-        LOG.info(" - Disable nagle (No TCP delay)  : %s" %
-                str(self.socket.getsockopt(
-                    socket.IPPROTO_TCP,
-                    socket.TCP_NODELAY)))
-        LOG.info("-" * 50)
-
-    def serve_forever(self):
-        while not self.stopped:
-            self.handle_request()
-
-    def handle_error(self, request, client_address):
-        pass
-
-    def terminate(self):
-        self.server_close()
-        self.stopped = True
-
-        if self.socket is not None:
-            self.socket.close()
-        LOG.info("[TERMINATE] Finish ucomm server")
 
 
 def main():

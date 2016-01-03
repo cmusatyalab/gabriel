@@ -31,9 +31,7 @@ from flask.ext.restful import abort
 
 try:
     import gabriel
-    print "aaa"
 except ImportError as e:
-    print "bbb"
     sys.path.insert(0, "..")
     import gabriel
 

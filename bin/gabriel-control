@@ -35,14 +35,14 @@ import gabriel
 import gabriel.control
 LOG = gabriel.logging.getLogger(__name__)
 
-rest_server = gabriel.control.RESTServer()
-upnp_server = gabriel.control.UPnPServer()
+REST_server = gabriel.control.RESTServer()
+UPnP_server = gabriel.control.UPnPServer()
 service_monitor = gabriel.control.OffloadingEngineMonitor(gabriel.control.image_queue_list,
         gabriel.control.acc_queue_list, gabriel.control.gps_queue_list, gabriel.control.result_queue)
 
 
 def process_command_line(argv):
-    VERSION = 'gabriel server : %s' % gabriel.Const.VERSION
+    VERSION = 'gabriel control server : %s' % gabriel.Const.VERSION
     DESCRIPTION = "Gabriel cognitive assistance"
 
     parser = OptionParser(usage = '%prog [option]', version = VERSION,
@@ -100,27 +100,27 @@ class EmulatedMobileDevice(object):
 
 ## TODO
 def start_background_services():
-    global rest_server
-    global upnp_server
+    global REST_server
+    global UPnP_server
     global service_monitor
     # start REST server for meta info
     try:
-        rest_server.start()
+        REST_server.start()
         LOG.info("Start RESTful API Server (port :%s)" % \
                 gabriel.Const.SERVICE_DISCOVERY_HTTP_PORT)
     except gabriel.RESTServerError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start REST API Server")
-        rest_server = None
+        REST_server = None
 
     # Start UPnP Server
     try:
-        upnp_server.start()
+        UPnP_server.start()
         LOG.info("Start UPnP Server")
     except gabriel.UPnPError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start UPnP Server")
-        upnp_server = None
+        UPnP_server = None
 
     # Start Offloading Engine monitor
     try:
@@ -134,18 +134,18 @@ def start_background_services():
 
 ## TODO
 def finish_background_services():
-    global rest_server
-    global upnp_server
+    global REST_server
+    global UPnP_server
     global service_monitor
 
-    if upnp_server is not None:
+    if UPnP_server is not None:
         LOG.info("[TERMINATE] Terminate UPnP Server")
-        upnp_server.terminate()
-        upnp_server.join()
-    if rest_server is not None:
+        UPnP_server.terminate()
+        UPnP_server.join()
+    if REST_server is not None:
         LOG.info("[TERMINATE] Terminate REST API monitor")
-        rest_server.terminate()
-        rest_server.join()
+        REST_server.terminate()
+        REST_server.join()
     if service_monitor is not None:
         LOG.info("[TERMINATE] Terminate Monitoring service")
         service_monitor.terminate()
@@ -164,7 +164,7 @@ def main():
         m_video_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, gabriel.control.MobileVideoHandler)
     m_acc_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, gabriel.control.MobileAccHandler)
     m_result_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_RESULT_PORT, gabriel.control.MobileResultHandler)
-    ucomm_relay_server = gabriel.control.UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommHandler)
+    ucomm_relay_server = gabriel.control.UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommRelayHandler)
 
     ## publish servers that publish sensor streams to offloading engines (start with p_)
     p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
