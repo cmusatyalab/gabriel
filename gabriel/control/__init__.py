@@ -3,10 +3,10 @@ from .mobile_server import MobileCommServer, MobileVideoHandler, MobileAccHandle
 
 from .publish_server import SensorPublishServer, VideoPublishHandler, AccPublishHandler, OffloadingEngineMonitor
 
-from .ucomm_relay import UCommRelay, UCommHandler
+from .ucomm_relay_server import UCommRelayServer, UCommHandler
 
 from .http_streaming_server import MJPEGStreamHandler, ThreadedHTTPServer
 
-from .RESTServer_binder import RESTServer, RESTServerError
+from .REST_server_binder import RESTServer, RESTServerError
 
-from .upnp_server import UPnPServer, UPnPError
+from .UPnP_server_binder import UPnPServer, UPnPServerError

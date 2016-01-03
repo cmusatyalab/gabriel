@@ -47,7 +47,6 @@ class MobileCommError(Exception):
 class MobileSensorHandler(gabriel.network.CommonHandler):
     def setup(self):
         super(MobileSensorHandler, self).setup()
-        self.stop_queue = multiprocessing.Queue()
         if gabriel.Debug.LOG_STAT:
             self.init_connect_time = None
             self.previous_time = None

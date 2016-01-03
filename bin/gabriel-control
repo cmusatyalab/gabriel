@@ -108,7 +108,7 @@ def start_background_services():
         rest_server.start()
         LOG.info("Start RESTful API Server (port :%s)" % \
                 gabriel.Const.SERVICE_DISCOVERY_HTTP_PORT)
-    except RESTServerError as e:
+    except gabriel.RESTServerError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start REST API Server")
         rest_server = None
@@ -117,7 +117,7 @@ def start_background_services():
     try:
         upnp_server.start()
         LOG.info("Start UPnP Server")
-    except UPnPError as e:
+    except gabriel.UPnPError as e:
         LOG.warning(str(e))
         LOG.warning("Cannot start UPnP Server")
         upnp_server = None
@@ -164,7 +164,7 @@ def main():
         m_video_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, gabriel.control.MobileVideoHandler)
     m_acc_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, gabriel.control.MobileAccHandler)
     m_result_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_RESULT_PORT, gabriel.control.MobileResultHandler)
-    ucomm_relay = gabriel.control.UCommRelay(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommHandler)
+    ucomm_relay_server = gabriel.control.UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommHandler)
 
     ## publish servers that publish sensor streams to offloading engines (start with p_)
     p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
@@ -176,7 +176,7 @@ def main():
     m_video_server_thread = threading.Thread(target = m_video_server.serve_forever)
     m_acc_server_thread = threading.Thread(target = m_acc_server.serve_forever)
     m_result_server_thread = threading.Thread(target = m_result_server.serve_forever)
-    ucomm_thread = threading.Thread(target = ucomm_relay.serve_forever)
+    ucomm_relay_thread = threading.Thread(target = ucomm_relay_server.serve_forever)
 
     # publish
     p_video_server_thread = threading.Thread(target = p_video_server.serve_forever)
@@ -187,19 +187,19 @@ def main():
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
     m_result_server_thread.daemon = True
-    ucomm_thread.daemon = True
+    ucomm_relay_thread.daemon = True
     p_video_server_thread.daemon = True
     p_acc_server_thread.daemon = True
     http_server_thread.daemon = True
 
-    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_thread, http_server_thread]
+    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_relay_thread, http_server_thread]
 
     ## start!
     try:
         m_video_server_thread.start()
         m_acc_server_thread.start()
         m_result_server_thread.start()
-        ucomm_thread.start()
+        ucomm_relay_thread.start()
         p_video_server_thread.start()
         p_acc_server_thread.start()
         http_server_thread.start()
@@ -220,8 +220,8 @@ def main():
             m_acc_server.terminate()
         if m_result_server is not None:
             m_result_server.terminate()
-        if ucomm_relay is not None:
-            ucomm_relay.terminate()
+        if ucomm_relay_server is not None:
+            ucomm_relay_server.terminate()
         if p_video_server is not None:
             p_video_server.terminate()
         if p_acc_server is not None:
