@@ -39,9 +39,9 @@ class RESTServer(threading.Thread):
 
         # find the REST server binary
         file_path = os.path.dirname(os.path.abspath(__file__))
-        self.REST_bin = os.path.abspath(os.path.join(file_path, "RESTServer.py"))
+        self.REST_bin = os.path.abspath(os.path.join(file_path, "REST_server.py"))
         if not os.path.exists(self.REST_bin):
-            raise RESTServerError("Cannot find binary: %s" % self.REST_bin)
+            raise RESTServerError("Cannot find REST server binary: %s" % self.REST_bin)
 
         threading.Thread.__init__(self, target = self.run_exec)
 
@@ -71,7 +71,7 @@ class RESTServer(threading.Thread):
             if self.proc is not None:
                 import signal
                 self.proc.send_signal(signal.SIGINT)
-                self.proc.wait()
+                self.proc.poll()
                 if self.proc.returncode is None:
                     self.proc.terminate()
                 elif self.proc.returncode != 0:
@@ -82,8 +82,8 @@ class RESTServer(threading.Thread):
 
 if __name__ == '__main__':
     try:
-        rest_server = RESTServer()
-        rest_server.start()
+        REST_server = RESTServer()
+        REST_server.start()
     except RESTServerError as e:
         print str(e)
-        rest_server = None
+        REST_server = None

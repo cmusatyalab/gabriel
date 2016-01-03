@@ -29,7 +29,13 @@ from flask.ext.restful import reqparse
 from flask.ext.restful import Resource
 from flask.ext.restful import abort
 
-import gabriel
+try:
+    import gabriel
+    print "aaa"
+except ImportError as e:
+    print "bbb"
+    sys.path.insert(0, "..")
+    import gabriel
 
 
 KEY_SERVICE_NAME    = "service_name"
