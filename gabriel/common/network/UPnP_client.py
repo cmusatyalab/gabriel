@@ -18,11 +18,11 @@
 #   limitations under the License.
 #
 
-import subprocess
-import threading
-import os
-import sys
 import json
+import os
+import subprocess
+import sys
+import threading
 import urllib2
 
 import gabriel
@@ -34,24 +34,27 @@ class UPnPClientError(Exception):
 
 
 class UPnPClient(threading.Thread):
-
+    '''
+    The UPnP client searches for a UPnP server and
+    receives the registry address (@self.http_ip + @self.http_port)
+    '''
     def __init__(self):
         self.stop = threading.Event()
-        self.upnp_bin = gabriel.Const.UPnP_CLIENT_PATH
+        self.UPnP_bin = gabriel.Const.UPnP_CLIENT_PATH
         self.proc = None
-        self.http_ip_addr = None
-        self.http_port_number = None
+        self.http_ip = None
+        self.http_port = None
         self.service_list = None
 
-        if os.path.exists(self.upnp_bin) == False:
-            raise UPnPClientError("Cannot find binary: %s" % self.upnp_bin)
-        threading.Thread.__init__(self, target=self.run_exec)
+        if os.path.exists(self.UPnP_bin) == False:
+            raise UPnPClientError("Cannot find binary: %s" % self.UPnP_bin)
+        threading.Thread.__init__(self, target = self.run_exec)
 
     def run_exec(self):
-        cmd = ["java", "-jar", "%s" % (self.upnp_bin)]
+        cmd = ["java", "-jar", "%s" % (self.UPnP_bin)]
         LOG.info("execute : %s" % ' '.join(cmd))
         _PIPE = subprocess.PIPE
-        self.proc = subprocess.Popen(cmd, stdout=_PIPE, stderr=_PIPE)
+        self.proc = subprocess.Popen(cmd, stdout = _PIPE, stderr = _PIPE)
 
         while(not self.stop.wait(0.01)):
             self.proc.poll()
@@ -68,21 +71,14 @@ class UPnPClient(threading.Thread):
                     key = key.strip()
                     value = value.strip()
                     if key.lower() == "ipaddress":
-                        self.http_ip_addr = str(value)
+                        self.http_ip = str(value)
                     if key.lower() == "port":
-                        self.http_port_number = int(value)
+                        self.http_port = int(value)
                 break
             else:
                 LOG.warning("Cannot locate Gabriel Service")
                 break
         self.proc = None
-
-        # connect detail service info
-        if self.http_ip_addr is not None and self.http_port_number is not None:
-            meta_stream = urllib2.urlopen("http://%s:%d/" % \
-                    (self.http_ip_addr, self.http_port_number))
-            meta_raw = meta_stream.read()
-            self.service_list = json.loads(meta_raw)
 
     def terminate(self):
         self.stop.set()
@@ -90,24 +86,22 @@ class UPnPClient(threading.Thread):
             import signal
             self.proc.send_signal(signal.SIGINT)
             return_code = self.proc.poll()
-            if return_code != None and return_code != 0:
-                msg = "UPnP client is closed unexpectedly: %d\n" % \
-                        return_code
+            if return_code is not None and return_code != 0:
+                msg = "UPnP client is closed unexpectedly: %d\n" % return_code
                 LOG.warning(msg)
 
 
 if __name__ == "__main__":
     try:
-        upnp_client_thread = UPnPClient()
-        upnp_client_thread.start()
-        upnp_client_thread.join()
+        UPnP_client = UPnPClient()
+        UPnP_client.start()
+        UPnP_client.join()
         LOG.info("Gabriel HTTP Meta Server is at %s:%d" % \
-                (upnp_client_thread.http_ip_addr, upnp_client_thread.http_port_number))
-        LOG.info("Gabriel service list :\n%s" % (upnp_client_thread.service_list))
+                (UPnP_client.http_ip, UPnP_client.http_port))
 
         #import time
         #time.sleep(20)
-        #upnp_client_thread.terminate()
+        #UPnP_client.terminate()
         #LOG.warning("Cannot find server")
     except UPnPClientError as e:
         LOG.error(str(e))
