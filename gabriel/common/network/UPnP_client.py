@@ -24,10 +24,9 @@ import os
 import sys
 import json
 import urllib2
-from config import Const as Const
-import log as logging
 
-LOG = logging.getLogger(__name__)
+import gabriel
+LOG = gabriel.logging.getLogger(__name__)
 
 
 class UPnPClientError(Exception):
@@ -38,7 +37,7 @@ class UPnPClient(threading.Thread):
 
     def __init__(self):
         self.stop = threading.Event()
-        self.upnp_bin = Const.UPnP_CLIENT_PATH
+        self.upnp_bin = gabriel.Const.UPnP_CLIENT_PATH
         self.proc = None
         self.http_ip_addr = None
         self.http_port_number = None
@@ -89,7 +88,7 @@ class UPnPClient(threading.Thread):
         self.stop.set()
         if self.proc != None:
             import signal
-            self.proc.send_signal(signal.SIGINT) 
+            self.proc.send_signal(signal.SIGINT)
             return_code = self.proc.poll()
             if return_code != None and return_code != 0:
                 msg = "UPnP client is closed unexpectedly: %d\n" % \

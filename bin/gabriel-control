@@ -35,8 +35,8 @@ import gabriel
 import gabriel.control
 LOG = gabriel.logging.getLogger(__name__)
 
-REST_server = gabriel.control.RESTServer()
-UPnP_server = gabriel.control.UPnPServer()
+REST_server = gabriel.network.RESTServer()
+UPnP_server = gabriel.network.UPnPServer()
 service_monitor = gabriel.control.OffloadingEngineMonitor(gabriel.control.image_queue_list,
         gabriel.control.acc_queue_list, gabriel.control.gps_queue_list, gabriel.control.result_queue)
 

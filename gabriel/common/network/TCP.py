@@ -30,7 +30,7 @@ import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
 
-class NetworkError(Exception):
+class TCPNetworkError(Exception):
     pass
 
 
@@ -53,9 +53,9 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data is None:
-                raise NetworkError("Cannot recv data at %s" % str(self))
+                raise TCPNetworkError("Cannot recv data at %s" % str(self))
             if len(tmp_data) == 0:
-                raise NetworkError("Recv 0 data at %s" % str(self))
+                raise TCPNetworkError("Recv 0 data at %s" % str(self))
             data += tmp_data
         return data
 
@@ -107,7 +107,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         """
         data = self.request.recv(1)
         if data is None:
-            raise NetworkError("Cannot recv data at %s" % str(self))
+            raise TCPNetworkError("Cannot recv data at %s" % str(self))
         if len(data) == 0:
             LOG.info("Client side is closed gracefully at %s" % str(self))
         else:
@@ -136,7 +136,7 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
             SocketServer.TCPServer.__init__(self, self.server_address, handler)
         except socket.error as e:
             LOG.error("socket error: %s" % str(e))
-            raise NetworkError("Check IP/Port : %s\n" % (str(self.server_address)))
+            raise TCPNetworkError("Check IP/Port : %s\n" % (str(self.server_address)))
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
@@ -224,7 +224,7 @@ class CommonClient(threading.Thread):
         """
         data = self.sock.recv(1)
         if data is None:
-            raise NetworkError("Cannot recv data at %s" % str(self))
+            raise TCPNetworkError("Cannot recv data at %s" % str(self))
         if len(data) == 0:
             LOG.info("Server side is closed gracefully at %s" % str(self))
         else:
