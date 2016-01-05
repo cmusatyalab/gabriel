@@ -19,6 +19,7 @@
 #
 
 import multiprocessing
+import select
 import socket
 import SocketServer
 import sys
@@ -33,6 +34,8 @@ LOG = gabriel.logging.getLogger(__name__)
 class TCPNetworkError(Exception):
     pass
 
+class TCPZeroBytesError(Exception):
+    pass
 
 class CommonHandler(SocketServer.StreamRequestHandler, object):
     '''
@@ -55,7 +58,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
             if tmp_data is None:
                 raise TCPNetworkError("Cannot recv data at %s" % str(self))
             if len(tmp_data) == 0:
-                raise TCPNetworkError("Recv 0 data at %s" % str(self))
+                raise TCPZeroBytesError("Recv 0 data at %s. The client has disconnected." % str(self))
             data += tmp_data
         return data
 
@@ -91,9 +94,11 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
                         self._handle_queue_data()
                 for e in exceptready:
                     is_running = False
+        except TCPZeroBytesError as e:
+            LOG.info("Connection closed (%s)" % str(self))
         except Exception as e:
-            LOG.info(traceback.format_exc())
-            LOG.warning("connection closed: %s\n" % str(e))
+            LOG.warning("connection closed not gracefully (%s): %s\n" % (str(self), str(e)))
+            LOG.warning(traceback.format_exc())
 
         if self.connection is not None:
             self.connection.close()
@@ -146,7 +151,7 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
     def handle_error(self, request, client_address):
         #SocketServer.TCPServer.handle_error(self, request, client_address)
-        LOG.warning("handling error from client")
+        LOG.warning("Exception raised in handling request!")
 
     def terminate(self):
         self.server_close()
@@ -209,13 +214,13 @@ class CommonClient(threading.Thread):
                 for e in exceptready:
                     is_running = False
         except Exception as e:
-            LOG.info(traceback.format_exc())
             LOG.warning("connection to (%s) closed: %s\n" % (self.server_address, str(e)))
+            LOG.warning(traceback.format_exc())
 
         if self.sock is not None:
             self.sock.close()
             self.sock = None
-        LOG.info("%s\tterminate thread" % str(self))
+        LOG.info("[TERMINATE] Finish %s" % str(self))
 
     def _handle_input_data(self):
         """

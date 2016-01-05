@@ -41,17 +41,21 @@ def get_ip(iface = 'eth0'):
     return socket.inet_ntoa(ip)
 
 
-def get_service_list(address = None):
-    UPnP_client = gabriel.network.UPnPClient()
-    service_list = None
-    if settings.address is None:
+def get_registry_server_address(address = None):
+    # get ip and port for registry server
+    if address is None:
+        UPnP_client = gabriel.network.UPnPClient()
         UPnP_client.start()
         UPnP_client.join()
-        service_list = UPnP_client.service_list
+        ip_addr = UPnP_client.http_ip
+        port = UPnP_client.http_port
     else:
         ip_addr, port = address.split(":", 1)
         port = int(port)
-        meta_stream = urllib2.urlopen("http://%s:%d/" % (ip_addr, port))
-        meta_raw = meta_stream.read()
-        service_list = json.loads(meta_raw)
+    return (ip_addr, port)
+
+
+def get_service_list(ip_addr, port):
+    url = "http://%s:%d/" % (ip_addr, port)
+    service_list = gabriel.network.http_get(url)
     return service_list

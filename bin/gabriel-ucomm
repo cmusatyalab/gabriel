@@ -18,36 +18,21 @@
 #   limitations under the License.
 #
 
+import json
+from optparse import OptionParser
+import pprint
+import Queue
 import os
+import socket
 import sys
+import threading
+import time
+
 if os.path.isdir("../gabriel") == True:
     sys.path.insert(0, "..")
-
-# from control VM
-from gabriel.common.upnp_client import UPnPClient
-
-import httplib
-import urllib2
-import time
-import SocketServer
-import socket
-import select
-import struct
-import json
-import Queue
-import threading
-import pprint
-import multiprocessing
-from urlparse import urlparse
-from optparse import OptionParser
-
-
 import gabriel
 import gabriel.ucomm
 LOG = gabriel.logging.getLogger()
-
-upnp_client = UPnPClient()
-output_queue = Queue.Queue()
 
 
 class UCommError(Exception):
@@ -74,116 +59,67 @@ def process_command_line(argv):
     return settings, args
 
 
-def get_ip(iface = 'eth0'):
-    import fcntl
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sockfd = sock.fileno()
-    SIOCGIFADDR = 0x8915
-
-    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
-    try:
-        res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
-    except:
-        return None
-    ip = struct.unpack('16sH2x4s8x', res)[2]
-    return socket.inet_ntoa(ip)
-
-
-def put(url, json_string):
-    end_point = urlparse("%s" % url)
-    params = json.dumps(json_string)
-    headers = {"Content-type": "application/json"}
-
-    conn = httplib.HTTPConnection(end_point[1])
-    conn.request("PUT", "%s" % end_point[2], params, headers)
-    response = conn.getresponse()
-    data = response.read()
-    dd = json.loads(data)
-    if dd.get("return", None) != "success":
-        msg = "Cannot register UCOMM server\n%s", str(dd)
-        raise UCommError(msg)
-    print dd
-    conn.close()
-
-
-def register_ucomm(argv):
-    settings, args = process_command_line(sys.argv[1:])
-    service_list = None
-    directory_url = None
-    if settings.address is None:
-        upnp_client.start()
-        upnp_client.join()
-        directory_url = "http://%s:%d/" % \
-                    (upnp_client.http_ip_addr, upnp_client.http_port_number)
-        service_list = upnp_client.service_list
-    else:
-        ip_addr, port = settings.address.split(":", 1)
-        port = int(port)
-        directory_url = "http://%s:%d/" % (ip_addr, port)
-        meta_stream = urllib2.urlopen(directory_url)
-        meta_raw = meta_stream.read()
-        service_list = json.loads(meta_raw)
-    pstr = pprint.pformat(service_list)
+def register_ucomm(ip_addr, port):
+    url = "http://%s:%d/" % (ip_addr, port)
     json_info = {
-        SERVICE_META.RESULT_RETURN_SERVER_LIST: "%s:%d" % (get_ip(), UCommConst.RESULT_RECEIVE_PORT),
+        gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST: "%s:%d" % (gabriel.network.get_ip(), gabriel.Const.UCOMM_SERVER_PORT),
         }
-    put(directory_url, json_info)
-    LOG.info("Gabriel Server :")
-    LOG.info(pstr)
-    return service_list
+    gabriel.network.http_put(url, json_info)
 
 
 def main():
-    global output_queue
-
     try:
-        service_list = register_ucomm(sys.argv)
+        ## get service list from control server
+        settings, args = process_command_line(sys.argv[1:])
+        ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
+        service_list = gabriel.network.get_service_list(ip_addr, port)
+        LOG.info("Gabriel Server :")
+        LOG.info(pprint.pformat(service_list))
+
+        ## register the current ucomm
+        register_ucomm(ip_addr, port)
     except Exception as e:
-        LOG.info(str(e))
-        LOG.info("failed to register UCOMM to the control")
+        LOG.error(str(e))
+        LOG.error("failed to register UCOMM to the control")
         sys.exit(1)
-    control_vm_ip = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_ADDRESS)
-    control_vm_port = service_list.get(SERVICE_META.UCOMM_COMMUNICATE_PORT)
+
+    control_vm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_COMMUNICATE_ADDRESS)
+    control_vm_port = service_list.get(gabriel.ServiceMeta.UCOMM_COMMUNICATE_PORT)
 
     # result pub/sub
     try:
-        result_forward = None
         LOG.info("connecting to %s:%d" % (control_vm_ip, control_vm_port))
-        result_forward = ResultForwardingClient((control_vm_ip, control_vm_port), \
-                output_queue)
-        result_forward.isDaemon = True
+        result_forward_thread = gabriel.ucomm.ResultForwardingClient((control_vm_ip, control_vm_port))
+        result_forward_thread.isDaemon = True
     except socket.error as e:
         # do not proceed if cannot connect to control VM
-        LOG.info("Failed to connect to Control server (%s:%d)" % \
-                (control_vm_ip, control_vm_port))
-        if result_forward is not None:
-            result_forward.terminate()
-        return 2
+        if result_forward_thread is not None:
+            result_forward_thread.terminate()
+        raise UCommError("Failed to connect to Control server (%s:%d)" % (control_vm_ip, control_vm_port))
 
-    exit_status = 1
-    ucomm_server = None
-    ucomm_server = UCommServer(UCommConst.RESULT_RECEIVE_PORT, UCommServerHandler)
-    ucomm_thread = threading.Thread(target=ucomm_server.serve_forever)
-    ucomm_thread.daemon = True
+    # ucomm server
+    ucomm_server = gabriel.ucomm.UCommServer(gabriel.Const.UCOMM_SERVER_PORT, gabriel.ucomm.UCommServerHandler)
+    ucomm_server_thread = threading.Thread(target = ucomm_server.serve_forever)
+    ucomm_server_thread.daemon = True
+
+    # run the threads
     try:
-        result_forward.start()
-        ucomm_thread.start()
+        result_forward_thread.start()
+        ucomm_server_thread.start()
         while True:
             time.sleep(100)
-    except Exception as e:
-        sys.stderr.write(str(e))
-        exit_status = 1
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
-        exit_status = 0
+        sys.exit(0)
+    except Exception as e:
+        sys.stderr.write(str(e))
+        sys.exit(1)
     finally:
         if ucomm_server is not None:
             ucomm_server.terminate()
-        if result_forward is not None:
-            result_forward.terminate()
-    return exit_status
+        if result_forward_thread is not None:
+            result_forward_thread.terminate()
 
 
 if __name__ == '__main__':
-    ret = main()
-    sys.exit(ret)
+    main()

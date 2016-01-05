@@ -58,23 +58,6 @@ class CustomService(object):
         return self.content
 
 
-def _get_ip(iface = 'eth0'):
-    import socket
-    import struct
-    import fcntl
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sockfd = sock.fileno()
-    SIOCGIFADDR = 0x8915
-
-    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
-    try:
-        res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
-    except:
-        return None
-    ip = struct.unpack('16sH2x4s8x', res)[2]
-    return socket.inet_ntoa(ip)
-
-
 class UpdateService(Resource):
     def _find_service(self, requested_service):
         global custom_service_list
@@ -160,7 +143,7 @@ class ManageService(Resource):
 class GabrielInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type = str)
-    ip_addr = _get_ip("eth0")
+    ip_addr = gabriel.network.get_ip("eth0")
     service_info = {
             gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST: list(),
             gabriel.ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),

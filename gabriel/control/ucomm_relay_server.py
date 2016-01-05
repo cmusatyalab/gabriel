@@ -47,7 +47,6 @@ class UCommRelayHandler(gabriel.network.CommonHandler):
     '''
     def setup(self):
         super(UCommRelayHandler, self).setup()
-        self.info = OffloadingEngineInfo(self.request.fileno())
 
     def handle(self):
         LOG.info("User communication module is connected")

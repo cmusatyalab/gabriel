@@ -28,7 +28,7 @@ class HttpConnectionError(Exception):
     pass
 
 
-def http_get(url):
+def http_get(url, rtn_format = "json"):
     conn = urllib2.urlopen("%s" % (url))
     rtn_data = conn.read()
     if rtn_format == "json":
@@ -37,8 +37,8 @@ def http_get(url):
         return rtn_data
 
 
-def http_post(url, json_string):
-    end_point = urlparse("%s" % url)
+def http_post(url, json_string, rtn_format = "json"):
+    end_point = urlparse.urlparse("%s" % url)
     params = json.dumps(json_string)
     headers = {"Content-type": "application/json"}
 
