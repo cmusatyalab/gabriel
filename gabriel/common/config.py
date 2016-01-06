@@ -102,13 +102,14 @@ class Const(object):
 
 
 class ServiceMeta(object):
-    RESULT_RETURN_SERVER_LIST = "result_return_server_list"
-    VIDEO_TCP_STREAMING_ADDRESS = "video_tcp_streaming_address"
+    UCOMM_SERVER_IP = "ucomm_server_ip"
+    UCOMM_SERVER_PORT = "ucomm_server_port"
+    VIDEO_TCP_STREAMING_IP = "video_tcp_streaming_ip"
     VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"
-    ACC_TCP_STREAMING_ADDRESS = "acc_tcp_streaming_address"
+    ACC_TCP_STREAMING_IP = "acc_tcp_streaming_ip"
     ACC_TCP_STREAMING_PORT = "acc_tcp_streaming_port"
-    UCOMM_COMMUNICATE_ADDRESS = "ucomm_data_address"
-    UCOMM_COMMUNICATE_PORT = "ucomm_data_port"
+    UCOMM_RELAY_IP = "ucomm_relay_ip"
+    UCOMM_RELAY_PORT = "ucomm_relay_port"
 
 
 class Debug(object):

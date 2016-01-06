@@ -48,6 +48,9 @@ class UCommRelayHandler(gabriel.network.CommonHandler):
     def setup(self):
         super(UCommRelayHandler, self).setup()
 
+    def __repr__(self):
+        return "UCOMM Relay Handler"
+
     def handle(self):
         LOG.info("User communication module is connected")
         super(UCommRelayHandler, self).handle()

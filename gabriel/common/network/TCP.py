@@ -58,7 +58,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
             if tmp_data is None:
                 raise TCPNetworkError("Cannot recv data at %s" % str(self))
             if len(tmp_data) == 0:
-                raise TCPZeroBytesError("Recv 0 data at %s. The client has disconnected." % str(self))
+                raise TCPZeroBytesError("Recv 0 bytes.")
             data += tmp_data
         return data
 
@@ -103,7 +103,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         if self.connection is not None:
             self.connection.close()
             self.connection = None
-        LOG.info("%s\tterminate thread" % str(self))
+        LOG.info("[TERMINATE] Finish %s" % str(self))
 
     def _handle_input_data(self):
         """
@@ -114,7 +114,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         if data is None:
             raise TCPNetworkError("Cannot recv data at %s" % str(self))
         if len(data) == 0:
-            LOG.info("Client side is closed gracefully at %s" % str(self))
+            raise TCPZeroBytesError("Recv 0 bytes.")
         else:
             LOG.error("unexpected network input")
             self.terminate()
@@ -160,7 +160,7 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         # close all threads
         if self.socket is not None:
             self.socket.close()
-        LOG.info("[TERMINATE] Finish %s" % str(self.handler))
+        LOG.info("[TERMINATE] Finish server with handler %s" % str(self.handler))
 
 
 class CommonClient(threading.Thread):
@@ -180,6 +180,20 @@ class CommonClient(threading.Thread):
 
         self.stop_queue = multiprocessing.Queue()
         threading.Thread.__init__(self, target = self.run)
+
+    def _recv_all(self, recv_size):
+        '''
+        Received data till a specified size.
+        '''
+        data = ''
+        while len(data) < recv_size:
+            tmp_data = self.sock.recv(recv_size - len(data))
+            if tmp_data is None:
+                raise TCPNetworkError("Cannot recv data at %s" % str(self))
+            if len(tmp_data) == 0:
+                raise TCPZeroBytesError("Recv 0 bytes.")
+            data += tmp_data
+        return data
 
     def run(self):
         try:
@@ -213,8 +227,10 @@ class CommonClient(threading.Thread):
                         self._handle_queue_data()
                 for e in exceptready:
                     is_running = False
+        except TCPZeroBytesError as e:
+            LOG.info("Connection to (%s) closed: %s\n" % (self.server_address, str(e)))
         except Exception as e:
-            LOG.warning("connection to (%s) closed: %s\n" % (self.server_address, str(e)))
+            LOG.warning("Connection to (%s) closed not gracefully: %s\n" % (self.server_address, str(e)))
             LOG.warning(traceback.format_exc())
 
         if self.sock is not None:
@@ -231,7 +247,7 @@ class CommonClient(threading.Thread):
         if data is None:
             raise TCPNetworkError("Cannot recv data at %s" % str(self))
         if len(data) == 0:
-            LOG.info("Server side is closed gracefully at %s" % str(self))
+            raise TCPZeroBytesError("Recv 0 bytes.")
         else:
             LOG.error("unexpected network input")
             self.terminate()

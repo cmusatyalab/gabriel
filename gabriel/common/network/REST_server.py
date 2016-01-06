@@ -20,14 +20,15 @@
 #
 
 
-import sys
 import json
+import Queue
+import sys
 from flask import Flask
 from flask import request
 from flask.ext import restful
+from flask.ext.restful import abort
 from flask.ext.restful import reqparse
 from flask.ext.restful import Resource
-from flask.ext.restful import abort
 
 try:
     import gabriel
@@ -145,13 +146,14 @@ class GabrielInfo(Resource):
     parser.add_argument('task', type = str)
     ip_addr = gabriel.network.get_ip("eth0")
     service_info = {
-            gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST: list(),
-            gabriel.ServiceMeta.VIDEO_TCP_STREAMING_ADDRESS: str(ip_addr),
+            gabriel.ServiceMeta.UCOMM_SERVER_IP: None,
+            gabriel.ServiceMeta.UCOMM_SERVER_PORT: None,
+            gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP: str(ip_addr),
             gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT: int(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT),
-            gabriel.ServiceMeta.ACC_TCP_STREAMING_ADDRESS: str(ip_addr),
+            gabriel.ServiceMeta.ACC_TCP_STREAMING_IP: str(ip_addr),
             gabriel.ServiceMeta.ACC_TCP_STREAMING_PORT: int(gabriel.Const.PUBLISH_SERVER_ACC_PORT),
-            gabriel.ServiceMeta.UCOMM_COMMUNICATE_ADDRESS: str(ip_addr),
-            gabriel.ServiceMeta.UCOMM_COMMUNICATE_PORT: int(gabriel.Const.UCOMM_COMMUNICATE_PORT),
+            gabriel.ServiceMeta.UCOMM_RELAY_IP: str(ip_addr),
+            gabriel.ServiceMeta.UCOMM_RELAY_PORT: int(gabriel.Const.UCOMM_COMMUNICATE_PORT),
             }
 
     def get(self):
@@ -162,18 +164,21 @@ class GabrielInfo(Resource):
         Registers new ucomm address
         '''
         data = dict(json.loads(request.data))
-        ucomm_ips = data.get(gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST, None)
-        if ucomm_ips is None or len(ucomm_ips) == 0:
-            msg = "Need list of ucomm_ips"
+        ucomm_ip = data.get(gabriel.ServiceMeta.UCOMM_SERVER_IP, None)
+        ucomm_port = data.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT, None)
+        # check if address exists
+        if ucomm_ip is None or ucomm_port is None:
+            msg = "no valid ucomm address provided"
             abort(404, message = msg)
-        if type(ucomm_ips) != type(list()):
-            ucomm_ips = [ucomm_ips]
+        # check if ucomm has already been registered
+        original_ucomm_ip = self.service_info.get(gabriel.ServiceMeta.UCOMM_SERVER_IP, None)
+        original_ucomm_port = self.service_info.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT, None)
+        if original_ucomm_ip is not None:
+            LOG.warning("registering ucomm server, but old address exists")
 
-        original_list = self.service_info.get(gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST, list())
-        merged_set = set(original_list)
-        for new_address in ucomm_ips:
-            merged_set.add(str(new_address))
-        self.service_info[gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST] = list(merged_set)
+        # update
+        self.service_info[gabriel.ServiceMeta.UCOMM_SERVER_IP] = ucomm_ip
+        self.service_info[gabriel.ServiceMeta.UCOMM_SERVER_PORT] = ucomm_port
 
         # send response
         ret_msg = {

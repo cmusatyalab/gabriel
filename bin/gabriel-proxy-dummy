@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+#
+# Cloudlet Infrastructure for Mobile Computing
+#
+#   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
+#
+#   Copyright (C) 2011-2013 Carnegie Mellon University
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+import multiprocessing
+import Queue
+from optparse import OptionParser
+import os
+import pprint
+import struct
+import sys
+import time
+
+if os.path.isdir("../gabriel"):
+    sys.path.insert(0, "..")
+import gabriel
+import gabriel.proxy
+LOG = gabriel.logging.getLogger(__name__)
+
+
+def process_command_line(argv):
+    VERSION = 'gabriel proxy : %s' % gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel cognitive assistance"
+
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
+            description=DESCRIPTION)
+
+    parser.add_option(
+            '-s', '--address', action='store', dest='address',
+            help="(IP address:port number) of directory server")
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings, args
+
+
+class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
+    def handle(self, header, data):
+        # PERFORM Cognitive Assistance Processing
+        LOG.info("processing: ")
+        LOG.info("%s\n" % header)
+        return "nothing"
+
+
+#class DummyAccApp(AppProxyThread):
+#    def chunks(self, l, n):
+#        for i in xrange(0, len(l), n):
+#            yield l[i:i + n]
+#
+#    def handle(self, header, acc_data):
+#        ACC_SEGMENT_SIZE = 16# (int, float, float, float)
+#        for chunk in self.chunks(acc_data, ACC_SEGMENT_SIZE):
+#            (acc_time, acc_x, acc_y, acc_z) = struct.unpack("!ifff", chunk)
+#            print "time: %d, acc_x: %f, acc_y: %f, acc_x: %f" % \
+#                    (acc_time, acc_x, acc_y, acc_z)
+#        return None
+
+
+if __name__ == "__main__":
+    result_queue = multiprocessing.Queue()
+    print result_queue._reader
+
+    settings, args = process_command_line(sys.argv[1:])
+    ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
+    service_list = gabriel.network.get_service_list(ip_addr, port)
+    LOG.info("Gabriel Server :")
+    LOG.info(pprint.pformat(service_list))
+
+    video_ip = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP)
+    video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
+    #acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_IP)
+    #acc_port = service_list.get(SERVICE_META.ACC_TCP_STREAMING_PORT)
+    ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
+    ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
+
+    # image receiving and processing threads
+    image_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE # TODO
+    video_receive_client = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
+    video_receive_client.start()
+    video_receive_client.isDaemon = True
+    dummy_video_app = DummyVideoApp(image_queue, result_queue, engine_id = 'dummy') # dummy app for image processing
+    dummy_video_app.start()
+    dummy_video_app.isDaemon = True
+
+    # dummy acc app
+    #acc_client = None
+    #acc_app = None
+    #acc_queue = Queue.Queue(1)
+    #acc_client = AppProxyStreamingClient((acc_ip, acc_port), acc_queue)
+    #acc_client.start()
+    #acc_client.isDaemon = True
+    #acc_app = DummyAccApp(acc_queue, result_queue)
+    #acc_app.start()
+    #acc_app.isDaemon = True
+
+    # result publish
+    #result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
+    #result_pub.start()
+    #result_pub.isDaemon = True
+
+    try:
+        while True:
+            time.sleep(1)
+    except Exception as e:
+        pass
+    except KeyboardInterrupt as e:
+        sys.stdout.write("user exits\n")
+    finally:
+        if video_receive_client is not None:
+            video_receive_client.terminate()
+        if dummy_video_app is not None:
+            dummy_video_app.terminate()
+        #if acc_client is not None:
+        #    acc_client.terminate()
+        #if acc_app is not None:
+        #    acc_app.terminate()
+        result_pub.terminate()
+

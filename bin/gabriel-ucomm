@@ -3,6 +3,7 @@
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
+#           Zhuo Chen <zhuoc@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,11 +29,11 @@ import sys
 import threading
 import time
 
-if os.path.isdir("../gabriel") == True:
+if os.path.isdir("../gabriel"):
     sys.path.insert(0, "..")
 import gabriel
 import gabriel.ucomm
-LOG = gabriel.logging.getLogger()
+LOG = gabriel.logging.getLogger(__name__)
 
 
 class UCommError(Exception):
@@ -62,29 +63,30 @@ def process_command_line(argv):
 def register_ucomm(ip_addr, port):
     url = "http://%s:%d/" % (ip_addr, port)
     json_info = {
-        gabriel.ServiceMeta.RESULT_RETURN_SERVER_LIST: "%s:%d" % (gabriel.network.get_ip(), gabriel.Const.UCOMM_SERVER_PORT),
+        gabriel.ServiceMeta.UCOMM_SERVER_IP: gabriel.network.get_ip(),
+        gabriel.ServiceMeta.UCOMM_SERVER_PORT: gabriel.Const.UCOMM_SERVER_PORT
         }
     gabriel.network.http_put(url, json_info)
 
 
 def main():
-    try:
-        ## get service list from control server
-        settings, args = process_command_line(sys.argv[1:])
-        ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
-        service_list = gabriel.network.get_service_list(ip_addr, port)
-        LOG.info("Gabriel Server :")
-        LOG.info(pprint.pformat(service_list))
+    ## get service list from control server
+    settings, args = process_command_line(sys.argv[1:])
+    ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
+    service_list = gabriel.network.get_service_list(ip_addr, port)
+    LOG.info("Gabriel Server :")
+    LOG.info(pprint.pformat(service_list))
 
-        ## register the current ucomm
+    ## register the current ucomm
+    try:
         register_ucomm(ip_addr, port)
     except Exception as e:
         LOG.error(str(e))
         LOG.error("failed to register UCOMM to the control")
         sys.exit(1)
 
-    control_vm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_COMMUNICATE_ADDRESS)
-    control_vm_port = service_list.get(gabriel.ServiceMeta.UCOMM_COMMUNICATE_PORT)
+    control_vm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_RELAY_IP)
+    control_vm_port = service_list.get(gabriel.ServiceMeta.UCOMM_RELAY_PORT)
 
     # result pub/sub
     try:

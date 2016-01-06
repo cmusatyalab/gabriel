@@ -52,7 +52,7 @@ class UCommServerHandler(gabriel.network.CommonHandler):
 
     def handle(self):
         LOG.info("new Offlaoding Engine is connected")
-        super(UcommServerHandler, self).handle()
+        super(UCommServerHandler, self).handle()
 
     def _handle_input_stream(self):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
@@ -100,6 +100,9 @@ class ResultForwardingClient(gabriel.network.CommonClient):
         self.data_queue = result_queue
 
         LOG.info("Result forwarding thread created")
+
+    def __repr__(self):
+        return "Result Forwarding Client"
 
     def terminate(self):
         gabriel.network.CommonClient.terminate(self)

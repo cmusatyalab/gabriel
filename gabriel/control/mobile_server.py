@@ -37,6 +37,7 @@ LOG = gabriel.logging.getLogger(__name__)
 image_queue_list = list()
 acc_queue_list = list()
 gps_queue_list = list()
+# a global queue that contains final messages sent back to the client
 result_queue = multiprocessing.Queue()
 
 
@@ -180,8 +181,6 @@ class MobileResultHandler(MobileSensorHandler):
     def setup(self):
         super(MobileResultHandler, self).setup()
 
-        # a global queue that contains final messages sent back to the client
-        global result_queue
         # flush out old result at Queue
         while not result_queue.empty():
             result_queue.get()
@@ -191,7 +190,7 @@ class MobileResultHandler(MobileSensorHandler):
             self.time_breakdown_log = open("log-time-breakdown.txt", "w")
 
     def __repr__(self):
-        return "Mobile Result Handler"
+        return "Mobile Result Server"
 
     def _handle_queue_data(self):
         try:

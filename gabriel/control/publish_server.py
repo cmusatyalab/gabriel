@@ -42,17 +42,17 @@ class EngineServerError(Exception):
 
 class SensorPublishHandler(gabriel.network.CommonHandler):
     def setup(self):
-        super(PublishHandler, self).setup()
+        super(SensorPublishHandler, self).setup()
 
 
 class VideoPublishHandler(SensorPublishHandler):
     def setup(self):
         super(VideoPublishHandler, self).setup()
-        self.data_queue = Queue.Queue(gabriel.Const.MAX_FRAME_SIZE)
+        self.data_queue = multiprocessing.Queue(gabriel.Const.MAX_FRAME_SIZE)
         gabriel.control.image_queue_list.append(self.data_queue)
 
     def __repr__(self):
-        return " Handler"
+        return "Video Publish Server"
 
     def handle(self):
         LOG.info("New offloading engine connected to video stream")
@@ -71,13 +71,14 @@ class VideoPublishHandler(SensorPublishHandler):
     def terminate(self):
         LOG.info("Offloading engine disconnected from video stream")
         gabriel.control.image_queue_list.remove(self.data_queue)
+        super(VideoPublishHandler, self).terminate()
 
 
 ## TODO
 class AccPublishHandler(SensorPublishHandler):
     def setup(self):
         super(AccPublishHandler, self).setup()
-        self.data_queue = Queue.Queue(Const.MAX_FRAME_SIZE)
+        self.data_queue = multiprocessing.Queue(Const.MAX_FRAME_SIZE)
         gabriel.control.acc_queue_list.append(self.data_queue)
 
     def _handle_sensor_stream(self):
