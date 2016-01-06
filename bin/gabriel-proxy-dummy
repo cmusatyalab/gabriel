@@ -116,9 +116,9 @@ if __name__ == "__main__":
     #acc_app.isDaemon = True
 
     # result publish
-    #result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
-    #result_pub.start()
-    #result_pub.isDaemon = True
+    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
+    result_pub.start()
+    result_pub.isDaemon = True
 
     try:
         while True:
