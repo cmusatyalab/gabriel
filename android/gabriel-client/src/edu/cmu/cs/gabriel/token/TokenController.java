@@ -3,11 +3,8 @@ package edu.cmu.cs.gabriel.token;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
-import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
@@ -15,7 +12,7 @@ import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
 
 public class TokenController {
-	private static final String LOG_TAG = "krha";
+	private static final String LOG_TAG = "TokenController";
 
 	private int currentToken = Const.MAX_TOKEN_SIZE;
 	private ConcurrentHashMap<Long, SentPacketInfo> latencyStamps = new ConcurrentHashMap<Long, SentPacketInfo>();
@@ -28,24 +25,30 @@ public class TokenController {
 	public TokenController(File resultSavingPath) {
 		try {
 			mFileWriter = new FileWriter(resultSavingPath);
-			mFileWriter.write("FrameID\tEndTime(ms)\tStartTime(ms)\tEngineID\tLatency(ms)\n");
+			mFileWriter.write("FrameID\tEngineID\tStartTime\tCompressedTime\tRecvTime\tDoneTime\tStatus\n");
 		} catch (IOException ex) {
-			Log.e("Battery", "Output File", ex);
+			Log.e(LOG_TAG, "Output File Error", ex);
 			return;
 		}
 	}
 
 	public Handler tokenHandler = new Handler() {
-		private long frame_latency = 0;
-		private long frame_size = 0;
-		private long frame_latency_count = 0;
 
 		public void handleMessage(Message msg) {
+			Log.d(LOG_TAG, "+handle message");
+			if (msg.what == NetworkProtocol.NETWORK_RET_SYNC) {
+				try {
+					if (Const.IS_EXPERIMENT){
+						String log = (String) msg.obj;
+						mFileWriter.write(log);
+					}
+				} catch (IOException e) {}
+			}
 			if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {
-				long now = System.currentTimeMillis();
-				Bundle bundle = msg.getData();
-				long recvFrameID = bundle.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-				String recvEngineID = bundle.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
+				Log.d(LOG_TAG, "+network_ret");
+				ReceivedPacketInfo receivedPacket = (ReceivedPacketInfo) msg.obj;
+				long recvFrameID = receivedPacket.frameID;
+				String recvEngineID = receivedPacket.engineID;
 				long increaseCount = 0;
 				for (long index = prevRecvedAck + 1; index < recvFrameID; index++) {
 					SentPacketInfo sentPacket = null; 
@@ -70,27 +73,23 @@ public class TokenController {
 						// received duplicated ack from other cognitive engine
 						increaseTokens(1);
 					}
-					long time_diff = now - sentPacket.generatedTime;
-					String log = recvFrameID + "\t" + now + "\t"
-							+ sentPacket.generatedTime + "\t" + recvEngineID
-							+ "\t" + time_diff;
+
 					try {
-						if (Const.IS_EXPERIMENT == true){
+						if (Const.IS_EXPERIMENT){
+							String log = recvFrameID + "\t" + recvEngineID + "\t"
+									+ sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" + receivedPacket.msg_recv_time + "\t" 
+									+ receivedPacket.guidance_done_time + "\t" + receivedPacket.status;
 							mFileWriter.write(log + "\n");
 						}
 					} catch (IOException e) {}
-
-					frame_latency += time_diff;
-					frame_size += sentPacket.sentSize;
-					frame_latency_count++;
 				}
 				prevRecvedAck = recvFrameID;
 			}
 		}
 	};
 
-	public void sendData(long frameID, long dataTime, int sentSize) {
-		this.latencyStamps.put(frameID, new SentPacketInfo(dataTime, sentSize));
+	public void sendData(long frameID, long dataTime, long compressedTime, int sentSize) {
+		this.latencyStamps.put(frameID, new SentPacketInfo(dataTime, compressedTime, sentSize));
 		if (firstSentTime == 0) {
 			firstSentTime = System.currentTimeMillis();
 		}

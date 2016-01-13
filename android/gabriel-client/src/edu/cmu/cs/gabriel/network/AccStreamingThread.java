@@ -3,23 +3,15 @@ package edu.cmu.cs.gabriel.network;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.TreeMap;
 import java.util.Vector;
 
 import edu.cmu.cs.gabriel.token.TokenController;
 
-import android.graphics.Rect;
-import android.graphics.YuvImage;
-import android.hardware.Camera.Parameters;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
 import android.os.Handler;

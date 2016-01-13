@@ -14,31 +14,17 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
-	/*
-	 * Galaxy Nexus
-	 * 320x240	: 2 Mbps, 24 FPS
-	 * 640x480	: 3 Mbps, 10 FPS
-	 * 800x480	: 2.5Mbps, 7.5 FPS 
-	 */
+    private static final String LOG_TAG = "CameraPreview";
 
 	public SurfaceHolder mHolder;
 	public Camera mCamera = null;
 	public List<int[]> supportingFPS = null;
 	public List<Camera.Size> supportingSize = null;
 
-	public void close() {
-		if (mCamera != null) {
-			mCamera.stopPreview();
-			mCamera.release();
-			mCamera = null;
-		}
-	}
-
 	public CameraPreview(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		Log.d("krha_debug", "context : " + context);
+//		Log.d(LOG_TAG , "context : " + context);
 		if (mCamera == null) {
-
 			// Launching Camera App using voice command need to wait.  
 			// See more at https://code.google.com/p/google-glass-api/issues/list
 			try {
@@ -51,6 +37,14 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 		mHolder.addCallback(this);
 		mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 	}
+	
+	public void close() {
+        if (mCamera != null) {
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
+    }
 
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -61,11 +55,11 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 	public void changeConfiguration(int[] range, Size imageSize) {
 		Camera.Parameters parameters = mCamera.getParameters();
 		if (range != null){
-			Log.d("krha", "frame rate configuration : " + range[0] + "," + range[1]);
+			Log.d("Config", "frame rate configuration : " + range[0] + "," + range[1]);
 			parameters.setPreviewFpsRange(range[0], range[1]);			
 		}
 		if (imageSize != null){
-			Log.d("krha", "image size configuration : " + imageSize.width + "," + imageSize.height);
+			Log.d("Config", "image size configuration : " + imageSize.width + "," + imageSize.height);
 			parameters.setPreviewSize(imageSize.width, imageSize.height);
 			parameters.setPictureFormat(ImageFormat.JPEG);			
 		}
@@ -74,7 +68,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 	}
 
 	public void surfaceCreated(SurfaceHolder holder) {
-
+	    Log.d(LOG_TAG, "surface created");
 		if (mCamera == null) {
 			mCamera = Camera.open();
 			// mCamera.setDisplayOrientation(90);
@@ -85,6 +79,9 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 				// set fps to capture
 				Camera.Parameters parameters = mCamera.getParameters();
 				List<int[]> supportedFps = parameters.getSupportedPreviewFpsRange();
+				for (int[] range: supportedFps) {
+		            Log.v(LOG_TAG, "available fps ranges:" + range[0] + ", " + range[1]);
+		        }
 				if(this.supportingFPS == null)
 					this.supportingFPS = supportedFps;
 				int index = 0, fpsDiff = Integer.MAX_VALUE;
@@ -98,22 +95,25 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 				}
 				int[] targetRange = supportedFps.get(index);
 				
-				// set resolusion
+				// set resolution
 				List<Camera.Size> supportedSizes = parameters.getSupportedPreviewSizes();
+				for (Camera.Size size: supportedSizes) {
+		            Log.v(LOG_TAG, "available sizes:" + size.width + ", " + size.height);
+		        }
 				if(this.supportingSize == null)
 					this.supportingSize = supportedSizes;
 				index = 0;
 				int sizeDiff = Integer.MAX_VALUE;
 				for (int i = 0; i < supportedSizes.size(); i++){
 					Camera.Size size = supportedSizes.get(i);
-					int diff = Math.abs(size.width - Const.IMAGE_WIDTH);
+					int diff = Math.abs(size.width - Const.IMAGE_WIDTH) + Math.abs(size.height - Const.IMAGE_HEIGHT);
 					if (diff < sizeDiff){
 						sizeDiff = diff;
 						index = i;
 					}
 				}
 				Camera.Size target_size = supportedSizes.get(index);
-				List<Integer> supportedFormat = parameters.getSupportedPreviewFormats();
+//				List<Integer> supportedFormat = parameters.getSupportedPreviewFormats();
 				
 				changeConfiguration(targetRange, target_size);
 				mCamera.startPreview();
@@ -130,6 +130,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 	}
 
 	public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
+	    Log.d(LOG_TAG, "surface changed");
 		/*
 		 * Camera.Parameters parameters = mCamera.getParameters();
 		 * parameters.setPreviewSize(w, h); mCamera.setParameters(parameters);

@@ -3,33 +3,28 @@ package edu.cmu.cs.gabriel.network;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.TreeMap;
-import java.util.Vector;
+import java.util.Timer;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
-
-import android.os.Bundle;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Base64;
 import android.util.Log;
+import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
+import edu.cmu.cs.gabriel.token.TokenController;
 
 public class ResultReceivingThread extends Thread {
 	
-	private static final String LOG_TAG = "krha";
+	private static final String LOG_TAG = "ResultThread";
 	
 	private InetAddress remoteIP;
 	private int remotePort;
@@ -40,6 +35,7 @@ public class ResultReceivingThread extends Thread {
 	
 	private Handler returnMsgHandler;
 	private TokenController tokenController;
+	private Timer timer = null;
 	
 
 	public ResultReceivingThread(String GABRIEL_IP, int port, Handler returnMsgHandler, TokenController tokenController) {
@@ -77,14 +73,15 @@ public class ResultReceivingThread extends Thread {
 		while(is_running == true){			
 			try {
 				String recvMsg = this.receiveMsg(networkReader);
+				//Log.v(LOG_TAG, recvMsg);
 				this.notifyReceivedData(recvMsg);
 			} catch (IOException e) {
-				Log.e("krha", e.toString());
+				Log.e(LOG_TAG, e.toString());
 				// Do not send error to handler, Streaming thread already sent it.
 				this.notifyError(e.getMessage());				
 				break;
 			} catch (JSONException e) {
-				Log.e("krha", e.toString());
+				Log.e(LOG_TAG, e.toString());
 				this.notifyError(e.getMessage());
 			}
 		}
@@ -108,45 +105,92 @@ public class ResultReceivingThread extends Thread {
 
 	private void notifyReceivedData(String recvData) throws JSONException {	
 		// convert the message to JSON
-		JSONObject obj;
-		String returnMsg = null;
+		Log.i(LOG_TAG, "aaa:" + System.currentTimeMillis());
+		JSONObject recvJSON = new JSONObject(recvData);
+		Log.i(LOG_TAG, "bbb:" + System.currentTimeMillis());
+		String result = null;
 		int injectedToken = 0;
 		String engineID = "";
 		long frameID = -1;
-		obj = new JSONObject(recvData);
 		
 		try{
-			returnMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
-		} catch(JSONException e){}
-		try{
-			injectedToken = obj.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
-		} catch(JSONException e){}
-		try{
-			frameID = obj.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-			engineID = obj.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
-		} catch(JSONException e){}
+			result = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
+		} catch (JSONException e) {}
+		try {
+			injectedToken = recvJSON.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
+		} catch (JSONException e) {}
+		try {
+			frameID = recvJSON.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
+		} catch (JSONException e) {}
+		try {
+            engineID = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
+		} catch (JSONException e) {}
 		
-		// DO NOT run TTS at experiment
-		if (Const.IS_EXPERIMENT != true){
-			if (returnMsg != null){
+		/* refilling tokens */
+		if (frameID == -1) return;
+		
+            
+        
+//        if (injectedToken > 0){
+//            this.tokenController.increaseTokens(injectedToken);
+//        }
+		
+		if (result != null){
+		    //Log.i(LOG_TAG, "Received result:" + result);
+		    /* parsing result */
+		    JSONObject resultJSON = new JSONObject(result);         
+            String speechFeedback = "";
+            Bitmap imageFeedback = null;
+            
+            /* general message */
+            try {
+            	
+            	String status = resultJSON.getString("status");
+            	Log.i(LOG_TAG, "ccc:" + status + ", " + System.currentTimeMillis());
+            	
+            	Message msg = Message.obtain();
+    			msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
+    			msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
+    			this.returnMsgHandler.sendMessage(msg);
+            	
+//            	if (!status.equals("success")) {
+            		msg = Message.obtain();
+        			msg.what = NetworkProtocol.NETWORK_RET_DONE;
+        			this.returnMsgHandler.sendMessage(msg);
+//            		return;
+//            	}
+            } catch (JSONException e) {
+                Log.e(LOG_TAG, "the return message has no status field");
+                return;
+            }
+            
+            /* image guidance */
+            try {
+	            String imageFeedbackString = resultJSON.getString("image");
+	            byte[] data = Base64.decode(imageFeedbackString.getBytes(), Base64.DEFAULT);
+	            imageFeedback = BitmapFactory.decodeByteArray(data,0,data.length); 
+	            
 				Message msg = Message.obtain();
-				msg.what = NetworkProtocol.NETWORK_RET_RESULT;
-				msg.obj = returnMsg;
-				this.returnMsgHandler.sendMessage(msg);
-			}
-		}
-
-		if (frameID != -1){
-			Message msg = Message.obtain();
-			msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-			Bundle data = new Bundle();
-			data.putLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID, frameID);
-			data.putString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID, engineID);
-			msg.setData(data);
-			this.tokenController.tokenHandler.sendMessage(msg);
-		}
-		if (injectedToken > 0){
-			this.tokenController.increaseTokens(injectedToken);
+		        msg.what = NetworkProtocol.NETWORK_RET_IMAGE;
+		        msg.obj = imageFeedback;
+		        this.returnMsgHandler.sendMessage(msg);
+            } catch (JSONException e) {
+                Log.v(LOG_TAG, "no image guidance found");
+            }
+            
+            /* speech guidance */
+            try {
+            	speechFeedback = resultJSON.getString("speech");
+            	Message msg = Message.obtain();
+    			msg.what = NetworkProtocol.NETWORK_RET_SPEECH;
+    			msg.obj = speechFeedback;
+    			this.returnMsgHandler.sendMessage(msg);
+            } catch (JSONException e) {
+//            	Message msg = Message.obtain();
+//    			msg.what = NetworkProtocol.NETWORK_RET_DONE;
+//    			this.returnMsgHandler.sendMessage(msg);
+                Log.v(LOG_TAG, "no speech guidance found");
+            }
 		}
 	}
 
@@ -159,6 +203,10 @@ public class ResultReceivingThread extends Thread {
 	
 	public void close() {
 		this.is_running = false;
+		if (timer != null) {
+		    timer.cancel();
+		    timer.purge();
+		}
 		try {
 			if(this.networkReader != null){
 				this.networkReader.close();
@@ -177,7 +225,7 @@ public class ResultReceivingThread extends Thread {
 			if(this.tcpSocket != null){
 				this.tcpSocket.shutdownInput();
 				this.tcpSocket.shutdownOutput();			
-				this.tcpSocket.close();	
+				this.tcpSocket.close();
 				this.tcpSocket = null;
 			}
 		} catch (IOException e) {

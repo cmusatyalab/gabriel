@@ -4,26 +4,19 @@ package edu.cmu.cs.gabriel.network;
 import java.io.DataInputStream;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.TreeMap;
-import java.util.Vector;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import edu.cmu.cs.gabriel.token.TokenController;
 
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
 public class VideoControlThread extends Thread {
 	
-	private static final String LOG_TAG = "krha";
+	private static final String LOG_TAG = "VideoControl";
 	
 	private Handler networkHandler;
 	TokenController tokenController;
@@ -45,12 +38,12 @@ public class VideoControlThread extends Thread {
 				String recvMsg = this.receiveMsg(networkReader);
 				this.notifyReceivedData(recvMsg);
 			} catch (IOException e) {
-				Log.e("krha", e.toString());
+				Log.e(LOG_TAG, e.toString());
 				// Do not send error to handler, Streaming thread already sent it.
 //				this.notifyError(e.getMessage());				
 				break;
 			} catch (JSONException e) {
-				Log.e("krha", e.toString());
+				Log.e(LOG_TAG, e.toString());
 				this.notifyError(e.getMessage());
 			}
 		}

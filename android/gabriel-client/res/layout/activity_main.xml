@@ -4,27 +4,6 @@
     android:layout_height="fill_parent"
     android:keepScreenOn="true"
     android:orientation="vertical" >
-
-    <!--
-    <Button
-        android:id="@+id/button_settingFrame"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:onClick="selectFrameRate"
-        android:text="FPS Setting"
-        android:textSize="20sp" />
-
-    <Button
-        android:id="@+id/button_settingSize"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:onClick="selectImageSize"
-        android:text="Size Setting"
-        android:textSize="20sp" />         
-    -->
-
     <Button
         android:id="@+id/button_runexperiment"
         android:layout_width="match_parent"
@@ -39,23 +18,20 @@
         android:layout_height="fill_parent"
         android:orientation="horizontal"
         android:weightSum="1" >
-
+        
+       
+        
+        <ImageView
+            android:id="@+id/guidance_image"
+            android:layout_width="300dp"
+            android:layout_height="300dp"
+            ></ImageView>
+        
         <edu.cmu.cs.gabriel.CameraPreview
             android:id="@+id/camera_preview"
-            android:layout_width="0dp"
-            android:layout_height="fill_parent"
-            android:layout_weight="1.0" />
+            android:layout_width="500dp"
+            android:layout_height="360dp" />
             
-    <!--
-
-        <Button
-            android:id="@+id/button_startStreaming"
-            android:layout_width="0dp"
-            android:layout_height="fill_parent"
-            android:layout_weight="0.1"
-            android:onClick="startStreaming"
-            android:text="@string/start_button" />         
-    -->
     </LinearLayout>
 
 </LinearLayout>
