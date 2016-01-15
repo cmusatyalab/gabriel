@@ -276,21 +276,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         super.onDestroy();
     }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        Intent intent;
-
-        switch (item.getItemId()) {
-        case SETTINGS_ID:
-            intent = new Intent().setClass(this, SettingsActivity.class);
-            startActivityForResult(intent, CHANGE_SETTING_CODE);
-            break;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-
-
     private PreviewCallback previewCallback = new PreviewCallback() {
         public void onPreviewFrame(byte[] frame, Camera mCamera) {
 
@@ -366,24 +351,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         }
     };
-
-    public void setDefaultPreferences() {
-        // setDefaultValues will only be invoked if it has not been invoked
-        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
-        sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
-
-        sharedPref.edit().putBoolean(SettingsActivity.KEY_PROXY_ENABLED, true);
-        sharedPref.edit().putString(SettingsActivity.KEY_PROTOCOL_LIST, "UDP");
-        sharedPref.edit().putString(SettingsActivity.KEY_PROXY_IP, "128.2.207.54");
-        sharedPref.edit().putInt(SettingsActivity.KEY_PROXY_PORT, 8080);
-        sharedPref.edit().commit();
-    }
-
-    public void getPreferences() {
-        sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
-        String sProtocol = sharedPref.getString(SettingsActivity.KEY_PROTOCOL_LIST, "UDP");
-        String[] sProtocolList = getResources().getStringArray(R.array.protocol_list);
-    }
 
     private void terminate() {
         Log.d(LOG_TAG, "on terminate");
