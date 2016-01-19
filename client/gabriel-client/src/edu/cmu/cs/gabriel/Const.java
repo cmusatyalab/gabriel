@@ -5,38 +5,47 @@ import java.io.File;
 import android.os.Environment;
 
 public class Const {
-    /*
-     * Experiment variable
-     */
-
+    // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;
-    public static final boolean PLAY_PRERECORDED = false;
 
-    // Transfer from the file list
-    // If TEST_IMAGE_DIR is not none, transmit from the image
-    public static File ROOT_DIR = new File(Environment.getExternalStorageDirectory() + File.separator + "Gabriel" + File.separator);
-    public static String app_name = "pool";
-    //public static File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + app_name + /* "-oneimage" + */ File.separator);
-    public static File TEST_IMAGE_DIR = null;
-    public static File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + app_name + "-compress" + File.separator);
-
-    // control VM
-    public static String GABRIEL_IP = "128.2.213.106";  // Cloudlet
-    //public static String GABRIEL_IP = "54.198.72.157";    // East
-    //public static String GABRIEL_IP = "54.190.77.230";    // West
-    //public static String GABRIEL_IP = "176.34.89.120";      // EU
-
-    // Token
-    public static int MAX_TOKEN_SIZE = 1;
+    /************************ In both demo and experiment mode *******************/
+    // directory for all application related files (input + output)
+    public static final File ROOT_DIR = new File(Environment.getExternalStorageDirectory() + File.separator + "Gabriel" + File.separator);
 
     // image size and frame rate
-    public static int MIN_FPS = 15;
-    //Options: 320x180, 640x360, 1280x720, 1920x1080
-    public static int IMAGE_WIDTH = 640;
-    public static int IMAGE_HEIGHT = 320;
+    public static final int MIN_FPS = 15;
+    // options: 320x180, 640x360, 1280x720, 1920x1080
+    public static final int IMAGE_WIDTH = 640;
+    public static final int IMAGE_HEIGHT = 360;
+    
+    // port protocol to the server
+    public static final int VIDEO_STREAM_PORT = 9098;
+    public static final int ACC_STREAM_PORT = 9099;
+    public static final int RESULT_RECEIVING_PORT = 9101;
 
-    // Result File
-    public static String LATENCY_FILE_NAME = "latency-" + GABRIEL_IP + "-" + MAX_TOKEN_SIZE + ".txt";
-    public static File LATENCY_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
-    public static File LATENCY_FILE = new File (LATENCY_DIR.getAbsolutePath() + File.separator + LATENCY_FILE_NAME);
+    /************************ Demo mode only *************************************/
+    // server IP
+    public static final String SERVER_IP = "128.2.213.106";  // Cloudlet
+
+    // token size
+    public static final int TOKEN_SIZE = 1;
+
+    /************************ Experiment mode only *******************************/
+    // server IP list
+    public static final String[] SERVER_IP_LIST = {
+            "128.2.213.106",
+            };
+
+    // token size list
+    public static final int[] TOKEN_SIZE_LIST = {1};
+
+    // load images (JPEG) from files and pretend they are just captured by the camera
+    public static final String APP_NAME = "lego";
+    public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + File.separator);
+    // a small number of images used for compression (bmp files), usually a subset of test images
+    // these files are loaded into memory first so cannot have too many of them!
+    public static final File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + "-compress" + File.separator);
+
+    // result file
+    public static final File EXP_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
 }

@@ -4,14 +4,6 @@
     android:layout_height="fill_parent"
     android:keepScreenOn="true"
     android:orientation="vertical" >
-    <Button
-        android:id="@+id/button_runexperiment"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:onClick="startExperiment"
-        android:text="Start"
-        android:textSize="20sp" />
     
     <LinearLayout
         android:layout_width="fill_parent"
@@ -19,13 +11,10 @@
         android:orientation="horizontal"
         android:weightSum="1" >
         
-       
-        
         <ImageView
             android:id="@+id/guidance_image"
             android:layout_width="300dp"
-            android:layout_height="300dp"
-            ></ImageView>
+            android:layout_height="300dp" />
         
         <edu.cmu.cs.gabriel.CameraPreview
             android:id="@+id/camera_preview"

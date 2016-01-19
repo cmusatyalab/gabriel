@@ -14,87 +14,94 @@ import edu.cmu.cs.gabriel.network.NetworkProtocol;
 public class TokenController {
     private static final String LOG_TAG = "TokenController";
 
-    private int currentToken = Const.MAX_TOKEN_SIZE;
-    private ConcurrentHashMap<Long, SentPacketInfo> latencyStamps = new ConcurrentHashMap<Long, SentPacketInfo>();
+    // the number of tokens remained
+    private int currentToken = 0;
+    
+    // information about all sent packets, the key is the frameID and the value documents relevant timestamps
+    private ConcurrentHashMap<Long, SentPacketInfo> sentPackets = new ConcurrentHashMap<Long, SentPacketInfo>();
+    
     private Object tokenLock = new Object();
-    private FileWriter mFileWriter = null;
+    
+    private FileWriter fileWriter = null;
 
-    private long prevRecvedAck = 0;
-    private long firstSentTime = 0;
+    // timestamp when the last ACK was received
+    private long prevRecvFrameID = 0;
 
-    public TokenController(File resultSavingPath) {
-        try {
-            mFileWriter = new FileWriter(resultSavingPath);
-            mFileWriter.write("FrameID\tEngineID\tStartTime\tCompressedTime\tRecvTime\tDoneTime\tStatus\n");
-        } catch (IOException ex) {
-            Log.e(LOG_TAG, "Output File Error", ex);
-            return;
+    public TokenController(int tokenSize, File resultSavingPath) {
+        this.currentToken = tokenSize;
+        if (Const.IS_EXPERIMENT) {
+            try {
+                fileWriter = new FileWriter(resultSavingPath);
+                fileWriter.write("FrameID\tEngineID\tStartTime\tCompressedTime\tRecvTime\tDoneTime\tStatus\n");
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Result file cannot be properly opened", e);
+            }
         }
     }
 
     public Handler tokenHandler = new Handler() {
 
         public void handleMessage(Message msg) {
-            Log.d(LOG_TAG, "+handle message");
             if (msg.what == NetworkProtocol.NETWORK_RET_SYNC) {
                 try {
                     if (Const.IS_EXPERIMENT){
                         String log = (String) msg.obj;
-                        mFileWriter.write(log);
+                        fileWriter.write(log);
                     }
                 } catch (IOException e) {}
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_TOKEN) {
-                Log.d(LOG_TAG, "+network_ret");
                 ReceivedPacketInfo receivedPacket = (ReceivedPacketInfo) msg.obj;
                 long recvFrameID = receivedPacket.frameID;
                 String recvEngineID = receivedPacket.engineID;
+                
+                // increase appropriate amount of tokens
                 long increaseCount = 0;
-                for (long index = prevRecvedAck + 1; index < recvFrameID; index++) {
+                for (long frameID = prevRecvFrameID + 1; frameID < recvFrameID; frameID++) {
                     SentPacketInfo sentPacket = null;
-                    if (Const.IS_EXPERIMENT){
+                    if (Const.IS_EXPERIMENT) {
                         // Do not remove since we need to measure latency even for the late response
-                        sentPacket = latencyStamps.get(index);
-                    }else{
-                        sentPacket = latencyStamps.remove(index);
+                        sentPacket = sentPackets.get(frameID);
+                    } else {
+                        sentPacket = sentPackets.remove(frameID);
                     }
                     if (sentPacket != null) {
                         increaseCount++;
-//                      Log.d(LOG_TAG, "dump consumped but not acked :" + index);
                     }
                 }
                 increaseTokens(increaseCount);
 
-                // get the packet information
-                SentPacketInfo sentPacket = latencyStamps.get(recvFrameID);
+                // deal with the current response
+                SentPacketInfo sentPacket = sentPackets.get(recvFrameID);
                 if (sentPacket != null) {
-                    if (recvFrameID > prevRecvedAck) {
-                        // do not increase token if you already
-                        // received duplicated ack from other cognitive engine
+                    // do not increase token if have already received duplicated ack
+                    if (recvFrameID > prevRecvFrameID) {    
                         increaseTokens(1);
                     }
 
-                    try {
-                        if (Const.IS_EXPERIMENT){
-                            String log = recvFrameID + "\t" + recvEngineID + "\t"
-                                    + sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" + receivedPacket.msg_recv_time + "\t"
-                                    + receivedPacket.guidance_done_time + "\t" + receivedPacket.status;
-                            mFileWriter.write(log + "\n");
-                        }
-                    } catch (IOException e) {}
+                    if (Const.IS_EXPERIMENT) {
+                        try {
+                            String log = recvFrameID + "\t" + recvEngineID + "\t" +
+                                    sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" + 
+                                    receivedPacket.msgRecvTime + "\t" + receivedPacket.guidanceDoneTime + "\t" + 
+                                    receivedPacket.status;
+                            fileWriter.write(log + "\n");
+                        } catch (IOException e) {}
+                    }
                 }
-                prevRecvedAck = recvFrameID;
+                prevRecvFrameID = recvFrameID;
             }
         }
     };
 
-    public void sendData(long frameID, long dataTime, long compressedTime, int sentSize) {
-        this.latencyStamps.put(frameID, new SentPacketInfo(dataTime, compressedTime, sentSize));
-        if (firstSentTime == 0) {
-            firstSentTime = System.currentTimeMillis();
-        }
+    public void logSentPacket(long frameID, long dataTime, long compressedTime) {
+        this.sentPackets.put(frameID, new SentPacketInfo(dataTime, compressedTime));
     }
 
+    /**
+     * Blocks and only returns when token > 0
+     * @return the current token number
+     */
     public int getCurrentToken() {
         synchronized (tokenLock) {
             if (this.currentToken > 0) {
@@ -125,12 +132,13 @@ public class TokenController {
     }
 
     public void close() {
-        latencyStamps.clear();
-        try {
-            mFileWriter.close();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+        sentPackets.clear();
+        if (Const.IS_EXPERIMENT) {
+            try {
+                fileWriter.close();
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Error in closing latency file");
+            }
         }
     }
 }

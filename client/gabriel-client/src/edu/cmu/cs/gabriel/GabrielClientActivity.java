@@ -7,8 +7,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import android.app.Activity;
-import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
@@ -19,15 +17,10 @@ import android.hardware.SensorManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.preference.PreferenceManager;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.ImageView;
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
@@ -40,69 +33,70 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
     private static final String LOG_TAG = "Main";
 
-    private static final int SETTINGS_ID = Menu.FIRST;
-    private static final int CHANGE_SETTING_CODE = 2;
+    // major components for streaming sensor data and receiving information
+    private VideoStreamingThread videoStreamingThread = null;
+    private AccStreamingThread accStreamingThread = null;
+    private ResultReceivingThread resultThread = null;
+    private TokenController tokenController = null;
 
-    public static final int VIDEO_STREAM_PORT = 9098;
-    public static final int ACC_STREAM_PORT = 9099;
-    public static final int GPS_PORT = 9100;
-    public static final int RESULT_RECEIVING_PORT = 9101;
+    private boolean isRunning = false;
+    private CameraPreview preview = null;
 
+    private SensorManager sensorManager = null;
+    private Sensor sensorAcc = null;
+    private TextToSpeech tts = null;
 
-    VideoStreamingThread videoStreamingThread;
-    AccStreamingThread accStreamingThread;
-    ResultReceivingThread resultThread;
-    TokenController tokenController = null;
-
-    private SharedPreferences sharedPref;
-    private boolean hasStarted;
-    private CameraPreview mPreview;
-
-    private SensorManager mSensorManager = null;
-    private Sensor mAccelerometer = null;
-    protected TextToSpeech mTTS = null;
-
-    private ReceivedPacketInfo receivedPacketInfo;
-
-    private int fpsCounter = 0;
+    private ReceivedPacketInfo receivedPacketInfo = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Log.d(LOG_TAG, "++onCreate");
+        Log.v(LOG_TAG, "++onCreate");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Connect to Gabriel Server if it's not experiment
         if (!Const.IS_EXPERIMENT){
-            final Button expButton = (Button) findViewById(R.id.button_runexperiment);
-            expButton.setVisibility(View.GONE);
-            init_once();
-            init_experiement();
+            initOnce();
+            initPerRun(Const.SERVER_IP, Const.TOKEN_SIZE, null);
+        } else {
+           runExperiments();
         }
     }
 
-    private void init_once() {
-        Log.d(LOG_TAG, "on init once");
-        mPreview = (CameraPreview) findViewById(R.id.camera_preview);
-        mPreview.setPreviewCallback(previewCallback);
+    /**
+     * Does initialization for the entire application. Called only once even for multiple experiments.
+     */
+    private void initOnce() {
+        Log.v(LOG_TAG, "++initOnce");
+        preview = (CameraPreview) findViewById(R.id.camera_preview);
+        preview.setPreviewCallback(previewCallback);
+        
         Const.ROOT_DIR.mkdirs();
-        Const.LATENCY_DIR.mkdirs();
+        Const.EXP_DIR.mkdirs();
+        
         // TextToSpeech.OnInitListener
-        if (mTTS == null) {
-            mTTS = new TextToSpeech(this, this);
+        if (tts == null) {
+            tts = new TextToSpeech(this, this);
         }
-        if (mSensorManager == null) {
-            mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-            mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        
+        // IMU sensors
+        if (sensorManager == null) {
+            sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+            sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
         }
-        hasStarted = true;
+        
+        isRunning = true;
     }
-    private void init_experiement() {
-        Log.e(LOG_TAG, "on init experiment - cleaning up");
+    
+    /**
+     * Does initialization before each run (connecting to a specific server).
+     * Called once before each experiment.
+     */
+    private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
+        Log.v(LOG_TAG, "++initPerRun");
         if (tokenController != null){
             tokenController.close();
         }
@@ -126,43 +120,24 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         Log.e(LOG_TAG, "on init experiment - starting up");
-        tokenController = new TokenController(Const.LATENCY_FILE);
-        resultThread = new ResultReceivingThread(Const.GABRIEL_IP, RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+        tokenController = new TokenController(tokenSize, latencyFile);
+        resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
         resultThread.start();
 
-        videoStreamingThread = new VideoStreamingThread(Const.GABRIEL_IP, VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
+        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
         videoStreamingThread.start();
 
-        accStreamingThread = new AccStreamingThread(Const.GABRIEL_IP, ACC_STREAM_PORT, returnMsgHandler, tokenController);
+        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
         accStreamingThread.start();
     }
 
-    boolean experimentStarted = false;
-    public void startExperiment(View view) {
-        if (!experimentStarted) {
-            // Automate experiment
-            experimentStarted = true;
-            runExperiements();
-        }
-    }
-
-    protected void runExperiements(){
+    /**
+     * Runs a set of experiments with different server IPs and token numbers.
+     * IP list and token sizes are defined in the Const file.
+     */
+    private void runExperiments(){
         final Timer startTimer = new Timer();
         TimerTask autoStart = new TimerTask(){
-            String[] ipList = {
-                    "128.2.213.106",
-                    "54.198.72.157",
-                    "54.190.77.230",
-                    "54.155.98.138",
-
-                    // GPU on Amazon EC2
-                //  "54.146.224.125",
-                //  "54.218.199.49",
-                //  "54.155.64.83",
-                    };
-
-            int[] tokenSize = {1};
-//          int[] tokenSize = {10000};
             int ipIndex = 0;
             int tokenIndex = 0;
             @Override
@@ -171,7 +146,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     @Override
                     public void run() {
                         // end condition
-                        if ((ipIndex == ipList.length) || (tokenIndex == tokenSize.length)) {
+                        if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST.length)) {
                             Log.d(LOG_TAG, "Finish all experiemets");
                             startTimer.cancel();
                             terminate();
@@ -179,21 +154,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         }
 
                         // make a new configuration
-                        Const.GABRIEL_IP = ipList[ipIndex];
-                        Const.MAX_TOKEN_SIZE = tokenSize[tokenIndex];
-                        Const.LATENCY_FILE_NAME = "latency-" + Const.GABRIEL_IP + "-" + Const.MAX_TOKEN_SIZE + ".txt";
-                        Const.LATENCY_FILE = new File (Const.ROOT_DIR.getAbsolutePath() +
-                                File.separator + "exp" +
-                                File.separator + Const.LATENCY_FILE_NAME);
-                        Log.e(LOG_TAG, "Start new experiment");
-                        Log.d(LOG_TAG, "ip: " + Const.GABRIEL_IP +"\tToken: " + Const.MAX_TOKEN_SIZE);
+                        String serverIP = Const.SERVER_IP_LIST[ipIndex];
+                        int tokenSize = Const.TOKEN_SIZE_LIST[tokenIndex];
+                        File latencyFile = new File (Const.EXP_DIR.getAbsolutePath() + File.separator + 
+                                "latency-" + serverIP + "-" + tokenSize + ".txt");
+                        Log.i(LOG_TAG, "Start new experiment - IP: " + serverIP +"\tToken: " + tokenSize);
 
                         // run the experiment
-                        init_experiement();
+                        initPerRun(serverIP, tokenSize, latencyFile);
 
-                        // move on the next experiment
+                        // move to the next experiment
                         tokenIndex++;
-                        if (tokenIndex == tokenSize.length){
+                        if (tokenIndex == Const.TOKEN_SIZE_LIST.length){
                             tokenIndex = 0;
                             ipIndex++;
                         }
@@ -202,52 +174,42 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         };
 
+        initOnce();
         // run 5 minutes for each experiment
-        init_once();
         startTimer.schedule(autoStart, 1000, 5*60*1000);
     }
 
-    // Implements TextToSpeech.OnInitListener
-    public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) {
-            if (mTTS == null){
-                mTTS = new TextToSpeech(this, this);
-            }
-            int result = mTTS.setLanguage(Locale.US);
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e(LOG_TAG, "Language is not available.");
-            }
-            int listenerResult = mTTS.setOnUtteranceProgressListener(new UtteranceProgressListener()
-            {
-                @Override
-                public void onDone(String utteranceId)
-                {
-                    Log.i(LOG_TAG,"progress on Done " + utteranceId);
-//                  notifyToken();
-                }
-
-                @Override
-                public void onError(String utteranceId)
-                {
-                    Log.d(LOG_TAG,"progress on Error " + utteranceId);
-                }
-
-                @Override
-                public void onStart(String utteranceId)
-                {
-                    Log.d(LOG_TAG,"progress on Start " + utteranceId);
-                }
-            });
-            if (listenerResult != TextToSpeech.SUCCESS)
-            {
-                Log.e(LOG_TAG, "failed to add utterance progress listener");
-            }
-        } else {
-            // Initialization failed.
-            Log.e(LOG_TAG, "Could not initialize TextToSpeech.");
-        }
+    @Override
+    protected void onResume() {
+        super.onResume();
     }
 
+    @Override
+    protected void onPause() {
+        this.terminate();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
+    private PreviewCallback previewCallback = new PreviewCallback() {
+        // called whenever a new frame is captured
+        public void onPreviewFrame(byte[] frame, Camera mCamera) {
+            if (isRunning) {
+                Camera.Parameters parameters = mCamera.getParameters();
+                if (videoStreamingThread != null){
+                    videoStreamingThread.push(frame, parameters);
+                }
+            }
+        }
+    };
+
+    /**
+     * Notifies token controller that some response is back
+     */
     private void notifyToken() {
         Message msg = Message.obtain();
         msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
@@ -255,89 +217,40 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         msg.obj = receivedPacketInfo;
         tokenController.tokenHandler.sendMessage(msg);
     }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Log.d(LOG_TAG, "++onResume");
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        Log.d(LOG_TAG, "++onPause");
-        this.terminate();
-        Log.d(LOG_TAG, "--onPause");
-    }
-
-    @Override
-    protected void onDestroy() {
-        this.terminate();
-        super.onDestroy();
-    }
-
-    private PreviewCallback previewCallback = new PreviewCallback() {
-        public void onPreviewFrame(byte[] frame, Camera mCamera) {
-
-            if (hasStarted) {
-                Camera.Parameters parameters = mCamera.getParameters();
-                if (videoStreamingThread != null){
-                    if (fpsCounter == 0) {
-                        //Log.d(LOG_TAG, "begin: "+System.currentTimeMillis());
-                        videoStreamingThread.push(frame, parameters);
-                        //Log.d(LOG_TAG, "end: "+System.currentTimeMillis());
-                    }
-//                  fpsCounter = (fpsCounter + 1) % 2;
-                }
-            }
-        }
-    };
-
+    
+    /**
+     * Handles messages passed from streaming threads and result receiving threads.
+     */
     private Handler returnMsgHandler = new Handler() {
         public void handleMessage(Message msg) {
             if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
-                Bundle data = msg.getData();
-                String message = data.getString("message");
-//              stopStreaming();
+                terminate();
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_MESSAGE) {
                 receivedPacketInfo = (ReceivedPacketInfo) msg.obj;
                 receivedPacketInfo.setMsgRecvTime(System.currentTimeMillis());
-                Log.i(LOG_TAG, "ddd:" + System.currentTimeMillis());
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
                 String ttsMessage = (String) msg.obj;
 
-                if (mTTS != null){
-                    Log.i(LOG_TAG, "tts string: " + ttsMessage);
-                    if (Const.PLAY_PRERECORDED) {
-                        if (ttsMessage.equals("left")) {
-                            //Play pre-recorded audio
-                            Log.i(LOG_TAG, "Playing pre-recorded audio " + ttsMessage + ".wav");
-                            return;
-                        }
-                        if (ttsMessage.equals("right")) {
-                            //Play pre-recorded audio
-                            Log.i(LOG_TAG, "Playing pre-recorded audio " + ttsMessage + ".wav");
-                            return;
-                        }
-                    }
-
-                    mTTS.setSpeechRate(1f);
+                if (tts != null){
+                    Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
+                    // TODO: check if tts is playing something else
+                    tts.setSpeechRate(1.5f);
                     String[] splitMSGs = ttsMessage.split("\\.");
                     HashMap<String, String> map = new HashMap<String, String>();
                     map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "unique");
 
                     if (splitMSGs.length == 1)
-                        mTTS.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, map); // the only sentence
+                        tts.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, map); // the only sentence
                     else {
-                        mTTS.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, null); // the first sentence
+                        tts.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, null); // the first sentence
                         for (int i = 1; i < splitMSGs.length - 1; i++) {
-                            mTTS.playSilence(350, TextToSpeech.QUEUE_ADD, null); // add pause for every period
-                            mTTS.speak(splitMSGs[i].toString().trim(),TextToSpeech.QUEUE_ADD, null);
+                            tts.playSilence(350, TextToSpeech.QUEUE_ADD, null); // add pause for every period
+                            tts.speak(splitMSGs[i].toString().trim(),TextToSpeech.QUEUE_ADD, null);
                         }
-                        mTTS.playSilence(350, TextToSpeech.QUEUE_ADD, null);
-                        mTTS.speak(splitMSGs[splitMSGs.length - 1].toString().trim(),TextToSpeech.QUEUE_ADD, map); // the last sentence
+                        tts.playSilence(350, TextToSpeech.QUEUE_ADD, null);
+                        tts.speak(splitMSGs[splitMSGs.length - 1].toString().trim(),TextToSpeech.QUEUE_ADD, map); // the last sentence
                     }
                 }
             }
@@ -352,10 +265,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
     };
 
+    /**
+     * Terminates all services.
+     */
     private void terminate() {
-        Log.d(LOG_TAG, "on terminate");
-        // change only soft state
-
+        Log.v(LOG_TAG, "++terminate");
+        
         if ((resultThread != null) && (resultThread.isAlive())) {
             resultThread.close();
             resultThread = null;
@@ -373,25 +288,25 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             tokenController = null;
         }
 
-        // Don't forget to shutdown!
-        if (mTTS != null) {
-            mTTS.stop();
-            mTTS.shutdown();
-            mTTS = null;
-            Log.d(LOG_TAG, "TTS is closed");
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
         }
-        if (mPreview != null) {
-            mPreview.setPreviewCallback(null);
-            mPreview.close();
-            mPreview = null;
+        if (preview != null) {
+            preview.setPreviewCallback(null);
+            preview.close();
+            preview = null;
         }
-        if (mSensorManager != null) {
-            mSensorManager.unregisterListener(this);
-            mSensorManager = null;
-            mAccelerometer = null;
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+            sensorManager = null;
+            sensorAcc = null;
         }
     }
 
+    /**************** SensorEventListener ***********************/
+    // TODO: test accelerometer streaming
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
@@ -405,4 +320,40 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
         // Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
     }
+    /**************** End of SensorEventListener ****************/
+    
+    /**************** TextToSpeech.OnInitListener ***************/
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            if (tts == null) {
+                tts = new TextToSpeech(this, this);
+            }
+            int result = tts.setLanguage(Locale.US);
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(LOG_TAG, "Language is not available.");
+            }
+            int listenerResult = tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override
+                public void onDone(String utteranceId) {
+                    Log.i(LOG_TAG,"progress on Done " + utteranceId);
+//                  notifyToken();
+                }
+                @Override
+                public void onError(String utteranceId) {
+                    Log.v(LOG_TAG,"progress on Error " + utteranceId);
+                }
+                @Override
+                public void onStart(String utteranceId) {
+                    Log.v(LOG_TAG,"progress on Start " + utteranceId);
+                }
+            });
+            if (listenerResult != TextToSpeech.SUCCESS) {
+                Log.e(LOG_TAG, "failed to add utterance progress listener");
+            }
+        } else {
+            // Initialization failed.
+            Log.e(LOG_TAG, "Could not initialize TextToSpeech.");
+        }
+    }
+    /**************** End of TextToSpeech.OnInitListener ********/
 }
