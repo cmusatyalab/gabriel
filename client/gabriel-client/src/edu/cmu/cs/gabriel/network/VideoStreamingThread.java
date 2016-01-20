@@ -55,7 +55,7 @@ public class VideoStreamingThread extends Thread {
     private VideoControlThread networkReceiver = null;
 
     // frame data shared between threads
-    private long frameID = 1;   // must start from 1, TODO: why?
+    private long frameID = 0;
     private byte[] frameBuffer = null;
     private Object frameLock = new Object();
 
