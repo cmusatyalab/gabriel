@@ -54,13 +54,13 @@ class UCommServerHandler(gabriel.network.CommonHandler):
         LOG.info("new Offlaoding Engine is connected")
         super(UCommServerHandler, self).handle()
 
-    def _handle_input_stream(self):
+    def _handle_input_data(self):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
         rtn_data = self._recv_all(rtn_size)
         rtn_json = json.loads(rtn_data)
 
         # check if engine id is provided
-        engine_id = header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+        engine_id = rtn_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
         if engine_id is None:
             rtn_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = str(self.request.fileno())
 
@@ -68,7 +68,7 @@ class UCommServerHandler(gabriel.network.CommonHandler):
             rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
 
         # the real work, put the return message into the queue
-        result_queue.put(json.dumps(header_json))
+        result_queue.put(json.dumps(rtn_json))
 
 
 class UCommServer(gabriel.network.CommonServer):
@@ -141,8 +141,8 @@ class ResultForwardingClient(gabriel.network.CommonClient):
                     time_diff = time.time() - prev_sent_time
                     if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
                         result_json['status'] = "duplicate"
-                self.previous_sent_time_dict[engine_name] = time.time()
-                self.previous_sent_dict[engine_name] = result_str
+                self.previous_sent_time_dict[engine_id] = time.time()
+                self.previous_sent_dict[engine_id] = result_str
 
             result_str = json.dumps(result_json)
             forward_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result_str
@@ -155,7 +155,7 @@ class ResultForwardingClient(gabriel.network.CommonClient):
             forward_data = json.dumps(forward_json)
             packet = struct.pack("!I%ds" % len(forward_data), len(forward_data), forward_data)
             self.sock.sendall(packet)
-            LOG.info("forward the result: %s" % output)
+            LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_json))
 
         except Queue.Empty as e:
             pass

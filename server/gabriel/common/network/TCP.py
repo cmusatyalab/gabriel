@@ -116,7 +116,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         if len(data) == 0:
             raise TCPZeroBytesError("Recv 0 bytes.")
         else:
-            LOG.error("unexpected network input")
+            LOG.error("unexpected network input in %s" % str(self))
             self.terminate()
 
     def _handle_queue_data(self):
@@ -249,7 +249,7 @@ class CommonClient(threading.Thread):
         if len(data) == 0:
             raise TCPZeroBytesError("Recv 0 bytes.")
         else:
-            LOG.error("unexpected network input")
+            LOG.error("unexpected network input in %s" % str(self))
             self.terminate()
 
     def _handle_queue_data(self):

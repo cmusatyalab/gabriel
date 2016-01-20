@@ -26,10 +26,6 @@ class Protocol_client(object):
     JSON_KEY_ENGINE_ID = "engine_id"
     JSON_KEY_TOKEN_INJECT = "token_inject"
 
-    #FRAME_MESSAGE_KEY = "id"
-    #OFFLOADING_ENGINE_NAME_KEY = "engine_id"
-    #RESULT_ID_MESSAGE_KEY = "result_frame_id"
-
 
 class Protocol_application(object):
     JSON_KEY_SENSOR_TYPE = "sensor_type"
@@ -48,22 +44,6 @@ class Protocol_measurement(object):
     JSON_KEY_UCOMM_SENT_TIME = "ucomm_sent_time"
     JSON_KEY_CONTROL_SENT_TO_MOBILE_TIME = "control_sent_to_mobile_time"
 
-    #JSON_KEY_ALLOWED_APP_LIST = "allowed_app_list"
-    #JSON_KEY_REGISTER_APP_UUID = "register_app"
-
-    #APP_MOTION = "motion-classifier"
-    #APP_MOPED = "moped"
-    #APP_STF = "stf"
-    #APP_FACE = "face"
-    #APP_TESSERACT = "ocr-tesseract"
-    #APP_OCR_COMM = "ocr-comm"
-    #APP_ACTIVITY = "activity"
-    #APP_AR = "ar"
-    #APP_DUMMY = "dummy"
-    #APP_DUMMY_SYNTHETIC = "dummy-synthetic"
-    #APP_NAME_LIST = (APP_MOTION, APP_MOPED, APP_STF, APP_FACE, \
-    #        APP_TESSERACT, APP_OCR_COMM, APP_ACTIVITY, APP_AR, \
-    #        APP_DUMMY, APP_DUMMY_SYNTHETIC)
 
 class Protocol_result(object):
     JSON_KEY_STATUS = "status"

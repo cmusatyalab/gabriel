@@ -64,15 +64,12 @@ class SensorReceiveClient(gabriel.network.CommonClient):
             header_json[gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME] = time.time()
 
         # token buffer - discard if the token(queue) is not available
-        while True:
+        if self.output_queue.full():
             try:
-                self.output_queue.put_nowait((header_json, data))
-            except Queue.Full:
-                #LOG.debug("Packet is discarded since no token is valid")
-                try:
-                    self.output_queue.get_nowait()
-                except Queue.Empty:
-                    pass
+                self.output_queue.get_nowait()
+            except Queue.Empty as e:
+                pass
+        self.output_queue.put((header_json, data))
 
 
 class CognitiveProcessThread(threading.Thread):
@@ -109,9 +106,10 @@ class CognitiveProcessThread(threading.Thread):
             ## put return data into output queue
             rtn_json = header
             rtn_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = self.engine_id
-            if result is not None:
-                rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result
-                self.output_queue.put(json.dumps(header))
+            rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result
+            if gabriel.Debug.TIME_MEASUREMENT:
+                rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
+            self.output_queue.put(json.dumps(rtn_json))
         LOG.info("[TERMINATE] Finish %s" % str(self))
 
     def handle(self, header, data): # header is in JSON format
@@ -132,7 +130,7 @@ class ResultPublishClient(gabriel.network.CommonClient):
     def __repr__(self):
         return "Result Publish Client"
 
-    def _handle_queue_data(self, output_queue_fd):
+    def _handle_queue_data(self):
         try:
             rtn_data = self.data_queue.get(timeout = 0.0001)
             packet = struct.pack("!I%ds" % len(rtn_data), len(rtn_data), rtn_data)

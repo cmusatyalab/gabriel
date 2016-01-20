@@ -113,10 +113,10 @@ class MobileVideoHandler(MobileSensorHandler):
         if gabriel.Debug.LOG_STAT:
             self.frame_count += 1
             current_time = time.time()
-            self.total_recv_size += (header_size + img_size + 8)
+            self.total_recv_size += (header_size + image_size + 8)
             current_FPS = 1 / (current_time - self.previous_time)
             self.previous_time = current_time
-            average_FPS = self.frame_count / (self.current_time - self.init_connect_time)
+            average_FPS = self.frame_count / (current_time - self.init_connect_time)
 
             if (self.frame_count % 100 == 0):
                 log_msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
@@ -217,11 +217,11 @@ class MobileResultHandler(MobileSensorHandler):
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME]
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
-                del header[Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
+                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
 
                 if self.time_breakdown_log is not None:
                     self.time_breakdown_log.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
-                            (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
+                            (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_done_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
                 rtn_data = json.dumps(rtn_json)
 

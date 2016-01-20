@@ -33,7 +33,7 @@ def print_rtn(rtn_json):
     result_json = json.loads(result_str)
     image_str = result_json.get(gabriel.Protocol_result.JSON_KEY_IMAGE, None)
     if image_str is not None:
-        result_json[gabriel.Protocol_client.RESULT_MESSAGE_KEY] = "an image of %d bytes" % len(image_str)
+        result_json[gabriel.Protocol_result.JSON_KEY_IMAGE] = "an image of %d bytes" % len(image_str)
     result_str = json.dumps(result_json)
     rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result_str
 
