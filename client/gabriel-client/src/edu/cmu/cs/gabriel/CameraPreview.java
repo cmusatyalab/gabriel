@@ -23,7 +23,8 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
     public CameraPreview(Context context, AttributeSet attrs) {
         super(context, attrs);
-//      Log.d(LOG_TAG , "context : " + context);
+
+        Log.v(LOG_TAG , "++CameraPreview");
         if (mCamera == null) {
             // Launching Camera App using voice command need to wait.
             // See more at https://code.google.com/p/google-glass-api/issues/list
@@ -36,6 +37,16 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
         mHolder = getHolder();
         mHolder.addCallback(this);
         mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+    }
+
+    /**
+     * This is only needed because once the application is onPaused, close() will be called, and during onResume,
+     * the CameraPreview constructor is not called again.
+     */
+    public void checkCamera() {
+        if (mCamera == null) {
+            mCamera = Camera.open();
+        }
     }
 
     public void close() {
@@ -68,7 +79,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     }
 
     public void surfaceCreated(SurfaceHolder holder) {
-        Log.d(LOG_TAG, "surface created");
+        Log.d(LOG_TAG, "++surfaceCreated");
         if (mCamera == null) {
             mCamera = Camera.open();
             // mCamera.setDisplayOrientation(90);

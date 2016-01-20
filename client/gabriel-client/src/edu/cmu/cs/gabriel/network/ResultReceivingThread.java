@@ -35,7 +35,6 @@ public class ResultReceivingThread extends Thread {
     private DataInputStream networkReader;
 
     private Handler returnMsgHandler;
-    private Timer timer = null;
 
     
     public ResultReceivingThread(String serverIP, int port, Handler returnMsgHandler) {
@@ -67,12 +66,12 @@ public class ResultReceivingThread extends Thread {
             return;
         }
 
-        while(isRunning == true){
+        while (isRunning == true){
             try {
                 String recvMsg = this.receiveMsg(networkReader);
                 this.notifyReceivedData(recvMsg);
             } catch (IOException e) {
-                Log.e(LOG_TAG, "Error in receiving result");
+                Log.w(LOG_TAG, "Error in receiving result, maybe because the app has paused");
                 this.notifyError(e.getMessage());
                 break;
             }
@@ -184,10 +183,7 @@ public class ResultReceivingThread extends Thread {
     
     public void close() {
         this.isRunning = false;
-        if (timer != null) {
-            timer.cancel();
-            timer.purge();
-        }
+
         try {
             if(this.networkReader != null){
                 this.networkReader.close();

@@ -56,13 +56,32 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
-        if (!Const.IS_EXPERIMENT){
-            initOnce();
+    @Override
+    protected void onResume() {
+        Log.v(LOG_TAG, "++onResume");
+        super.onResume();
+
+        initOnce();
+        if (Const.IS_EXPERIMENT) { // experiment mode
+            runExperiments();
+        } else { // demo mode
             initPerRun(Const.SERVER_IP, Const.TOKEN_SIZE, null);
-        } else {
-           runExperiments();
         }
+    }
+
+    @Override
+    protected void onPause() {
+        Log.v(LOG_TAG, "++onPause");
+        this.terminate();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Log.v(LOG_TAG, "++onDestroy");
+        super.onDestroy();
     }
 
     /**
@@ -71,6 +90,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void initOnce() {
         Log.v(LOG_TAG, "++initOnce");
         preview = (CameraPreview) findViewById(R.id.camera_preview);
+        preview.checkCamera();
         preview.setPreviewCallback(previewCallback);
         
         Const.ROOT_DIR.mkdirs();
@@ -119,7 +139,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             } catch (InterruptedException e) {}
         }
 
-        Log.e(LOG_TAG, "on init experiment - starting up");
         tokenController = new TokenController(tokenSize, latencyFile);
         resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
         resultThread.start();
@@ -174,25 +193,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         };
 
-        initOnce();
         // run 5 minutes for each experiment
         startTimer.schedule(autoStart, 1000, 5*60*1000);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-    }
-
-    @Override
-    protected void onPause() {
-        this.terminate();
-        super.onPause();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
     }
 
     private PreviewCallback previewCallback = new PreviewCallback() {
@@ -215,7 +217,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
         receivedPacketInfo.setGuidanceDoneTime(System.currentTimeMillis());
         msg.obj = receivedPacketInfo;
-        tokenController.tokenHandler.sendMessage(msg);
+        try {
+            tokenController.tokenHandler.sendMessage(msg);
+        } catch (NullPointerException e) {
+            // might happen because token controller might have been terminated
+        }
     }
     
     /**
@@ -271,6 +277,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void terminate() {
         Log.v(LOG_TAG, "++terminate");
         
+        isRunning = false;
+
         if ((resultThread != null) && (resultThread.isAlive())) {
             resultThread.close();
             resultThread = null;

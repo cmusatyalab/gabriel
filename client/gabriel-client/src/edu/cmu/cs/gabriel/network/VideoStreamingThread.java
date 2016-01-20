@@ -279,6 +279,7 @@ public class VideoStreamingThread extends Thread {
      * Puts the new frame into the @frameBuffer
      */
     public void push(byte[] frame, Parameters parameters) {
+        Log.v(LOG_TAG, "push");
         
         if (!Const.IS_EXPERIMENT){ // demo mode
             synchronized (frameLock) {
