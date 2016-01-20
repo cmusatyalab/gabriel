@@ -39,13 +39,18 @@ public class Const {
     // token size list
     public static final int[] TOKEN_SIZE_LIST = {1};
 
+    // maximum times to ping (for time synchronization
+    public static final int MAX_PING_TIMES = 20;
+    
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final String APP_NAME = "lego";
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + File.separator);
     // a small number of images used for compression (bmp files), usually a subset of test images
     // these files are loaded into memory first so cannot have too many of them!
     public static final File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + "-compress" + File.separator);
-
+    // the maximum allowed compress images to load
+    public static final int MAX_COMPRESS_IMAGE = 3;
+    
     // result file
     public static final File EXP_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
 }

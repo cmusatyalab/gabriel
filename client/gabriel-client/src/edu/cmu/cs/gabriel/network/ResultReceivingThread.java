@@ -20,30 +20,29 @@ import android.os.Message;
 import android.util.Base64;
 import android.util.Log;
 import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
-import edu.cmu.cs.gabriel.token.TokenController;
 
 public class ResultReceivingThread extends Thread {
 
     private static final String LOG_TAG = "ResultThread";
 
+    private boolean isRunning = false;
+
+    // TCP connection
     private InetAddress remoteIP;
     private int remotePort;
     private Socket tcpSocket;
-    private boolean is_running = true;
     private DataOutputStream networkWriter;
     private DataInputStream networkReader;
 
     private Handler returnMsgHandler;
-    private TokenController tokenController;
     private Timer timer = null;
 
-
-    public ResultReceivingThread(String GABRIEL_IP, int port, Handler returnMsgHandler, TokenController tokenController) {
-        is_running = false;
-        this.tokenController = tokenController;
+    
+    public ResultReceivingThread(String serverIP, int port, Handler returnMsgHandler) {
+        isRunning = false;
         this.returnMsgHandler = returnMsgHandler;
         try {
-            remoteIP = InetAddress.getByName(GABRIEL_IP);
+            remoteIP = InetAddress.getByName(serverIP);
         } catch (UnknownHostException e) {
             Log.e(LOG_TAG, "unknown host: " + e.getMessage());
         }
@@ -52,7 +51,7 @@ public class ResultReceivingThread extends Thread {
 
     @Override
     public void run() {
-        this.is_running = true;
+        this.isRunning = true;
         Log.i(LOG_TAG, "Result receiving thread running");
 
         try {
@@ -62,31 +61,27 @@ public class ResultReceivingThread extends Thread {
             networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
             networkReader = new DataInputStream(tcpSocket.getInputStream());
         } catch (IOException e) {
-            Log.e(LOG_TAG, Log.getStackTraceString(e));
             Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
             this.notifyError(e.getMessage());
-            this.is_running = false;
+            this.isRunning = false;
             return;
         }
 
-        // Recv initial simulation information
-        while(is_running == true){
+        while(isRunning == true){
             try {
                 String recvMsg = this.receiveMsg(networkReader);
-                //Log.v(LOG_TAG, recvMsg);
                 this.notifyReceivedData(recvMsg);
             } catch (IOException e) {
-                Log.e(LOG_TAG, e.toString());
-                // Do not send error to handler, Streaming thread already sent it.
+                Log.e(LOG_TAG, "Error in receiving result");
                 this.notifyError(e.getMessage());
                 break;
-            } catch (JSONException e) {
-                Log.e(LOG_TAG, e.toString());
-                this.notifyError(e.getMessage());
             }
         }
     }
 
+    /**
+     * @return a String representing the received message from @reader
+     */
     private String receiveMsg(DataInputStream reader) throws IOException {
         int retLength = reader.readInt();
         byte[] recvByte = new byte[retLength];
@@ -103,68 +98,59 @@ public class ResultReceivingThread extends Thread {
     }
 
 
-    private void notifyReceivedData(String recvData) throws JSONException {
+    private void notifyReceivedData(String recvData) {
         // convert the message to JSON
-        Log.i(LOG_TAG, "aaa:" + System.currentTimeMillis());
-        JSONObject recvJSON = new JSONObject(recvData);
-        Log.i(LOG_TAG, "bbb:" + System.currentTimeMillis());
         String result = null;
-        int injectedToken = 0;
-        String engineID = "";
         long frameID = -1;
+        String engineID = "";
+        int injectedToken = 0;
 
-        try{
-            result = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
-        } catch (JSONException e) {}
         try {
+            JSONObject recvJSON = new JSONObject(recvData);
+            result = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
+            frameID = recvJSON.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
+            engineID = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
             injectedToken = recvJSON.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
         } catch (JSONException e) {}
-        try {
-            frameID = recvJSON.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
-        } catch (JSONException e) {}
-        try {
-            engineID = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
-        } catch (JSONException e) {}
 
-        /* refilling tokens */
-        if (frameID == -1) return;
-
-
-
+        // TODO: refilling tokens
 //        if (injectedToken > 0){
 //            this.tokenController.increaseTokens(injectedToken);
 //        }
 
         if (result != null){
-            //Log.i(LOG_TAG, "Received result:" + result);
             /* parsing result */
-            JSONObject resultJSON = new JSONObject(result);
+            JSONObject resultJSON = null;
+            try {
+                resultJSON = new JSONObject(result);
+            } catch (JSONException e) {
+                Log.e(LOG_TAG, "Result message not in correct JSON format");
+            }
+            
             String speechFeedback = "";
             Bitmap imageFeedback = null;
 
-            /* general message */
+            // return status
             try {
-
                 String status = resultJSON.getString("status");
-                Log.i(LOG_TAG, "ccc:" + status + ", " + System.currentTimeMillis());
 
                 Message msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
                 msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
                 this.returnMsgHandler.sendMessage(msg);
 
-//              if (!status.equals("success")) {
+                if (!status.equals("success")) {
                     msg = Message.obtain();
                     msg.what = NetworkProtocol.NETWORK_RET_DONE;
                     this.returnMsgHandler.sendMessage(msg);
-//                  return;
-//              }
+                    return;
+                }
             } catch (JSONException e) {
                 Log.e(LOG_TAG, "the return message has no status field");
                 return;
             }
 
-            /* image guidance */
+            // image guidance
             try {
                 String imageFeedbackString = resultJSON.getString("image");
                 byte[] data = Base64.decode(imageFeedbackString.getBytes(), Base64.DEFAULT);
@@ -178,7 +164,7 @@ public class ResultReceivingThread extends Thread {
                 Log.v(LOG_TAG, "no image guidance found");
             }
 
-            /* speech guidance */
+            // speech guidance
             try {
                 speechFeedback = resultJSON.getString("speech");
                 Message msg = Message.obtain();
@@ -186,23 +172,18 @@ public class ResultReceivingThread extends Thread {
                 msg.obj = speechFeedback;
                 this.returnMsgHandler.sendMessage(msg);
             } catch (JSONException e) {
-//              Message msg = Message.obtain();
-//              msg.what = NetworkProtocol.NETWORK_RET_DONE;
-//              this.returnMsgHandler.sendMessage(msg);
                 Log.v(LOG_TAG, "no speech guidance found");
             }
+            
+            // done processing return message
+            Message msg = Message.obtain();
+            msg.what = NetworkProtocol.NETWORK_RET_DONE;
+            this.returnMsgHandler.sendMessage(msg);
         }
     }
-
-    private void notifyError(String errorMessage) {
-        Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
-        msg.obj = errorMessage;
-        this.returnMsgHandler.sendMessage(msg);
-    }
-
+    
     public void close() {
-        this.is_running = false;
+        this.isRunning = false;
         if (timer != null) {
             timer.cancel();
             timer.purge();
@@ -230,5 +211,15 @@ public class ResultReceivingThread extends Thread {
             }
         } catch (IOException e) {
         }
+    }
+    
+    /**
+     * Notifies error to the main thread
+     */
+    private void notifyError(String errorMessage) {
+        Message msg = Message.obtain();
+        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
+        msg.obj = errorMessage;
+        this.returnMsgHandler.sendMessage(msg);
     }
 }

@@ -121,7 +121,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         Log.e(LOG_TAG, "on init experiment - starting up");
         tokenController = new TokenController(tokenSize, latencyFile);
-        resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler, tokenController);
+        resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
         resultThread.start();
 
         videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
@@ -335,7 +335,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             int listenerResult = tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                 @Override
                 public void onDone(String utteranceId) {
-                    Log.i(LOG_TAG,"progress on Done " + utteranceId);
+                    Log.v(LOG_TAG,"progress on Done " + utteranceId);
 //                  notifyToken();
                 }
                 @Override

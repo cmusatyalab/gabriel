@@ -1,6 +1,7 @@
 package edu.cmu.cs.gabriel.network;
 
 public class NetworkProtocol {
+    // TODO: give better names to these constants
 
     public static final int NETWORK_RET_FAILED = 1;
     public static final int NETWORK_RET_SPEECH = 2;

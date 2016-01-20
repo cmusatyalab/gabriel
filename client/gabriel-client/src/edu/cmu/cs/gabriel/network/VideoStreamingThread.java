@@ -8,7 +8,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -18,8 +17,6 @@ import java.util.Arrays;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Rect;
@@ -30,74 +27,79 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
+import edu.cmu.cs.gabriel.Const;
+import edu.cmu.cs.gabriel.token.TokenController;
 
 public class VideoStreamingThread extends Thread {
 
     private static final String LOG_TAG = "VideoStreaming";
-    protected File[] imageFiles = null;
-    protected File[] imageFilesCompressPaths = null;
-    protected Bitmap[] imageFilesCompress = new Bitmap[30];
-    protected int indexImageFile = 0;
-    protected int indexImageFileCompress = 0;
-    protected int imageFileCompressLength = -1;
 
-    private boolean is_running = false;
+    private boolean isRunning = false;
+    private boolean isPing = true;
+    
+    // image files for experiments (test and compression)
+    private File[] imageFiles = null;
+    private File[] imageFilesCompress = null;
+    private Bitmap[] imageBitmapsCompress = new Bitmap[30];
+    private int indexImageFile = 0;
+    private int indexImageFileCompress = 0;
+    private int imageFileCompressLength = -1;
+
+
+    // TCP connection
     private InetAddress remoteIP;
     private int remotePort;
-
-    // UDP
-    private DatagramSocket udpSocket = null;
-    // TCP
     private Socket tcpSocket = null;
     private DataOutputStream networkWriter = null;
     private DataInputStream networkReader = null;
     private VideoControlThread networkReceiver = null;
 
+    // frame data shared between threads
+    private long frameID = 1;   // must start from 1, TODO: why?
     private byte[] frameBuffer = null;
-    private long frameGeneratedTime = 0;
-    private long frameCompressedTime = 0;
     private Object frameLock = new Object();
+
     private Handler networkHander = null;
-    private long frameID = 1;   // must start from 1
-    private boolean is_ping = true;
+    private TokenController tokenController = null;
 
-    private TokenController tokenController;
-
-    public VideoStreamingThread(String IPString, int port, Handler handler, TokenController tokenController) {
-        is_running = false;
+    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController) {
+        isRunning = false;
         this.networkHander = handler;
         this.tokenController = tokenController;
 
         try {
-            remoteIP = InetAddress.getByName(IPString);
+            remoteIP = InetAddress.getByName(serverIP);
         } catch (UnknownHostException e) {
             Log.e(LOG_TAG, "unknown host: " + e.getMessage());
         }
         remotePort = port;
 
-        // check input data at image directory
-        imageFiles = this.getImageFiles(Const.TEST_IMAGE_DIR);
-        //Log.e(LOG_TAG, "Number of image files in the input folder: " + imageFiles.length);
-        imageFilesCompressPaths = this.getImageFiles(Const.COMPRESS_IMAGE_DIR);
-        int i = 0;
-        for (File path : imageFilesCompressPaths) {
-//          BitmapFactory.Options options = new BitmapFactory.Options();
-//            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-            Bitmap bitmap = BitmapFactory.decodeFile(path.getPath());
-            imageFilesCompress[i] = bitmap;
-            long t_start_compressing = System.currentTimeMillis();
-            Log.e(LOG_TAG, "Start compressing: " + path.getPath() + t_start_compressing);
-            ByteArrayOutputStream buffer_nouse = new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 67, buffer_nouse);
-            Log.e(LOG_TAG, "Compressing time: " + (System.currentTimeMillis() - t_start_compressing));
-            Log.e(LOG_TAG, "Compressed size: " + buffer_nouse.size());
-
-            i++;
-            if (i == 1) break;
+        if (Const.IS_EXPERIMENT) {
+            // check input data at image directory
+            imageFiles = this.getImageFiles(Const.TEST_IMAGE_DIR);
+            if (imageFiles.length == 0) {
+                // TODO: notify error to the main thread
+                Log.e(LOG_TAG, "test image directory empty!");
+            } else {
+                Log.i(LOG_TAG, "Number of image files in the input folder: " + imageFiles.length);
+            }
+            imageFilesCompress = this.getImageFiles(Const.COMPRESS_IMAGE_DIR);
+            int i = 0;
+            for (File path : imageFilesCompress) {
+    //          BitmapFactory.Options options = new BitmapFactory.Options();
+    //            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+                Bitmap bitmap = BitmapFactory.decodeFile(path.getPath());
+                imageBitmapsCompress[i] = bitmap;
+                i++;
+                if (i == Const.MAX_COMPRESS_IMAGE) break;
+            }
+            imageFileCompressLength = i;
         }
-        imageFileCompressLength = i;
     }
 
+    /**
+     * @return all files within @imageDir
+     */
     private File[] getImageFiles(File imageDir) {
         if (imageDir == null){
             return null;
@@ -120,8 +122,10 @@ public class VideoStreamingThread extends Thread {
         return files;
     }
 
+    /**
+     * @return a String representing the received message from @reader
+     */
     private String receiveMsg(DataInputStream reader) throws IOException {
-        Log.w(LOG_TAG, "++recvMessage");
         int retLength = reader.readInt();
         byte[] recvByte = new byte[retLength];
         int readSize = 0;
@@ -133,20 +137,14 @@ public class VideoStreamingThread extends Thread {
             readSize += ret;
         }
         String receivedString = new String(recvByte);
-        Log.w(LOG_TAG, "--recvMessage: " + receivedString);
         return receivedString;
     }
 
     public void run() {
-        this.is_running = true;
+        this.isRunning = true;
         Log.i(LOG_TAG, "Streaming thread running");
 
-        int packet_count = 0;
-        long packet_firstUpdateTime = 0;
-        long packet_currentUpdateTime = 0;
-        int packet_totalsize = 0;
-        long packet_prevUpdateTime = 0;
-
+        // initialization of the TCP connection
         try {
             tcpSocket = new Socket();
             tcpSocket.setTcpNoDelay(true);
@@ -156,66 +154,74 @@ public class VideoStreamingThread extends Thread {
 //          networkReceiver = new VideoControlThread(networkReader, this.networkHander, this.tokenController);
 //          networkReceiver.start();
         } catch (IOException e) {
-            Log.e(LOG_TAG, Log.getStackTraceString(e));
-            Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
+            Log.e(LOG_TAG, "Error in initializing network socket: " + e);
             this.notifyError(e.getMessage());
-            this.is_running = false;
+            this.isRunning = false;
             return;
         }
 
-        while (this.is_running) {
+        while (this.isRunning) {
             try {
                 // check token
                 if (this.tokenController.getCurrentToken() <= 0) {
-                    Log.d(LOG_TAG, "waiting");
+                    // this shouldn't happen since getCurrentToken will block until there is token
+                    Log.w(LOG_TAG, "no token available"); 
                     continue;
                 }
 
-                if (is_ping == true) {
-                    is_ping = false;
-                    int i;
-                    long min_diff = 1000000;
-                    long best_sent_time = 0, best_server_time = 0, best_recv_time = 0;
-                    for (i = 0; i < 20; i++) {
-                        // send current time to server
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        DataOutputStream dos=new DataOutputStream(baos);
-                        long sent_time = System.currentTimeMillis();
-                        byte[] header = ("{\"sync_time\":" + sent_time + "}").getBytes();
-                        dos.writeInt(header.length);
-                        dos.write(header);
-                        networkWriter.write(baos.toByteArray());
-                        networkWriter.flush();
+                /*
+                 * The first part is pinging to synchronize time with the server every time the applications starts
+                 */
+                if (Const.IS_EXPERIMENT) {
+                    if (isPing) {
+                        isPing = false;
+                        long min_diff = 1000000;
+                        long bestSentTime = 0, bestServerTime = 0, bestRecvTime = 0;
+                        for (int i = 0; i < Const.MAX_PING_TIMES; i++) {
+                            // send current time to server
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            DataOutputStream dos = new DataOutputStream(baos);
+                            long sentTime = System.currentTimeMillis();
+                            byte[] jsonData = ("{\"sync_time\":" + sentTime + "}").getBytes();
+                            dos.writeInt(jsonData.length);
+                            dos.write(jsonData);
+                            networkWriter.write(baos.toByteArray());
+                            networkWriter.flush();
+    
+                            // receive current time at server
+                            String recvMsg = this.receiveMsg(networkReader);
+                            long serverTime = -1;
+                            try{
+                                JSONObject obj = new JSONObject(recvMsg);
+                                serverTime = obj.getLong("sync_time");
+                            } catch(JSONException e){
+                                Log.e(LOG_TAG, "Sync time with server error!!");
+                            }
+                            
+                            long recvTime = System.currentTimeMillis();
+                            if (recvTime - sentTime < min_diff) {
+                                min_diff = recvTime - sentTime;
+                                bestSentTime = sentTime;
+                                bestServerTime = serverTime;
+                                bestRecvTime = recvTime;
+                            }
+                        }
 
-                        // receive current time at server
-                        String recvMsg = this.receiveMsg(networkReader);
-                        long server_time = -1;
-                        try{
-                            JSONObject obj = new JSONObject(recvMsg);
-                            server_time = obj.getLong("sync_time");
-                        } catch(JSONException e){
-                            Log.e(LOG_TAG, "Sync time with server error!!");
-                        }
-                        long recv_time = System.currentTimeMillis();
-                        if (recv_time - sent_time < min_diff) {
-                            min_diff = recv_time - sent_time;
-                            best_sent_time = sent_time;
-                            best_server_time = server_time;
-                            best_recv_time = recv_time;
-                        }
+                        // send message to token controller, actually for logging...
+                        Message msg = Message.obtain();
+                        msg.what = NetworkProtocol.NETWORK_RET_SYNC;
+                        String sync_str = "" + bestSentTime + "\t" + bestServerTime + "\t" + bestRecvTime + "\n";
+                        msg.obj = sync_str;
+                        tokenController.tokenHandler.sendMessage(msg);
+    
+                        continue;
                     }
-
-                    // send message to token controller, actually for logging...
-                    Message msg = Message.obtain();
-                    msg.what = NetworkProtocol.NETWORK_RET_SYNC;
-                    String sync_str = "" + best_sent_time + "\t" + best_server_time + "\t" + best_recv_time + "\n";
-                    msg.obj = sync_str;
-                    tokenController.tokenHandler.sendMessage(msg);
-
-                    continue;
                 }
 
-                // get data
+                /*
+                 * The second part is to stream real data to the server.
+                 */
+                // get data in the frame buffer
                 byte[] data = null;
                 long dataTime = 0;
                 long compressedTime = 0;
@@ -229,154 +235,102 @@ public class VideoStreamingThread extends Thread {
                     data = this.frameBuffer;
                     dataTime = System.currentTimeMillis();
 
-                    int indexCompress = indexImageFileCompress % imageFileCompressLength;
-                    long t_start_compressing = System.currentTimeMillis();
-                    Log.i(LOG_TAG, "Start compressing: " + indexCompress + " " + t_start_compressing);
-                    ByteArrayOutputStream buffer_nouse = new ByteArrayOutputStream();
-                    //imageFilesCompress[indexCompress].compress(Bitmap.CompressFormat.JPEG, 67, buffer_nouse);
-                    Log.i(LOG_TAG, "End compressing: " + System.currentTimeMillis());
-                    Log.e(LOG_TAG, "Compressing time: " + (System.currentTimeMillis() - t_start_compressing));
+                    if (Const.IS_EXPERIMENT) { // compress pre-loaded file in experiment mode
+                        long tStartCompressing = System.currentTimeMillis();
+                        ByteArrayOutputStream bufferNoUse = new ByteArrayOutputStream();
+                        imageBitmapsCompress[indexImageFileCompress].compress(Bitmap.CompressFormat.JPEG, 67, bufferNoUse);
+                        Log.v(LOG_TAG, "Compressing time: " + (System.currentTimeMillis() - tStartCompressing));
+                        indexImageFileCompress = (indexImageFileCompress + 1) % imageFileCompressLength;
+                        compressedTime = System.currentTimeMillis();
+                    }
 
-                    compressedTime = System.currentTimeMillis();
-//                  compressedTime = this.frameCompressedTime;
                     sendingFrameID = this.frameID;
                     Log.v(LOG_TAG, "sending:" + sendingFrameID);
                     this.frameBuffer = null;
-                    indexImageFileCompress++;
                 }
 
                 // make it as a single packet
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                DataOutputStream dos=new DataOutputStream(baos);
-                byte[] header = ("{\"id\":" + sendingFrameID + "}").getBytes();
+                DataOutputStream dos = new DataOutputStream(baos);
+                byte[] header = ("{\"" + NetworkProtocol.HEADER_MESSAGE_FRAME_ID + "\":" + sendingFrameID + "}").getBytes();
                 dos.writeInt(header.length);
                 dos.write(header);
                 dos.writeInt(data.length);
                 dos.write(data);
 
-                this.tokenController.sendData(sendingFrameID, dataTime, compressedTime, dos.size());
+                // send packet and consume tokens
+                this.tokenController.logSentPacket(sendingFrameID, dataTime, compressedTime);
+                this.tokenController.decreaseToken();
                 networkWriter.write(baos.toByteArray());
                 networkWriter.flush();
-                this.tokenController.decreaseToken();
-
-                // measurement
-                if (packet_firstUpdateTime == 0) {
-                    packet_firstUpdateTime = System.currentTimeMillis();
-                }
-                packet_currentUpdateTime = System.currentTimeMillis();
-                packet_count++;
-                packet_totalsize += data.length;
-                if (packet_count % 10 == 0) {
-                    Log.d(LOG_TAG, "(NET)\t" + "BW: " + 8.0*packet_totalsize / (packet_currentUpdateTime-packet_firstUpdateTime)/1000 +
-                            " Mbps\tCurrent FPS: " + 8.0*data.length/(packet_currentUpdateTime - packet_prevUpdateTime)/1000 + " Mbps\t" +
-                            "FPS: " + 1000.0*packet_count/(packet_currentUpdateTime-packet_firstUpdateTime));
-                }
-                packet_prevUpdateTime = packet_currentUpdateTime;
+                
             } catch (IOException e) {
-                Log.e(LOG_TAG, e.getMessage());
+                Log.e(LOG_TAG, "Error in sending packet: " + e);
                 this.notifyError(e.getMessage());
-                this.is_running = false;
+                this.isRunning = false;
                 return;
             }
-
-            try{
-                Thread.sleep(1);
-            } catch (InterruptedException e) {}
         }
-        this.is_running = false;
+        this.isRunning = false;
     }
 
-    public boolean stopStreaming() {
-        is_running = false;
-        if (udpSocket != null) {
-            udpSocket.close();
-            udpSocket = null;
-        }
-        if (tcpSocket != null) {
-            try {
-                tcpSocket.close();
-            } catch (IOException e) {
-            }
-        }
-        if (networkWriter != null) {
-            try {
-                networkWriter.close();
-            } catch (IOException e) {
-            }
-        }
-        if (networkReceiver != null) {
-            networkReceiver.close();
-        }
-
-        return true;
-    }
-
-
-    private Size cameraImageSize = null;
-    private long frame_count = 0, frame_firstUpdateTime = 0;
-    private long frame_prevUpdateTime = 0, frame_currentUpdateTime = 0;
-    private long frame_totalsize = 0;
-
+    /**
+     * Called whenever a new frame is generated
+     * Puts the new frame into the @frameBuffer
+     */
     public void push(byte[] frame, Parameters parameters) {
-        Log.v(LOG_TAG, "push");
-        if (frame_firstUpdateTime == 0) {
-            frame_firstUpdateTime = System.currentTimeMillis();
-        }
-        frame_currentUpdateTime = System.currentTimeMillis();
-
-        int datasize = 0;
-        cameraImageSize = parameters.getPreviewSize();
-        if (this.imageFiles == null){
+        
+        if (!Const.IS_EXPERIMENT){ // demo mode
             synchronized (frameLock) {
-                this.frameGeneratedTime = System.currentTimeMillis();
+                Size cameraImageSize = parameters.getPreviewSize();
                 YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
                         cameraImageSize.height, null);
                 ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
+                // chooses quality 67 and it roughly matches quality 5 in avconv
                 image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 67, tmpBuffer);
                 this.frameBuffer = tmpBuffer.toByteArray();
-                Log.v(LOG_TAG, "compress to JPEG done");
-                datasize = tmpBuffer.size();
                 this.frameID++;
                 frameLock.notify();
             }
-        }else{
+        } else { // experiment mode
             try {
-                long data_time = System.currentTimeMillis();
-
-                // compress image
-                Log.w(LOG_TAG, "Start compressing: " + System.currentTimeMillis());
-
-
-                int index = indexImageFile % this.imageFiles.length;
-                datasize = (int) this.imageFiles[index].length();
-                FileInputStream fi = new FileInputStream(this.imageFiles[index]);
-                byte[] buffer = new byte[datasize];
-                fi.read(buffer, 0, datasize);
+                long dataTime = System.currentTimeMillis();
+                int dataSize = (int) this.imageFiles[indexImageFile].length();
+                FileInputStream fi = new FileInputStream(this.imageFiles[indexImageFile]);
+                byte[] buffer = new byte[dataSize];
+                fi.read(buffer, 0, dataSize);
                 synchronized (frameLock) {
                     this.frameBuffer = buffer;
-                    this.frameGeneratedTime = data_time;
-//                  this.frameCompressedTime = compressed_time;
                     this.frameID++;
                     frameLock.notify();
                 }
-                indexImageFile++;
-//              indexImageFileCompress++;
+                indexImageFile = (indexImageFile + 1) % this.imageFiles.length;
             } catch (FileNotFoundException e) {
             } catch (IOException e) {
             }
         }
-
-        frame_count++;
-        frame_totalsize += datasize;
-        if (frame_count % 50 == 0) {
-            Log.e(LOG_TAG, "(IMG)\t" +
-                    "BW: " + 8.0*frame_totalsize / (frame_currentUpdateTime-frame_firstUpdateTime)/1000 +
-                    " Mbps\tCurrent FPS: " + 8.0*datasize/(frame_currentUpdateTime - frame_prevUpdateTime)/1000 + " Mbps\t" +
-                    "FPS: " + 1000.0*frame_count/(frame_currentUpdateTime-frame_firstUpdateTime));
-        }
-        frame_prevUpdateTime = frame_currentUpdateTime;
     }
 
+    public void stopStreaming() {
+        isRunning = false;
+        if (tcpSocket != null) {
+            try {
+                tcpSocket.close();
+            } catch (IOException e) {}
+        }
+        if (networkWriter != null) {
+            try {
+                networkWriter.close();
+            } catch (IOException e) {}
+        }
+        if (networkReceiver != null) {
+            networkReceiver.close();
+        }
+    }
+
+    /**
+     * Notifies error to the main thread
+     */
     private void notifyError(String message) {
         // callback
         Message msg = Message.obtain();
