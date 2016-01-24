@@ -40,6 +40,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private TokenController tokenController = null;
 
     private boolean isRunning = false;
+    private boolean isFirstExperiment = true;
     private CameraPreview preview = null;
 
     private SensorManager sensorManager = null;
@@ -134,9 +135,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         if (Const.IS_EXPERIMENT) {
-            try {
-                Thread.sleep(20*1000);
-            } catch (InterruptedException e) {}
+            if (isFirstExperiment) {
+                isFirstExperiment = false;
+            } else {
+                try {
+                    Thread.sleep(20*1000);
+                } catch (InterruptedException e) {}
+            }
         }
 
         tokenController = new TokenController(tokenSize, latencyFile);
