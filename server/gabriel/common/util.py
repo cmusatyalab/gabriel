@@ -19,6 +19,7 @@
 #
 
 import json
+from optparse import OptionParser
 import pprint
 
 import gabriel
@@ -39,3 +40,20 @@ def print_rtn(rtn_json):
 
     return pprint.pformat(rtn_json)
 
+def process_command_line(argv):
+    VERSION = gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel Cognitive Assistant"
+
+    parser = OptionParser(usage = '%prog [option]', version = VERSION, description = DESCRIPTION)
+    parser.add_option(
+            '-s', '--address', action = 'store', dest = 'address',
+            help = "(IP address:port number) of directory server")
+
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings
