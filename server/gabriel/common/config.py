@@ -98,7 +98,7 @@ class Const(object):
     TOKEN_INJECTION_SIZE = 10
 
     ## min allowed time between two identical messages
-    DUPLICATE_MIN_INTERVAL = 5
+    DUPLICATE_MIN_INTERVAL = 3
 
 
 class ServiceMeta(object):
