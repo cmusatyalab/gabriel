@@ -7,6 +7,7 @@ import android.os.Environment;
 public class Const {
     // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;
+    public static final boolean LOAD_IMAGES = false;
 
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
@@ -22,6 +23,10 @@ public class Const {
     public static final int VIDEO_STREAM_PORT = 9098;
     public static final int ACC_STREAM_PORT = 9099;
     public static final int RESULT_RECEIVING_PORT = 9101;
+
+    // load images (JPEG) from files and pretend they are just captured by the camera
+    public static final String APP_NAME = "pingpong";
+    public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + File.separator);
 
     /************************ Demo mode only *************************************/
     // server IP
@@ -41,10 +46,7 @@ public class Const {
 
     // maximum times to ping (for time synchronization
     public static final int MAX_PING_TIMES = 20;
-    
-    // load images (JPEG) from files and pretend they are just captured by the camera
-    public static final String APP_NAME = "lego";
-    public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + File.separator);
+
     // a small number of images used for compression (bmp files), usually a subset of test images
     // these files are loaded into memory first so cannot have too many of them!
     public static final File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + "-compress" + File.separator);

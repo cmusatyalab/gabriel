@@ -74,7 +74,7 @@ public class VideoStreamingThread extends Thread {
         }
         remotePort = port;
 
-        if (Const.IS_EXPERIMENT) {
+        if (Const.LOAD_IMAGES) {
             // check input data at image directory
             imageFiles = this.getImageFiles(Const.TEST_IMAGE_DIR);
             if (imageFiles.length == 0) {
@@ -83,6 +83,9 @@ public class VideoStreamingThread extends Thread {
             } else {
                 Log.i(LOG_TAG, "Number of image files in the input folder: " + imageFiles.length);
             }
+        }
+
+        if (Const.IS_EXPERIMENT) {
             imageFilesCompress = this.getImageFiles(Const.COMPRESS_IMAGE_DIR);
             int i = 0;
             for (File path : imageFilesCompress) {
@@ -281,7 +284,7 @@ public class VideoStreamingThread extends Thread {
     public void push(byte[] frame, Parameters parameters) {
         Log.v(LOG_TAG, "push");
         
-        if (!Const.IS_EXPERIMENT){ // demo mode
+        if (!Const.LOAD_IMAGES){ // use real-time captured images
             synchronized (frameLock) {
                 Size cameraImageSize = parameters.getPreviewSize();
                 YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
@@ -293,7 +296,7 @@ public class VideoStreamingThread extends Thread {
                 this.frameID++;
                 frameLock.notify();
             }
-        } else { // experiment mode
+        } else { // use pre-captured images
             try {
                 long dataTime = System.currentTimeMillis();
                 int dataSize = (int) this.imageFiles[indexImageFile].length();
