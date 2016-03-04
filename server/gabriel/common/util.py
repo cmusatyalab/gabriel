@@ -25,6 +25,7 @@ import pprint
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
+
 def print_rtn(rtn_json):
     '''
     print return message in a nicer way:
@@ -40,13 +41,14 @@ def print_rtn(rtn_json):
 
     return pprint.pformat(rtn_json)
 
+
 def process_command_line(argv):
     VERSION = gabriel.Const.VERSION
     DESCRIPTION = "Gabriel Cognitive Assistant"
 
     parser = OptionParser(usage = '%prog [option]', version = VERSION, description = DESCRIPTION)
     parser.add_option(
-            '-s', '--address', action = 'store', dest = 'address',
+            '-s', '--address', action = 'store',
             help = "(IP address:port number) of directory server")
 
     settings, args = parser.parse_args(argv)
@@ -57,3 +59,20 @@ def process_command_line(argv):
         if settings.address.find(":") == -1:
             parser.error("Need address and port. Ex) 10.0.0.1:8081")
     return settings
+
+
+def add_preceding_zeros(n, total_length = 5):
+    if n < 10:
+        return "0" * (total_length - 1) + str(n)
+    elif n < 100:
+        return "0" * (total_length - 2) + str(n)
+    elif n < 1000:
+        return "0" * (total_length - 3) + str(n)
+    elif n < 10000:
+        return "0" * (total_length - 4) + str(n)
+    elif n < 100000:
+        return "0" * (total_length - 5) + str(n)
+    elif n < 1000000:
+        return "0" * (total_length - 6) + str(n)
+
+    return None

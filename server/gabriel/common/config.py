@@ -54,6 +54,8 @@ class Const(object):
     VERSION = "0.2"
 
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
+    LOG_IMAGES_PATH = "/home/ubuntu/gabriel-images"
+    LOG_VIDEO_PATH = "/home/ubuntu/gabriel-video.avi"
 
     ## port number for the server modules
     # communication with mobile
@@ -118,3 +120,5 @@ class Debug(object):
     LOG_LEVEL_CONSOLE = logging.INFO
     LOG_STAT = True
     DIRECT_RETURN = False
+    SAVE_IMAGES = False
+    SAVE_VIDEO = False

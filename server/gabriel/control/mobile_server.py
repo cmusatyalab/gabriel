@@ -19,8 +19,10 @@
 #   limitations under the License.
 #
 
+import cv2
 import json
 import multiprocessing
+import numpy as np
 import Queue
 import select
 import socket
@@ -72,6 +74,12 @@ class MobileVideoHandler(MobileSensorHandler):
         if gabriel.Debug.LOG_STAT:
             self.frame_count = 0
             self.total_recv_size = 0
+        if gabriel.Debug.SAVE_IMAGES:
+            if not os.path.exists(gabriel.Const.LOG_IMAGES_PATH):
+                os.makedirs(gabriel.Const.LOG_IMAGES_PATH)
+            self.log_images_counter = 0
+        if gabriel.Debug.SAVE_VIDEO:
+            self.log_video_writer_created = False
 
     def __repr__(self):
         return "Mobile Video Server"
@@ -132,6 +140,21 @@ class MobileVideoHandler(MobileSensorHandler):
                 except Queue.Empty as e:
                     pass
             image_queue.put((header_data, image_data))
+
+        ## write images into files
+        if gabriel.Debug.SAVE_IMAGES:
+            self.log_images_counter += 1
+            with open(os.path.join(gabriel.Const.LOG_IMAGES_PATH, "frame-" + gabriel.util.add_preceding_zeros(self.log_images_counter) + ".jpeg"), "w") as f:
+                f.write(image_data)
+
+        ## write images into a video
+        if gabriel.Debug.SAVE_VIDEO:
+            img_array = np.asarray(bytearray(image_data), dtype = np.int8)
+            cv_image = cv2.imdecode(img_array, -1)
+            if not self.log_video_writer_created:
+                self.log_video_writer_created = True
+                self.log_video_writer = cv2.VideoWriter(gabriel.Const.LOG_VIDEO_PATH, cv2.cv.CV_FOURCC('X','V','I','D'), 10, cv_image.shape[:2])
+            self.log_video_writer.write(cv_image)
 
 
 ## TODO
