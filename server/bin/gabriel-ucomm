@@ -40,26 +40,6 @@ class UCommError(Exception):
     pass
 
 
-def process_command_line(argv):
-    VERSION = 'gabriel ucomm server : %s' % gabriel.Const.VERSION
-    DESCRIPTION = "Gabriel cognitive assistance"
-
-    parser = OptionParser(usage='%prog [option]', version=VERSION,
-            description=DESCRIPTION)
-
-    parser.add_option(
-            '-s', '--address', action='store', dest='address',
-            help="(IP address:port number) of directory server")
-    settings, args = parser.parse_args(argv)
-    if len(args) >= 1:
-        parser.error("invalid arguement")
-
-    if hasattr(settings, 'address') and settings.address is not None:
-        if settings.address.find(":") == -1:
-            parser.error("Need address and port. Ex) 10.0.0.1:8081")
-    return settings, args
-
-
 def register_ucomm(ip_addr, port):
     url = "http://%s:%d/" % (ip_addr, port)
     json_info = {
@@ -71,7 +51,7 @@ def register_ucomm(ip_addr, port):
 
 def main():
     ## get service list from control server
-    settings, args = process_command_line(sys.argv[1:])
+    settings = gabriel.util.process_command_line(sys.argv[1:])
     ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
     service_list = gabriel.network.get_service_list(ip_addr, port)
     LOG.info("Gabriel Server :")
