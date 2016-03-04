@@ -23,6 +23,7 @@ import cv2
 import json
 import multiprocessing
 import numpy as np
+import os
 import Queue
 import select
 import socket
@@ -128,8 +129,7 @@ class MobileVideoHandler(MobileSensorHandler):
 
             if (self.frame_count % 100 == 0):
                 log_msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
-                        (current_FPS, average_FPS, 8 * self.totoal_recv_size / (current_time - self.init_connect_time) / 1000 / 1000,
-                        len(image_queue_list))
+                        (current_FPS, average_FPS, 8 * self.total_recv_size / (current_time - self.init_connect_time) / 1000 / 1000, len(image_queue_list))
                 LOG.info(log_msg)
 
         ## put current image data in all registered cognitive engine queue
@@ -151,9 +151,10 @@ class MobileVideoHandler(MobileSensorHandler):
         if gabriel.Debug.SAVE_VIDEO:
             img_array = np.asarray(bytearray(image_data), dtype = np.int8)
             cv_image = cv2.imdecode(img_array, -1)
+            print cv_image.shape
             if not self.log_video_writer_created:
                 self.log_video_writer_created = True
-                self.log_video_writer = cv2.VideoWriter(gabriel.Const.LOG_VIDEO_PATH, cv2.cv.CV_FOURCC('X','V','I','D'), 10, cv_image.shape[:2])
+                self.log_video_writer = cv2.VideoWriter(gabriel.Const.LOG_VIDEO_PATH, cv2.cv.CV_FOURCC('X','V','I','D'), 10, (cv_image.shape[1], cv_image.shape[0]))
             self.log_video_writer.write(cv_image)
 
 
