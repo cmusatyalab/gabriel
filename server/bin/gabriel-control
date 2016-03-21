@@ -62,8 +62,11 @@ def process_command_line(argv):
     parser.add_option(
             '--log_video', action = 'store_true',
             help = "set if want to store all received images into a video file")
+    parser.add_option(
+            '-k', '--skip_frames', type = "int", action = 'store', default = 0,
+            help = "skip the first several frames in emulation mode")
     settings, args = parser.parse_args(argv)
-    if len(args) >= 2:
+    if len(args) >= 5:
         parser.error("invalid arguement")
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
@@ -77,12 +80,13 @@ class EmulatedMobileDevice(object):
     Emulation of a mobile device that generates images.
     Put the images into queues to be published to all cognitive engines in the same way as if they are coming from a real device.
     '''
-    def __init__(self, image_dir, frame_rate):
+    def __init__(self, image_dir, frame_rate, skip_frames):
         from os import listdir
         self.stop = threading.Event()
         self.filelist = [os.path.join(image_dir, f) for f in listdir(image_dir)
                 if f.lower().endswith("jpeg") or f.lower().endswith("jpg") or f.lower().endswith("bmp")]
         self.filelist.sort()
+        self.filelist = self.filelist[skip_frames:]
         self.wait_time = 1.0 / frame_rate
 
         if gabriel.Debug.SAVE_IMAGES:
@@ -194,7 +198,7 @@ def main():
 
     ## mobile servers that communicate with the mobile device (start with m_)
     if settings.image_dir:
-        m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir), settings.frame_rate)
+        m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir), settings.frame_rate, settings.skip_frames)
     else:
         m_video_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, gabriel.control.MobileVideoHandler)
     m_acc_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, gabriel.control.MobileAccHandler)
