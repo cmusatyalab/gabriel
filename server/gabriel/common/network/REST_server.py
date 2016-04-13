@@ -144,7 +144,7 @@ class ManageService(Resource):
 class GabrielInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type = str)
-    ip_addr = gabriel.network.get_ip("eth0")
+    ip_addr = gabriel.network.get_ip()
     service_info = {
             gabriel.ServiceMeta.UCOMM_SERVER_IP: None,
             gabriel.ServiceMeta.UCOMM_SERVER_PORT: None,
