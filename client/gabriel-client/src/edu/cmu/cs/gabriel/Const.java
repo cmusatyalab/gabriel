@@ -7,11 +7,14 @@ import android.os.Environment;
 public class Const {
     // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;
+
+    // whether to use real-time captured images or load images from files for testing
     public static final boolean LOAD_IMAGES = false;
 
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
-    public static final File ROOT_DIR = new File(Environment.getExternalStorageDirectory() + File.separator + "Gabriel" + File.separator);
+    public static final File ROOT_DIR = new File(Environment.getExternalStorageDirectory() +
+            File.separator + "Gabriel" + File.separator);
 
     // image size and frame rate
     public static final int MIN_FPS = 15;
@@ -26,7 +29,8 @@ public class Const {
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final String APP_NAME = "pingpong";
-    public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + File.separator);
+    public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
+            File.separator + "images-" + APP_NAME + File.separator);
 
     /************************ Demo mode only *************************************/
     // server IP
@@ -49,7 +53,8 @@ public class Const {
 
     // a small number of images used for compression (bmp files), usually a subset of test images
     // these files are loaded into memory first so cannot have too many of them!
-    public static final File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() + File.separator + "images-" + APP_NAME + "-compress" + File.separator);
+    public static final File COMPRESS_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
+            File.separator + "images-" + APP_NAME + "-compress" + File.separator);
     // the maximum allowed compress images to load
     public static final int MAX_COMPRESS_IMAGE = 3;
     
