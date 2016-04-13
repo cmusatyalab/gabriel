@@ -10,16 +10,24 @@
         android:layout_height="fill_parent"
         android:orientation="horizontal"
         android:weightSum="1" >
+
+        <Space
+            android:layout_width="10dp"
+            android:layout_height="fill_parent"/>
         
         <ImageView
             android:id="@+id/guidance_image"
             android:layout_width="300dp"
             android:layout_height="300dp" />
+
+        <Space
+            android:layout_width="10dp"
+            android:layout_height="fill_parent"/>
         
         <edu.cmu.cs.gabriel.CameraPreview
             android:id="@+id/camera_preview"
-            android:layout_width="500dp"
-            android:layout_height="360dp" />
+            android:layout_width="300dp"
+            android:layout_height="300dp" />
             
     </LinearLayout>
 
