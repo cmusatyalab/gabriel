@@ -265,7 +265,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     }
                 }
             }
-            if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE) {
+            if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE || msg.what == NetworkProtocol.NETWORK_RET_ANIMATION) {
                 Bitmap feedbackImg = (Bitmap) msg.obj;
                 ImageView img = (ImageView) findViewById(R.id.guidance_image);
                 img.setImageBitmap(feedbackImg);

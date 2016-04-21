@@ -9,7 +9,9 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Timer;
+import java.util.TimerTask;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -35,6 +37,13 @@ public class ResultReceivingThread extends Thread {
     private DataInputStream networkReader;
 
     private Handler returnMsgHandler;
+
+    // animation
+    private Timer timer = null;
+    private Bitmap[] animationFrames = new Bitmap[10];
+    private int[] animationPeriods = new int[10]; // how long each frame is shown, in millisecond
+    private int animationDisplayIdx = -1;
+    private int nAnimationFrames = -1;
 
     
     public ResultReceivingThread(String serverIP, int port, Handler returnMsgHandler) {
@@ -163,6 +172,26 @@ public class ResultReceivingThread extends Thread {
                 Log.v(LOG_TAG, "no image guidance found");
             }
 
+            // animation guidance
+            try {
+                JSONArray animationArray = resultJSON.getJSONArray("animation");
+                nAnimationFrames = animationArray.length();
+                for (int i = 0; i < nAnimationFrames; i++) {
+                    JSONArray frameArray = animationArray.getJSONArray(i);
+                    String animationFrameString = frameArray.getString(0);
+                    byte[] data = Base64.decode(animationFrameString.getBytes(), Base64.DEFAULT);
+                    animationFrames[i] = BitmapFactory.decodeByteArray(data,0,data.length);
+                    animationPeriods[i] = frameArray.getInt(1);
+                }
+                animationDisplayIdx = -1;
+                if (timer == null) {
+                    timer = new Timer();
+                    timer.schedule(new animationTask(), 0);
+                }
+            } catch (JSONException e) {
+                Log.v(LOG_TAG, "no animation guidance found");
+            }
+
             // speech guidance
             try {
                 speechFeedback = resultJSON.getString("speech");
@@ -181,6 +210,19 @@ public class ResultReceivingThread extends Thread {
         }
     }
     
+    private class animationTask extends TimerTask {
+        @Override
+        public void run() {
+            Log.v(LOG_TAG, "Running timer task");
+            animationDisplayIdx = (animationDisplayIdx + 1) % nAnimationFrames;
+            Message msg = Message.obtain();
+            msg.what = NetworkProtocol.NETWORK_RET_ANIMATION;
+            msg.obj = animationFrames[animationDisplayIdx];
+            returnMsgHandler.sendMessage(msg);
+            timer.schedule(new animationTask(), animationPeriods[animationDisplayIdx]);
+        }
+    };
+
     public void close() {
         this.isRunning = false;
 
