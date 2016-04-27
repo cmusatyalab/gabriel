@@ -41,6 +41,12 @@ def get_ip(iface = 'eth0'):
     return socket.inet_ntoa(ip)
 
 
+def get_public_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    return s.getsockname()[0]
+
+
 def get_registry_server_address(address = None):
     # get ip and port for registry server
     if address is None:
