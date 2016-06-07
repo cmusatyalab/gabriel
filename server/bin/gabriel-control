@@ -20,9 +20,8 @@
 #
 
 
-import cv2
+
 import json
-import numpy as np
 from optparse import OptionParser
 import os
 import Queue
@@ -115,6 +114,8 @@ class EmulatedMobileDevice(object):
 
                 ## write images into a video
                 if gabriel.Debug.SAVE_VIDEO:
+                    import cv2
+                    import numpy as np
                     img_array = np.asarray(bytearray(image_data), dtype = np.int8)
                     cv_image = cv2.imdecode(img_array, -1)
                     if not self.log_video_writer_created:
