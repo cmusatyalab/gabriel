@@ -19,10 +19,9 @@
 #   limitations under the License.
 #
 
-import cv2
+
 import json
 import multiprocessing
-import numpy as np
 import os
 import Queue
 import select
@@ -149,6 +148,8 @@ class MobileVideoHandler(MobileSensorHandler):
 
         ## write images into a video
         if gabriel.Debug.SAVE_VIDEO:
+            import cv2
+            import numpy as np
             img_array = np.asarray(bytearray(image_data), dtype = np.int8)
             cv_image = cv2.imdecode(img_array, -1)
             print cv_image.shape

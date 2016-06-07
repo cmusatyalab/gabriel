@@ -32,7 +32,7 @@ Replacing the symlink in a directory such as `/usr/bin/python`
 is __not__ recommended because this can potentially break
 other Python 3 applications.
 
-You will also need the following packages.
+You also need the following packages.
 
 * parallel-ssh
 * psutil >= 0.4.1
@@ -40,22 +40,16 @@ You will also need the following packages.
 * six==1.1.0
 * Flask==0.9
 * Flask-RESTful==0.2.1
+* opencv >=2.4 (optional)
+* numpy (optional)
 
+To install:
+    sudo apt-get install gcc python-dev default-jre python-pip pssh python-psutil
+    sudo pip install -r server/requirements.txt
 
-To install, you can either
-
-* run a installation script::
-
-    > $ sudo apt-get install fabric openssh-server
-    
-    > $ fab localhost install
-
-* install manually::
-
-    > sudo apt-get install gcc python-dev default-jre python-pip pssh python-psutil
-    
-    > sudo pip install flask==0.9 flask-restful==0.2.1 six==1.1.0
-
+If you want to save server received video for debugging, you'll also need opencv and numpy library:
+   sudo apt-get install python-opencv
+   sudo pip install numpy
 
 Installation - Default networking interface.
 -------------
