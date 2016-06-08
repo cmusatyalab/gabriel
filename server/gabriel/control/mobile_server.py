@@ -220,10 +220,10 @@ class MobileResultHandler(MobileSensorHandler):
     def _handle_queue_data(self):
         try:
             rtn_data = self.data_queue.get(timeout = 0.0001)
-
+            rtn_json = json.loads(rtn_data)
+            
             ## log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
-                rtn_json = json.loads(rtn_data)
                 frame_id = rtn_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
                 result_str = rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]
                 result_json = json.loads(result_str)
@@ -245,7 +245,7 @@ class MobileResultHandler(MobileSensorHandler):
                 del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
 
                 if self.time_breakdown_log is not None:
-                    self.time_breakdown_log.write("%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
+                    self.time_breakdown_log.write("%s\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
                             (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_done_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
                 rtn_data = json.dumps(rtn_json)
