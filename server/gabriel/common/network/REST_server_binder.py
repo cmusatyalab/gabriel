@@ -24,6 +24,9 @@ import subprocess
 import sys
 import threading
 
+dir_file = os.path.dirname(os.path.realpath(__file__))
+
+sys.path.insert(0, os.path.join(dir_file, "../../.."))
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
@@ -47,7 +50,8 @@ class RESTServer(threading.Thread):
 
     def run_exec(self):
         cmd = ["python", "%s" % (self.REST_bin)]
-        _PIPE = subprocess.PIPE
+        #_PIPE = subprocess.PIPE
+        _PIPE = None
         self.proc = subprocess.Popen(cmd, close_fds = True,
                 stdin = _PIPE, stdout = _PIPE, stderr = _PIPE)
         try:
