@@ -21,6 +21,7 @@
 
 
 import json
+import os
 import Queue
 import sys
 from flask import Flask
@@ -30,11 +31,10 @@ from flask.ext.restful import abort
 from flask.ext.restful import reqparse
 from flask.ext.restful import Resource
 
-try:
-    import gabriel
-except ImportError as e:
-    sys.path.insert(0, "..")
-    import gabriel
+dir_file = os.path.dirname(os.path.realpath(__file__))
+
+sys.path.insert(0, os.path.join(dir_file, "../../.."))
+import gabriel
 
 
 KEY_SERVICE_NAME    = "service_name"

@@ -30,8 +30,9 @@ import sys
 import threading
 import time
 
-if os.path.isdir("../gabriel"):
-    sys.path.insert(0, "..")
+dir_file = os.path.dirname(os.path.realpath(__file__))
+
+sys.path.insert(0, os.path.join(dir_file, ".."))
 import gabriel
 import gabriel.control
 LOG = gabriel.logging.getLogger(__name__)
