@@ -59,12 +59,12 @@ public class VideoStreamingThread extends Thread {
     private byte[] frameBuffer = null;
     private Object frameLock = new Object();
 
-    private Handler networkHander = null;
+    private Handler networkHandler = null;
     private TokenController tokenController = null;
 
     public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController) {
         isRunning = false;
-        this.networkHander = handler;
+        this.networkHandler = handler;
         this.tokenController = tokenController;
 
         try {
@@ -154,7 +154,7 @@ public class VideoStreamingThread extends Thread {
             tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
             networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
             networkReader = new DataInputStream(tcpSocket.getInputStream());
-//          networkReceiver = new VideoControlThread(networkReader, this.networkHander, this.tokenController);
+//          networkReceiver = new VideoControlThread(networkReader, this.networkHandler, this.tokenController);
 //          networkReceiver.start();
         } catch (IOException e) {
             Log.e(LOG_TAG, "Error in initializing network socket: " + e);
@@ -342,7 +342,7 @@ public class VideoStreamingThread extends Thread {
         Bundle data = new Bundle();
         data.putString("message", message);
         msg.setData(data);
-        this.networkHander.sendMessage(msg);
+        this.networkHandler.sendMessage(msg);
     }
 
 }
