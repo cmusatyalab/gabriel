@@ -18,8 +18,10 @@
 #   limitations under the License.
 #
 
+import multiprocessing
 import time
 import Queue
+from optparse import OptionParser
 import threading
 import re
 from os import curdir
@@ -32,16 +34,37 @@ import os
 import sys
 if os.path.isdir("../../gabriel"):
     sys.path.insert(0, "../..")
-from gabriel.proxy.common import AppProxyStreamingClient
-from gabriel.proxy.common import AppProxyThread
-from gabriel.proxy.common import ResultpublishClient
-from gabriel.proxy.common import get_service_list
+import gabriel
+import gabriel.proxy
+#from gabriel.proxy.common import AppProxyStreamingClient
+#from gabriel.proxy.common import AppProxyThread
+#from gabriel.proxy.common import ResultpublishClient
+#from gabriel.proxy.common import get_service_list
 from gabriel.common.config import ServiceMeta as SERVICE_META
 
 
 share_queue = Queue.Queue()
 
-class DummyVideoApp(AppProxyThread):
+def process_command_line(argv):
+    VERSION = 'gabriel proxy : %s' % gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel cognitive assistance"
+
+    parser = OptionParser(usage='%prog [option]', version=VERSION,
+            description=DESCRIPTION)
+
+    parser.add_option(
+            '-s', '--address', action='store', dest='address',
+            help="(IP address:port number) of directory server")
+    settings, args = parser.parse_args(argv)
+    if len(args) >= 1:
+        parser.error("invalid arguement")
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8081")
+    return settings, args
+
+class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
     def handle(self, header, data):
         global share_queue
         share_queue.put_nowait(data)
@@ -112,34 +135,36 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 if __name__ == "__main__":
-    output_queue_list = list()
+    output_queue_list = multiprocessing.Queue()
 
     sys.stdout.write("Finding control VM\n")
-    service_list = get_service_list(sys.argv)
-    video_ip = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_ADDRESS)
-    video_port = service_list.get(SERVICE_META.VIDEO_TCP_STREAMING_PORT)
-    acc_ip = service_list.get(SERVICE_META.ACC_TCP_STREAMING_ADDRESS)
-    acc_port = service_list.get(SERVICE_META.ACC_TCP_STREAMING_PORT)
-    return_addresses = service_list.get(SERVICE_META.RESULT_RETURN_SERVER_LIST)
-
+    settings, args = process_command_line(sys.argv[1:])
+    ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
+    service_list = gabriel.network.get_service_list(ip_addr, port)
+    
+    video_ip = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP)
+    video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
+    ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
+    ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
+    
     # dummy video app
     image_queue = Queue.Queue(1)
-    video_client = AppProxyStreamingClient((video_ip, video_port), image_queue)
+    video_client = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
     video_client.start()
     video_client.isDaemon = True
     app_thread = DummyVideoApp(image_queue, output_queue_list)
     app_thread.start()
     app_thread.isDaemon = True
 
-    http_server = ThreadedHTTPServer(('0.0.0.0', 7070), MJPEGStreamHandler)
+    http_server = ThreadedHTTPServer(('127.0.0.1', 7070), MJPEGStreamHandler)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
     http_server_thread.daemon = True
     http_server_thread.start()
 
     # result pub/sub
-    result_pub = ResultpublishClient(return_addresses, output_queue_list)
-    result_pub.start()
-    result_pub.isDaemon = True
+#    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), output_queue_list)
+#    result_pub.start()
+#    result_pub.isDaemon = True
 
     try:
         while True:
