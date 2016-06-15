@@ -141,20 +141,6 @@ class MobileVideoHandler(MobileSensorHandler):
         ## receive data
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
-        header_json = json.loads(header_data)
-
-        # if "sync_time" field exists in the header, then this is a time sync request
-        # and a local time is returned immediately
-        if header_json.get("sync_time") is not None:
-            header_json["sync_time"] = int(time.time() * 1000) # in millisecond
-            header_data = json.dumps(header_json)
-            packet = struct.pack("!I%ds" % len(header_data),
-                    len(header_data), header_data)
-            self.request.send(packet)
-            self.wfile.flush()
-            return
-
-        # normal packat with MJPEG image data
         image_size = struct.unpack("!I", self._recv_all(4))[0]
         image_data = self._recv_all(image_size)
 
@@ -167,6 +153,7 @@ class MobileVideoHandler(MobileSensorHandler):
 
         ## add header data for measurement
         if gabriel.Debug.TIME_MEASUREMENT:
+            header_json = json.loads(header_data)
             header_json[gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME] = time.time()
             header_data = json.dumps(header_json)
 
