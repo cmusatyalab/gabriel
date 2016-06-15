@@ -26,6 +26,7 @@ public class Const {
     public static final int VIDEO_STREAM_PORT = 9098;
     public static final int ACC_STREAM_PORT = 9099;
     public static final int RESULT_RECEIVING_PORT = 9101;
+    public static final int CONTROL_PORT = 22222;
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final String APP_NAME = "pingpong";

@@ -173,56 +173,7 @@ public class VideoStreamingThread extends Thread {
                 }
 
                 /*
-                 * The first part is pinging to synchronize time with the server every time the applications starts
-                 */
-                if (Const.IS_EXPERIMENT) {
-                    if (isPing) {
-                        isPing = false;
-                        long min_diff = 1000000;
-                        long bestSentTime = 0, bestServerTime = 0, bestRecvTime = 0;
-                        for (int i = 0; i < Const.MAX_PING_TIMES; i++) {
-                            // send current time to server
-                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                            DataOutputStream dos = new DataOutputStream(baos);
-                            long sentTime = System.currentTimeMillis();
-                            byte[] jsonData = ("{\"sync_time\":" + sentTime + "}").getBytes();
-                            dos.writeInt(jsonData.length);
-                            dos.write(jsonData);
-                            networkWriter.write(baos.toByteArray());
-                            networkWriter.flush();
-    
-                            // receive current time at server
-                            String recvMsg = this.receiveMsg(networkReader);
-                            long serverTime = -1;
-                            try{
-                                JSONObject obj = new JSONObject(recvMsg);
-                                serverTime = obj.getLong("sync_time");
-                            } catch(JSONException e){
-                                Log.e(LOG_TAG, "Sync time with server error!!");
-                            }
-                            
-                            long recvTime = System.currentTimeMillis();
-                            if (recvTime - sentTime < min_diff) {
-                                min_diff = recvTime - sentTime;
-                                bestSentTime = sentTime;
-                                bestServerTime = serverTime;
-                                bestRecvTime = recvTime;
-                            }
-                        }
-
-                        // send message to token controller, actually for logging...
-                        Message msg = Message.obtain();
-                        msg.what = NetworkProtocol.NETWORK_RET_SYNC;
-                        String sync_str = "" + bestSentTime + "\t" + bestServerTime + "\t" + bestRecvTime + "\n";
-                        msg.obj = sync_str;
-                        tokenController.tokenHandler.sendMessage(msg);
-    
-                        continue;
-                    }
-                }
-
-                /*
-                 * The second part is to stream real data to the server.
+                 * Stream data to the server.
                  */
                 // get data in the frame buffer
                 byte[] data = null;

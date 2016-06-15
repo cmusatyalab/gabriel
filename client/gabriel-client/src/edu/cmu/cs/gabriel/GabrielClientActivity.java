@@ -23,6 +23,7 @@ import android.util.Log;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
+import edu.cmu.cs.gabriel.network.ControlThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
 import edu.cmu.cs.gabriel.network.ResultReceivingThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
@@ -37,6 +38,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private VideoStreamingThread videoStreamingThread = null;
     private AccStreamingThread accStreamingThread = null;
     private ResultReceivingThread resultThread = null;
+    private ControlThread controlThread = null;
     private TokenController tokenController = null;
 
     private boolean isRunning = false;
@@ -145,6 +147,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         tokenController = new TokenController(tokenSize, latencyFile);
+
+        controlThread = new ControlThread(serverIP, Const.CONTROL_PORT, returnMsgHandler, tokenController);
+        controlThread.start();
+
+        if (Const.IS_EXPERIMENT) {
+            controlThread.sendControlMsg("ping");
+            // wait a while for ping to finish...
+            try {
+                Thread.sleep(5*1000);
+            } catch (InterruptedException e) {}
+        }
+
         resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
         resultThread.start();
 
