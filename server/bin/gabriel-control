@@ -199,6 +199,7 @@ def main():
     start_background_services()
 
     ## mobile servers that communicate with the mobile device (start with m_)
+    m_control_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_CONTROL_PORT, gabriel.control.MobileControlHandler)
     if settings.image_dir:
         m_video_server = EmulatedMobileDevice(os.path.abspath(settings.image_dir), settings.frame_rate, settings.skip_frames)
     else:
@@ -214,6 +215,7 @@ def main():
 
     ## create a thread for each server
     # mobile
+    m_control_server_thread = threading.Thread(target = m_control_server.serve_forever)
     m_video_server_thread = threading.Thread(target = m_video_server.serve_forever)
     m_acc_server_thread = threading.Thread(target = m_acc_server.serve_forever)
     m_result_server_thread = threading.Thread(target = m_result_server.serve_forever)
@@ -237,6 +239,7 @@ def main():
 
     ## start!
     try:
+        m_control_server_thread.start()
         m_video_server_thread.start()
         m_acc_server_thread.start()
         m_result_server_thread.start()
@@ -255,6 +258,8 @@ def main():
         sys.exit(1)
     finally:
         finish_background_services()
+        if m_control_server is not None:
+            m_control_server.terminate()
         if m_video_server is not None:
             m_video_server.terminate()
         if m_acc_server is not None:

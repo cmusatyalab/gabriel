@@ -41,6 +41,8 @@ acc_queue_list = list()
 gps_queue_list = list()
 # a global queue that contains final messages sent back to the client
 result_queue = multiprocessing.Queue()
+# a global queue that contains control messages to be sent to the client
+command_queue = multiprocessing.Queue()
 
 
 class MobileCommError(Exception):
@@ -60,6 +62,57 @@ class MobileSensorHandler(gabriel.network.CommonHandler):
             self.init_connect_time = time.time()
             self.previous_time = time.time()
         super(MobileSensorHandler, self).handle()
+
+
+class MobileControlHandler(MobileSensorHandler):
+    '''
+    The control server that
+    1) Receive control messages from client (e.g. ping to synchronize time)
+    2) Delivers sensor control messages from the applications
+    '''
+    def setup(self):
+        super(MobileControlHandler, self).setup()
+
+        # flush out old result at Queue
+        while not command_queue.empty():
+            command_queue.get()
+        self.data_queue = command_queue
+
+    def __repr__(self):
+        return "Mobile Control Server"
+
+    def _handle_input_data(self):
+        ## receive data
+        header_size = struct.unpack("!I", self._recv_all(4))[0]
+        header_data = self._recv_all(header_size)
+        header_json = json.loads(header_data)
+
+        # if "sync_time" field exists in the header, then this is a time sync request
+        # and a local time is returned immediately
+        if header_json.get("sync_time") is not None:
+            header_json["sync_time"] = int(time.time() * 1000) # in millisecond
+            header_data = json.dumps(header_json)
+            packet = struct.pack("!I%ds" % len(header_data),
+                    len(header_data), header_data)
+            self.request.send(packet)
+            self.wfile.flush()
+            return
+
+    def _handle_queue_data(self):
+        try:
+            cmd_json = self.data_queue.get(timeout = 0.0001)
+            cmd_data = json.dumps(command_json)
+
+            ## send return data to the mobile device
+            packet = struct.pack("!I%ds" % len(cmd_data),
+                    len(cmd_data), cmd_data)
+            self.request.send(packet)
+            self.wfile.flush()
+            LOG.info("command sent to mobile device: %s", cmd_data)
+
+        except Queue.Empty:
+            LOG.warning("data queue shouldn't be empty! - %s" % str(self))
+
 
 
 class MobileVideoHandler(MobileSensorHandler):
@@ -221,7 +274,7 @@ class MobileResultHandler(MobileSensorHandler):
         try:
             rtn_data = self.data_queue.get(timeout = 0.0001)
             rtn_json = json.loads(rtn_data)
-            
+
             ## log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
                 frame_id = rtn_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]

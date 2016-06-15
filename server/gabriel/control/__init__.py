@@ -1,5 +1,5 @@
 from .mobile_server import image_queue_list, acc_queue_list, gps_queue_list, result_queue
-from .mobile_server import MobileCommServer, MobileVideoHandler, MobileAccHandler, MobileResultHandler
+from .mobile_server import MobileCommServer, MobileControlHandler, MobileVideoHandler, MobileAccHandler, MobileResultHandler
 
 from .publish_server import SensorPublishServer, VideoPublishHandler, AccPublishHandler, OffloadingEngineMonitor
 
