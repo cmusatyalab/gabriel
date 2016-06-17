@@ -1,0 +1,18 @@
+INTRO:
+This is a python client for 'gabriel-proxy-mirror' proxy server (gabriel/server/bin/gabriel-proxy-dummy)
+
+Python client streams camera feed to the backend. gabriel-proxy-mirror transform the origin image into a mirrored one along y-axis, and then transmit the image (in json) back to the client.
+
+
+USAGE:
+gui version:
+./ui.py
+
+command line version:
+./client.py
+
+Dependency:
+opencv: sudo apt-get install libopencv-dev python-opencv
+
+For gui version, you'll also need pyQt:
+sudo apt-get install python-qt4
