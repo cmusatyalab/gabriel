@@ -95,25 +95,25 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         preview = (CameraPreview) findViewById(R.id.camera_preview);
         preview.checkCamera();
         preview.setPreviewCallback(previewCallback);
-        
+
         Const.ROOT_DIR.mkdirs();
         Const.EXP_DIR.mkdirs();
-        
+
         // TextToSpeech.OnInitListener
         if (tts == null) {
             tts = new TextToSpeech(this, this);
         }
-        
+
         // IMU sensors
         if (sensorManager == null) {
             sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
             sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
         }
-        
+
         isRunning = true;
     }
-    
+
     /**
      * Does initialization before each run (connecting to a specific server).
      * Called once before each experiment.
@@ -194,7 +194,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         // make a new configuration
                         String serverIP = Const.SERVER_IP_LIST[ipIndex];
                         int tokenSize = Const.TOKEN_SIZE_LIST[tokenIndex];
-                        File latencyFile = new File (Const.EXP_DIR.getAbsolutePath() + File.separator + 
+                        File latencyFile = new File (Const.EXP_DIR.getAbsolutePath() + File.separator +
                                 "latency-" + serverIP + "-" + tokenSize + ".txt");
                         Log.i(LOG_TAG, "Start new experiment - IP: " + serverIP +"\tToken: " + tokenSize);
 
@@ -242,7 +242,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             // might happen because token controller might have been terminated
         }
     }
-    
+
     /**
      * Handles messages passed from streaming threads and result receiving threads.
      */
@@ -295,7 +295,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
      */
     private void terminate() {
         Log.v(LOG_TAG, "++terminate");
-        
+
         isRunning = false;
 
         if ((resultThread != null) && (resultThread.isAlive())) {
@@ -309,6 +309,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
             accStreamingThread.stopStreaming();
             accStreamingThread = null;
+        }
+        if ((controlThread != null) && (controlThread.isAlive())) {
+            controlThread.close();
+            controlThread = null;
         }
         if (tokenController != null){
             tokenController.close();
@@ -348,7 +352,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         // Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
     }
     /**************** End of SensorEventListener ****************/
-    
+
     /**************** TextToSpeech.OnInitListener ***************/
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {

@@ -45,7 +45,7 @@ public class ResultReceivingThread extends Thread {
     private int animationDisplayIdx = -1;
     private int nAnimationFrames = -1;
 
-    
+
     public ResultReceivingThread(String serverIP, int port, Handler returnMsgHandler) {
         isRunning = false;
         this.returnMsgHandler = returnMsgHandler;
@@ -134,7 +134,7 @@ public class ResultReceivingThread extends Thread {
             } catch (JSONException e) {
                 Log.e(LOG_TAG, "Result message not in correct JSON format");
             }
-            
+
             String speechFeedback = "";
             Bitmap imageFeedback = null;
 
@@ -202,14 +202,14 @@ public class ResultReceivingThread extends Thread {
             } catch (JSONException e) {
                 Log.v(LOG_TAG, "no speech guidance found");
             }
-            
+
             // done processing return message
             Message msg = Message.obtain();
             msg.what = NetworkProtocol.NETWORK_RET_DONE;
             this.returnMsgHandler.sendMessage(msg);
         }
     }
-    
+
     private class animationTask extends TimerTask {
         @Override
         public void run() {
@@ -219,12 +219,18 @@ public class ResultReceivingThread extends Thread {
             msg.what = NetworkProtocol.NETWORK_RET_ANIMATION;
             msg.obj = animationFrames[animationDisplayIdx];
             returnMsgHandler.sendMessage(msg);
-            timer.schedule(new animationTask(), animationPeriods[animationDisplayIdx]);
+            if (isRunning)
+                timer.schedule(new animationTask(), animationPeriods[animationDisplayIdx]);
         }
     };
 
     public void close() {
         this.isRunning = false;
+
+        if (timer != null) {
+            timer.cancel();
+            timer = null;
+        }
 
         try {
             if(this.networkReader != null){
@@ -250,7 +256,7 @@ public class ResultReceivingThread extends Thread {
         } catch (IOException e) {
         }
     }
-    
+
     /**
      * Notifies error to the main thread
      */

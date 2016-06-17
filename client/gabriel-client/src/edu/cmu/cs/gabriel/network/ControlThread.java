@@ -25,7 +25,7 @@ import edu.cmu.cs.gabriel.token.TokenController;
 
 public class ControlThread extends Thread {
 
-    private static final String LOG_TAG = "ClientControl";
+    private static final String LOG_TAG = "Control";
 
     private boolean isRunning = false;
     
@@ -86,8 +86,6 @@ public class ControlThread extends Thread {
             tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
             networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
             networkReader = new DataInputStream(tcpSocket.getInputStream());
-//            networkReceiver = new ServerControlThread(networkReader, this.mainHandler);
-//            networkReceiver.start();
         } catch (IOException e) {
             Log.e(LOG_TAG, "Error in initializing network socket: " + e);
             this.notifyError(e.getMessage());
@@ -193,7 +191,7 @@ public class ControlThread extends Thread {
         }
     }
 
-    public void stopStreaming() {
+    public void close() {
         isRunning = false;
         if (tcpSocket != null) {
             try {
