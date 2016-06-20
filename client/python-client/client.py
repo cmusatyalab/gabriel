@@ -83,14 +83,17 @@ class ResultReceivingThread(SocketClientThread):
                 for s in inputready: 
                     if s == self.socket: 
                         # handle the server socket
-                        data = self._recv_gabriel_data()
-                        self.reply_q.put(self._success_reply(data))
+                        header, data = self._recv_gabriel_data()
+                        self.reply_q.put(self._success_reply( (header, data) ))
                         tokenm.putToken()
         
     def _recv_gabriel_data(self):
-        data_size = struct.unpack("!I", self._recv_n_bytes(4))[0]
+        header_size = struct.unpack("!I", self._recv_n_bytes(4))[0]
+        header = self._recv_n_bytes(header_size)
+        header_json = json.loads(header)
+        data_size = header_json['data_size']
         data = self._recv_n_bytes(data_size)
-        return data
+        return (header, data)
         
 # token manager implementing gabriel's token mechanism
 class tokenManager(object):
@@ -142,9 +145,12 @@ def run(sig_frame_available=None):
         while True:
             resp=result_reply_q.get()
             # connect and send also send reply to reply queue without any data attached
-            if resp.type == ClientReply.SUCCESS and type(resp.data) is str:
-                resp=json.loads(resp.data)['result']
-                img=json.loads(resp)['val']
+            if resp.type == ClientReply.SUCCESS and resp.data is not None:
+                (resp_header, resp_data) =resp.data
+                resp_header=json.loads(resp_header)
+                img=json.loads(resp_data)['val']
+                print 'header: {}'.format(resp_header)
+                print 'received data size:{}'.format(len(img))
                 if sig_frame_available == None:
                     print 'resp:{}'.format(img[:100])
                 else:
