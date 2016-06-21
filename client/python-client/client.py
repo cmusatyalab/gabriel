@@ -148,14 +148,13 @@ def run(sig_frame_available=None):
             if resp.type == ClientReply.SUCCESS and resp.data is not None:
                 (resp_header, resp_data) =resp.data
                 resp_header=json.loads(resp_header)
-                img=json.loads(resp_data)['val']
+                img=resp_data
                 print 'header: {}'.format(resp_header)
-                print 'received data size:{}'.format(len(img))
                 if sig_frame_available == None:
                     print 'resp:{}'.format(img[:100])
                 else:
                     # display received image on the pyqt ui
-                    data=base64.b64decode(img)
+                    data=img
                     np_data=np.fromstring(data, dtype=np.uint8)
                     frame=cv2.imdecode(np_data,cv2.IMREAD_COLOR)
                     rgb_frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)                    
