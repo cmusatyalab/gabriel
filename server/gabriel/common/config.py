@@ -104,6 +104,14 @@ class Const(object):
     ## min allowed time between two identical messages
     DUPLICATE_MIN_INTERVAL = 3
 
+    # backward-compatibility flag
+    # if set to true, then the result will follow previous convention that it is
+    # a single json string with result as a value
+    # if set to false, new result convention of header as json, any type of data
+    # is admitted 
+    LEGACY_JSON_ONLY_RESULT = False
+    
+
 
 class ServiceMeta(object):
     UCOMM_SERVER_IP = "ucomm_server_ip"

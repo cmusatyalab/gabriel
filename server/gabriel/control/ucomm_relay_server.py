@@ -57,8 +57,10 @@ class UCommRelayHandler(gabriel.network.CommonHandler):
 
     def _handle_input_data(self):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
-        rtn_data = self._recv_all(rtn_size)
-        gabriel.control.result_queue.put(str(rtn_data))
+        rtn_header_size = struct.unpack("!I", self._recv_all(4))[0]
+        rtn_header = self._recv_all(rtn_header_size)
+        rtn_data = self._recv_all(rtn_size-rtn_header_size)        
+        gabriel.control.result_queue.put( (rtn_header, rtn_data) )
 
 
 class UCommRelayServer(gabriel.network.CommonServer):
