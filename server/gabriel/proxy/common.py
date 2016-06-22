@@ -101,15 +101,15 @@ class CognitiveProcessThread(threading.Thread):
                 continue
 
             ## the real processing
+            # header can be changed directly in the proxy (design choice made for backward compatibility)
             result = self.handle(header, data) # header is in JSON format
 
             ## put return data into output queue
             rtn_json = header
             rtn_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = self.engine_id
-            rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result
             if gabriel.Debug.TIME_MEASUREMENT:
                 rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME] = time.time()
-            self.output_queue.put(json.dumps(rtn_json))
+            self.output_queue.put( (json.dumps(rtn_json), result) )
         LOG.info("[TERMINATE] Finish %s" % str(self))
 
     def handle(self, header, data): # header is in JSON format
@@ -132,9 +132,11 @@ class ResultPublishClient(gabriel.network.CommonClient):
 
     def _handle_queue_data(self):
         try:
-            rtn_data = self.data_queue.get(timeout = 0.0001)
-            packet = struct.pack("!I%ds" % len(rtn_data), len(rtn_data), rtn_data)
+            rtn_header, rtn_data = self.data_queue.get(timeout = 0.0001)
+            total_size = len(rtn_header) + len(rtn_data)
+            # packet format: total size, header size, header, data
+            packet = struct.pack("!II{}s{}s".format(len(rtn_header),len(rtn_data)), total_size, len(rtn_header), rtn_header, rtn_data)
             self.sock.sendall(packet)
-            LOG.info("sending result to ucomm: %s" % gabriel.util.print_rtn(json.loads(rtn_data)))
+            LOG.info("sending result to ucomm: %s" % gabriel.util.print_rtn(json.loads(rtn_header)))
         except Queue.Empty as e:
             pass

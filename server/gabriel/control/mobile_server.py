@@ -32,7 +32,7 @@ import sys
 import threading
 import time
 import traceback
-
+import base64
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
@@ -259,43 +259,49 @@ class MobileResultHandler(MobileSensorHandler):
 
     def _handle_queue_data(self):
         try:
-            rtn_data = self.data_queue.get(timeout = 0.0001)
-            rtn_json = json.loads(rtn_data)
-
+            (rtn_header, rtn_data) = self.data_queue.get(timeout = 0.0001)
+            rtn_header_json = json.loads(rtn_header)
             ## log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
-                frame_id = rtn_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
-                result_str = rtn_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]
-                result_json = json.loads(result_str)
+                frame_id = rtn_header_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
                 now = time.time()
 
-                control_recv_from_mobile_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME)
-                app_recv_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME, -1)
-                app_sent_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME, -1)
-                symbolic_done_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
-                ucomm_recv_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME, -1)
-                ucomm_sent_time = rtn_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME, -1)
+                control_recv_from_mobile_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME)
+                app_recv_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME, -1)
+                app_sent_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME, -1)
+                symbolic_done_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
+                ucomm_recv_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME, -1)
+                ucomm_sent_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME, -1)
 
                 # no need to send the time info back to the client
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME]
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME]
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME]
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME]
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME]
-                del rtn_json[gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME, None)
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME, None)
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME, None)
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME, None)
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME, None)
+                rtn_header_json.pop(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, None)
 
                 if self.time_breakdown_log is not None:
                     self.time_breakdown_log.write("%s\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
                             (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_done_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
-                rtn_data = json.dumps(rtn_json)
-
             ## send return data to the mobile device
-            packet = struct.pack("!I%ds" % len(rtn_data),
-                    len(rtn_data), rtn_data)
+            # packet format: header size, header, data
+            # add data size as a field in header for backward compatibility
+            rtn_header_json[gabriel.Protocol_client.JSON_KEY_DATA_SIZE]=len(rtn_data)
+            rtn_header = json.dumps(rtn_header_json)
+            
+            if gabriel.Const.LEGACY_JSON_ONLY_RESULT:
+                rtn_header_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]=rtn_data
+                rtn_header=json.dumps(rtn_header_json)
+                packet = struct.pack("!I{}s".format(len(rtn_header)), len(rtn_header), rtn_header)
+                LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_header))
+            else:
+                packet = struct.pack("!I{}s{}s".format(len(rtn_header),len(rtn_data)), len(rtn_header), rtn_header, rtn_data)                
+                LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_header_json))
             self.request.send(packet)
             self.wfile.flush()
-            LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_json))
+
 
         except Queue.Empty:
             LOG.warning("data queue shouldn't be empty! - %s" % str(self))

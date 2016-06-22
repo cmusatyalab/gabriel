@@ -37,7 +37,7 @@ import cv2
 import numpy as np
 import base64
 LOG = gabriel.logging.getLogger(__name__)
-
+ANDROID_CLIENT=True
 
 def process_command_line(argv):
     VERSION = 'gabriel proxy : %s' % gabriel.Const.VERSION
@@ -60,6 +60,10 @@ def process_command_line(argv):
 
 
 class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
+
+    def add_to_byte_array(self, byte_array, extra_bytes):
+        return struct.pack("!{}s{}s".format(len(byte_array),len(extra_bytes)), byte_array, extra_bytes)
+        
     def handle(self, header, data):
         # PERFORM Cognitive Assistance Processing
         LOG.info("processing: ")
@@ -68,8 +72,51 @@ class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
         bgr_img=cv2.imdecode(np_data,cv2.IMREAD_COLOR)
         mirror_img=cv2.flip(bgr_img,1)
         _, jpeg_img=cv2.imencode('.jpg', mirror_img)
-        jpeg_str = base64.b64encode(jpeg_img)
-        return json.dumps({'val':jpeg_str})
+
+        if ANDROID_CLIENT:
+            # old version return
+            if gabriel.Const.LEGACY_JSON_ONLY_RESULT:
+                jpeg_str = base64.b64encode(jpeg_img)                        
+                msg={
+                    gabriel.Protocol_result.JSON_KEY_STATUS:'success',
+                    gabriel.Protocol_result.JSON_KEY_IMAGE: jpeg_str,
+                    gabriel.Protocol_result.JSON_KEY_IMAGES_ANIMATION: [jpeg_str],
+                    gabriel.Protocol_result.JSON_KEY_SPEECH: "mirror"
+                }
+                return json.dumps(msg)
+            # new gabriel version return
+            else:
+                # image data
+                header[gabriel.Protocol_result.JSON_KEY_STATUS]='success'
+                # numpy tostring is equal to tobytes
+                rtn_data=jpeg_img.tostring()
+                # header has (offset, size) for each data type
+                header[gabriel.Protocol_result.JSON_KEY_IMAGE]=(0, len(rtn_data))
+
+                # animation data
+                # animation is two images: before mirror and after mirror
+                offset=len(rtn_data)
+                _, ori_img=cv2.imencode('.jpg', bgr_img)                
+                animation_data=[jpeg_img.tostring(), ori_img.tostring()]
+                # animation bytes format:
+                # first integer: number of frames
+                # for each frame: size of the frame + data
+                animation_bytes=struct.pack("!I", len(animation_data))
+                for frame in animation_data:
+                    frame_bytes=struct.pack("!I{}s".format(len(frame)), len(frame), frame)
+                    animation_bytes=self.add_to_byte_array(animation_bytes, frame_bytes)
+                rtn_data=self.add_to_byte_array(rtn_data, animation_bytes)
+                header[gabriel.Protocol_result.JSON_KEY_IMAGES_ANIMATION]=(offset, len(animation_bytes))
+
+                # speech data
+                offset=len(rtn_data)
+                speech="mirror"
+                rtn_data=self.add_to_byte_array(rtn_data, speech)
+                header[gabriel.Protocol_result.JSON_KEY_SPEECH]=(offset, len(speech))
+                return rtn_data
+        else:
+            # python client can only handle image data
+            return jpeg_img.tostring()
 
 
 if __name__ == "__main__":

@@ -56,19 +56,21 @@ class UCommServerHandler(gabriel.network.CommonHandler):
 
     def _handle_input_data(self):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
-        rtn_data = self._recv_all(rtn_size)
-        rtn_json = json.loads(rtn_data)
+        rtn_header_size = struct.unpack("!I", self._recv_all(4))[0]
+        rtn_header = self._recv_all(rtn_header_size)
+        rtn_data = self._recv_all(rtn_size-rtn_header_size)
+        rtn_header_json = json.loads(rtn_header)
 
         # check if engine id is provided
-        engine_id = rtn_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+        engine_id = rtn_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
         if engine_id is None:
-            rtn_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = str(self.request.fileno())
+            rtn_header_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = str(self.request.fileno())
 
         if gabriel.Debug.TIME_MEASUREMENT:
-            rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
+            rtn_header_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
 
         # the real work, put the return message into the queue
-        result_queue.put(json.dumps(rtn_json))
+        result_queue.put( (json.dumps(rtn_header_json), rtn_data) )
 
 
 class UCommServer(gabriel.network.CommonServer):
@@ -110,52 +112,30 @@ class ResultForwardingClient(gabriel.network.CommonClient):
     def _handle_queue_data(self):
         try:
             ## get data and result
-            forward_data = self.data_queue.get(timeout = 0.0001)
-            forward_json = json.loads(forward_data)
-            result_str = forward_json.get(gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE, None)
-            engine_id = forward_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
-
-            ## get result status
-            # convert simple "nothing" into the right json format for backward compatibility
-            if result_str is None or len(result_str.strip()) == 0 or result_str == 'nothing':
-                result_json = {'status': 'nothing'}
-            else:
-                result_json = json.loads(result_str)
-            status = result_json.get('status')
-
-            ## move symbolic time from result json into rtn_json (forward_json)
-            if gabriel.Debug.TIME_MEASUREMENT:
-                symbolic_time = result_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
-                try:
-                    del result_json[gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME]
-                    result_str = json.dumps(result_json)
-                except KeyError:
-                    pass
-                forward_json[gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME] = symbolic_time
+            forward_header, forward_data = self.data_queue.get(timeout = 0.0001)
+            forward_header_json = json.loads(forward_header)
+            engine_id = forward_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
 
             ## mark duplicate message
-            if status == "success":
-                prev_sent_data = self.previous_sent_dict.get(engine_id, None)
-                if prev_sent_data is not None and prev_sent_data.lower() == result_str.lower():
-                    prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
-                    time_diff = time.time() - prev_sent_time
-                    if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
-                        result_json['status'] = "duplicate"
-                self.previous_sent_time_dict[engine_id] = time.time()
-                self.previous_sent_dict[engine_id] = result_str
-
-            result_str = json.dumps(result_json)
-            forward_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE] = result_str
+            prev_sent_data = self.previous_sent_dict.get(engine_id, None)
+            if prev_sent_data is not None and prev_sent_data.lower() == forward_data.lower():
+                prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
+                time_diff = time.time() - prev_sent_time
+                if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
+                    forward_header_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
+            self.previous_sent_time_dict[engine_id] = time.time()
+            self.previous_sent_dict[engine_id] = forward_data
 
             ## time measurement
             if gabriel.Debug.TIME_MEASUREMENT:
-                forward_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+                forward_header_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
 
             ## send packet to control VM
-            forward_data = json.dumps(forward_json)
-            packet = struct.pack("!I%ds" % len(forward_data), len(forward_data), forward_data)
+            forward_header = json.dumps(forward_header_json)
+            total_size = len(forward_header) + len(forward_data)            
+            packet = struct.pack("!II{}s{}s".format(len(forward_header),len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
             self.sock.sendall(packet)
-            LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_json))
+            LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_header))
 
         except Queue.Empty as e:
             pass
