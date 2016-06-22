@@ -37,7 +37,7 @@ import cv2
 import numpy as np
 import base64
 LOG = gabriel.logging.getLogger(__name__)
-ANDROID_CLIENT=False
+ANDROID_CLIENT=True
 
 def process_command_line(argv):
     VERSION = 'gabriel proxy : %s' % gabriel.Const.VERSION
