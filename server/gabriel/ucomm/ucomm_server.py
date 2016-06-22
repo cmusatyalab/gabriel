@@ -59,18 +59,18 @@ class UCommServerHandler(gabriel.network.CommonHandler):
         rtn_header_size = struct.unpack("!I", self._recv_all(4))[0]
         rtn_header = self._recv_all(rtn_header_size)
         rtn_data = self._recv_all(rtn_size-rtn_header_size)
-        rtn_json = json.loads(rtn_header)
+        rtn_header_json = json.loads(rtn_header)
 
         # check if engine id is provided
-        engine_id = rtn_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+        engine_id = rtn_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
         if engine_id is None:
-            rtn_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = str(self.request.fileno())
+            rtn_header_json[gabriel.Protocol_client.JSON_KEY_ENGINE_ID] = str(self.request.fileno())
 
         if gabriel.Debug.TIME_MEASUREMENT:
-            rtn_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
+            rtn_header_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_RECV_TIME] = time.time()
 
         # the real work, put the return message into the queue
-        result_queue.put( (json.dumps(rtn_json), rtn_data) )
+        result_queue.put( (json.dumps(rtn_header_json), rtn_data) )
 
 
 class UCommServer(gabriel.network.CommonServer):
@@ -113,8 +113,8 @@ class ResultForwardingClient(gabriel.network.CommonClient):
         try:
             ## get data and result
             forward_header, forward_data = self.data_queue.get(timeout = 0.0001)
-            forward_json = json.loads(forward_header)
-            engine_id = forward_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+            forward_header_json = json.loads(forward_header)
+            engine_id = forward_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
 
             ## mark duplicate message
             prev_sent_data = self.previous_sent_dict.get(engine_id, None)
@@ -122,16 +122,16 @@ class ResultForwardingClient(gabriel.network.CommonClient):
                 prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
                 time_diff = time.time() - prev_sent_time
                 if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
-                    forward_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
+                    forward_header_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
             self.previous_sent_time_dict[engine_id] = time.time()
             self.previous_sent_dict[engine_id] = forward_data
 
             ## time measurement
             if gabriel.Debug.TIME_MEASUREMENT:
-                forward_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+                forward_header_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
 
             ## send packet to control VM
-            forward_header = json.dumps(forward_json)
+            forward_header = json.dumps(forward_header_json)
             total_size = len(forward_header) + len(forward_data)            
             packet = struct.pack("!II{}s{}s".format(len(forward_header),len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
             self.sock.sendall(packet)
