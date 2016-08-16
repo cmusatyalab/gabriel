@@ -135,36 +135,39 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 if __name__ == "__main__":
-    output_queue_list = multiprocessing.Queue()
+    result_queue = multiprocessing.Queue()
+    print result_queue._reader
 
-    sys.stdout.write("Finding control VM\n")
     settings, args = process_command_line(sys.argv[1:])
     ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
     service_list = gabriel.network.get_service_list(ip_addr, port)
-    
+
     video_ip = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP)
     video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
     ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
     ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
-    
-    # dummy video app
-    image_queue = Queue.Queue(1)
+
+    # image receiving and processing threads
+    image_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE # TODO
     video_client = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
     video_client.start()
     video_client.isDaemon = True
-    app_thread = DummyVideoApp(image_queue, output_queue_list)
+
+    # dummy video app
+    app_thread = DummyVideoApp(image_queue, result_queue, engine_id = 'http_server')
     app_thread.start()
     app_thread.isDaemon = True
 
-    http_server = ThreadedHTTPServer(('127.0.0.1', 7070), MJPEGStreamHandler)
+    http_server = ThreadedHTTPServer(('0.0.0.0', 7070), MJPEGStreamHandler)
     http_server_thread = threading.Thread(target=http_server.serve_forever)
     http_server_thread.daemon = True
     http_server_thread.start()
 
     # result pub/sub
-#    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), output_queue_list)
-#    result_pub.start()
-#    result_pub.isDaemon = True
+    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
+    result_pub.start()
+    result_pub.isDaemon = True
 
     try:
         while True:
