@@ -58,6 +58,7 @@ def process_command_line(argv):
 class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
     def handle(self, header, data):
         # PERFORM Cognitive Assistance Processing
+        header['status'] = "success"
         LOG.info("processing: ")
         LOG.info("%s\n" % header)
         return json.dumps({'value':'nothing'})
