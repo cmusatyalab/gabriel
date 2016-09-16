@@ -115,14 +115,16 @@ class ResultForwardingClient(gabriel.network.CommonClient):
             forward_header, forward_data = self.data_queue.get(timeout = 0.0001)
             forward_header_json = json.loads(forward_header)
             engine_id = forward_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+            status = forward_header_json.get(gabriel.Protocol_client.JSON_KEY_STATUS, None)
 
             ## mark duplicate message
             prev_sent_data = self.previous_sent_dict.get(engine_id, None)
-            if prev_sent_data is not None and prev_sent_data.lower() == forward_data.lower():
-                prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
-                time_diff = time.time() - prev_sent_time
-                if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
-                    forward_header_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
+            if status == "success":
+                if prev_sent_data is not None and prev_sent_data.lower() == forward_data.lower():
+                    prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
+                    time_diff = time.time() - prev_sent_time
+                    if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
+                        forward_header_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
             self.previous_sent_time_dict[engine_id] = time.time()
             self.previous_sent_dict[engine_id] = forward_data
 
@@ -132,7 +134,7 @@ class ResultForwardingClient(gabriel.network.CommonClient):
 
             ## send packet to control VM
             forward_header = json.dumps(forward_header_json)
-            total_size = len(forward_header) + len(forward_data)            
+            total_size = len(forward_header) + len(forward_data)
             packet = struct.pack("!II{}s{}s".format(len(forward_header),len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
             self.sock.sendall(packet)
             LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_header))
