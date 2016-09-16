@@ -6,10 +6,10 @@ import android.os.Environment;
 
 public class Const {
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = false;
+    public static final boolean IS_EXPERIMENT = true;
 
     // whether to use real-time captured images or load images from files for testing
-    public static final boolean LOAD_IMAGES = false;
+    public static final boolean LOAD_IMAGES = true;
 
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
@@ -29,9 +29,13 @@ public class Const {
     public static final int CONTROL_PORT = 22222;
 
     // load images (JPEG) from files and pretend they are just captured by the camera
-    public static final String APP_NAME = "pingpong";
+    public static final String APP_NAME = "pool";
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
             File.separator + "images-" + APP_NAME + File.separator);
+
+    // may include background pinging to keep network active
+    public static final boolean BACKGROUND_PING = false;
+    public static final int PING_INTERVAL = 200;
 
     /************************ Demo mode only *************************************/
     // server IP

@@ -108,6 +108,7 @@ public class ResultReceivingThread extends Thread {
 
     private void notifyReceivedData(String recvData) {
         // convert the message to JSON
+        String status = null;
         String result = null;
         long frameID = -1;
         String engineID = "";
@@ -115,11 +116,30 @@ public class ResultReceivingThread extends Thread {
 
         try {
             JSONObject recvJSON = new JSONObject(recvData);
+            status = recvJSON.getString("status");
             result = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
             frameID = recvJSON.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
             engineID = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
-            injectedToken = recvJSON.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
-        } catch (JSONException e) {}
+            //injectedToken = recvJSON.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
+        } catch (JSONException e) {
+            Log.e(LOG_TAG, recvData);
+            Log.e(LOG_TAG, "the return message has no status field");
+            return;
+        }
+
+
+        // return status
+        Message msg = Message.obtain();
+        msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
+        msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
+        this.returnMsgHandler.sendMessage(msg);
+
+        if (!status.equals("success")) {
+            msg = Message.obtain();
+            msg.what = NetworkProtocol.NETWORK_RET_DONE;
+            this.returnMsgHandler.sendMessage(msg);
+            return;
+        }
 
         // TODO: refilling tokens
 //        if (injectedToken > 0){
@@ -138,25 +158,6 @@ public class ResultReceivingThread extends Thread {
             String speechFeedback = "";
             Bitmap imageFeedback = null;
 
-            // return status
-            try {
-                String status = resultJSON.getString("status");
-
-                Message msg = Message.obtain();
-                msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
-                msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
-                this.returnMsgHandler.sendMessage(msg);
-
-                if (!status.equals("success")) {
-                    msg = Message.obtain();
-                    msg.what = NetworkProtocol.NETWORK_RET_DONE;
-                    this.returnMsgHandler.sendMessage(msg);
-                    return;
-                }
-            } catch (JSONException e) {
-                Log.e(LOG_TAG, "the return message has no status field");
-                return;
-            }
 
             // image guidance
             try {
@@ -164,7 +165,7 @@ public class ResultReceivingThread extends Thread {
                 byte[] data = Base64.decode(imageFeedbackString.getBytes(), Base64.DEFAULT);
                 imageFeedback = BitmapFactory.decodeByteArray(data,0,data.length);
 
-                Message msg = Message.obtain();
+                msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_IMAGE;
                 msg.obj = imageFeedback;
                 this.returnMsgHandler.sendMessage(msg);
@@ -195,7 +196,7 @@ public class ResultReceivingThread extends Thread {
             // speech guidance
             try {
                 speechFeedback = resultJSON.getString("speech");
-                Message msg = Message.obtain();
+                msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_SPEECH;
                 msg.obj = speechFeedback;
                 this.returnMsgHandler.sendMessage(msg);
@@ -204,7 +205,7 @@ public class ResultReceivingThread extends Thread {
             }
 
             // done processing return message
-            Message msg = Message.obtain();
+            msg = Message.obtain();
             msg.what = NetworkProtocol.NETWORK_RET_DONE;
             this.returnMsgHandler.sendMessage(msg);
         }

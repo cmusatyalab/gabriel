@@ -25,6 +25,7 @@ import android.widget.ImageView;
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.ControlThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
+import edu.cmu.cs.gabriel.network.PingThread;
 import edu.cmu.cs.gabriel.network.ResultReceivingThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
 import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
@@ -40,6 +41,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private ResultReceivingThread resultThread = null;
     private ControlThread controlThread = null;
     private TokenController tokenController = null;
+    private PingThread pingThread = null;
 
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
@@ -65,6 +67,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     protected void onResume() {
         Log.v(LOG_TAG, "++onResume");
         super.onResume();
+
+        // dim the screen
+//        WindowManager.LayoutParams lp = getWindow().getAttributes();
+//        lp.dimAmount = 1.0f;
+//        lp.screenBrightness = 0.01f;
+//        getWindow().setAttributes(lp);
 
         initOnce();
         if (Const.IS_EXPERIMENT) { // experiment mode
@@ -120,8 +128,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
      */
     private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
         Log.v(LOG_TAG, "++initPerRun");
-        if (tokenController != null){
-            tokenController.close();
+
+        if ((pingThread != null) && (pingThread.isAlive())) {
+            pingThread.kill();
+            pingThread.interrupt();
+            pingThread = null;
         }
         if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
             videoStreamingThread.stopStreaming();
@@ -143,7 +154,26 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 try {
                     Thread.sleep(20*1000);
                 } catch (InterruptedException e) {}
+                controlThread.sendControlMsg("ping");
+                // wait a while for ping to finish...
+                try {
+                    Thread.sleep(5*1000);
+                } catch (InterruptedException e) {}
             }
+        }
+        if (tokenController != null){
+            tokenController.close();
+        }
+        if ((controlThread != null) && (controlThread.isAlive())) {
+            controlThread.close();
+            controlThread = null;
+        }
+
+        if (serverIP == null) return;
+
+        if (Const.BACKGROUND_PING) {
+	        pingThread = new PingThread(serverIP, Const.PING_INTERVAL);
+	        pingThread.start();
         }
 
         tokenController = new TokenController(tokenSize, latencyFile);
@@ -186,6 +216,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         // end condition
                         if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST.length)) {
                             Log.d(LOG_TAG, "Finish all experiemets");
+
+                            initPerRun(null, 0, null); // just to get another set of ping results
+
                             startTimer.cancel();
                             terminate();
                             return;
@@ -249,7 +282,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private Handler returnMsgHandler = new Handler() {
         public void handleMessage(Message msg) {
             if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
-                terminate();
+                //terminate();
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_MESSAGE) {
                 receivedPacketInfo = (ReceivedPacketInfo) msg.obj;
@@ -298,6 +331,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         isRunning = false;
 
+        if ((pingThread != null) && (pingThread.isAlive())) {
+            pingThread.kill();
+            pingThread.interrupt();
+            pingThread = null;
+        }
         if ((resultThread != null) && (resultThread.isAlive())) {
             resultThread.close();
             resultThread = null;

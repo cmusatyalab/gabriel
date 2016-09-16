@@ -39,6 +39,13 @@ public class TokenController {
         }
     }
 
+    public void writeString(String str) {
+        try {
+            Log.d(LOG_TAG, "writeString received string:" + str);
+            fileWriter.write(str);
+        } catch (IOException e) {}
+    }
+
     public Handler tokenHandler = new Handler() {
 
         public void handleMessage(Message msg) {
@@ -46,7 +53,10 @@ public class TokenController {
                 try {
                     if (Const.IS_EXPERIMENT){
                         String log = (String) msg.obj;
+                        Log.i(LOG_TAG, "got message:" + log);
                         fileWriter.write(log);
+                        fileWriter.flush();
+                        Log.i(LOG_TAG, "why?");
                     }
                 } catch (IOException e) {}
             }

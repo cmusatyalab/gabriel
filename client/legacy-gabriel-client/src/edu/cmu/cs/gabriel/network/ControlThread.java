@@ -167,7 +167,8 @@ public class ControlThread extends Thread {
                     String sync_str = "" + bestSentTime + "\t" + bestServerTime + "\t" + bestRecvTime + "\n";
                     msg.obj = sync_str;
                     Log.i(LOG_TAG, sync_str);
-                    tokenController.tokenHandler.sendMessage(msg);
+                    tokenController.writeString(sync_str);
+                    //tokenController.tokenHandler.sendMessage(msg);
                 }
             } catch (SocketException e) {
                 Log.v(LOG_TAG, "no server command");
