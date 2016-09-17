@@ -39,7 +39,7 @@ You also need the following packages.
 * JRE for UPnP
 * six==1.1.0
 * Flask==0.9
-* Flask-RESTful==0.2.1
+* Flask-RESTful==0.3.5
 * opencv >=2.4 (optional)
 * numpy (optional)
 
