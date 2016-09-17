@@ -44,12 +44,14 @@ You also need the following packages.
 * numpy (optional)
 
 To install:
+
     sudo apt-get install gcc python-dev default-jre python-pip pssh python-psutil
     sudo pip install -r server/requirements.txt
 
 If you want to save server received video for debugging, you'll also need opencv and numpy library:
-   sudo apt-get install python-opencv
-   sudo pip install numpy
+
+    sudo apt-get install python-opencv
+    sudo pip install numpy
 
 Installation - Default networking interface.
 -------------
