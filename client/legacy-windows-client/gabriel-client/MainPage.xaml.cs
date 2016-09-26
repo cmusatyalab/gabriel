@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
+using Windows.ApplicationModel.Core;
 using Windows.Data.Json;
 using Windows.Devices.Enumeration;
 using Windows.Foundation;
@@ -61,6 +62,9 @@ namespace gabriel_client
 
         // State variable to make sure no timer tasks are overlapped
         private bool _isDoingTimerTask = false;
+        private Object _timerTaskLock = new Object();
+        private bool _isDoingPingTask = false;
+        private Object _timerPingLock = new Object();
 
         // Networking components
         private StreamSocket _controlSocket;
@@ -85,6 +89,7 @@ namespace gabriel_client
 
         // Token control
         private long _frameID = 0;
+        private Object _frameIdLock = new Object();
         private TokenController _tokenController;
 
         // Feedback
@@ -92,6 +97,10 @@ namespace gabriel_client
 
         // Logger
         private MyLogger _myLogger;
+
+        // Timer to stop program when doing experiments
+        private DispatcherTimer _stopTimer;
+
 
         #region Constructor, lifecycle and navigation
 
@@ -110,7 +119,7 @@ namespace gabriel_client
             // Initialize timer for frame capture
             _getFrameTimer = new DispatcherTimer();
             _getFrameTimer.Tick += _getFrameTimer_Tick;
-            _getFrameTimer.Interval = new TimeSpan(0, 0, 0, 0, 67);
+            _getFrameTimer.Interval = new TimeSpan(0, 0, 0, 0, 67); // 15 fps
 
             // Initialize logger
             _myLogger = new MyLogger("latency-" + Const.SERVER_IP + "-" + Const.TOKEN_SIZE + ".txt");
@@ -120,6 +129,14 @@ namespace gabriel_client
 
             // Prepare TTS
             _mediaElement = new MediaElement();
+
+            // Timer to stop program in exp mode
+            if (Const.IS_EXPERIMENT)
+            {
+                _stopTimer = new DispatcherTimer();
+                _stopTimer.Tick += _stopTimer_Tick;
+                _stopTimer.Interval = new TimeSpan(0, 0, 3, 0, 0); // 5 mins
+            }
         }
 
         private async void Application_Suspending(object sender, SuspendingEventArgs e)
@@ -171,6 +188,12 @@ namespace gabriel_client
             // Initialize camera
             await InitializeCameraAsync();
             _getFrameTimer.Start();
+
+            // Stop timer
+            if (Const.IS_EXPERIMENT)
+            {
+                _stopTimer.Start();
+            }
         }
 
         protected override async void OnNavigatingFrom(NavigatingCancelEventArgs e)
@@ -219,17 +242,64 @@ namespace gabriel_client
 
             await CleanupCameraAsync();
         }
-        
+
         private async void _getFrameTimer_Tick(object sender, object e)
         {
             //Debug.WriteLine("TimerTick Called");
-            _frameID++;
-            if (_isDoingTimerTask == false)
+            lock (_frameIdLock)
             {
-                _isDoingTimerTask = true;
-                await StreamPreviewFrameAsync();
+                _frameID++;
+            }
+            Debug.WriteLine("id: " + _frameID);
+
+            //At least ping to make sure the network is still active
+            bool tempFlag = false;
+            lock (_timerPingLock)
+            {
+                if (_isDoingPingTask == false)
+                {
+                    _isDoingPingTask = true;
+                    tempFlag = true;
+                }
+            }
+            tempFlag = false;
+            if (tempFlag)
+            {
+                // send a fake time to server
+                string jsonData = "{\"sync_time\":" + 1 + "}";
+                _controlSocketWriter.WriteInt32(checked((int)_controlSocketWriter.MeasureString(jsonData)));
+                _controlSocketWriter.WriteString(jsonData);
+                await _controlSocketWriter.StoreAsync();
+
+                // receive current time at server
+                string recvMsg = await receiveMsgAsync(_controlSocketReader);
+                _isDoingPingTask = false;
+            }
+
+            tempFlag = false;
+            lock (_timerTaskLock)
+            {
+                if (_isDoingTimerTask == false)
+                {
+                    _isDoingTimerTask = true;
+                    tempFlag = true;
+                }
+            }
+            if (tempFlag)
+            {
+                await StreamPreviewFrameAsync(_frameID);
                 _isDoingTimerTask = false;
             }
+        }
+
+        private async void _stopTimer_Tick(object sender, object e)
+        {
+            // Stop everything
+            Debug.WriteLine("Stopping the program");
+            _getFrameTimer.Stop();
+
+            await GetServerTimeOffsetAsync();
+            CoreApplication.Exit();
         }
 
         #endregion Event handlers
@@ -419,7 +489,7 @@ namespace gabriel_client
         /// Gets the current preview frame as a SoftwareBitmap
         /// </summary>
         /// <returns></returns>
-        private async Task StreamPreviewFrameAsync()
+        private async Task StreamPreviewFrameAsync(long frameID)
         {
             //            long startTime = GetTimeMillis();
             long dataTime = 0, compressedTime = 0;
@@ -450,7 +520,7 @@ namespace gabriel_client
             }
             else
             {
-                _indexImageFile = (int) (_frameID % _imageFiles.LongCount());
+                _indexImageFile = (int) (frameID % _imageFiles.LongCount());
                 using (IRandomAccessStreamWithContentType stream = await _imageFiles[_indexImageFile].OpenReadAsync())
                 {
                     imageData = new byte[stream.Size];
@@ -473,8 +543,8 @@ namespace gabriel_client
                     compressedTime = GetTimeMillis();
                 }
                 _tokenController.DecreaseToken();
-                _tokenController.LogSentPacket(_frameID, dataTime, compressedTime);
-                await StreamImageAsync(imageData);
+                _tokenController.LogSentPacket(frameID, dataTime, compressedTime);
+                await StreamImageAsync(imageData, frameID);
             }
         }
 
@@ -515,17 +585,19 @@ namespace gabriel_client
             // Everything is hard coded for now
             HostName serverHost = new HostName(Const.SERVER_IP);
 
-            _controlSocket = new StreamSocket();
+            _controlSocket = new StreamSocket();            
             await _controlSocket.ConnectAsync(serverHost, "" + Const.CONTROL_PORT);
             _controlSocketReader = new DataReader(_controlSocket.InputStream);
             _controlSocketWriter = new DataWriter(_controlSocket.OutputStream);
 
             _videoStreamSocket = new StreamSocket();
+            _videoStreamSocket.Control.QualityOfService = SocketQualityOfService.LowLatency;
             await _videoStreamSocket.ConnectAsync(serverHost, "" + Const.VIDEO_STREAM_PORT);
             _videoStreamSocketReader= new DataReader(_videoStreamSocket.InputStream);
             _videoStreamSocketWriter= new DataWriter(_videoStreamSocket.OutputStream);
 
             _resultReceivingSocket = new StreamSocket();
+            _resultReceivingSocket.Control.QualityOfService = SocketQualityOfService.LowLatency;
             await _resultReceivingSocket.ConnectAsync(serverHost, "" + Const.RESULT_RECEIVING_PORT);
             _resultReceivingSocketReader= new DataReader(_resultReceivingSocket.InputStream);
             _resultReceivingSocketWriter= new DataWriter(_resultReceivingSocket.OutputStream);
@@ -646,11 +718,11 @@ namespace gabriel_client
             _resultReceivingWorkItem = asyncAction;
         }
 
-        private async Task StreamImageAsync(byte[] imageData)
+        private async Task StreamImageAsync(byte[] imageData, long frameID)
         {
 //            Debug.WriteLine("streaming image");
            
-            string headerData = "{\"" + "frame_id" + "\":" + _frameID + "}";
+            string headerData = "{\"" + "frame_id" + "\":" + frameID + "}";
             _videoStreamSocketWriter.WriteInt32(checked((int)_videoStreamSocketWriter.MeasureString(headerData)));
             _videoStreamSocketWriter.WriteString(headerData);
             _videoStreamSocketWriter.WriteInt32(imageData.Length);
@@ -736,11 +808,40 @@ namespace gabriel_client
 
         private long GetTimeMillis()
         {
-            return DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+            //return DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond
+            return (long) (Stopwatch.GetTimestamp() * (1000.0 / Stopwatch.Frequency));
+        }
+
+        public class HiResDateTime
+        {
+            private static DateTime _startTime;
+            private static Stopwatch _stopWatch = null;
+            private static TimeSpan _maxIdle =
+                TimeSpan.FromSeconds(10);
+
+            public static DateTime UtcNow
+            {
+                get
+                {
+                    if ((_stopWatch == null) ||
+                        (_startTime.Add(_maxIdle) < DateTime.UtcNow))
+                    {
+                        Reset();
+                    }
+                    return _startTime.AddTicks(_stopWatch.Elapsed.Ticks);
+                }
+            }
+
+            private static void Reset()
+            {
+                _startTime = DateTime.UtcNow;
+                _stopWatch = Stopwatch.StartNew();
+            }
         }
 
         private async Task<IReadOnlyList<StorageFile>> GetImageFiles(StorageFolder root, string subFolderName)
         {
+            Debug.WriteLine("Get image files from: " + subFolderName);
             StorageFolder imageFolder;
             try
             {
