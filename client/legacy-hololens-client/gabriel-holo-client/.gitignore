@@ -1,0 +1,11 @@
+obj/
+Temp/
+Library/
+UWP/
+bin/
+*.pdb
+*.dll
+*.asset
+*.assets
+*.exe
+*.suo
