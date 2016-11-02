@@ -101,6 +101,9 @@ namespace gabriel_client
         // Timer to stop program when doing experiments
         private DispatcherTimer _stopTimer;
 
+        // Fake media control
+        private CaptureElement PreviewControlFake;
+
 
         #region Constructor, lifecycle and navigation
 
@@ -194,6 +197,7 @@ namespace gabriel_client
             {
                 _stopTimer.Start();
             }
+   
         }
 
         protected override async void OnNavigatingFrom(NavigatingCancelEventArgs e)
@@ -458,8 +462,17 @@ namespace gabriel_client
             _systemMediaControls.PropertyChanged += SystemMediaControls_PropertyChanged;
 
             // Set the preview source in the UI and mirror it if necessary
-            PreviewControl.Source = _mediaCapture;
-            PreviewControl.FlowDirection = _mirroringPreview ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+            if (Const.DISPLAY_PREVIEW)
+            {
+                PreviewControl.Source = _mediaCapture;
+                PreviewControl.FlowDirection = _mirroringPreview ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+            }
+            else
+            {
+                PreviewControlFake = new CaptureElement();
+                PreviewControlFake.Source = _mediaCapture;
+                PreviewControlFake.FlowDirection = _mirroringPreview ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+            }
 
             // Start the preview
             await _mediaCapture.StartPreviewAsync();
@@ -478,7 +491,10 @@ namespace gabriel_client
             // Use the dispatcher because this method is sometimes called from non-UI threads
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                PreviewControl.Source = null;
+                if (Const.DISPLAY_PREVIEW)
+                    PreviewControl.Source = null;
+                else
+                    PreviewControlFake.Source = null;
 
                 // Allow the device to sleep now that the preview is stopped
                 _displayRequest.RequestRelease();
@@ -743,7 +759,7 @@ namespace gabriel_client
                 _controlSocketWriter.WriteInt32(checked((int)_controlSocketWriter.MeasureString(jsonData)));
                 _controlSocketWriter.WriteString(jsonData);
                 await _controlSocketWriter.StoreAsync();
-                
+
                 // receive current time at server
                 string recvMsg = await receiveMsgAsync(_controlSocketReader);
                 

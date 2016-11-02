@@ -29,7 +29,10 @@ namespace gabriel_client
 
         public async Task WriteString(string str)
         {
-            await FileIO.AppendTextAsync(_resultFile, str);
+            if (Const.IS_EXPERIMENT)
+            {
+                await FileIO.AppendTextAsync(_resultFile, str);
+            }
         }
     }
 }
