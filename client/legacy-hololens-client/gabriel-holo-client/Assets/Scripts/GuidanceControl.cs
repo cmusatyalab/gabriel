@@ -55,6 +55,7 @@ namespace gabriel_client
 
         // State variable to make sure no timer tasks are overlapped
         private bool _isDoingTimerTask = false;
+        private bool _isCapturing = false;
         private System.Object _timerTaskLock = new System.Object();
 
         // Networking components
@@ -134,20 +135,18 @@ namespace gabriel_client
 #if !UNITY_EDITOR
         void Update()
         {
-            UnityEngine.Debug.Log("Update Called");       
+            //UnityEngine.Debug.Log("Update Called");
 
             if (!_isInitialized) return;   
             
             bool tempFlag = false;
-            lock (_timerTaskLock)
+            if (!_isDoingTimerTask && !_isCapturing)
             {
-                if (_isDoingTimerTask == false)
-                {
-                    _isDoingTimerTask = true;
-                    _frameID++;
-                    UnityEngine.Debug.Log("id: " + _frameID);
-                    tempFlag = true;
-                }
+                _isDoingTimerTask = true;
+                _isCapturing = true;
+                _frameID++;
+                UnityEngine.Debug.Log("id: " + _frameID);
+                tempFlag = true;
             }
             if (tempFlag)
             {
@@ -171,7 +170,7 @@ namespace gabriel_client
             //UnityEngine.Debug.Log("++OnPhotoCaptureCreated");
             _photoCaptureObject = captureObject;
 
-            _captureResolution = PhotoCapture.SupportedResolutions.OrderByDescending((res) => res.width * res.height).First();
+            _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
 
             CameraParameters c = new CameraParameters();
             c.hologramOpacity = 0.0f;
@@ -187,6 +186,7 @@ namespace gabriel_client
             UnityEngine.Debug.Log("++OnStoppedPhotoMode");
             _photoCaptureObject.Dispose();
             _photoCaptureObject = null;
+            _isCapturing = false;
         }
 
         private void OnPhotoModeStarted(PhotoCapture.PhotoCaptureResult result)
@@ -212,6 +212,7 @@ namespace gabriel_client
                     List<byte> imageBufferList = new List<byte>();
                     // Copy the raw IMFMediaBuffer data into our empty byte list.
                     photoCaptureFrame.CopyRawImageDataIntoBuffer(imageBufferList);
+                    photoCaptureFrame.Dispose();
                     {
                         _imageDataRaw = imageBufferList.ToArray();
                         _frameReadyFlag = true;
@@ -298,9 +299,13 @@ namespace gabriel_client
                 {
                     while (true)
                     {
-                        UnityEngine.Debug.Log("Check new frame");
+                        //UnityEngine.Debug.Log("Check new frame");
 
-                        if (!_frameReadyFlag) continue;
+                        if (!_frameReadyFlag)
+                        {
+                            await System.Threading.Tasks.Task.Delay(30);
+                            continue;
+                        }
 
                         {
                             byte[] imageData = null; // after compression
