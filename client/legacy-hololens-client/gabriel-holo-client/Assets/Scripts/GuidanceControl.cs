@@ -43,6 +43,8 @@ namespace gabriel_client
 {
     public class GuidanceControl : Singleton<GuidanceControl>
     {
+        public GameObject Cube;
+
 #if !UNITY_EDITOR
         // state variables
         private bool _isInitialized = false;
@@ -99,8 +101,11 @@ namespace gabriel_client
 
         // Synchronize data between threads
         private byte[] _imageDataRaw;
+        Matrix4x4 _cameraToWorldMatrix, _projectionMatrix;
         private System.Object _imageLock = new System.Object();
         private bool _frameReadyFlag = false;
+
+        private Vector3 _guidancePos = new Vector3(0, 0, 0);
 #endif
 
 #if !UNITY_EDITOR
@@ -154,6 +159,8 @@ namespace gabriel_client
                 PhotoCapture.CreateAsync(false, OnPhotoCaptureCreated);
             }
 
+            // Place the cursor at the calculated position.
+            gameObject.transform.position = _guidancePos;
         }
 #else
         void Update()
@@ -183,7 +190,7 @@ namespace gabriel_client
 
         void OnStoppedPhotoMode(PhotoCapture.PhotoCaptureResult result)
         {
-            UnityEngine.Debug.Log("++OnStoppedPhotoMode");
+            //UnityEngine.Debug.Log("++OnStoppedPhotoMode");
             _photoCaptureObject.Dispose();
             _photoCaptureObject = null;
             _isCapturing = false;
@@ -212,11 +219,15 @@ namespace gabriel_client
                     List<byte> imageBufferList = new List<byte>();
                     // Copy the raw IMFMediaBuffer data into our empty byte list.
                     photoCaptureFrame.CopyRawImageDataIntoBuffer(imageBufferList);
+
+                    photoCaptureFrame.TryGetCameraToWorldMatrix(out _cameraToWorldMatrix);
+                    photoCaptureFrame.TryGetProjectionMatrix(out _projectionMatrix);
+                    //UnityEngine.Debug.Log(cameraToWorldMatrix);
+
                     photoCaptureFrame.Dispose();
-                    {
-                        _imageDataRaw = imageBufferList.ToArray();
-                        _frameReadyFlag = true;
-                    }
+
+                    _imageDataRaw = imageBufferList.ToArray();
+                    _frameReadyFlag = true;
                 }
                 else
                 {
@@ -324,7 +335,7 @@ namespace gabriel_client
                             if (_tokenController.GetCurrentToken() > 0)
                             {
                                 _tokenController.DecreaseToken();
-                                _tokenController.LogSentPacket(_frameID, dataTime, compressedTime);
+                                _tokenController.LogSentPacket(_frameID, dataTime, compressedTime, _cameraToWorldMatrix, _projectionMatrix);
                                 await StreamImageAsync(imageData, _frameID);
                             }
 
@@ -378,38 +389,6 @@ namespace gabriel_client
                             /* parsing result */
                             JsonObject resultJSON = JsonValue.Parse(result).GetObject();
 
-                            // image guidance
-                            string imageFeedbackString = null;
-                            try
-                            {
-                                imageFeedbackString = resultJSON.GetNamedString("image");
-                            }
-                            catch (Exception)
-                            {
-                                UnityEngine.Debug.Log("no image guidance found");
-                            }
-                            if (imageFeedbackString != null)
-                            {
-                                IBuffer buffer = CryptographicBuffer.DecodeFromBase64String(imageFeedbackString);
-                                /*
-                                using (var stream = new InMemoryRandomAccessStream())
-                                {
-                                    using (var dataWriter = new DataWriter(stream))
-                                    {
-                                        dataWriter.WriteBuffer(buffer);
-                                        await dataWriter.StoreAsync();
-                                        BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
-                                        SoftwareBitmap imageFeedback = await decoder.GetSoftwareBitmapAsync();
-                                        SoftwareBitmap imageFeedbackDisplay = SoftwareBitmap.Convert(imageFeedback, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-                                        await Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => {
-                                            var sbSource = new SoftwareBitmapSource();
-                                            await sbSource.SetBitmapAsync(imageFeedbackDisplay);
-//                                            GuidanceImage.Source = sbSource;
-                                        });
-                                    }
-                                }
-                                */
-                            }
                             // speech guidance
                             string speechFeedback = null;
                             try
@@ -429,6 +408,37 @@ namespace gabriel_client
                                     stream = await synthesizer.SynthesizeTextToStreamAsync(speechFeedback);
                                 }
                                 */
+                            }
+
+                            // hologram guidance
+                            JsonObject imagePosInfo = null;
+                            try
+                            {
+                                imagePosInfo = resultJSON.GetNamedObject("location");
+                            }
+                            catch (Exception)
+                            {
+                                UnityEngine.Debug.Log("no hologram guidance found");
+                            }
+                            if (imagePosInfo != null)
+                            {
+                                UnityEngine.Debug.Log("Hologram guidance: " + imagePosInfo);
+                                int x = (int) imagePosInfo.GetNamedNumber("x");
+                                int y = (int) imagePosInfo.GetNamedNumber("y");
+                                float depth = (float) imagePosInfo.GetNamedNumber("depth");
+
+                                Vector2 ImagePosZeroToOne = new Vector2(x / _captureResolution.width, 1 - y / _captureResolution.height);
+                                Vector2 ImagePosProjected2D = ((ImagePosZeroToOne * 2) - new Vector2(1, 1)); // -1 to 1 space
+                                Vector3 ImagePosProjected = new Vector3(ImagePosProjected2D.x, ImagePosProjected2D.y, 1);
+
+                                SentPacketInfo p = _tokenController.GetSentPacket(frameID);
+
+                                Vector3 CameraSpacePos = UnProjectVector(p.projectionMatrix, ImagePosProjected);
+                                CameraSpacePos.Normalize();
+                                CameraSpacePos *= depth;
+
+                                Vector3 WorldSpacePos = p.cameraToWorldMatrix.MultiplyPoint(CameraSpacePos);
+                                _guidancePos = WorldSpacePos;
                             }
 
                             receivedPacketInfo.setGuidanceDoneTime(GetTimeMillis());
@@ -594,6 +604,22 @@ namespace gabriel_client
 
             return imageData;
         }
+
+        public static Vector3 UnProjectVector(Matrix4x4 proj, Vector3 to)
+        {
+            /*
+             * Source: https://developer.microsoft.com/en-us/windows/holographic/locatable_camera
+             */
+            Vector3 from = new Vector3(0, 0, 0);
+            var axsX = proj.GetRow(0);
+            var axsY = proj.GetRow(1);
+            var axsZ = proj.GetRow(2);
+            from.z = to.z / axsZ.z;
+            from.y = (to.y - (from.z * axsY.z)) / axsY.y;
+            from.x = (to.x - (from.z * axsX.z)) / axsX.x;
+            return from;
+        }
+
 
         #endregion Helper functions 
 #endif

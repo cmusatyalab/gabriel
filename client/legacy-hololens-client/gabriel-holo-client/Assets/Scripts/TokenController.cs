@@ -5,13 +5,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace gabriel_client
 {
     class TokenController
     {
         private int _currentToken = 0;
-        private Object _tokenLock = new Object();
+        private System.Object _tokenLock = new System.Object();
         private ConcurrentDictionary<long, SentPacketInfo> _sentPackets = new ConcurrentDictionary<long, SentPacketInfo>();
         private long _prevRecvFrameID = 0;
         private MyLogger _myLogger;
@@ -43,9 +44,16 @@ namespace gabriel_client
             }
         }
 
-        public void LogSentPacket(long frameID, long dataTime, long compressedTime)
+        public void LogSentPacket(long frameID, long dataTime, long compressedTime, Matrix4x4 cameraToWorldMatrix, Matrix4x4 projectionMatrix)
         {
-            this._sentPackets.TryAdd(frameID, new SentPacketInfo(dataTime, compressedTime));
+            this._sentPackets.TryAdd(frameID, new SentPacketInfo(dataTime, compressedTime, cameraToWorldMatrix, projectionMatrix));
+        }
+
+        public SentPacketInfo GetSentPacket(long frameID)
+        {
+            SentPacketInfo p;
+            bool isSuccess = this._sentPackets.TryGetValue(frameID, out p);
+            return p;
         }
 
         public void ProcessReceivedPacket(ReceivedPacketInfo receivedPacket)
@@ -106,11 +114,15 @@ namespace gabriel_client
     {
         public long generatedTime;
         public long compressedTime;
+        public Matrix4x4 cameraToWorldMatrix;
+        public Matrix4x4 projectionMatrix;
 
-        public SentPacketInfo(long generatedTime, long compressedTime)
+        public SentPacketInfo(long generatedTime, long compressedTime, Matrix4x4 c, Matrix4x4 p)
         {
             this.generatedTime = generatedTime;
             this.compressedTime = compressedTime;
+            this.cameraToWorldMatrix = c;
+            this.projectionMatrix = p;
         }
     }
 
