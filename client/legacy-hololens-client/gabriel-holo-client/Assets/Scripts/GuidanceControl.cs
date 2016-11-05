@@ -58,6 +58,7 @@ namespace gabriel_client
         // State variable to make sure no timer tasks are overlapped
         private bool _isDoingTimerTask = false;
         private bool _isCapturing = false;
+        private bool _isCameraReady = false;
         private System.Object _timerTaskLock = new System.Object();
 
         // Networking components
@@ -98,6 +99,7 @@ namespace gabriel_client
         // PhotoCapture
         private PhotoCapture _photoCaptureObject = null;
         private Resolution _captureResolution;
+        private CameraParameters _cameraPara;
 
         // Synchronize data between threads
         private byte[] _imageDataRaw;
@@ -110,7 +112,9 @@ namespace gabriel_client
 
 #if !UNITY_EDITOR
         async void Start()
-        {   
+        {
+            PhotoCapture.CreateAsync(false, OnPhotoCaptureCreated);
+
             // Initialize logger
             _myLogger = new MyLogger("latency-" + Const.SERVER_IP + "-" + Const.TOKEN_SIZE + ".txt");
             await _myLogger.InitializeLogger();
@@ -145,7 +149,7 @@ namespace gabriel_client
             if (!_isInitialized) return;   
             
             bool tempFlag = false;
-            if (!_isDoingTimerTask && !_isCapturing)
+            if (_isCameraReady && !_isDoingTimerTask && !_isCapturing)
             {
                 _isDoingTimerTask = true;
                 _isCapturing = true;
@@ -156,7 +160,7 @@ namespace gabriel_client
             if (tempFlag)
             {
                 // Initialize camera
-                PhotoCapture.CreateAsync(false, OnPhotoCaptureCreated);
+                _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
             }
 
             // Place the cursor at the calculated position.
@@ -179,21 +183,20 @@ namespace gabriel_client
 
             _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
 
-            CameraParameters c = new CameraParameters();
-            c.hologramOpacity = 0.0f;
-            c.cameraResolutionWidth = _captureResolution.width;
-            c.cameraResolutionHeight = _captureResolution.height;
-            c.pixelFormat = CapturePixelFormat.BGRA32;
+            _cameraPara = new CameraParameters();
+            _cameraPara.hologramOpacity = 0.0f;
+            _cameraPara.cameraResolutionWidth = _captureResolution.width;
+            _cameraPara.cameraResolutionHeight = _captureResolution.height;
+            _cameraPara.pixelFormat = CapturePixelFormat.BGRA32;
 
-            captureObject.StartPhotoModeAsync(c, false, OnPhotoModeStarted);
+            _photoCaptureObject.StartPhotoModeAsync(_cameraPara, false, OnPhotoModeStarted);
         }
 
         void OnStoppedPhotoMode(PhotoCapture.PhotoCaptureResult result)
         {
-            //UnityEngine.Debug.Log("++OnStoppedPhotoMode");
+            UnityEngine.Debug.Log("++OnStoppedPhotoMode");
             _photoCaptureObject.Dispose();
             _photoCaptureObject = null;
-            _isCapturing = false;
         }
 
         private void OnPhotoModeStarted(PhotoCapture.PhotoCaptureResult result)
@@ -201,7 +204,7 @@ namespace gabriel_client
             //UnityEngine.Debug.Log("++OnPhotoModeStarted");
             if (result.success)
             {
-                _photoCaptureObject.TakePhotoAsync(OnCapturedPhotoToMemory);
+                _isCameraReady = true;
             }
             else
             {
@@ -209,7 +212,7 @@ namespace gabriel_client
             }
         }
 
-        void OnCapturedPhotoToMemory(PhotoCapture.PhotoCaptureResult result, PhotoCaptureFrame photoCaptureFrame)
+        void OnProcessFrame(PhotoCapture.PhotoCaptureResult result, PhotoCaptureFrame photoCaptureFrame)
         {
             UnityEngine.Debug.Log("++OnCapturedPhotoToMemory");
             if (result.success)
@@ -245,7 +248,8 @@ namespace gabriel_client
                     */
                 }
             }
-            _photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoMode);
+            _isCapturing = false;
+            //_photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoMode);
         }
         
         #endregion Event handlers
