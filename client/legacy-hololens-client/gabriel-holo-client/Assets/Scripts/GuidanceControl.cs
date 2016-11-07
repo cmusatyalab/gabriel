@@ -44,6 +44,7 @@ namespace gabriel_client
     public class GuidanceControl : Singleton<GuidanceControl>
     {
         public GameObject Cube;
+        public GameObject Sphere;
 
 #if !UNITY_EDITOR
         // state variables
@@ -107,7 +108,10 @@ namespace gabriel_client
         private System.Object _imageLock = new System.Object();
         private bool _frameReadyFlag = false;
 
+        private bool _guidancePosReady = false;
+        private bool _isFirstGuidancePos = true;
         private Vector3 _guidancePos = new Vector3(0, 0, 0);
+        private Vector3 _guidancePos2 = new Vector3(0, 0, 0);
 #endif
 
 #if !UNITY_EDITOR
@@ -163,8 +167,25 @@ namespace gabriel_client
                 _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
             }
 
-            // Place the cursor at the calculated position.
-            gameObject.transform.position = _guidancePos;
+            // Place the object at the calculated position.
+            if (_guidancePosReady)
+            {
+                _guidancePosReady = false;
+                Vector3 cubePos = _guidancePos + new Vector3(0, Cube.transform.localScale.y / 2, 0);
+                Vector3 cubeRight = Camera.main.transform.right;
+                if (_isFirstGuidancePos)
+                {
+                    gameObject.transform.position = cubePos;
+                    gameObject.transform.right = cubeRight;
+                    _isFirstGuidancePos = false;
+                }
+                else
+                {
+                    gameObject.transform.position = gameObject.transform.position * 0.95f + cubePos * 0.05f;
+                    gameObject.transform.right = gameObject.transform.right * 0.95f + cubeRight * 0.05f;
+                }
+            }
+
         }
 #else
         void Update()
@@ -366,14 +387,15 @@ namespace gabriel_client
                         string result = null;
                         long frameID = -1;
                         string engineID = null;
-                        try
+
+                        if (obj.ContainsKey("status"))
                         {
                             status = obj.GetNamedString("status");
                             result = obj.GetNamedString("result");
                             frameID = (long)obj.GetNamedNumber("frame_id");
                             engineID = obj.GetNamedString("engine_id");
                         }
-                        catch (Exception)
+                        else
                         {
                             UnityEngine.Debug.Log("the return message has no status field");
                             return;
@@ -394,17 +416,13 @@ namespace gabriel_client
                             JsonObject resultJSON = JsonValue.Parse(result).GetObject();
 
                             // speech guidance
+
                             string speechFeedback = null;
-                            try
+                            if (resultJSON.ContainsKey("speech"))
                             {
                                 speechFeedback = resultJSON.GetNamedString("speech");
-                            }
-                            catch (Exception)
-                            {
-                                UnityEngine.Debug.Log("no speech guidance found");
-                            }
-                            if (speechFeedback != null)
-                            {
+                                //UnityEngine.Debug.Log("speech guidance found");
+
                                 /*
                                 SpeechSynthesisStream stream = null;
                                 using (SpeechSynthesizer synthesizer = new SpeechSynthesizer())
@@ -416,33 +434,18 @@ namespace gabriel_client
 
                             // hologram guidance
                             JsonObject imagePosInfo = null;
-                            try
+                            if (resultJSON.ContainsKey("location"))
                             {
                                 imagePosInfo = resultJSON.GetNamedObject("location");
-                            }
-                            catch (Exception)
-                            {
-                                UnityEngine.Debug.Log("no hologram guidance found");
-                            }
-                            if (imagePosInfo != null)
-                            {
+
                                 UnityEngine.Debug.Log("Hologram guidance: " + imagePosInfo);
-                                int x = (int) imagePosInfo.GetNamedNumber("x");
-                                int y = (int) imagePosInfo.GetNamedNumber("y");
+                                float x = (float) imagePosInfo.GetNamedNumber("x");
+                                float y = (float) imagePosInfo.GetNamedNumber("y");
                                 float depth = (float) imagePosInfo.GetNamedNumber("depth");
 
-                                Vector2 ImagePosZeroToOne = new Vector2(x / _captureResolution.width, 1 - y / _captureResolution.height);
-                                Vector2 ImagePosProjected2D = ((ImagePosZeroToOne * 2) - new Vector2(1, 1)); // -1 to 1 space
-                                Vector3 ImagePosProjected = new Vector3(ImagePosProjected2D.x, ImagePosProjected2D.y, 1);
-
                                 SentPacketInfo p = _tokenController.GetSentPacket(frameID);
-
-                                Vector3 CameraSpacePos = UnProjectVector(p.projectionMatrix, ImagePosProjected);
-                                CameraSpacePos.Normalize();
-                                CameraSpacePos *= depth;
-
-                                Vector3 WorldSpacePos = p.cameraToWorldMatrix.MultiplyPoint(CameraSpacePos);
-                                _guidancePos = WorldSpacePos;
+                                _guidancePos = Pixel2WorldPos(x, y, depth, p.projectionMatrix, p.cameraToWorldMatrix);
+                                _guidancePosReady = true;
                             }
 
                             receivedPacketInfo.setGuidanceDoneTime(GetTimeMillis());
@@ -607,6 +610,23 @@ namespace gabriel_client
             memStream.Dispose();
 
             return imageData;
+        }
+
+        private Vector3 Pixel2WorldPos(float x, float y, float depth, Matrix4x4 projectionMatrix, Matrix4x4 cameraToWorldMatrix)
+        {
+            Vector2 ImagePosZeroToOne = new Vector2(x / _captureResolution.width, 1 - y / _captureResolution.height);
+            Vector2 ImagePosProjected2D = ((ImagePosZeroToOne * 2) - new Vector2(1, 1)); // -1 to 1 space
+            Vector3 ImagePosProjected = new Vector3(ImagePosProjected2D.x, ImagePosProjected2D.y, 1);
+            //UnityEngine.Debug.Log(ImagePosProjected);
+
+            Vector3 CameraSpacePos = UnProjectVector(projectionMatrix, ImagePosProjected);
+            //UnityEngine.Debug.Log(CameraSpacePos);
+            CameraSpacePos.Normalize();
+            CameraSpacePos *= depth;
+
+            Vector3 WorldSpacePos = cameraToWorldMatrix.MultiplyPoint(CameraSpacePos);
+
+            return WorldSpacePos;
         }
 
         public static Vector3 UnProjectVector(Matrix4x4 proj, Vector3 to)
