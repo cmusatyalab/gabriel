@@ -43,8 +43,18 @@ namespace gabriel_client
 {
     public class GuidanceControl : Singleton<GuidanceControl>
     {
+        // Game objects
         public GameObject Cube;
-        public GameObject Sphere;
+        public GameObject Cylinder;
+
+        public GameObject Bread;
+        public GameObject Ham;
+        public GameObject Lettuce;
+        public GameObject Tomato;
+        public GameObject Breadtop;
+
+        // TTS
+        public TextToSpeechManager textToSpeechManager;
 
 #if !UNITY_EDITOR
         // state variables
@@ -109,15 +119,19 @@ namespace gabriel_client
         private bool _frameReadyFlag = false;
 
         private bool _guidancePosReady = false;
-        private bool _isFirstGuidancePos = true;
+        private string _guidanceObject = "";
+        private string _prevGuidanceObject = "";
         private Vector3 _guidancePos = new Vector3(0, 0, 0);
-        private Vector3 _guidancePos2 = new Vector3(0, 0, 0);
+
+        // Performance measurements
+        private int _fpsCounter = 0;
+        private long _startTime = 0;
 #endif
 
 #if !UNITY_EDITOR
         async void Start()
         {
-            PhotoCapture.CreateAsync(false, OnPhotoCaptureCreated);
+            PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
 
             // Initialize logger
             _myLogger = new MyLogger("latency-" + Const.SERVER_IP + "-" + Const.TOKEN_SIZE + ".txt");
@@ -138,6 +152,7 @@ namespace gabriel_client
             await GetServerTimeOffsetAsync();
 
             _isInitialized = true;
+            _startTime = GetTimeMillis();
         }
 #else
         void Start()
@@ -149,6 +164,11 @@ namespace gabriel_client
         void Update()
         {
             //UnityEngine.Debug.Log("Update Called");
+
+            // Performance measurements
+            //_fpsCounter++;
+            //if (_fpsCounter % 100 == 0)
+            //    UnityEngine.Debug.Log("fps: " + (_fpsCounter * 1000 / (GetTimeMillis() - _startTime)));
 
             if (!_isInitialized) return;   
             
@@ -170,20 +190,60 @@ namespace gabriel_client
             // Place the object at the calculated position.
             if (_guidancePosReady)
             {
-                _guidancePosReady = false;
-                Vector3 cubePos = _guidancePos + new Vector3(0, Cube.transform.localScale.y / 2, 0);
-                Vector3 cubeRight = Camera.main.transform.right;
-                if (_isFirstGuidancePos)
+                Vector3 tempGuidancePos = _guidancePos;// + new Vector3(0, Cylinder.transform.localScale.y / 1.8f, 0);
+                Vector3 tempRight = Camera.main.transform.right;
+                if (_prevGuidanceObject.Equals(_guidanceObject))
                 {
-                    gameObject.transform.position = cubePos;
-                    gameObject.transform.right = cubeRight;
-                    _isFirstGuidancePos = false;
+                    gameObject.transform.position = gameObject.transform.position * 0.95f + tempGuidancePos * 0.05f;
+                    gameObject.transform.right = gameObject.transform.right * 0.95f + tempRight * 0.05f;
                 }
                 else
                 {
-                    gameObject.transform.position = gameObject.transform.position * 0.95f + cubePos * 0.05f;
-                    gameObject.transform.right = gameObject.transform.right * 0.95f + cubeRight * 0.05f;
+                    switch (_prevGuidanceObject)
+                    {
+                        case "bread":
+                            Bread.SetActive(false);
+                            break;
+                        case "ham":
+                            Ham.SetActive(false);
+                            break;
+                        case "lettuce":
+                            Lettuce.SetActive(false);
+                            break;
+                        case "tomato":
+                            Tomato.SetActive(false);
+                            break;
+                        case "breadtop":
+                            Breadtop.SetActive(false);
+                            break;
+                        default:
+                            break;
+                    }
+                    switch (_guidanceObject)
+                    {
+                        case "bread":
+                            Bread.SetActive(true);
+                            break;
+                        case "ham":
+                            Ham.SetActive(true);
+                            break;
+                        case "lettuce":
+                            Lettuce.SetActive(true);
+                            break;
+                        case "tomato":
+                            Tomato.SetActive(true);
+                            break;
+                        case "breadtop":
+                            Breadtop.SetActive(true);
+                            break;
+                        default:
+                            break;
+                    }
+                    _prevGuidanceObject = _guidanceObject;
+                    gameObject.transform.position = tempGuidancePos;
+                    gameObject.transform.right = tempRight;
                 }
+                _guidancePosReady = false;
             }
 
         }
@@ -205,7 +265,7 @@ namespace gabriel_client
             _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
 
             _cameraPara = new CameraParameters();
-            _cameraPara.hologramOpacity = 0.0f;
+            _cameraPara.hologramOpacity = 0.5f;
             _cameraPara.cameraResolutionWidth = _captureResolution.width;
             _cameraPara.cameraResolutionHeight = _captureResolution.height;
             _cameraPara.pixelFormat = CapturePixelFormat.BGRA32;
@@ -423,28 +483,22 @@ namespace gabriel_client
                                 speechFeedback = resultJSON.GetNamedString("speech");
                                 //UnityEngine.Debug.Log("speech guidance found");
 
-                                /*
-                                SpeechSynthesisStream stream = null;
-                                using (SpeechSynthesizer synthesizer = new SpeechSynthesizer())
-                                {
-                                    stream = await synthesizer.SynthesizeTextToStreamAsync(speechFeedback);
-                                }
-                                */
+                                textToSpeechManager.SpeakText(speechFeedback);
                             }
 
                             // hologram guidance
-                            JsonObject imagePosInfo = null;
-                            if (resultJSON.ContainsKey("location"))
+                            if (resultJSON.ContainsKey("holo_object"))
                             {
-                                imagePosInfo = resultJSON.GetNamedObject("location");
+                                JsonObject holoPosInfo = resultJSON.GetNamedObject("holo_location");
 
-                                UnityEngine.Debug.Log("Hologram guidance: " + imagePosInfo);
-                                float x = (float) imagePosInfo.GetNamedNumber("x");
-                                float y = (float) imagePosInfo.GetNamedNumber("y");
-                                float depth = (float) imagePosInfo.GetNamedNumber("depth");
+                                UnityEngine.Debug.Log("Hologram guidance: " + holoPosInfo);
+                                float x = (float) holoPosInfo.GetNamedNumber("x");
+                                float y = (float) holoPosInfo.GetNamedNumber("y");
+                                float depth = (float) holoPosInfo.GetNamedNumber("depth");
 
                                 SentPacketInfo p = _tokenController.GetSentPacket(frameID);
                                 _guidancePos = Pixel2WorldPos(x, y, depth, p.projectionMatrix, p.cameraToWorldMatrix);
+                                _guidanceObject = resultJSON.GetNamedString("holo_object");
                                 _guidancePosReady = true;
                             }
 
