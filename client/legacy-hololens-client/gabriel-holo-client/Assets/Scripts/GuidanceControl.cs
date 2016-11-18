@@ -54,6 +54,9 @@ namespace gabriel_client
         public GameObject Breadtop;
 
         // TTS
+        // The UWP way of doing this using MediaElement cannot work: Unity app cannot access MediaElement:
+        // http://www.roadtoholo.com/2016/05/04/1601/text-to-speech-for-hololens/
+        // (this has been merged into Holotoolkit-Unity)
         public TextToSpeechManager textToSpeechManager;
 
 #if !UNITY_EDITOR
@@ -98,9 +101,6 @@ namespace gabriel_client
         private System.Object _frameIdLock = new System.Object();
         private TokenController _tokenController;
 
-        // Feedback
-        MediaElement _mediaElement;
-
         // Logger
         private MyLogger _myLogger;
 
@@ -119,6 +119,7 @@ namespace gabriel_client
         private bool _frameReadyFlag = false;
 
         private bool _guidancePosReady = false;
+        private bool _useDefaultStabilizationPlane = true;
         private string _guidanceObject = "";
         private string _prevGuidanceObject = "";
         private Vector3 _guidancePos = new Vector3(0, 0, 0);
@@ -131,7 +132,7 @@ namespace gabriel_client
 #if !UNITY_EDITOR
         async void Start()
         {
-            PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
+            //PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
 
             // Initialize logger
             _myLogger = new MyLogger("latency-" + Const.SERVER_IP + "-" + Const.TOKEN_SIZE + ".txt");
@@ -140,10 +141,6 @@ namespace gabriel_client
             // Initialize token control
             _tokenController = new TokenController(Const.TOKEN_SIZE, _myLogger);
 
-            // Prepare TTS
-            // Unity app cannot access MediaElement: http://www.roadtoholo.com/2016/05/04/1601/text-to-speech-for-hololens/
-            //_mediaElement = new MediaElement();
-            
             // Initialize file loaders
             await InitializeFileLoading();
             
@@ -170,21 +167,23 @@ namespace gabriel_client
             //if (_fpsCounter % 100 == 0)
             //    UnityEngine.Debug.Log("fps: " + (_fpsCounter * 1000 / (GetTimeMillis() - _startTime)));
 
-            if (!_isInitialized) return;   
-            
-            bool tempFlag = false;
-            if (_isCameraReady && !_isDoingTimerTask && !_isCapturing)
+            //var normal = Camera.main.transform.forward;
+            //var position = gameObject.transform.position;
+            //UnityEngine.VR.WSA.HolographicSettings.SetFocusPointForFrame(normal, Camera.main.transform.position);
+
+            if (!_isInitialized) return;
+
+            //if (_isCameraReady && !_isDoingTimerTask && !_isCapturing)
+            if (!_isDoingTimerTask && !_isCapturing)
             {
                 _isDoingTimerTask = true;
                 _isCapturing = true;
                 _frameID++;
                 UnityEngine.Debug.Log("id: " + _frameID);
-                tempFlag = true;
-            }
-            if (tempFlag)
-            {
+
                 // Initialize camera
-                _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
+                PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
+                //_photoCaptureObject.TakePhotoAsync(OnProcessFrame);
             }
 
             // Place the object at the calculated position.
@@ -219,6 +218,7 @@ namespace gabriel_client
                         default:
                             break;
                     }
+                    _useDefaultStabilizationPlane = false;
                     switch (_guidanceObject)
                     {
                         case "bread":
@@ -237,6 +237,7 @@ namespace gabriel_client
                             Breadtop.SetActive(true);
                             break;
                         default:
+                            _useDefaultStabilizationPlane = true;
                             break;
                     }
                     _prevGuidanceObject = _guidanceObject;
@@ -246,6 +247,12 @@ namespace gabriel_client
                 _guidancePosReady = false;
             }
 
+            if (!_useDefaultStabilizationPlane)
+            {
+                var normal = -Camera.main.transform.forward;
+                var position = gameObject.transform.position;
+                UnityEngine.VR.WSA.HolographicSettings.SetFocusPointForFrame(position);
+            }
         }
 #else
         void Update()
@@ -265,10 +272,10 @@ namespace gabriel_client
             _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
 
             _cameraPara = new CameraParameters();
-            _cameraPara.hologramOpacity = 0.5f;
+            _cameraPara.hologramOpacity = 0.3f;
             _cameraPara.cameraResolutionWidth = _captureResolution.width;
             _cameraPara.cameraResolutionHeight = _captureResolution.height;
-            _cameraPara.pixelFormat = CapturePixelFormat.BGRA32;
+            _cameraPara.pixelFormat = CapturePixelFormat.JPEG;
 
             _photoCaptureObject.StartPhotoModeAsync(_cameraPara, false, OnPhotoModeStarted);
         }
@@ -278,6 +285,7 @@ namespace gabriel_client
             UnityEngine.Debug.Log("++OnStoppedPhotoMode");
             _photoCaptureObject.Dispose();
             _photoCaptureObject = null;
+            _isCapturing = false;
         }
 
         private void OnPhotoModeStarted(PhotoCapture.PhotoCaptureResult result)
@@ -286,6 +294,7 @@ namespace gabriel_client
             if (result.success)
             {
                 _isCameraReady = true;
+                _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
             }
             else
             {
@@ -329,8 +338,8 @@ namespace gabriel_client
                     */
                 }
             }
-            _isCapturing = false;
-            //_photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoMode);
+            //_isCapturing = false;
+            _photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoMode);
         }
         
         #endregion Event handlers
@@ -410,7 +419,8 @@ namespace gabriel_client
                             if (!Const.LOAD_IMAGES)
                             {
                                 // Compress to JPEG bytes
-                                imageData = await Bitmap2JPEG(_imageDataRaw);
+                                imageData = _imageDataRaw;
+                                //imageData = await Bitmap2JPEG(_imageDataRaw);
                             }
                             else
                             {
@@ -697,7 +707,6 @@ namespace gabriel_client
             from.x = (to.x - (from.z * axsX.z)) / axsX.x;
             return from;
         }
-
 
         #endregion Helper functions 
 #endif
