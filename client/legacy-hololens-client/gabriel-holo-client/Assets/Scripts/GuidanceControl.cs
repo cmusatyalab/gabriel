@@ -216,8 +216,16 @@ namespace gabriel_client
                 Vector3 tempRight = Camera.main.transform.right;
                 if (_prevGuidanceObject.Equals(_guidanceObject))
                 {
-                    gameObject.transform.position = gameObject.transform.position * 0.95f + tempGuidancePos * 0.05f;
-                    gameObject.transform.right = gameObject.transform.right * 0.95f + tempRight * 0.05f;
+                    if (Vector3.Distance(gameObject.transform.position, tempGuidancePos) < 0.04)
+                    {
+                        gameObject.transform.position = gameObject.transform.position * 0.95f + tempGuidancePos * 0.05f;
+                        gameObject.transform.right = gameObject.transform.right * 0.95f + tempRight * 0.05f;
+                    }
+                    else
+                    {
+                        gameObject.transform.position = tempGuidancePos;
+                        gameObject.transform.right = tempRight;
+                    }
                 }
                 else
                 {
