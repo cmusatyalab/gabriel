@@ -111,6 +111,7 @@ namespace gabriel_client
         private PhotoCapture _photoCaptureObject = null;
         private Resolution _captureResolution;
         private CameraParameters _cameraPara;
+        private bool _isHoloCaptureFrame = false;
 
         // Synchronize data between threads
         private byte[] _imageDataRaw;
@@ -132,7 +133,24 @@ namespace gabriel_client
 #if !UNITY_EDITOR
         async void Start()
         {
-            //PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
+
+            // Initialize camera and camera parameters
+            _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
+
+            _cameraPara = new CameraParameters();
+            _cameraPara.hologramOpacity = 0.0f;
+            _cameraPara.cameraResolutionWidth = _captureResolution.width;
+            _cameraPara.cameraResolutionHeight = _captureResolution.height;
+            _cameraPara.pixelFormat = CapturePixelFormat.JPEG;
+
+            if (Const.HOLO_CAPTURE)
+            {
+                PhotoCapture.CreateAsync(true, OnPhotoCaptureCreatedHOLO);
+            }
+            else
+            {
+                PhotoCapture.CreateAsync(false, OnPhotoCaptureCreated);
+            }
 
             // Initialize logger
             _myLogger = new MyLogger("latency-" + Const.SERVER_IP + "-" + Const.TOKEN_SIZE + ".txt");
@@ -167,23 +185,28 @@ namespace gabriel_client
             //if (_fpsCounter % 100 == 0)
             //    UnityEngine.Debug.Log("fps: " + (_fpsCounter * 1000 / (GetTimeMillis() - _startTime)));
 
-            //var normal = Camera.main.transform.forward;
-            //var position = gameObject.transform.position;
-            //UnityEngine.VR.WSA.HolographicSettings.SetFocusPointForFrame(normal, Camera.main.transform.position);
-
             if (!_isInitialized) return;
 
-            //if (_isCameraReady && !_isDoingTimerTask && !_isCapturing)
-            if (!_isDoingTimerTask && !_isCapturing)
+            if (_isCameraReady && !_isDoingTimerTask && !_isCapturing)
             {
                 _isDoingTimerTask = true;
                 _isCapturing = true;
                 _frameID++;
                 UnityEngine.Debug.Log("id: " + _frameID);
 
-                // Initialize camera
-                PhotoCapture.CreateAsync(true, OnPhotoCaptureCreated);
-                //_photoCaptureObject.TakePhotoAsync(OnProcessFrame);
+                // Start capture
+                if (Const.HOLO_CAPTURE)
+                {
+                    if (_isHoloCaptureFrame)
+                        _cameraPara.hologramOpacity = 0.7f;
+                    else
+                        _cameraPara.hologramOpacity = 0.0f;
+                    _photoCaptureObject.StartPhotoModeAsync(_cameraPara, false, OnPhotoModeStartedHOLO);
+                }
+                else
+                {
+                    _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
+                }
             }
 
             // Place the object at the calculated position.
@@ -268,24 +291,14 @@ namespace gabriel_client
         {
             //UnityEngine.Debug.Log("++OnPhotoCaptureCreated");
             _photoCaptureObject = captureObject;
-
-            _captureResolution = PhotoCapture.SupportedResolutions.OrderBy((res) => res.width * res.height).First();
-
-            _cameraPara = new CameraParameters();
-            _cameraPara.hologramOpacity = 0.3f;
-            _cameraPara.cameraResolutionWidth = _captureResolution.width;
-            _cameraPara.cameraResolutionHeight = _captureResolution.height;
-            _cameraPara.pixelFormat = CapturePixelFormat.JPEG;
-
             _photoCaptureObject.StartPhotoModeAsync(_cameraPara, false, OnPhotoModeStarted);
         }
 
-        void OnStoppedPhotoMode(PhotoCapture.PhotoCaptureResult result)
+        void OnPhotoCaptureCreatedHOLO(PhotoCapture captureObject)
         {
-            UnityEngine.Debug.Log("++OnStoppedPhotoMode");
-            _photoCaptureObject.Dispose();
-            _photoCaptureObject = null;
-            _isCapturing = false;
+            //UnityEngine.Debug.Log("++OnPhotoCaptureCreatedHOLO");
+            _photoCaptureObject = captureObject;
+            _isCameraReady = true;
         }
 
         private void OnPhotoModeStarted(PhotoCapture.PhotoCaptureResult result)
@@ -294,6 +307,18 @@ namespace gabriel_client
             if (result.success)
             {
                 _isCameraReady = true;
+            }
+            else
+            {
+                UnityEngine.Debug.Log("Unable to start photo mode!");
+            }
+        }
+
+        private void OnPhotoModeStartedHOLO(PhotoCapture.PhotoCaptureResult result)
+        {
+            //UnityEngine.Debug.Log("++OnPhotoModeStartedHOLO");
+            if (result.success)
+            {
                 _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
             }
             else
@@ -304,7 +329,7 @@ namespace gabriel_client
 
         void OnProcessFrame(PhotoCapture.PhotoCaptureResult result, PhotoCaptureFrame photoCaptureFrame)
         {
-            UnityEngine.Debug.Log("++OnCapturedPhotoToMemory");
+            UnityEngine.Debug.Log("++OnProcessFrame");
             if (result.success)
             {
                 if (!Const.LOAD_IMAGES)
@@ -338,10 +363,29 @@ namespace gabriel_client
                     */
                 }
             }
-            //_isCapturing = false;
-            _photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoMode);
+            if (Const.HOLO_CAPTURE)
+            {
+                _photoCaptureObject.StopPhotoModeAsync(OnStoppedPhotoModeHOLO);
+            }
+            else
+            {
+                _isCapturing = false;
+            }
         }
-        
+
+        void OnStoppedPhotoMode(PhotoCapture.PhotoCaptureResult result)
+        {
+            UnityEngine.Debug.Log("++OnStoppedPhotoMode");
+            _photoCaptureObject.Dispose();
+            _photoCaptureObject = null;
+        }
+
+        void OnStoppedPhotoModeHOLO(PhotoCapture.PhotoCaptureResult result)
+        {
+            //UnityEngine.Debug.Log("++OnStoppedPhotoModeHOLO");
+            _isCapturing = false;
+        }
+
         #endregion Event handlers
 
         #region File loading methods
@@ -418,8 +462,8 @@ namespace gabriel_client
                             long dataTime = 0, compressedTime = 0;
                             if (!Const.LOAD_IMAGES)
                             {
-                                // Compress to JPEG bytes
                                 imageData = _imageDataRaw;
+                                // Compress to JPEG bytes
                                 //imageData = await Bitmap2JPEG(_imageDataRaw);
                             }
                             else
@@ -525,9 +569,27 @@ namespace gabriel_client
 
         private async Task StreamImageAsync(byte[] imageData, long frameID)
         {
-            //            Debug.WriteLine("streaming image");
+            //UnityEngine.Debug.Log("streaming image");
 
-            string headerData = "{\"" + "frame_id" + "\":" + frameID + "}";
+            string headerData;
+
+            if (Const.HOLO_CAPTURE)
+            {
+                if (_isHoloCaptureFrame)
+                {
+                    headerData = "{\"" + "frame_id" + "\":" + frameID + ",\"" + "holo_capture" + "\":" + "true" + "}";
+                }
+                else
+                {
+                    headerData = "{\"" + "frame_id" + "\":" + frameID + "}";
+                }
+                _isHoloCaptureFrame = !_isHoloCaptureFrame;
+            }
+            else
+            {
+                headerData = "{\"" + "frame_id" + "\":" + frameID + "}";
+            }
+
             _videoStreamSocketWriter.WriteInt32(checked((int)_videoStreamSocketWriter.MeasureString(headerData)));
             _videoStreamSocketWriter.WriteString(headerData);
             _videoStreamSocketWriter.WriteInt32(imageData.Length);

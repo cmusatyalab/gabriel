@@ -42,6 +42,9 @@ namespace gabriel_client
         // token size
         public static int TOKEN_SIZE = 1;
 
+        // whether to capture holograms for display (only capture for half of the time)
+        public static bool HOLO_CAPTURE = true;
+
         /************************ Experiment mode only *******************************/
         // server IP list
         public static string[] SERVER_IP_LIST = {
