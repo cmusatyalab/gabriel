@@ -543,16 +543,20 @@ namespace gabriel_client
                             // hologram guidance
                             if (resultJSON.ContainsKey("holo_object"))
                             {
-                                JsonObject holoPosInfo = resultJSON.GetNamedObject("holo_location");
-
-                                UnityEngine.Debug.Log("Hologram guidance: " + holoPosInfo);
-                                float x = (float) holoPosInfo.GetNamedNumber("x");
-                                float y = (float) holoPosInfo.GetNamedNumber("y");
-                                float depth = (float) holoPosInfo.GetNamedNumber("depth");
-
-                                SentPacketInfo p = _tokenController.GetSentPacket(frameID);
-                                _guidancePos = Pixel2WorldPos(x, y, depth, p.projectionMatrix, p.cameraToWorldMatrix);
                                 _guidanceObject = resultJSON.GetNamedString("holo_object");
+                                if (!_guidanceObject.Equals("none"))
+                                {
+                                    JsonObject holoPosInfo = resultJSON.GetNamedObject("holo_location");
+
+                                    UnityEngine.Debug.Log("Hologram guidance: " + holoPosInfo);
+                                    float x = (float)holoPosInfo.GetNamedNumber("x");
+                                    float y = (float)holoPosInfo.GetNamedNumber("y");
+                                    float depth = (float)holoPosInfo.GetNamedNumber("depth");
+
+                                    SentPacketInfo p = _tokenController.GetSentPacket(frameID);
+                                    _guidancePos = Pixel2WorldPos(x, y, depth, p.projectionMatrix, p.cameraToWorldMatrix);
+                                }
+
                                 _guidancePosReady = true;
                             }
 
@@ -740,6 +744,7 @@ namespace gabriel_client
 
         private Vector3 Pixel2WorldPos(float x, float y, float depth, Matrix4x4 projectionMatrix, Matrix4x4 cameraToWorldMatrix)
         {
+            //TODO: the below operations could probably be replaced by the ScreenPointToRay function call
             Vector2 ImagePosZeroToOne = new Vector2(x / _captureResolution.width, 1 - y / _captureResolution.height);
             Vector2 ImagePosProjected2D = ((ImagePosZeroToOne * 2) - new Vector2(1, 1)); // -1 to 1 space
             Vector3 ImagePosProjected = new Vector3(ImagePosProjected2D.x, ImagePosProjected2D.y, 1);
