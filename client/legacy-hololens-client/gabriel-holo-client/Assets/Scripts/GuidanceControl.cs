@@ -3,6 +3,7 @@ using System.Collections;
 using HoloToolkit.Unity;
 using UnityEngine.VR.WSA.WebCam;
 using System.IO;
+using UnityEngine.UI;
 
 #if !UNITY_EDITOR
 using System;
@@ -58,6 +59,9 @@ namespace gabriel_client
         // http://www.roadtoholo.com/2016/05/04/1601/text-to-speech-for-hololens/
         // (this has been merged into Holotoolkit-Unity)
         public TextToSpeechManager textToSpeechManager;
+
+        // Text display
+        public Text textDisplay;
 
 #if !UNITY_EDITOR
         // state variables
@@ -119,6 +123,8 @@ namespace gabriel_client
         private System.Object _imageLock = new System.Object();
         private bool _frameReadyFlag = false;
 
+        // Guidance
+        private string _speechFeedback = null;
         private bool _guidancePosReady = false;
         private bool _useDefaultStabilizationPlane = true;
         private string _guidanceObject = "";
@@ -208,6 +214,9 @@ namespace gabriel_client
                     _photoCaptureObject.TakePhotoAsync(OnProcessFrame);
                 }
             }
+
+            // Display the verbal guidance on the panel
+            textDisplay.text = _speechFeedback;
 
             // Place the object at the calculated position.
             if (_guidancePosReady)
@@ -538,14 +547,12 @@ namespace gabriel_client
                             JsonObject resultJSON = JsonValue.Parse(result).GetObject();
 
                             // speech guidance
-
-                            string speechFeedback = null;
                             if (resultJSON.ContainsKey("speech"))
                             {
-                                speechFeedback = resultJSON.GetNamedString("speech");
+                                _speechFeedback = resultJSON.GetNamedString("speech");
                                 //UnityEngine.Debug.Log("speech guidance found");
 
-                                textToSpeechManager.SpeakText(speechFeedback);
+                                textToSpeechManager.SpeakText(_speechFeedback);
                             }
 
                             // hologram guidance
