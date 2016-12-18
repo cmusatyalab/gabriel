@@ -1,4 +1,4 @@
-Gabriel: Cognitive Assistance System based on Google Glass
+Gabriel: Platform for Wearable Cognitive Assistance Applications
 ========================================================
 Copyright (C) 2013-2014 Carnegie Mellon University
 This is a developing project and some features might not be stable yet.
