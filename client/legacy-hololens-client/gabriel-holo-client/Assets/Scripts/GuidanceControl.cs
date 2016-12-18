@@ -204,7 +204,7 @@ namespace gabriel_client
                 if (Const.HOLO_CAPTURE)
                 {
                     if (_isHoloCaptureFrame)
-                        _cameraPara.hologramOpacity = 0.7f;
+                        _cameraPara.hologramOpacity = 0.9f;
                     else
                         _cameraPara.hologramOpacity = 0.0f;
                     _photoCaptureObject.StartPhotoModeAsync(_cameraPara, false, OnPhotoModeStartedHOLO);
@@ -225,7 +225,7 @@ namespace gabriel_client
                 Vector3 tempRight = Camera.main.transform.right;
                 if (_prevGuidanceObject.Equals(_guidanceObject))
                 {
-                    if (Vector3.Distance(gameObject.transform.position, tempGuidancePos) < 0.04)
+                    if (Vector3.Distance(gameObject.transform.position, tempGuidancePos) < 0.05)
                     {
                         gameObject.transform.position = gameObject.transform.position * 0.95f + tempGuidancePos * 0.05f;
                         gameObject.transform.right = gameObject.transform.right * 0.95f + tempRight * 0.05f;
