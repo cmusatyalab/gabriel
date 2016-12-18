@@ -216,6 +216,7 @@
      <Compile Include="Assets\Scripts\Const.cs" />
      <Compile Include="Assets\Scripts\GuidanceControl.cs" />
      <Compile Include="Assets\Scripts\MyLogger.cs" />
+     <Compile Include="Assets\Scripts\MyTapToPlace.cs" />
      <Compile Include="Assets\Scripts\StreamPropertiesHelper.cs" />
      <Compile Include="Assets\Scripts\TokenController.cs" />
      <None Include="Assets\HoloToolkit\Utilities\Shaders\UnlitConfigurable.shader" />
