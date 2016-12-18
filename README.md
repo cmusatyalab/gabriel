@@ -15,6 +15,11 @@ Gabriel open source project are licensed under the [Apache License, Version
 A copy of this license is reproduced in the [LICENSE](LICENSE) file.
 
 
+Applications
+------------
+We have built several applications on top of Gabriel with different wearable devices, including Google Glass and Microsoft HoloLens. Video demos for some of them can be found at http://goo.gl/02m0nL.
+
+
 Installation - Gabriel System
 -------------
 
