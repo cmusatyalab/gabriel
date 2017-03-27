@@ -20,6 +20,11 @@
             android:layout_width="250dp"
             android:layout_height="250dp" />
 
+        <VideoView
+            android:id="@+id/guidance_video"
+            android:layout_width="300dp"
+            android:layout_height="300dp" />
+
         <Space
             android:layout_width="10dp"
             android:layout_height="fill_parent"/>

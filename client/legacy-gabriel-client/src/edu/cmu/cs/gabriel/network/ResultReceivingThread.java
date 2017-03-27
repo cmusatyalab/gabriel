@@ -173,6 +173,17 @@ public class ResultReceivingThread extends Thread {
                 Log.v(LOG_TAG, "no image guidance found");
             }
 
+            // video guidance
+            try {
+                String videoURL = resultJSON.getString("video");
+                msg = Message.obtain();
+                msg.what = NetworkProtocol.NETWORK_RET_VIDEO;
+                msg.obj = videoURL;
+                this.returnMsgHandler.sendMessage(msg);
+            } catch (JSONException e) {
+                Log.v(LOG_TAG, "no video guidance found");
+            }
+
             // animation guidance
             try {
                 JSONArray animationArray = resultJSON.getJSONArray("animation");

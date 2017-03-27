@@ -8,10 +8,11 @@ public class NetworkProtocol {
     public static final int NETWORK_RET_CONFIG = 3;
     public static final int NETWORK_RET_TOKEN = 4;
     public static final int NETWORK_RET_IMAGE = 5;
-    public static final int NETWORK_RET_ANIMATION = 6;
-    public static final int NETWORK_RET_MESSAGE = 7;
-    public static final int NETWORK_RET_DONE = 8;
-    public static final int NETWORK_RET_SYNC = 9;
+    public static final int NETWORK_RET_VIDEO = 6;
+    public static final int NETWORK_RET_ANIMATION = 7;
+    public static final int NETWORK_RET_MESSAGE = 8;
+    public static final int NETWORK_RET_DONE = 9;
+    public static final int NETWORK_RET_SYNC = 10;
 
     public static final String HEADER_MESSAGE_CONTROL = "control";
     public static final String HEADER_MESSAGE_RESULT = "result";

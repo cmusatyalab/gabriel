@@ -10,18 +10,23 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
+import android.media.MediaPlayer;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
+import android.widget.MediaController;
+import android.widget.VideoView;
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.ControlThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
@@ -50,8 +55,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private SensorManager sensorManager = null;
     private Sensor sensorAcc = null;
     private TextToSpeech tts = null;
+    private MediaController mediaController = null;
 
     private ReceivedPacketInfo receivedPacketInfo = null;
+
+    //views
+    private ImageView imgView = null;
+    private VideoView videoView = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,6 +71,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED+
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON+
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        imgView = (ImageView) findViewById(R.id.guidance_image);
+        videoView = (VideoView) findViewById(R.id.guidance_video);
     }
 
     @Override
@@ -110,6 +123,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         // TextToSpeech.OnInitListener
         if (tts == null) {
             tts = new TextToSpeech(this, this);
+        }
+
+        // Media controller
+        if (mediaController == null) {
+            mediaController = new MediaController(this);
         }
 
         // IMU sensors
@@ -294,7 +312,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 if (tts != null){
                     Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
                     // TODO: check if tts is playing something else
-                    tts.setSpeechRate(1.5f);
+                    tts.setSpeechRate(1.0f);
                     String[] splitMSGs = ttsMessage.split("\\.");
                     HashMap<String, String> map = new HashMap<String, String>();
                     map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "unique");
@@ -314,8 +332,25 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE || msg.what == NetworkProtocol.NETWORK_RET_ANIMATION) {
                 Bitmap feedbackImg = (Bitmap) msg.obj;
-                ImageView img = (ImageView) findViewById(R.id.guidance_image);
-                img.setImageBitmap(feedbackImg);
+                imgView = (ImageView) findViewById(R.id.guidance_image);
+                videoView = (VideoView) findViewById(R.id.guidance_video);
+                imgView.setVisibility(View.VISIBLE);
+                videoView.setVisibility(View.GONE);
+                imgView.setImageBitmap(feedbackImg);
+            }
+            if (msg.what == NetworkProtocol.NETWORK_RET_VIDEO) {
+                String url = (String) msg.obj;
+                imgView.setVisibility(View.GONE);
+                videoView.setVisibility(View.VISIBLE);
+                videoView.setVideoURI(Uri.parse(url));
+                videoView.setMediaController(mediaController);
+                //Video Loop
+                videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                    public void onCompletion(MediaPlayer mp) {
+                        videoView.start();
+                    }
+                });
+                videoView.start();
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_DONE) {
                 notifyToken();
