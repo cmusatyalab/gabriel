@@ -52,13 +52,13 @@ def process_command_line(argv):
 
     parser.add_option(
             '-e', '--emulation', action = 'store', dest = 'image_dir',
-            help="emulate mobile device using series of jpeg images")
+            help = "emulate mobile device using series of jpeg images")
     parser.add_option(
             '-k', '--skip_frames', type = "int", action = 'store', default = 0,
             help = "skip the first several frames in emulation mode")
     parser.add_option(
             '-r', '--frame_rate', type = "int", action = 'store', dest = 'frame_rate', default = 15,
-            help="the frame rate for loading jpeg images")
+            help = "the frame rate for loading jpeg images")
     parser.add_option(
             '--log_images', action = 'store_true',
             help = "set if want to store all received images")
@@ -67,7 +67,10 @@ def process_command_line(argv):
             help = "set if want to store all received images into a video file")
     parser.add_option(
             '-l', '--legacy_mode', action = 'store_true',
-            help="whether to use the legacy protocal. If true, the result is a pure JSON.")
+            help = "whether to use the legacy protocal. If true, the result is a pure JSON.")
+    parser.add_option(
+            '-n', '--net_interface', action = 'store', default = "eth0",
+            help = "the network interface with which the cognitive engines communicate")
     settings, args = parser.parse_args(argv)
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
@@ -198,6 +201,7 @@ def main():
         gabriel.Debug.SAVE_VIDEO = True
     if settings.legacy_mode:
         gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
+    REST_server.set_interface(settings.net_interface)
 
     start_background_services()
 

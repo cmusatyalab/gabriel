@@ -21,6 +21,7 @@
 
 
 import json
+from optparse import OptionParser
 import os
 import Queue
 import sys
@@ -43,6 +44,23 @@ KEY_RET             = "return"
 
 custom_service_list = list()
 
+def process_command_line(argv):
+    VERSION = 'gabriel control server : %s' % gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel cognitive assistance"
+
+    parser = OptionParser(usage = '%prog [option]', version = VERSION,
+            description = DESCRIPTION)
+
+    parser.add_option(
+            '-n', '--net_interface', action = 'store', default = "eth0",
+            help = "the network interface with which the cognitive engines communicate")
+    settings, args = parser.parse_args(argv)
+
+    return settings, args
+
+global net_interface
+settings, args = process_command_line(sys.argv[1:])
+net_interface = settings.net_interface
 
 class CustomService(object):
     def __init__(self, service_name, data):
@@ -144,7 +162,8 @@ class ManageService(Resource):
 class GabrielInfo(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('task', type = str)
-    ip_addr = gabriel.network.get_ip()
+    global net_interface
+    ip_addr = gabriel.network.get_ip(net_interface)
     service_info = {
             gabriel.ServiceMeta.UCOMM_SERVER_IP: None,
             gabriel.ServiceMeta.UCOMM_SERVER_PORT: None,

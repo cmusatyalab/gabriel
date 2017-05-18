@@ -46,10 +46,12 @@ class RESTServer(threading.Thread):
         if not os.path.exists(self.REST_bin):
             raise RESTServerError("Cannot find REST server binary: %s" % self.REST_bin)
 
+        self.net_interface = "eth0" # default
+
         threading.Thread.__init__(self, target = self.run_exec)
 
     def run_exec(self):
-        cmd = ["python", "%s" % (self.REST_bin)]
+        cmd = ["python", "%s" % (self.REST_bin), '-n', self.net_interface]
         #_PIPE = subprocess.PIPE
         _PIPE = None
         self.proc = subprocess.Popen(cmd, close_fds = True,
@@ -68,6 +70,9 @@ class RESTServer(threading.Thread):
                         break
         except KeyboardInterrupt, e:
             pass
+
+    def set_interface(self, interface):
+        self.net_interface = interface
 
     def terminate(self):
         self.stop.set()
