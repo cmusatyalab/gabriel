@@ -63,8 +63,14 @@ def process_command_line(argv):
             '--log_images', action = 'store_true',
             help = "set if want to store all received images")
     parser.add_option(
+            '--log_images_path', action = 'store', default = None,
+            help = "path (dir) to store all received images")
+    parser.add_option(
             '--log_video', action = 'store_true',
             help = "set if want to store all received images into a video file")
+    parser.add_option(
+            '--log_video_path', action = 'store', default = None,
+            help = "path to store log video file")
     parser.add_option(
             '-l', '--legacy_mode', action = 'store_true',
             help = "whether to use the legacy protocal. If true, the result is a pure JSON.")
@@ -197,8 +203,12 @@ def main():
     settings, args = process_command_line(sys.argv[1:])
     if settings.log_images:
         gabriel.Debug.SAVE_IMAGES = True
+        if settings.log_images_path is not None:
+            gabriel.Const.LOG_IMAGES_PATH = settings.log_images_path
     if settings.log_video:
         gabriel.Debug.SAVE_VIDEO = True
+        if settings.log_images_path is not None:
+            gabriel.Const.LOG_VIDEO_PATH = settings.log_video_path
     if settings.legacy_mode:
         gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
     REST_server.set_interface(settings.net_interface)
