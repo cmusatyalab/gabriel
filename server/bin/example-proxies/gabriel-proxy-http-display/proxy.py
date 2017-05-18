@@ -20,6 +20,7 @@
 #
 
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+import json
 import multiprocessing
 from optparse import OptionParser
 import os
@@ -42,6 +43,7 @@ share_queue = Queue.Queue(gabriel.Const.MAX_FRAME_SIZE)
 
 class HttpProxy(gabriel.proxy.CognitiveProcessThread):
     def handle(self, header, data):
+        header['status'] = "success"
         global share_queue
         if share_queue.full():
             try:
@@ -49,8 +51,7 @@ class HttpProxy(gabriel.proxy.CognitiveProcessThread):
             except Queue.Empty as e:
                 pass
         share_queue.put(data)
-        ret = ""
-        return ret
+        return json.dumps({})
 
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler, object):

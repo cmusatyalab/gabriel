@@ -54,6 +54,9 @@ def process_command_line(argv):
             '-e', '--emulation', action = 'store', dest = 'image_dir',
             help="emulate mobile device using series of jpeg images")
     parser.add_option(
+            '-k', '--skip_frames', type = "int", action = 'store', default = 0,
+            help = "skip the first several frames in emulation mode")
+    parser.add_option(
             '-r', '--frame_rate', type = "int", action = 'store', dest = 'frame_rate', default = 15,
             help="the frame rate for loading jpeg images")
     parser.add_option(
@@ -63,8 +66,8 @@ def process_command_line(argv):
             '--log_video', action = 'store_true',
             help = "set if want to store all received images into a video file")
     parser.add_option(
-            '-k', '--skip_frames', type = "int", action = 'store', default = 0,
-            help = "skip the first several frames in emulation mode")
+            '-l', '--legacy_mode', action = 'store_true',
+            help="whether to use the legacy protocal. If true, the result is a pure JSON.")
     settings, args = parser.parse_args(argv)
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
@@ -193,6 +196,8 @@ def main():
         gabriel.Debug.SAVE_IMAGES = True
     if settings.log_video:
         gabriel.Debug.SAVE_VIDEO = True
+    if settings.legacy_mode:
+        gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
 
     start_background_services()
 
