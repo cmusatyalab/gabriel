@@ -66,8 +66,6 @@ def process_command_line(argv):
             '-k', '--skip_frames', type = "int", action = 'store', default = 0,
             help = "skip the first several frames in emulation mode")
     settings, args = parser.parse_args(argv)
-    if len(args) >= 5:
-        parser.error("invalid arguement")
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
         if os.path.isdir(settings.image_dir) is False:
@@ -211,7 +209,6 @@ def main():
     ## publish servers that publish sensor streams to offloading engines (start with p_)
     p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
     p_acc_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, gabriel.control.AccPublishHandler)
-    http_server = gabriel.control.ThreadedHTTPServer(('0.0.0.0', 8080), gabriel.control.MJPEGStreamHandler) # TODO
 
     ## create a thread for each server
     # mobile
@@ -224,7 +221,6 @@ def main():
     # publish
     p_video_server_thread = threading.Thread(target = p_video_server.serve_forever)
     p_acc_server_thread = threading.Thread(target = p_acc_server.serve_forever)
-    http_server_thread = threading.Thread(target = http_server.serve_forever)
 
     # set daemon
     m_video_server_thread.daemon = True
@@ -233,9 +229,8 @@ def main():
     ucomm_relay_thread.daemon = True
     p_video_server_thread.daemon = True
     p_acc_server_thread.daemon = True
-    http_server_thread.daemon = True
 
-    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_relay_thread, http_server_thread]
+    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_relay_thread]
 
     ## start!
     try:
@@ -246,7 +241,6 @@ def main():
         ucomm_relay_thread.start()
         p_video_server_thread.start()
         p_acc_server_thread.start()
-        http_server_thread.start()
 
         while True:
             time.sleep(100)

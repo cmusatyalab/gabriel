@@ -51,11 +51,11 @@ def which(program):
 
 
 class Const(object):
-    VERSION = "0.2"
+    VERSION = "0.3"
 
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
-    LOG_IMAGES_PATH = "/home/ubuntu/gabriel-images"
-    LOG_VIDEO_PATH = "/home/ubuntu/gabriel-video.avi"
+    LOG_IMAGES_PATH = "/var/log/gabriel-images"
+    LOG_VIDEO_PATH = "/var/log/gabriel-video.avi"
 
     ## port number for the server modules
     # communication with mobile
@@ -80,15 +80,7 @@ class Const(object):
     # communication between ucomm and engines
     UCOMM_SERVER_PORT = 10120
 
-    # TODO: what's this?
-    OFFLOADING_MONITOR_PORT = 9091
-
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-    ## REST server
-    # The REST server is currently implemented using flask.
-    # No 3rd party implementation is used.
-    #REST_SERVER_BIN = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_REST_server"))
-    #REST_SERVER_BIN = REST_SERVER_BIN if os.path.exists(REST_SERVER_BIN) else which("gabriel_REST_server")
 
     ## UPnP server & client
     UPnP_SERVER_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_server.jar"))
@@ -96,21 +88,19 @@ class Const(object):
     UPnP_CLIENT_PATH = os.path.abspath(os.path.join(MODULE_DIR, "../lib/gabriel_upnp_client.jar"))
     UPnP_CLIENT_PATH = UPnP_CLIENT_PATH if os.path.exists(UPnP_CLIENT_PATH) else which("gabriel_upnp_client.jar")
 
-    ## TODO
-    MAX_FRAME_SIZE = 1
-    APP_LEVEL_TOKEN_SIZE = 1
+    # buffer size for application level flow control
+    MAX_FRAME_SIZE = 1 # buffer size between control engine and cognitive engine
+    APP_LEVEL_TOKEN_SIZE = 1 # buffer size between control engine and client
     TOKEN_INJECTION_SIZE = 10
 
     ## min allowed time between two identical messages
     DUPLICATE_MIN_INTERVAL = 3
 
     # backward-compatibility flag
-    # if set to true, then the result will follow previous convention that it is
-    # a single json string with result as a value
-    # if set to false, new result convention of header as json, any type of data
-    # is admitted 
+    # if set to true (legacy way), the result will follow previous convention that it is a single json string with result as a value
+    # if set to false (default), the result will send header as json, followed by arbitrary data type
     LEGACY_JSON_ONLY_RESULT = False
-    
+
 
 
 class ServiceMeta(object):

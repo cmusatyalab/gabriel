@@ -25,13 +25,35 @@ import pprint
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
+
+def process_command_line(argv):
+    '''
+    A command line processing function shared by common cognitive engine proxies
+    (maybe ucomms as well)
+    '''
+    VERSION = gabriel.Const.VERSION
+    DESCRIPTION = "Gabriel Cognitive Assistant"
+
+    parser = OptionParser(usage = '%prog [option]', version = VERSION, description = DESCRIPTION)
+    parser.add_option(
+            '-s', '--address', action = 'store',
+            help = "(IP address:port number) of directory server")
+
+    settings, args = parser.parse_args(argv)
+
+    if hasattr(settings, 'address') and settings.address is not None:
+        if settings.address.find(":") == -1:
+            parser.error("Need address and port. Ex) 10.0.0.1:8021")
+    return settings
+
+
 def print_rtn(rtn_json):
     '''
     print return message in a nicer way:
     replace random bytes in image data with summarized info
     '''
     if gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE in rtn_json:
-        print_json=dict(rtn_json)
+        print_json = dict(rtn_json)
         result_str = print_json[gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE]
         result_json = json.loads(result_str)
         image_str = result_json.get(gabriel.Protocol_result.JSON_KEY_IMAGE, None)
@@ -44,26 +66,11 @@ def print_rtn(rtn_json):
     return pprint.pformat(print_json)
 
 
-def process_command_line(argv):
-    VERSION = gabriel.Const.VERSION
-    DESCRIPTION = "Gabriel Cognitive Assistant"
-
-    parser = OptionParser(usage = '%prog [option]', version = VERSION, description = DESCRIPTION)
-    parser.add_option(
-            '-s', '--address', action = 'store',
-            help = "(IP address:port number) of directory server")
-
-    settings, args = parser.parse_args(argv)
-    if len(args) >= 1:
-        parser.error("invalid arguement")
-
-    if hasattr(settings, 'address') and settings.address is not None:
-        if settings.address.find(":") == -1:
-            parser.error("Need address and port. Ex) 10.0.0.1:8081")
-    return settings
-
 
 def add_preceding_zeros(n, total_length = 5):
+    '''
+    Converting integer to string, and add preceding zeros
+    '''
     if n < 10:
         return "0" * (total_length - 1) + str(n)
     elif n < 100:

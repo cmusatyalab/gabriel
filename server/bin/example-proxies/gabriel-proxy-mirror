@@ -2,8 +2,7 @@
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
-#   Author: Kiryong Ha <krha@cmu.edu>
-#           Zhuo Chen <zhuoc@cs.cmu.edu>
+#   Author: Junjue Wang <junjuew@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +27,8 @@ import struct
 import sys
 import time
 import pdb
-if os.path.isdir("../gabriel"):
-    sys.path.insert(0, "..")
+dir_file = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(dir_file, "../.."))
 import gabriel
 import gabriel.proxy
 import json
@@ -63,7 +62,7 @@ class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
 
     def add_to_byte_array(self, byte_array, extra_bytes):
         return struct.pack("!{}s{}s".format(len(byte_array),len(extra_bytes)), byte_array, extra_bytes)
-        
+
     def handle(self, header, data):
         # PERFORM Cognitive Assistance Processing
         LOG.info("processing: ")
@@ -76,7 +75,7 @@ class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
         if ANDROID_CLIENT:
             # old version return
             if gabriel.Const.LEGACY_JSON_ONLY_RESULT:
-                jpeg_str = base64.b64encode(jpeg_img)                        
+                jpeg_str = base64.b64encode(jpeg_img)
                 msg={
                     gabriel.Protocol_result.JSON_KEY_STATUS:'success',
                     gabriel.Protocol_result.JSON_KEY_IMAGE: jpeg_str,
@@ -96,7 +95,7 @@ class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
                 # animation data
                 # animation is two images: before mirror and after mirror
                 offset=len(rtn_data)
-                _, ori_img=cv2.imencode('.jpg', bgr_img)                
+                _, ori_img=cv2.imencode('.jpg', bgr_img)
                 animation_data=[jpeg_img.tostring(), ori_img.tostring()]
                 # animation bytes format:
                 # first integer: number of frames

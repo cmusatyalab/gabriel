@@ -19,10 +19,8 @@
 #
 
 import fcntl
-import json
 import socket
 import struct
-import urllib2
 
 import gabriel
 

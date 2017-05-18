@@ -57,7 +57,7 @@ class MobileSensorHandler(gabriel.network.CommonHandler):
             self.previous_time = None
 
     def handle(self):
-        LOG.info("Google Glass is connected for (%s)" % str(self))
+        LOG.info("Mobile client is connected for (%s)" % str(self))
         if gabriel.Debug.LOG_STAT:
             self.init_connect_time = time.time()
             self.previous_time = time.time()

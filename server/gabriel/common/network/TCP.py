@@ -22,9 +22,7 @@ import multiprocessing
 import select
 import socket
 import SocketServer
-import sys
 import threading
-import time
 import traceback
 
 import gabriel
@@ -81,8 +79,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
 
             is_running = True
             while is_running:
-                inputready, outputready, exceptready = \
-                        select.select(input_list, [], except_list)
+                inputready, outputready, exceptready = select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
                         self._handle_input_data()
