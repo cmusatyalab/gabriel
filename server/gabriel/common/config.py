@@ -89,8 +89,9 @@ class Const(object):
     UPnP_CLIENT_PATH = UPnP_CLIENT_PATH if os.path.exists(UPnP_CLIENT_PATH) else which("gabriel_upnp_client.jar")
 
     # buffer size for application level flow control
-    MAX_FRAME_SIZE = 1 # buffer size between control engine and cognitive engine
-    APP_LEVEL_TOKEN_SIZE = 1 # buffer size between control engine and client
+    MAX_TOKEN_SIZE = 1 # buffer size between control engine and client
+    MAX_FRAME_SIZE = MAX_TOKEN_SIZE # for compatibility reasons
+    APP_LEVEL_TOKEN_SIZE = 1 # buffer size between control engine and cognitive engine
     TOKEN_INJECTION_SIZE = 10
 
     ## min allowed time between two identical messages
