@@ -242,6 +242,7 @@ def main():
     p_acc_server_thread = threading.Thread(target = p_acc_server.serve_forever)
 
     # set daemon
+    m_control_server_thread.daemon = True
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
     m_result_server_thread.daemon = True
