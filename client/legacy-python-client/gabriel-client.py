@@ -51,23 +51,16 @@ class TokenController(object):
         self.sent_packets[frame_ID] = [data_time]
 
     def get_current_token(self):
-        with self.token_lock:
-            if self.current_token > 0:
-                return self.current_token
-            else:
-                self.token_lock_condition.wait()
-                return self.current_token
+        return self.current_token
 
     def increase_tokens(self, count):
         with self.token_lock:
             self.current_token += count
-            self.token_lock_condition.notify()
 
     def decrease_token(self):
         with self.token_lock:
             if self.current_token > 0:
                 self.current_token -= 1
-            self.token_lock_condition.notify()
 
     def refill_tokens(self, recv_frame_ID, time_received):
         # increase appropriate amount of tokens
@@ -123,8 +116,7 @@ class VideoStreamingThread(gabriel.network.CommonClient):
 
     def _handle_queue_data(self):
         if self.token_controller.get_current_token() <= 0:
-            # this shouldn't happen since get_current_token will block until there is token
-            LOG.warning("no token available")
+            LOG.debug("no token available")
             return
 
         try:
@@ -220,6 +212,9 @@ class ImageFeedingThread(threading.Thread):
     def run(self):
         image_idx = 0
         while True:
+            if self.stop.is_set():
+                break
+
             image_idx = (image_idx + 1) % len(self.file_list)
 
             image_file = self.file_list[image_idx]
