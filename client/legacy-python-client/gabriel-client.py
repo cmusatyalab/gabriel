@@ -2,6 +2,7 @@
 import cv2
 import json
 import multiprocessing
+import numpy as np
 from optparse import OptionParser
 import os
 import Queue
@@ -72,11 +73,9 @@ class TokenController(object):
         # increase appropriate amount of tokens
         increase_count = 0
         for frame_ID in xrange(self.prev_recv_frame_ID + 1, recv_frame_ID):
-            try:
+            if frame_ID in self.sent_packets:
+                increase_count += 1
                 del self.sent_packets[frame_ID]
-            except KeyError:
-                pass
-            increase_count += 1
         self.increase_tokens(increase_count)
 
         # deal with the current response
@@ -85,7 +84,7 @@ class TokenController(object):
             # do not increase token if have already received duplicated ack
             if recv_frame_ID > self.prev_recv_frame_ID:
                 self.increase_tokens(1)
-        self.prev_recv_frame_ID = recv_frame_ID
+                self.prev_recv_frame_ID = recv_frame_ID
 
 
 class ControlThread(gabriel.network.CommonClient):
@@ -125,8 +124,8 @@ class VideoStreamingThread(gabriel.network.CommonClient):
     def _handle_queue_data(self):
         if self.token_controller.get_current_token() <= 0:
             # this shouldn't happen since get_current_token will block until there is token
-            LOG.warning("no token available");
-            return;
+            LOG.warning("no token available")
+            return
 
         try:
             (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
@@ -140,8 +139,8 @@ class VideoStreamingThread(gabriel.network.CommonClient):
             self.sock.sendall(packet)
             LOG.info("sending an image frame to Gabriel server")
 
-            self.token_controller.log_sent_packet(frame_id, data_time);
-            self.token_controller.decrease_token();
+            self.token_controller.log_sent_packet(frame_id, data_time)
+            self.token_controller.decrease_token()
         except Queue.Empty as e:
             pass
 
@@ -165,11 +164,18 @@ class ResultReceivingThread(gabriel.network.CommonClient):
         # receive data from control VM
         data_size = struct.unpack("!I", self._recv_all(4))[0]
         data_str = self._recv_all(data_size)
-        data_json = json.loads(data_str)
+        time_received = time.time()
 
         # get some information from the returned result
+        data_json = json.loads(data_str)
         frame_id = data_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
-        time_received = time.time()
+        result = data_json.get(gabriel.Protocol_client.JSON_KEY_RESULT_MESSAGE, None)
+        if result is not None:
+            result_json = json.loads(result)
+
+            # get speech guidance
+            speech_feedback = result_json.get("speech", None)
+
         self.token_controller.refill_tokens(frame_id, time_received)
 
     def terminate(self):
@@ -182,9 +188,9 @@ class ImageFeedingThread(threading.Thread):
     """
     def __init__(self, image_dir, image_queue, frame_rate = 15):
         # load images
-        self.filelist = [os.path.join(image_dir, f) for f in os.listdir(image_dir)
+        self.file_list = [os.path.join(image_dir, f) for f in os.listdir(image_dir)
                 if f.lower().endswith("jpeg") or f.lower().endswith("jpg") or f.lower().endswith("bmp")]
-        self.filelist.sort()
+        self.file_list.sort()
 
         self.image_queue = image_queue
         self.wait_time = 1.0 / frame_rate
@@ -192,23 +198,48 @@ class ImageFeedingThread(threading.Thread):
         self.frame_count = 1
         threading.Thread.__init__(self, target = self.run)
 
-    def run(self):
-        while(not self.stop.wait(0.01)):
-            for image_file in self.filelist:
-                image_data = open(image_file, "r").read()
-                header_data = json.dumps({"type" : "python", gabriel.Protocol_client.JSON_KEY_FRAME_ID : self.frame_count})
-                if self.image_queue.full():
-                    try:
-                        image_queue.get_nowait()
-                    except Queue.Empty as e:
-                        pass
-                self.image_queue.put((header_data, image_data))
+    def _display_image(self, display_name, img, wait_time = 1, resize_max = None):
+        if resize_max is not None:
+            img_shape = img.shape
+            height = img_shape[0]; width = img_shape[1]
+            if height > width:
+                img_display = cv2.resize(img, (resize_max * width / height, resize_max), interpolation = cv2.INTER_NEAREST)
+            else:
+                img_display = cv2.resize(img, (resize_max, resize_max * height / width), interpolation = cv2.INTER_NEAREST)
+        else:
+            img_display = img
 
-                if self.frame_count % 100 == 0:
+        cv2.imshow(display_name, img_display)
+        cv2.waitKey(wait_time)
+
+    def _raw2cv_image(self, raw_data):
+        img_array = np.asarray(bytearray(raw_data), dtype = np.int8)
+        cv_image = cv2.imdecode(img_array, -1)
+        return cv_image
+
+    def run(self):
+        image_idx = 0
+        while True:
+            image_idx = (image_idx + 1) % len(self.file_list)
+
+            image_file = self.file_list[image_idx]
+            image_data = open(image_file, "r").read()
+            cv_image = self._raw2cv_image(image_data)
+            self._display_image("client", cv_image, resize_max = 640)
+
+            header_data = json.dumps({"type" : "python", gabriel.Protocol_client.JSON_KEY_FRAME_ID : self.frame_count})
+            if self.image_queue.full():
+                try:
+                    image_queue.get_nowait()
+                except Queue.Empty as e:
                     pass
-                    #LOG.info("pushing emualted image to the queue (%d)" % self.frame_count)
-                self.frame_count += 1
-                time.sleep(self.wait_time)
+            self.image_queue.put((header_data, image_data))
+
+            if self.frame_count % 100 == 0:
+                pass
+                #LOG.info("pushing emualted image to the queue (%d)" % self.frame_count)
+            self.frame_count += 1
+            time.sleep(self.wait_time)
 
     def terminate(self):
         LOG.info("ImageFeedingThread terminating")
