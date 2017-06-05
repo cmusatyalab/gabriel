@@ -92,20 +92,17 @@ class MobileControlHandler(MobileSensorHandler):
         if header_json.get("sync_time") is not None:
             header_json["sync_time"] = int(time.time() * 1000) # in millisecond
             header_data = json.dumps(header_json)
-            packet = struct.pack("!I%ds" % len(header_data),
-                    len(header_data), header_data)
+            packet = struct.pack("!I%ds" % len(header_data), len(header_data), header_data)
             self.request.send(packet)
             self.wfile.flush()
             return
 
     def _handle_queue_data(self):
         try:
-            cmd_json = self.data_queue.get(timeout = 0.0001)
-            cmd_data = json.dumps(command_json)
+            cmd_data = self.data_queue.get(timeout = 0.0001)
 
             ## send return data to the mobile device
-            packet = struct.pack("!I%ds" % len(cmd_data),
-                    len(cmd_data), cmd_data)
+            packet = struct.pack("!I%ds" % len(cmd_data), len(cmd_data), cmd_data)
             self.request.send(packet)
             self.wfile.flush()
             LOG.info("command sent to mobile device: %s", cmd_data)

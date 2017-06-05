@@ -59,8 +59,15 @@ class UCommRelayHandler(gabriel.network.CommonHandler):
         rtn_size = struct.unpack("!I", self._recv_all(4))[0]
         rtn_header_size = struct.unpack("!I", self._recv_all(4))[0]
         rtn_header = self._recv_all(rtn_header_size)
-        rtn_data = self._recv_all(rtn_size-rtn_header_size)        
+        rtn_data = self._recv_all(rtn_size-rtn_header_size)
         gabriel.control.result_queue.put( (rtn_header, rtn_data) )
+
+        # control messages
+        rtn_header_json = json.loads(rtn_header)
+        message_control = rtn_header_json.get('control', None)
+        if message_control is not None:
+            message_control = str(message_control) # this will be unicode otherwise
+            gabriel.control.command_queue.put(message_control)
 
 
 class UCommRelayServer(gabriel.network.CommonServer):

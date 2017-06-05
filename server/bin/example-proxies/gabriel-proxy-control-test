@@ -1,0 +1,156 @@
+#!/usr/bin/env python
+#
+# Cloudlet Infrastructure for Mobile Computing
+#
+#   Author: Zhuo Chen <zhuoc@cs.cmu.edu>
+#
+#   Copyright (C) 2011-2013 Carnegie Mellon University
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+import cv2
+import json
+import multiprocessing
+import numpy as np
+import os
+import pprint
+import Queue
+import select
+import struct
+import sys
+import time
+
+# for setting up stdin
+import tty
+import termios
+
+dir_file = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(dir_file, "../.."))
+import gabriel
+import gabriel.proxy
+LOG = gabriel.logging.getLogger(__name__)
+
+
+def raw2cv_image(raw_data):
+    img_array = np.asarray(bytearray(raw_data), dtype=np.int8)
+    cv_image = cv2.imdecode(img_array, -1)
+    return cv_image
+
+def display_image(display_name, img, wait_time = -1, is_resize = True, resize_method = "max", resize_max = -1, resize_scale = 1, save_image = False):
+    '''
+    Display image at appropriate size. There are two ways to specify the size:
+    1. If resize_max is greater than zero, the longer edge (either width or height) of the image is set to this value
+    2. If resize_scale is greater than zero, the image is scaled by this factor
+    '''
+    if is_resize:
+        img_shape = img.shape
+        height = img_shape[0]; width = img_shape[1]
+        if resize_max > 0:
+            if height > width:
+                img_display = cv2.resize(img, (resize_max * width / height, resize_max), interpolation = cv2.INTER_NEAREST)
+            else:
+                img_display = cv2.resize(img, (resize_max, resize_max * height / width), interpolation = cv2.INTER_NEAREST)
+        elif resize_scale > 0:
+            img_display = cv2.resize(img, (width * resize_scale, height * resize_scale), interpolation = cv2.INTER_NEAREST)
+        else:
+            print "Unexpected parameter in image display. About to exit..."
+            sys.exit()
+    else:
+        img_display = img
+
+    cv2.imshow(display_name, img_display)
+    cv2.waitKey(wait_time)
+
+class CameraControl(gabriel.proxy.CognitiveProcessThread):
+    def handle(self, header, data):
+        # PERFORM Cognitive Assistance Processing
+        header['status'] = "success"
+
+        img = raw2cv_image(data)
+        print img.shape
+        display_image('input', img, resize_max = 640, wait_time = 1)
+
+        # This is so that stdin doesn't get buffered
+        orig_settings = termios.tcgetattr(sys.stdin)
+        tty.setraw(sys.stdin)
+
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.5) # the last number is timeout
+        if rlist:
+            s = sys.stdin.read(1)[0]
+            # restore original settings about stdin
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
+            print "The user enters: " + s
+
+            if s == "a":
+                print "Low resolution"
+                message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 240, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 120}
+                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+            elif s == "b":
+                print "High resolution"
+                message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 1280, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 720}
+                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+            elif s == chr(27):
+                sys.exit()
+        else:
+            # restore original settings about stdin
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
+            print "No control message. Moving on..."
+
+        return json.dumps({'value':'nothing'})
+
+
+if __name__ == "__main__":
+    settings = gabriel.util.process_command_line(sys.argv[1:])
+
+    ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
+    service_list = gabriel.network.get_service_list(ip_addr, port)
+    LOG.info("Gabriel Server :")
+    LOG.info(pprint.pformat(service_list))
+
+    video_ip = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP)
+    video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
+    ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
+    ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
+
+    # image receiving thread
+    image_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE
+    video_streaming = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
+    video_streaming.start()
+    video_streaming.isDaemon = True
+
+    # camera control app
+    result_queue = multiprocessing.Queue()
+
+    video_app = CameraControl(image_queue, result_queue, engine_id = "CameraControl")
+    video_app.start()
+    video_app.isDaemon = True
+
+    # result pub/sub
+    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
+    result_pub.start()
+    result_pub.isDaemon = True
+
+    try:
+        while True:
+            time.sleep(1)
+    except Exception as e:
+        pass
+    except KeyboardInterrupt as e:
+        LOG.info("user exits\n")
+    finally:
+        if video_streaming is not None:
+            video_streaming.terminate()
+        if video_app is not None:
+            video_app.terminate()
+        result_pub.terminate()

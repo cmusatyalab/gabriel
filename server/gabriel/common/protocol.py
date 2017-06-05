@@ -28,6 +28,7 @@ class Protocol_client(object):
     JSON_KEY_STATUS = "status"
     JSON_KEY_DATA_SIZE = "data_size"
 
+
 class Protocol_application(object):
     JSON_KEY_SENSOR_TYPE = "sensor_type"
     JSON_VALUE_SENSOR_TYPE_JPEG = "mjepg"
@@ -53,3 +54,7 @@ class Protocol_result(object):
     JSON_KEY_IMAGES_ANIMATION = "animation"
     JSON_KEY_VIDEO = "video"
 
+class Protocol_control(object):
+    JSON_KEY_FPS = "fps";
+    JSON_KEY_IMG_WIDTH = "img_width";
+    JSON_KEY_IMG_HEIGHT = "img_height";
