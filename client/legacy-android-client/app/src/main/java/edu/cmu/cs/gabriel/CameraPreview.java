@@ -99,7 +99,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
                 int index = 0, fpsDiff = Integer.MAX_VALUE;
                 for (int i = 0; i < supportedFps.size(); i++){
                     int[] frameRate = supportedFps.get(i);
-                    int diff = Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[0]);
+                    int diff = Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[0]) + Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[1]);
                     if (diff < fpsDiff){
                         fpsDiff = diff;
                         index = i;
@@ -187,7 +187,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             int index = 0, fpsDiff = Integer.MAX_VALUE;
             for (int i = 0; i < this.supportingFPS.size(); i++){
                 int[] frameRate = this.supportingFPS.get(i);
-                int diff = Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[0]);
+                int diff = Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[0]) + Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[1]);
                 if (diff < fpsDiff){
                     fpsDiff = diff;
                     index = i;
