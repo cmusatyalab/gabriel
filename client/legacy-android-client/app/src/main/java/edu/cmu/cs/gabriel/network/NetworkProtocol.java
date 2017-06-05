@@ -19,4 +19,8 @@ public class NetworkProtocol {
     public static final String HEADER_MESSAGE_INJECT_TOKEN = "token_inject";
     public static final String HEADER_MESSAGE_FRAME_ID = "frame_id";
     public static final String HEADER_MESSAGE_ENGINE_ID = "engine_id";
+
+    public static final String SERVER_CONTROL_FPS = "fps";
+    public static final String SERVER_CONTROL_IMG_WIDTH = "img_width";
+    public static final String SERVER_CONTROL_IMG_HEIGHT = "img_height";
 }

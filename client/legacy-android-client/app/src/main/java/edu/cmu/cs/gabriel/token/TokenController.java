@@ -85,7 +85,7 @@ public class TokenController {
                 SentPacketInfo sentPacket = sentPackets.get(recvFrameID);
                 if (sentPacket != null) {
                     // do not increase token if have already received duplicated ack
-                    if (recvFrameID > prevRecvFrameID) {    
+                    if (recvFrameID > prevRecvFrameID) {
                         increaseTokens(1);
                     }
 
@@ -126,6 +126,7 @@ public class TokenController {
     }
 
     public void increaseTokens(long count) {
+        if (count == 0) return;
         synchronized (tokenLock) {
             this.currentToken += count;
             this.tokenLock.notify();

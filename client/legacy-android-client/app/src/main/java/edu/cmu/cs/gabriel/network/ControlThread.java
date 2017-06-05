@@ -59,7 +59,7 @@ public class ControlThread extends Thread {
     /**
      * @return a String representing the received message from @reader
      */
-    private String receiveMsg(DataInputStream reader) throws SocketException, IOException {
+    private String receiveMsg(DataInputStream reader) throws SocketTimeoutException, IOException {
         int retLength = reader.readInt();
         byte[] recvByte = new byte[retLength];
         int readSize = 0;
@@ -96,10 +96,8 @@ public class ControlThread extends Thread {
         while (this.isRunning) {
             // first check if server has sent any message
             try {
-                String recvMsg = this.receiveMsg(networkReader);
-                // convert the message to JSON
-                JSONObject obj = new JSONObject(recvMsg);
-                String controlMsg = obj.getString(NetworkProtocol.HEADER_MESSAGE_CONTROL);
+                String controlMsg = this.receiveMsg(networkReader);
+                Log.i(LOG_TAG, "Got server control message: " + controlMsg);
                 
                 if (controlMsg != null){
                     Message msg = Message.obtain();
@@ -108,27 +106,24 @@ public class ControlThread extends Thread {
                     this.mainHandler.sendMessage(msg);
                 }
             } catch (SocketTimeoutException e) {
-                //Log.v(LOG_TAG, "no server command");
-            } catch (JSONException e) {
-                Log.e(LOG_TAG, "server command format error!");
+                Log.d(LOG_TAG, "no server command");
             } catch (IOException e) {
                 Log.e(LOG_TAG, "network error: " + e);
             }
 
             // next check if the client has any message to send
-            try {    
-                // get command in the queue
-                String command = null;
-                synchronized(cmdLock){
-                    if (!this.cmdQueue.isEmpty()){
-                        command = cmdQueue.remove();
-                    }
+            String command = null;
+            synchronized(cmdLock){
+                if (!this.cmdQueue.isEmpty()){
+                    command = cmdQueue.remove();
                 }
-                
-                if (command == null) continue; 
-                Log.v(LOG_TAG, "Processing command from client:" + command);
-                // process commands
-                if (command.equals("ping")) {
+            }
+            if (command == null) continue;
+            Log.i(LOG_TAG, "Processing command from client:" + command);
+
+            if (command.equals("ping")) {
+                try {
+                    // process commands
                     long min_diff = 1000000;
                     long bestSentTime = 0, bestServerTime = 0, bestRecvTime = 0;
                     for (int i = 0; i < Const.MAX_PING_TIMES; i++) {
@@ -145,13 +140,13 @@ public class ControlThread extends Thread {
                         // receive current time at server
                         String recvMsg = this.receiveMsg(networkReader);
                         long serverTime = -1;
-                        try{
+                        try {
                             JSONObject obj = new JSONObject(recvMsg);
                             serverTime = obj.getLong("sync_time");
-                        } catch(JSONException e){
+                        } catch (JSONException e) {
                             Log.e(LOG_TAG, "Sync time with server error!!");
                         }
-                        
+
                         long recvTime = System.currentTimeMillis();
                         if (recvTime - sentTime < min_diff) {
                             min_diff = recvTime - sentTime;
@@ -169,14 +164,15 @@ public class ControlThread extends Thread {
                     Log.i(LOG_TAG, sync_str);
                     tokenController.writeString(sync_str);
                     //tokenController.tokenHandler.sendMessage(msg);
+
+                } catch (SocketException e) {
+                    Log.v(LOG_TAG, "no server command");
+                } catch (IOException e) {
+                    Log.e(LOG_TAG, "Error in sending packet: " + e);
+                    this.notifyError(e.getMessage());
+                    this.isRunning = false;
+                    return;
                 }
-            } catch (SocketException e) {
-                Log.v(LOG_TAG, "no server command");
-            } catch (IOException e) {
-                Log.e(LOG_TAG, "Error in sending packet: " + e);
-                this.notifyError(e.getMessage());
-                this.isRunning = false;
-                return;
             }
         }
         this.isRunning = false;

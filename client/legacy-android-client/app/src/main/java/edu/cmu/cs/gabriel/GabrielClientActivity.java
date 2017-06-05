@@ -27,6 +27,10 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.MediaController;
 import android.widget.VideoView;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.ControlThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
@@ -50,7 +54,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
+
     private CameraPreview preview = null;
+    private Camera mCamera = null;
+    public byte[] reusedBuffer = null;
 
     private SensorManager sensorManager = null;
     private Sensor sensorAcc = null;
@@ -114,8 +121,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void initOnce() {
         Log.v(LOG_TAG, "++initOnce");
         preview = (CameraPreview) findViewById(R.id.camera_preview);
-        preview.checkCamera();
-        preview.setPreviewCallback(previewCallback);
+        mCamera = preview.checkCamera();
+        preview.setPreviewCallbackWithBuffer(previewCallback);
+        reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
+        preview.addCallbackBuffer(reusedBuffer);
 
         Const.ROOT_DIR.mkdirs();
         Const.EXP_DIR.mkdirs();
@@ -210,7 +219,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
         resultThread.start();
 
-        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController);
+        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
         videoStreamingThread.start();
 
         accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
@@ -294,6 +303,28 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
     }
 
+    private void processServerControl(String msg) {
+        try {
+            JSONObject msgJSON = new JSONObject(msg);
+
+            // Camera configs
+            int targetFps = -1, imgWidth = -1, imgHeight = -1;
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
+                targetFps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
+                imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
+                imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
+            if (targetFps != -1 || imgWidth != -1)
+                preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight);
+
+        } catch (JSONException e) {
+            Log.e(LOG_TAG, msg);
+            Log.e(LOG_TAG, "error in processing server control messages");
+            return;
+        }
+    }
+
     /**
      * Handles messages passed from streaming threads and result receiving threads.
      */
@@ -354,6 +385,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_DONE) {
                 notifyToken();
+            }
+            if (msg.what == NetworkProtocol.NETWORK_RET_CONFIG) {
+                String controlMsg = (String) msg.obj;
+                processServerControl(controlMsg);
             }
         }
     };

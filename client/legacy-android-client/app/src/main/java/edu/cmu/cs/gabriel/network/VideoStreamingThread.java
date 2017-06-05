@@ -21,6 +21,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
+import android.hardware.Camera;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
@@ -36,6 +37,8 @@ public class VideoStreamingThread extends Thread {
 
     private boolean isRunning = false;
     private boolean isPing = true;
+
+    private Camera mCamera = null;
     
     // image files for experiments (test and compression)
     private File[] imageFiles = null;
@@ -62,10 +65,11 @@ public class VideoStreamingThread extends Thread {
     private Handler networkHandler = null;
     private TokenController tokenController = null;
 
-    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController) {
+    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, Camera camera) {
         isRunning = false;
         this.networkHandler = handler;
         this.tokenController = tokenController;
+        this.mCamera = camera;
 
         try {
             remoteIP = InetAddress.getByName(serverIP);
@@ -168,7 +172,7 @@ public class VideoStreamingThread extends Thread {
                 // check token
                 if (this.tokenController.getCurrentToken() <= 0) {
                     // this shouldn't happen since getCurrentToken will block until there is token
-                    Log.w(LOG_TAG, "no token available"); 
+                    Log.w(LOG_TAG, "no token available: " + this.tokenController.getCurrentToken());
                     continue;
                 }
 
@@ -264,6 +268,7 @@ public class VideoStreamingThread extends Thread {
             } catch (IOException e) {
             }
         }
+        mCamera.addCallbackBuffer(frame);
     }
 
     public void stopStreaming() {

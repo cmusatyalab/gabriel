@@ -17,10 +17,10 @@ public class Const {
             File.separator + "Gabriel" + File.separator);
 
     // image size and frame rate
-    public static final int MIN_FPS = 15;
+    public static int CAPTURE_FPS = 15;
     // options: 320x180, 640x360, 1280x720, 1920x1080
-    public static final int IMAGE_WIDTH = 640;
-    public static final int IMAGE_HEIGHT = 360;
+    public static int IMAGE_WIDTH = 640;
+    public static int IMAGE_HEIGHT = 360;
     
     // port protocol to the server
     public static final int VIDEO_STREAM_PORT = 9098;
