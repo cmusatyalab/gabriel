@@ -77,14 +77,13 @@ class CameraControl(gabriel.proxy.CognitiveProcessThread):
         header['status'] = "success"
 
         img = raw2cv_image(data)
-        print img.shape
         display_image('input', img, resize_max = 640, wait_time = 1)
 
         # This is so that stdin doesn't get buffered
         orig_settings = termios.tcgetattr(sys.stdin)
         tty.setraw(sys.stdin)
 
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.5) # the last number is timeout
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.05) # the last number is timeout
         if rlist:
             s = sys.stdin.read(1)[0]
             # restore original settings about stdin
@@ -98,6 +97,14 @@ class CameraControl(gabriel.proxy.CognitiveProcessThread):
             elif s == "b":
                 print "High resolution"
                 message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 1280, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 720}
+                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+            elif s == "c":
+                print "Low framerate"
+                message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 1}
+                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+            elif s == "d":
+                print "High framerate"
+                message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 30}
                 header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
             elif s == chr(27):
                 sys.exit()
