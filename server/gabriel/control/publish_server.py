@@ -61,6 +61,11 @@ class VideoPublishHandler(SensorPublishHandler):
     def _handle_queue_data(self):
         try:
             (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
+
+            header_json = json.loads(header_data)
+            header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_JPEG})
+            header_data = json.dumps(header_json)
+
             packet = struct.pack("!II%ds%ds" % (len(header_data), len(image_data)),
                     len(header_data), len(image_data), header_data, image_data)
             self.request.send(packet)
@@ -74,34 +79,36 @@ class VideoPublishHandler(SensorPublishHandler):
         super(VideoPublishHandler, self).terminate()
 
 
-## TODO
 class AccPublishHandler(SensorPublishHandler):
     def setup(self):
         super(AccPublishHandler, self).setup()
-        self.data_queue = multiprocessing.Queue(Const.MAX_FRAME_SIZE)
+        self.data_queue = multiprocessing.Queue(gabriel.Const.MAX_FRAME_SIZE)
         gabriel.control.acc_queue_list.append(self.data_queue)
 
-    def _handle_sensor_stream(self):
-        try:
-            (header, acc_data) = self.data_queue.get(timeout=0.001)
-            header = json.loads(header)
-            header.update({
-                Protocol_application.JSON_KEY_SENSOR_TYPE:
-                        Protocol_application.JSON_VALUE_SENSOR_TYPE_ACC,
-                })
+    def __repr__(self):
+        return "ACC Publish Server"
 
-            json_header = json.dumps(header)
-            packet = struct.pack("!II%ds%ds" % (len(json_header), len(acc_data)),
-                    len(json_header),
-                    len(acc_data),
-                    json_header,
-                    str(acc_data))
+    def handle(self):
+        LOG.info("New offloading engine connected to ACC stream")
+        super(AccPublishHandler, self).handle()
+
+    def _handle_queue_data(self):
+        try:
+            (header_data, acc_data) = self.data_queue.get(timeout = 0.0001)
+
+            header_json = json.loads(header_data)
+            header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_ACC})
+            header_data = json.dumps(header_json)
+
+            packet = struct.pack("!II%ds%ds" % (len(header_data), len(acc_data)),
+                    len(header_data), len(acc_data), header_data, acc_data)
             self.request.send(packet)
             self.wfile.flush()
         except Queue.Empty as e:
             pass
 
     def terminate(self):
+        LOG.info("Offloading engine disconnected from ACC stream")
         gabriel.control.acc_queue_list.remove(self.data_queue)
         super(AccPublishHandler, self).setup()
 
@@ -170,28 +177,28 @@ def main():
     video_thread = threading.Thread(target = video_server.serve_forever)
     video_thread.daemon = True
 
-    #acc_server = SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, AccPublishHandler)
-    #acc_thread = threading.Thread(target = acc_server.serve_forever)
-    #acc_thread.daemon = True
+    acc_server = SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, AccPublishHandler)
+    acc_thread = threading.Thread(target = acc_server.serve_forever)
+    acc_thread.daemon = True
 
     try:
         video_thread.start()
-        #acc_thread.start()
+        acc_thread.start()
         while True:
             time.sleep(100)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     except Exception as e:
         sys.stderr.write(str(e))
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     else:
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(0)
 
 

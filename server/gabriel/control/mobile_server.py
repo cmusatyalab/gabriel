@@ -175,7 +175,10 @@ class MobileVideoHandler(MobileSensorHandler):
                     image_queue.get_nowait()
                 except Queue.Empty as e:
                     pass
-            image_queue.put((header_data, image_data))
+            try:
+                image_queue.put_nowait((header_data, image_data))
+            except Queue.Full as e:
+                pass
 
         ## write images into files
         if gabriel.Debug.SAVE_IMAGES:
@@ -196,47 +199,47 @@ class MobileVideoHandler(MobileSensorHandler):
             self.log_video_writer.write(cv_image)
 
 
-## TODO
 class MobileAccHandler(MobileSensorHandler):
     def setup(self):
         super(MobileAccHandler, self).setup()
+        if gabriel.Debug.LOG_STAT:
+            self.frame_count = 0
+            self.total_recv_size = 0
 
     def __repr__(self):
         return "Mobile Acc Server"
 
     def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
-        acc_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
+        acc_size = struct.unpack("!I", self._recv_all(4))[0]
         acc_data = self._recv_all(acc_size)
-        self.frame_count += 1
 
-        # measurement
-        self.current_time = time.time()
-        self.current_FPS = 1 / (self.current_time - self.previous_time)
-        self.average_FPS = self.frame_count / (self.current_time -
-                self.init_connect_time)
-        self.previous_time = self.current_time
+        ## stats
+        if gabriel.Debug.LOG_STAT:
+            self.frame_count += 1
+            current_time = time.time()
+            self.total_recv_size += (header_size + acc_size + 8)
+            current_FPS = 1 / (current_time - self.previous_time)
+            self.previous_time = current_time
+            average_FPS = self.frame_count / (current_time - self.init_connect_time)
 
-        if (self.frame_count % 100 == 0):
-            msg = "ACC FPS : current(%f), average(%f), offloading Engine(%d)" % \
-                    (self.current_FPS, self.average_FPS, len(acc_queue_list))
-            LOG.info(msg)
+            if (self.frame_count % 100 == 0):
+                log_msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
+                        (current_FPS, average_FPS, 8 * self.total_recv_size / (current_time - self.init_connect_time) / 1000 / 1000, len(acc_queue_list))
+                LOG.info(log_msg)
 
-        try:
-            for acc_queue in acc_queue_list:
-                if acc_queue.full() is True:
+        ## put current image data in all registered cognitive engine queue
+        for acc_queue in acc_queue_list:
+            if acc_queue.full():
+                try:
                     acc_queue.get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
                 acc_queue.put_nowait((header_data, acc_data))
-        except Queue.Empty as e:
-            pass
-        except Queue.Full as e:
-            pass
-
-    def _handle_output_result(self):
-        """ control message
-        """
-        pass
+            except Queue.Full as e:
+                pass
 
 
 class MobileResultHandler(MobileSensorHandler):
@@ -263,7 +266,7 @@ class MobileResultHandler(MobileSensorHandler):
                 frame_id = rtn_header_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
                 now = time.time()
 
-                control_recv_from_mobile_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME)
+                control_recv_from_mobile_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME, -1)
                 app_recv_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_RECV_TIME, -1)
                 app_sent_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SENT_TIME, -1)
                 symbolic_done_time = rtn_header_json.get(gabriel.Protocol_measurement.JSON_KEY_APP_SYMBOLIC_TIME, -1)
@@ -322,28 +325,28 @@ def main():
     video_thread = threading.Thread(target=video_server.serve_forever)
     video_thread.daemon = True
 
-    #acc_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
-    #acc_thread = threading.Thread(target=acc_server.serve_forever)
-    #acc_thread.daemon = True
+    acc_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
+    acc_thread = threading.Thread(target=acc_server.serve_forever)
+    acc_thread.daemon = True
 
     try:
         video_thread.start()
-        #acc_thread.start()
+        acc_thread.start()
         while True:
             time.sleep(100)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     except Exception as e:
         sys.stderr.write(str(e))
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(1)
     else:
         video_server.terminate()
-        #acc_server.terminate()
+        acc_server.terminate()
         sys.exit(0)
 
 

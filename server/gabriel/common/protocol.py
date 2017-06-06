@@ -29,9 +29,9 @@ class Protocol_client(object):
     JSON_KEY_DATA_SIZE = "data_size"
 
 
-class Protocol_application(object):
+class Protocol_sensor(object):
     JSON_KEY_SENSOR_TYPE = "sensor_type"
-    JSON_VALUE_SENSOR_TYPE_JPEG = "mjepg"
+    JSON_VALUE_SENSOR_TYPE_JPEG = "mjpeg"
     JSON_VALUE_SENSOR_TYPE_ACC = "acc"
     JSON_VALUE_SENSOR_TYPE_GPS = "gps"
     JSON_VALUE_SENSOR_TYPE_AUDIO = "audio"
