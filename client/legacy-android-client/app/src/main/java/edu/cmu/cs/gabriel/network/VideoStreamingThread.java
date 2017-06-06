@@ -36,7 +36,6 @@ public class VideoStreamingThread extends Thread {
     private static final String LOG_TAG = "VideoStreaming";
 
     private boolean isRunning = false;
-    private boolean isPing = true;
 
     private Camera mCamera = null;
     
@@ -54,8 +53,7 @@ public class VideoStreamingThread extends Thread {
     private int remotePort;
     private Socket tcpSocket = null;
     private DataOutputStream networkWriter = null;
-    private DataInputStream networkReader = null;
-    private VideoControlThread networkReceiver = null;
+//    private DataInputStream networkReader = null;
 
     // frame data shared between threads
     private long frameID = 0;
@@ -149,7 +147,7 @@ public class VideoStreamingThread extends Thread {
 
     public void run() {
         this.isRunning = true;
-        Log.i(LOG_TAG, "Streaming thread running");
+        Log.i(LOG_TAG, "Video streaming thread running");
 
         // initialization of the TCP connection
         try {
@@ -157,9 +155,7 @@ public class VideoStreamingThread extends Thread {
             tcpSocket.setTcpNoDelay(true);
             tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
             networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
-            networkReader = new DataInputStream(tcpSocket.getInputStream());
-//          networkReceiver = new VideoControlThread(networkReader, this.networkHandler, this.tokenController);
-//          networkReceiver.start();
+//            networkReader = new DataInputStream(tcpSocket.getInputStream());
         } catch (IOException e) {
             Log.e(LOG_TAG, "Error in initializing network socket: " + e);
             this.notifyError(e.getMessage());
@@ -282,9 +278,6 @@ public class VideoStreamingThread extends Thread {
             try {
                 networkWriter.close();
             } catch (IOException e) {}
-        }
-        if (networkReceiver != null) {
-            networkReceiver.close();
         }
     }
 

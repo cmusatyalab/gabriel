@@ -445,19 +445,20 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     }
 
     /**************** SensorEventListener ***********************/
-    // TODO: test accelerometer streaming
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
+        /*
+         * Currently only ACC sensor is supported
+         */
         if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
             return;
         if (accStreamingThread != null) {
-//          accStreamingThread.push(event.values);
+            accStreamingThread.push(event.values);
         }
-        // Log.d(LOG_TAG, "acc_x : " + mSensorX + "\tacc_y : " + mSensorY);
     }
     /**************** End of SensorEventListener ****************/
 

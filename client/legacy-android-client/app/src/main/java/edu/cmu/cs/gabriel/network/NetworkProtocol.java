@@ -23,4 +23,10 @@ public class NetworkProtocol {
     public static final String SERVER_CONTROL_FPS = "fps";
     public static final String SERVER_CONTROL_IMG_WIDTH = "img_width";
     public static final String SERVER_CONTROL_IMG_HEIGHT = "img_height";
+
+    public static final String SENSOR_TYPE_KEY = "sensor_type";
+    public static final String SENSOR_JPEG = "mjpeg";
+    public static final String SENSOR_ACC = "acc";
+    public static final String SENSOR_GPS = "gps";
+    public static final String SENSOR_AUDIO = "audio";
 }

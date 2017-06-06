@@ -110,6 +110,7 @@ public class ResultReceivingThread extends Thread {
         // convert the message to JSON
         String status = null;
         String result = null;
+        String sensorType = null;
         long frameID = -1;
         String engineID = "";
         int injectedToken = 0;
@@ -118,6 +119,7 @@ public class ResultReceivingThread extends Thread {
             JSONObject recvJSON = new JSONObject(recvData);
             status = recvJSON.getString("status");
             result = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_RESULT);
+            sensorType = recvJSON.getString(NetworkProtocol.SENSOR_TYPE_KEY);
             frameID = recvJSON.getLong(NetworkProtocol.HEADER_MESSAGE_FRAME_ID);
             engineID = recvJSON.getString(NetworkProtocol.HEADER_MESSAGE_ENGINE_ID);
             //injectedToken = recvJSON.getInt(NetworkProtocol.HEADER_MESSAGE_INJECT_TOKEN);
@@ -129,15 +131,19 @@ public class ResultReceivingThread extends Thread {
 
 
         // return status
-        Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
-        msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
-        this.returnMsgHandler.sendMessage(msg);
+        if (sensorType.equals(NetworkProtocol.SENSOR_JPEG)) {
+            Message msg = Message.obtain();
+            msg.what = NetworkProtocol.NETWORK_RET_MESSAGE;
+            msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
+            this.returnMsgHandler.sendMessage(msg);
+        }
 
         if (!status.equals("success")) {
-            msg = Message.obtain();
-            msg.what = NetworkProtocol.NETWORK_RET_DONE;
-            this.returnMsgHandler.sendMessage(msg);
+            if (sensorType.equals(NetworkProtocol.SENSOR_JPEG)) {
+                Message msg = Message.obtain();
+                msg.what = NetworkProtocol.NETWORK_RET_DONE;
+                this.returnMsgHandler.sendMessage(msg);
+            }
             return;
         }
 
@@ -165,7 +171,7 @@ public class ResultReceivingThread extends Thread {
                 byte[] data = Base64.decode(imageFeedbackString.getBytes(), Base64.DEFAULT);
                 imageFeedback = BitmapFactory.decodeByteArray(data,0,data.length);
 
-                msg = Message.obtain();
+                Message msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_IMAGE;
                 msg.obj = imageFeedback;
                 this.returnMsgHandler.sendMessage(msg);
@@ -176,7 +182,7 @@ public class ResultReceivingThread extends Thread {
             // video guidance
             try {
                 String videoURL = resultJSON.getString("video");
-                msg = Message.obtain();
+                Message msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_VIDEO;
                 msg.obj = videoURL;
                 this.returnMsgHandler.sendMessage(msg);
@@ -207,7 +213,7 @@ public class ResultReceivingThread extends Thread {
             // speech guidance
             try {
                 speechFeedback = resultJSON.getString("speech");
-                msg = Message.obtain();
+                Message msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_SPEECH;
                 msg.obj = speechFeedback;
                 this.returnMsgHandler.sendMessage(msg);
@@ -216,9 +222,11 @@ public class ResultReceivingThread extends Thread {
             }
 
             // done processing return message
-            msg = Message.obtain();
-            msg.what = NetworkProtocol.NETWORK_RET_DONE;
-            this.returnMsgHandler.sendMessage(msg);
+            if (sensorType.equals(NetworkProtocol.SENSOR_JPEG)) {
+                Message msg = Message.obtain();
+                msg.what = NetworkProtocol.NETWORK_RET_DONE;
+                this.returnMsgHandler.sendMessage(msg);
+            }
         }
     }
 
