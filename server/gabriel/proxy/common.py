@@ -123,9 +123,12 @@ class ResultPublishClient(gabriel.network.CommonClient):
     """
     This client will publish processed result from @data_queue to the ucomm server.
     """
-    def __init__(self, ucomm_addr, data_queue):
+    def __init__(self, ucomm_addr, data_queue, log_flag = True):
         gabriel.network.CommonClient.__init__(self, ucomm_addr)
         self.data_queue = data_queue
+        if not log_flag:
+            import logging
+            LOG.setLevel(logging.CRITICAL + 1)
 
     def __repr__(self):
         return "Result Publish Client"
