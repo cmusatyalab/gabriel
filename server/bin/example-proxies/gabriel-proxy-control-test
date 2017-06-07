@@ -80,6 +80,8 @@ class DummyVideoAppWithControl(gabriel.proxy.CognitiveProcessThread):
         self.command_queue = command_queue
 
     def handle(self, header, data):
+        print "image\r\n",
+
         # PERFORM Cognitive Assistance Processing
         header['status'] = "success"
         img = raw2cv_image(data)
@@ -96,38 +98,76 @@ class DummyVideoAppWithControl(gabriel.proxy.CognitiveProcessThread):
 
 
 class DummyAccAppWithControl(gabriel.proxy.CognitiveProcessThread):
+    def __init__(self, acc_queue, output_queue, command_queue, engine_id):
+        super(DummyAccAppWithControl, self).__init__(acc_queue, output_queue, engine_id)
+        self.command_queue = command_queue
+
     def chunks(self, data, n):
         for i in xrange(0, len(data), n):
             yield data[i : i + n]
 
     def handle(self, header, data):
+        print "acc\r\n",
+
         ACC_SEGMENT_SIZE = 12 # (float, float, float)
         for chunk in self.chunks(data, ACC_SEGMENT_SIZE):
             (acc_x, acc_y, acc_z) = struct.unpack("!fff", chunk)
-            print "acc_x: %f, acc_y: %f, acc_x: %f" % (acc_x, acc_y, acc_z)
+            #print "acc_x: %f, acc_y: %f, acc_x: %f" % (acc_x, acc_y, acc_z)
         header['status'] = "success"
+
+        # check control messages
+        try:
+            message_control = self.command_queue.get_nowait()
+            header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+        except Queue.Empty as e:
+            pass
+
         return json.dumps({})
 
 
 class DummyAudioAppWithControl(gabriel.proxy.CognitiveProcessThread):
-    def __init__(self, audio_queue, output_queue, engine_id):
+    def __init__(self, audio_queue, output_queue, command_queue, engine_id):
         super(DummyAudioAppWithControl, self).__init__(audio_queue, output_queue, engine_id)
         self.wav_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "dummy_audio.wav")
         self.wav_file = wave.open(self.wav_file_path, "wb")
         self.wav_file.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        self.command_queue = command_queue
 
     def handle(self, header, data):
+        print "audio\r\n",
+
         header['status'] = "success"
         if self.wav_file is not None:
             self.wav_file.writeframes(data)
+
+        # check control messages
+        try:
+            message_control = self.command_queue.get_nowait()
+            header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+        except Queue.Empty as e:
+            pass
+
         return json.dumps({})
 
 class ControlThread(threading.Thread):
     '''
     The thread provides a simple UI for user to test control of mobile sensors
+    KeyStroke       Effect
+    1               Toggle on/off for image sensor
+    2               Toggle on/off for ACC sensor
+    3               Toggle on/off for audio sensor
+    a               Low resolution for image sensor
+    b               High resolution for image sensor
+    c               Low framerate for image sensor
+    d               High framerate for image sensor
     '''
     def __init__(self, command_queue):
         self.command_queue = command_queue
+
+        # sensor states
+        self.image_on = True
+        self.acc_on = True
+        self.audio_on = True
 
         self.stop = threading.Event()
 
@@ -149,7 +189,34 @@ class ControlThread(threading.Thread):
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
                 print "The user enters: " + s
 
-                if s == "a":
+                if s == "1":
+                    if self.image_on:
+                        print "Turn off image sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_IMAGE : False}
+                    else:
+                        print "Turn on image sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_IMAGE : True}
+                    self.image_on = not self.image_on
+                    self.command_queue.put(message_control)
+                elif s == "2":
+                    if self.acc_on:
+                        print "Turn off ACC sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_ACC : False}
+                    else:
+                        print "Turn on ACC sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_ACC : True}
+                    self.acc_on = not self.acc_on
+                    self.command_queue.put(message_control)
+                elif s == "3":
+                    if self.audio_on:
+                        print "Turn off audio sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_AUDIO : False}
+                    else:
+                        print "Turn on audio sensor"
+                        message_control = {gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_AUDIO : True}
+                    self.audio_on = not self.audio_on
+                    self.command_queue.put(message_control)
+                elif s == "a":
                     print "Low resolution"
                     message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 240, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 120}
                     self.command_queue.put(message_control)
@@ -165,7 +232,7 @@ class ControlThread(threading.Thread):
                     print "High framerate"
                     message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 30}
                     self.command_queue.put(message_control)
-                elif s == chr(27):
+                elif s == chr(27) or s == chr(3): # esc or ctrl+c
                     self.stop.set()
             else:
                 # restore original settings about stdin
@@ -200,7 +267,7 @@ if __name__ == "__main__":
 
     # image receiving and processing
     image_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
-    print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE
+    #print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE
     video_streaming = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
     video_streaming.start()
     video_streaming.isDaemon = True
@@ -215,7 +282,7 @@ if __name__ == "__main__":
     acc_streaming.start()
     acc_streaming.isDaemon = True
 
-    acc_app = DummyAccAppWithControl(acc_queue, result_queue, engine_id = "Dummy_acc")
+    acc_app = DummyAccAppWithControl(acc_queue, result_queue, command_queue, engine_id = "Dummy_acc")
     acc_app.start()
     acc_app.isDaemon = True
 
@@ -225,7 +292,7 @@ if __name__ == "__main__":
     audio_streaming.start()
     audio_streaming.isDaemon = True
 
-    audio_app = DummyAudioAppWithControl(audio_queue, result_queue, engine_id = "Dummy_audio")
+    audio_app = DummyAudioAppWithControl(audio_queue, result_queue, command_queue, engine_id = "Dummy_audio")
     audio_app.start()
     audio_app.isDaemon = True
 
