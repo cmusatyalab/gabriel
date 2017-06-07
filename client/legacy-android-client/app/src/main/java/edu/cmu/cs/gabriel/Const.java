@@ -2,6 +2,7 @@ package edu.cmu.cs.gabriel;
 
 import java.io.File;
 
+import android.media.AudioFormat;
 import android.os.Environment;
 
 public class Const {
@@ -25,7 +26,8 @@ public class Const {
     // port protocol to the server
     public static final int VIDEO_STREAM_PORT = 9098;
     public static final int ACC_STREAM_PORT = 9099;
-    public static final int RESULT_RECEIVING_PORT = 9101;
+    public static final int AUDIO_STREAM_PORT = 9100;
+    public static final int RESULT_RECEIVING_PORT = 9111;
     public static final int CONTROL_PORT = 22222;
 
     // load images (JPEG) from files and pretend they are just captured by the camera
@@ -36,6 +38,12 @@ public class Const {
     // may include background pinging to keep network active
     public static final boolean BACKGROUND_PING = false;
     public static final int PING_INTERVAL = 200;
+
+    // audio configurations
+    /************************ For audio mode *******************************/
+    public static final int RECORDER_SAMPLERATE = 16000;
+    public static final int RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_MONO;
+    public static final int RECORDER_AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT;
 
     /************************ Demo mode only *************************************/
     // server IP
