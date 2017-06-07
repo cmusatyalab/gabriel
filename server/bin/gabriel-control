@@ -40,7 +40,7 @@ LOG = gabriel.logging.getLogger(__name__)
 REST_server = gabriel.network.RESTServer()
 UPnP_server = gabriel.network.UPnPServer()
 service_monitor = gabriel.control.OffloadingEngineMonitor(gabriel.control.image_queue_list,
-        gabriel.control.acc_queue_list, gabriel.control.gps_queue_list, gabriel.control.result_queue)
+        gabriel.control.acc_queue_list, gabriel.control.audio_queue_list, gabriel.control.result_queue)
 
 
 def process_command_line(argv):
@@ -222,45 +222,53 @@ def main():
     else:
         m_video_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_VIDEO_PORT, gabriel.control.MobileVideoHandler)
     m_acc_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, gabriel.control.MobileAccHandler)
+    m_audio_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_AUDIO_PORT, gabriel.control.MobileAudioHandler)
     m_result_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_RESULT_PORT, gabriel.control.MobileResultHandler)
     ucomm_relay_server = gabriel.control.UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommRelayHandler)
 
     ## publish servers that publish sensor streams to offloading engines (start with p_)
     p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
     p_acc_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, gabriel.control.AccPublishHandler)
+    p_audio_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_AUDIO_PORT, gabriel.control.AudioPublishHandler)
 
     ## create a thread for each server
     # mobile
     m_control_server_thread = threading.Thread(target = m_control_server.serve_forever)
     m_video_server_thread = threading.Thread(target = m_video_server.serve_forever)
     m_acc_server_thread = threading.Thread(target = m_acc_server.serve_forever)
+    m_audio_server_thread = threading.Thread(target = m_audio_server.serve_forever)
     m_result_server_thread = threading.Thread(target = m_result_server.serve_forever)
     ucomm_relay_thread = threading.Thread(target = ucomm_relay_server.serve_forever)
 
     # publish
     p_video_server_thread = threading.Thread(target = p_video_server.serve_forever)
     p_acc_server_thread = threading.Thread(target = p_acc_server.serve_forever)
+    p_audio_server_thread = threading.Thread(target = p_audio_server.serve_forever)
 
     # set daemon
     m_control_server_thread.daemon = True
     m_video_server_thread.daemon = True
     m_acc_server_thread.daemon = True
+    m_audio_server_thread.daemon = True
     m_result_server_thread.daemon = True
     ucomm_relay_thread.daemon = True
     p_video_server_thread.daemon = True
     p_acc_server_thread.daemon = True
+    p_audio_server_thread.daemon = True
 
-    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, ucomm_relay_thread]
+    all_thread_list = [m_video_server_thread, m_acc_server_thread, m_audio_server_thread, m_result_server_thread, p_video_server_thread, p_acc_server_thread, p_audio_server_thread, ucomm_relay_thread]
 
     ## start!
     try:
         m_control_server_thread.start()
         m_video_server_thread.start()
         m_acc_server_thread.start()
+        m_audio_server_thread.start()
         m_result_server_thread.start()
         ucomm_relay_thread.start()
         p_video_server_thread.start()
         p_acc_server_thread.start()
+        p_audio_server_thread.start()
 
         while True:
             time.sleep(100)
@@ -278,6 +286,8 @@ def main():
             m_video_server.terminate()
         if m_acc_server is not None:
             m_acc_server.terminate()
+        if m_audio_server is not None:
+            m_audio_server.terminate()
         if m_result_server is not None:
             m_result_server.terminate()
         if ucomm_relay_server is not None:
@@ -286,6 +296,8 @@ def main():
             p_video_server.terminate()
         if p_acc_server is not None:
             p_acc_server.terminate()
+        if p_audio_server is not None:
+            p_audio_server.terminate()
 
     '''
     for each_thread in all_thread_list:

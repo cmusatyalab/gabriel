@@ -113,6 +113,40 @@ class AccPublishHandler(SensorPublishHandler):
         super(AccPublishHandler, self).setup()
 
 
+class AudioPublishHandler(SensorPublishHandler):
+    def setup(self):
+        super(AudioPublishHandler, self).setup()
+        self.data_queue = multiprocessing.Queue(gabriel.Const.MAX_FRAME_SIZE)
+        gabriel.control.audio_queue_list.append(self.data_queue)
+
+    def __repr__(self):
+        return "Audio Publish Server"
+
+    def handle(self):
+        LOG.info("New offloading engine connected to audio stream")
+        super(AudioPublishHandler, self).handle()
+
+    def _handle_queue_data(self):
+        try:
+            (header_data, audio_data) = self.data_queue.get(timeout = 0.0001)
+
+            header_json = json.loads(header_data)
+            header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_AUDIO})
+            header_data = json.dumps(header_json)
+
+            packet = struct.pack("!II%ds%ds" %(len(header_data), len(audio_data)),
+                    len(header_data), len(audio_data), header_data, audio_data)
+            self.request.send(packet)
+            self.wfile.flush()
+        except Queue.Empty as e:
+            pass
+
+    def terminate(self):
+        LOG.info("Offloading engine disconnected from audio stream")
+        gabriel.control.audio_queue_list.remove(self.data_queue)
+        super(AudioPublishHandler, self).terminate()
+
+
 class SensorPublishServer(gabriel.network.CommonServer):
     def __init__(self, port, handler):
         gabriel.network.CommonServer.__init__(self, port, handler) # cannot use super because it's old style class
@@ -181,24 +215,32 @@ def main():
     acc_thread = threading.Thread(target = acc_server.serve_forever)
     acc_thread.daemon = True
 
+    audio_server = SensorPublishServer(gabriel.Const.PUBLISH_SERVER_AUDIO_PORT, AudioPublishHandler)
+    audio_thread = threading.Thread(target = audio_server.serve_forever)
+    audio_thread.daemon = True
+
     try:
         video_thread.start()
         acc_thread.start()
+        audio_thread.start()
         while True:
             time.sleep(100)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(1)
     except Exception as e:
         sys.stderr.write(str(e))
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(1)
     else:
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(0)
 
 

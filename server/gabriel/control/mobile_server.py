@@ -38,6 +38,7 @@ LOG = gabriel.logging.getLogger(__name__)
 
 image_queue_list = list()
 acc_queue_list = list()
+audio_queue_list = list()
 gps_queue_list = list()
 # a global queue that contains final messages sent back to the client
 result_queue = multiprocessing.Queue()
@@ -225,11 +226,11 @@ class MobileAccHandler(MobileSensorHandler):
             average_FPS = self.frame_count / (current_time - self.init_connect_time)
 
             if (self.frame_count % 100 == 0):
-                log_msg = "Video FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
+                log_msg = "ACC FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
                         (current_FPS, average_FPS, 8 * self.total_recv_size / (current_time - self.init_connect_time) / 1000 / 1000, len(acc_queue_list))
                 LOG.info(log_msg)
 
-        ## put current image data in all registered cognitive engine queue
+        ## put current acc data in all registered cognitive engine queue
         for acc_queue in acc_queue_list:
             if acc_queue.full():
                 try:
@@ -238,6 +239,51 @@ class MobileAccHandler(MobileSensorHandler):
                     pass
             try:
                 acc_queue.put_nowait((header_data, acc_data))
+            except Queue.Full as e:
+                pass
+
+
+class MobileAudioHandler(MobileSensorHandler):
+    def setup(self):
+        super(MobileAudioHandler, self).setup()
+        if gabriel.Debug.LOG_STAT:
+            self.frame_count = 0
+            self.total_recv_size = 0
+
+    def __repr__(self):
+        return "Mobile Audio Server"
+
+    def _handle_input_data(self):
+        ## receive data
+        header_size = struct.unpack("!I", self._recv_all(4))[0]
+        header_data = self._recv_all(header_size)
+        header_json = json.loads(header_data)
+        audio_size = struct.unpack("!I", self._recv_all(4))[0]
+        audio_data = self._recv_all(audio_size)
+
+        ## stats
+        if gabriel.Debug.LOG_STAT:
+            self.frame_count += 1
+            current_time = time.time()
+            self.total_recv_size += (header_size + audio_size + 8)
+            current_FPS = 1 / (current_time - self.previous_time)
+            self.previous_time = current_time
+            average_FPS = self.frame_count / (current_time - self.init_connect_time)
+
+            if (self.frame_count % 100 == 0):
+                log_msg = "Audio FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
+                        (current_FPS, average_FPS, 8 * self.total_recv_size / (current_time - self.init_connect_time) / 1000 / 1000, len(audio_queue_list))
+                LOG.info(log_msg)
+
+        ## put current audio data in all registered cognitive engine queue
+        for audio_queue in audio_queue_list:
+            if audio_queue.full():
+                try:
+                    audio_queue.get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                audio_queue.put((header_data, audio_data))
             except Queue.Full as e:
                 pass
 
@@ -325,28 +371,36 @@ def main():
     video_thread = threading.Thread(target=video_server.serve_forever)
     video_thread.daemon = True
 
-    acc_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, MobileVideoHandler)
+    acc_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_ACC_PORT, MobileAccHandler)
     acc_thread = threading.Thread(target=acc_server.serve_forever)
     acc_thread.daemon = True
+
+    audio_server = MobileCommServer(gabriel.Const.MOBILE_SERVER_AUDIO_PORT, MobileAudioHandler)
+    audio_thread = threading.Thread(target=audio_server.serve_forever)
+    audio_thread.daemon = True
 
     try:
         video_thread.start()
         acc_thread.start()
+        audio_thread.start()
         while True:
             time.sleep(100)
     except KeyboardInterrupt as e:
         sys.stdout.write("Exit by user\n")
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(1)
     except Exception as e:
         sys.stderr.write(str(e))
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(1)
     else:
         video_server.terminate()
         acc_server.terminate()
+        audio_server.terminate()
         sys.exit(0)
 
 

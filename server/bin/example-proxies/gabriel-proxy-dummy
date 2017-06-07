@@ -29,6 +29,7 @@ import Queue
 import struct
 import sys
 import time
+import wave
 
 dir_file = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(dir_file, "../.."))
@@ -92,6 +93,20 @@ class DummyAccApp(gabriel.proxy.CognitiveProcessThread):
         return json.dumps({})
 
 
+class DummyAudioApp(gabriel.proxy.CognitiveProcessThread):
+    def __init__(self, audio_queue, output_queue, engine_id):
+        super(DummyAudioApp, self).__init__(audio_queue, output_queue, engine_id)
+        self.wav_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "dummy_audio.wav")
+        self.wav_file = wave.open(self.wav_file_path, "wb")
+        self.wav_file.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+
+    def handle(self, header, data):
+        header['status'] = "success"
+        if self.wav_file is not None:
+            self.wav_file.writeframes(data)
+        return json.dumps({})
+
+
 if __name__ == "__main__":
     settings = gabriel.util.process_command_line(sys.argv[1:])
 
@@ -104,6 +119,8 @@ if __name__ == "__main__":
     video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
     acc_ip = service_list.get(gabriel.ServiceMeta.ACC_TCP_STREAMING_IP)
     acc_port = service_list.get(gabriel.ServiceMeta.ACC_TCP_STREAMING_PORT)
+    audio_ip = service_list.get(gabriel.ServiceMeta.AUDIO_TCP_STREAMING_IP)
+    audio_port = service_list.get(gabriel.ServiceMeta.AUDIO_TCP_STREAMING_PORT)
     ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
     ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
 
@@ -117,11 +134,11 @@ if __name__ == "__main__":
     video_streaming.start()
     video_streaming.isDaemon = True
 
-    video_app = DummyVideoApp(image_queue, result_queue, engine_id = "Dummy")
+    video_app = DummyVideoApp(image_queue, result_queue, engine_id = "Dummy_video")
     video_app.start()
     video_app.isDaemon = True
 
-    # acc receiving and processsing
+    ## acc receiving and processing
     acc_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
     acc_streaming = gabriel.proxy.SensorReceiveClient((acc_ip, acc_port), acc_queue)
     acc_streaming.start()
@@ -130,6 +147,16 @@ if __name__ == "__main__":
     acc_app = DummyAccApp(acc_queue, result_queue, engine_id = "Dummy_acc")
     acc_app.start()
     acc_app.isDaemon = True
+
+    # audio receiving and processing
+    audio_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    audio_streaming = gabriel.proxy.SensorReceiveClient((audio_ip, audio_port), audio_queue)
+    audio_streaming.start()
+    audio_streaming.isDaemon = True
+
+    audio_app = DummyAudioApp(audio_queue, result_queue, engine_id = "Dummy_audio")
+    audio_app.start()
+    audio_app.isDaemon = True
 
     # result pub/sub
     result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
@@ -152,4 +179,8 @@ if __name__ == "__main__":
             acc_streaming.terminate()
         if acc_app is not None:
             acc_app.terminate()
+        if audio_streaming is not None:
+            audio_streaming.terminate()
+        if audio_app is not None:
+            audio_app.terminate()
         result_pub.terminate()

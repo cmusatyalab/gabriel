@@ -135,7 +135,7 @@ class ResultPublishClient(gabriel.network.CommonClient):
             rtn_header, rtn_data = self.data_queue.get(timeout = 0.0001)
             total_size = len(rtn_header) + len(rtn_data)
             # packet format: total size, header size, header, data
-            packet = struct.pack("!II{}s{}s".format(len(rtn_header),len(rtn_data)), total_size, len(rtn_header), rtn_header, rtn_data)
+            packet = struct.pack("!II{}s{}s".format(len(rtn_header), len(rtn_data)), total_size, len(rtn_header), rtn_header, rtn_data)
             self.sock.sendall(packet)
             LOG.info("sending result to ucomm: %s" % gabriel.util.print_rtn(json.loads(rtn_header)))
         except Queue.Empty as e:

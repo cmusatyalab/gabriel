@@ -61,15 +61,17 @@ class Const(object):
     # communication with mobile
     MOBILE_SERVER_VIDEO_PORT = 9098
     MOBILE_SERVER_ACC_PORT = 9099
-    MOBILE_SERVER_GPS_PORT = 9100
-    MOBILE_SERVER_RESULT_PORT = 9101
+    MOBILE_SERVER_AUDIO_PORT = 9100
+    MOBILE_SERVER_GPS_PORT = 9101
+    MOBILE_SERVER_RESULT_PORT = 9111
 
     MOBILE_SERVER_CONTROL_PORT = 22222
 
     # servers that publish streams
     PUBLISH_SERVER_VIDEO_PORT = 10101
     PUBLISH_SERVER_ACC_PORT = 10102
-    PUBLISH_SERVER_GPS_PORT = 10103
+    PUBLISH_SERVER_AUDIO_PORT = 10103
+    PUBLISH_SERVER_GPS_PORT = 10104
 
     # service discovery http server
     SERVICE_DISCOVERY_HTTP_PORT = 8021
@@ -111,6 +113,8 @@ class ServiceMeta(object):
     VIDEO_TCP_STREAMING_PORT = "video_tcp_streaming_port"
     ACC_TCP_STREAMING_IP = "acc_tcp_streaming_ip"
     ACC_TCP_STREAMING_PORT = "acc_tcp_streaming_port"
+    AUDIO_TCP_STREAMING_IP = "audio_tcp_streaming_ip"
+    AUDIO_TCP_STREAMING_PORT = "audio_tcp_streaming_port"
     UCOMM_RELAY_IP = "ucomm_relay_ip"
     UCOMM_RELAY_PORT = "ucomm_relay_port"
 

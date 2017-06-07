@@ -135,7 +135,7 @@ class ResultForwardingClient(gabriel.network.CommonClient):
             ## send packet to control VM
             forward_header = json.dumps(forward_header_json)
             total_size = len(forward_header) + len(forward_data)
-            packet = struct.pack("!II{}s{}s".format(len(forward_header),len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
+            packet = struct.pack("!II{}s{}s".format(len(forward_header), len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
             self.sock.sendall(packet)
             LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_header))
 
