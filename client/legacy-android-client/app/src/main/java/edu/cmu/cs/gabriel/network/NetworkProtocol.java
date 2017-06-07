@@ -20,13 +20,16 @@ public class NetworkProtocol {
     public static final String HEADER_MESSAGE_FRAME_ID = "frame_id";
     public static final String HEADER_MESSAGE_ENGINE_ID = "engine_id";
 
-    public static final String SERVER_CONTROL_FPS = "fps";
-    public static final String SERVER_CONTROL_IMG_WIDTH = "img_width";
-    public static final String SERVER_CONTROL_IMG_HEIGHT = "img_height";
-
     public static final String SENSOR_TYPE_KEY = "sensor_type";
     public static final String SENSOR_JPEG = "mjpeg";
     public static final String SENSOR_ACC = "acc";
     public static final String SENSOR_GPS = "gps";
     public static final String SENSOR_AUDIO = "audio";
+
+    public static final String SERVER_CONTROL_SENSOR_TYPE_IMAGE = SENSOR_JPEG;
+    public static final String SERVER_CONTROL_SENSOR_TYPE_ACC = SENSOR_ACC;
+    public static final String SERVER_CONTROL_SENSOR_TYPE_AUDIO = SENSOR_AUDIO;
+    public static final String SERVER_CONTROL_FPS = "fps";
+    public static final String SERVER_CONTROL_IMG_WIDTH = "img_width";
+    public static final String SERVER_CONTROL_IMG_HEIGHT = "img_height";
 }

@@ -50,6 +50,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private static final String LOG_TAG = "Main";
 
     // major components for streaming sensor data and receiving information
+    private String serverIP = null;
     private VideoStreamingThread videoStreamingThread = null;
     private AccStreamingThread accStreamingThread = null;
     private AudioStreamingThread audioStreamingThread = null;
@@ -111,7 +112,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if (Const.IS_EXPERIMENT) { // experiment mode
             runExperiments();
         } else { // demo mode
-            initPerRun(Const.SERVER_IP, Const.TOKEN_SIZE, null);
+            serverIP = Const.SERVER_IP;
+            initPerRun(serverIP, Const.TOKEN_SIZE, null);
         }
     }
 
@@ -163,7 +165,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         // Audio
         if (Const.SENSOR_AUDIO) {
-            startAudioRecording();
+            if (audioRecorder == null) {
+                startAudioRecording();
+            }
         }
 
         isRunning = true;
@@ -283,7 +287,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         }
 
                         // make a new configuration
-                        String serverIP = Const.SERVER_IP_LIST[ipIndex];
+                        serverIP = Const.SERVER_IP_LIST[ipIndex];
                         int tokenSize = Const.TOKEN_SIZE_LIST[tokenIndex];
                         File latencyFile = new File (Const.EXP_DIR.getAbsolutePath() + File.separator +
                                 "latency-" + serverIP + "-" + tokenSize + ".txt");
@@ -337,6 +341,59 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void processServerControl(String msg) {
         try {
             JSONObject msgJSON = new JSONObject(msg);
+
+            // Switching on/off image sensor
+
+            // Switching on/off ACC sensor
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_ACC)) {
+                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_ACC);
+                if (sw) { // turning on
+                    Const.SENSOR_ACC = true;
+                    if (sensorManager == null) {
+                        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+                        sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                        sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
+                    }
+                    if (accStreamingThread == null) {
+                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
+                        accStreamingThread.start();
+                    }
+                } else { // turning off
+                    Const.SENSOR_ACC = false;
+                    if (sensorManager != null) {
+                        sensorManager.unregisterListener(this);
+                        sensorManager = null;
+                        sensorAcc = null;
+                    }
+                    if (accStreamingThread != null) {
+                        accStreamingThread.stopStreaming();
+                        accStreamingThread = null;
+                    }
+                }
+            }
+            // Switching on/off audio sensor
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_AUDIO)) {
+                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_AUDIO);
+                if (sw) { // turning on
+                    Const.SENSOR_AUDIO = true;
+                    if (audioRecorder == null) {
+                        startAudioRecording();
+                    }
+                    if (audioStreamingThread == null) {
+                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController);
+                        audioStreamingThread.start();
+                    }
+                } else { // turning off
+                    Const.SENSOR_AUDIO = false;
+                    if (audioRecorder != null) {
+                        stopAudioRecording();
+                    }
+                    if (audioStreamingThread != null) {
+                        audioStreamingThread.stopStreaming();
+                        audioStreamingThread = null;
+                    }
+                }
+            }
 
             // Camera configs
             int targetFps = -1, imgWidth = -1, imgHeight = -1;
