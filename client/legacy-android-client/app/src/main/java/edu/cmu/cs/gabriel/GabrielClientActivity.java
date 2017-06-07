@@ -79,6 +79,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     // audio
     private AudioRecord audioRecorder = null;
     private Thread audioRecordingThread = null;
+    private boolean isAudioRecording = false;
     private int audioBufferSize = -1;
 
 
@@ -152,14 +153,18 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         // IMU sensors
-        if (sensorManager == null) {
-            sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-            sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
+        if (Const.SENSOR_ACC) {
+            if (sensorManager == null) {
+                sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+                sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
+            }
         }
 
         // Audio
-        startAudioRecording();
+        if (Const.SENSOR_AUDIO) {
+            startAudioRecording();
+        }
 
         isRunning = true;
     }
@@ -241,11 +246,15 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
         videoStreamingThread.start();
 
-        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
-        accStreamingThread.start();
+        if (Const.SENSOR_ACC) {
+            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
+            accStreamingThread.start();
+        }
 
-        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController);
-        audioStreamingThread.start();
+        if (Const.SENSOR_AUDIO) {
+            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController);
+            audioStreamingThread.start();
+        }
     }
 
     /**
@@ -534,21 +543,21 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 Const.RECORDER_AUDIO_ENCODING, audioBufferSize);
         audioRecorder.startRecording();
 
-        audioRecordingThread = new Thread(new Runnable() {
+        isAudioRecording = true;
 
+        audioRecordingThread = new Thread(new Runnable() {
             @Override
             public void run() {
                 readAudioData();
             }
         }, "AudioRecorder Thread");
-
         audioRecordingThread.start();
     }
 
     private void readAudioData() {
         byte data[] = new byte[audioBufferSize];
 
-        while (isRunning) {
+        while (isAudioRecording) {
             int n = audioRecorder.read(data, 0, audioBufferSize);
 
             if (n != AudioRecord.ERROR_INVALID_OPERATION && n > 0) {
@@ -560,6 +569,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     }
 
     private void stopAudioRecording() {
+        isAudioRecording = false;
         if (audioRecorder != null) {
             if (audioRecorder.getState() == AudioRecord.STATE_INITIALIZED)
                 audioRecorder.stop();

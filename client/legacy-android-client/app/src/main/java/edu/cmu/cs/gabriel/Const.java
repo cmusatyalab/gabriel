@@ -12,6 +12,11 @@ public class Const {
     // whether to use real-time captured images or load images from files for testing
     public static final boolean LOAD_IMAGES = false;
 
+    // high level sensor control (on/off)
+    public static boolean SENSOR_VIDEO = true;
+    public static boolean SENSOR_ACC = true;
+    public static boolean SENSOR_AUDIO = true;
+
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
     public static final File ROOT_DIR = new File(Environment.getExternalStorageDirectory() +
@@ -40,7 +45,6 @@ public class Const {
     public static final int PING_INTERVAL = 200;
 
     // audio configurations
-    /************************ For audio mode *******************************/
     public static final int RECORDER_SAMPLERATE = 16000;
     public static final int RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_MONO;
     public static final int RECORDER_AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT;
