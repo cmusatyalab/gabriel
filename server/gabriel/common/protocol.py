@@ -55,6 +55,10 @@ class Protocol_result(object):
     JSON_KEY_VIDEO = "video"
 
 class Protocol_control(object):
+    JSON_KEY_SENSOR_TYPE_JPEG = Protocol_sensor.JSON_VALUE_SENSOR_TYPE_JPEG
+    JSON_KEY_SENSOR_TYPE_ACC = Protocol_sensor.JSON_VALUE_SENSOR_TYPE_ACC
+    JSON_KEY_SENSOR_TYPE_AUDIO = Protocol_sensor.JSON_VALUE_SENSOR_TYPE_AUDIO
+
     JSON_KEY_FPS = "fps";
     JSON_KEY_IMG_WIDTH = "img_width";
     JSON_KEY_IMG_HEIGHT = "img_height";

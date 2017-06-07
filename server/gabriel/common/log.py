@@ -52,5 +52,3 @@ def getLogger(name = 'unknown', log_level_file = Debug.LOG_LEVEL_FILE, log_level
         loggers[name] = logger
 
     return loggers.get(name)
-
-

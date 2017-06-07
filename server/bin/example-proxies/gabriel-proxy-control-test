@@ -28,7 +28,9 @@ import Queue
 import select
 import struct
 import sys
+import threading
 import time
+import wave
 
 # for setting up stdin
 import tty
@@ -71,49 +73,108 @@ def display_image(display_name, img, wait_time = -1, is_resize = True, resize_me
     cv2.imshow(display_name, img_display)
     cv2.waitKey(wait_time)
 
-class CameraControl(gabriel.proxy.CognitiveProcessThread):
+
+class DummyVideoAppWithControl(gabriel.proxy.CognitiveProcessThread):
+    def __init__(self, image_queue, output_queue, command_queue, engine_id):
+        super(DummyVideoAppWithControl, self).__init__(image_queue, output_queue, engine_id)
+        self.command_queue = command_queue
+
     def handle(self, header, data):
         # PERFORM Cognitive Assistance Processing
         header['status'] = "success"
-
         img = raw2cv_image(data)
         display_image('input', img, resize_max = 640, wait_time = 1)
 
-        # This is so that stdin doesn't get buffered
-        orig_settings = termios.tcgetattr(sys.stdin)
-        tty.setraw(sys.stdin)
-
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.05) # the last number is timeout
-        if rlist:
-            s = sys.stdin.read(1)[0]
-            # restore original settings about stdin
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
-            print "The user enters: " + s
-
-            if s == "a":
-                print "Low resolution"
-                message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 240, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 120}
-                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
-            elif s == "b":
-                print "High resolution"
-                message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 1280, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 720}
-                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
-            elif s == "c":
-                print "Low framerate"
-                message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 1}
-                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
-            elif s == "d":
-                print "High framerate"
-                message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 30}
-                header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
-            elif s == chr(27):
-                sys.exit()
-        else:
-            # restore original settings about stdin
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
-            print "No control message. Moving on..."
+        # check control messages
+        try:
+            message_control = self.command_queue.get_nowait()
+            header[gabriel.Protocol_client.JSON_KEY_CONTROL_MESSAGE] = json.dumps(message_control)
+        except Queue.Empty as e:
+            pass
 
         return json.dumps({'value':'nothing'})
+
+
+class DummyAccAppWithControl(gabriel.proxy.CognitiveProcessThread):
+    def chunks(self, data, n):
+        for i in xrange(0, len(data), n):
+            yield data[i : i + n]
+
+    def handle(self, header, data):
+        ACC_SEGMENT_SIZE = 12 # (float, float, float)
+        for chunk in self.chunks(data, ACC_SEGMENT_SIZE):
+            (acc_x, acc_y, acc_z) = struct.unpack("!fff", chunk)
+            print "acc_x: %f, acc_y: %f, acc_x: %f" % (acc_x, acc_y, acc_z)
+        header['status'] = "success"
+        return json.dumps({})
+
+
+class DummyAudioAppWithControl(gabriel.proxy.CognitiveProcessThread):
+    def __init__(self, audio_queue, output_queue, engine_id):
+        super(DummyAudioAppWithControl, self).__init__(audio_queue, output_queue, engine_id)
+        self.wav_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "dummy_audio.wav")
+        self.wav_file = wave.open(self.wav_file_path, "wb")
+        self.wav_file.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+
+    def handle(self, header, data):
+        header['status'] = "success"
+        if self.wav_file is not None:
+            self.wav_file.writeframes(data)
+        return json.dumps({})
+
+class ControlThread(threading.Thread):
+    '''
+    The thread provides a simple UI for user to test control of mobile sensors
+    '''
+    def __init__(self, command_queue):
+        self.command_queue = command_queue
+
+        self.stop = threading.Event()
+
+        threading.Thread.__init__(self, target = self.run)
+
+    def __repr__(self):
+        return "User Control Thread"
+
+    def run(self):
+        while(not self.stop.wait(0.0001)):
+            # This is so that stdin doesn't get buffered
+            orig_settings = termios.tcgetattr(sys.stdin)
+            tty.setraw(sys.stdin)
+
+            rlist, _, _ = select.select([sys.stdin], [], [], 0.05) # the last number is timeout
+            if rlist:
+                s = sys.stdin.read(1)[0]
+                # restore original settings about stdin
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
+                print "The user enters: " + s
+
+                if s == "a":
+                    print "Low resolution"
+                    message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 240, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 120}
+                    self.command_queue.put(message_control)
+                elif s == "b":
+                    print "High resolution"
+                    message_control = {gabriel.Protocol_control.JSON_KEY_IMG_WIDTH : 1280, gabriel.Protocol_control.JSON_KEY_IMG_HEIGHT : 720}
+                    self.command_queue.put(message_control)
+                elif s == "c":
+                    print "Low framerate"
+                    message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 1}
+                    self.command_queue.put(message_control)
+                elif s == "d":
+                    print "High framerate"
+                    message_control = {gabriel.Protocol_control.JSON_KEY_FPS : 30}
+                    self.command_queue.put(message_control)
+                elif s == chr(27):
+                    self.stop.set()
+            else:
+                # restore original settings about stdin
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, orig_settings)
+
+        LOG.info("[TERMINATE] Finish %s" % str(self))
+
+    def terminate(self):
+        self.stop.set()
 
 
 if __name__ == "__main__":
@@ -121,30 +182,60 @@ if __name__ == "__main__":
 
     ip_addr, port = gabriel.network.get_registry_server_address(settings.address)
     service_list = gabriel.network.get_service_list(ip_addr, port)
-    LOG.info("Gabriel Server :")
-    LOG.info(pprint.pformat(service_list))
+    #LOG.info("Gabriel Server :")
+    #LOG.info(pprint.pformat(service_list))
 
     video_ip = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_IP)
     video_port = service_list.get(gabriel.ServiceMeta.VIDEO_TCP_STREAMING_PORT)
+    acc_ip = service_list.get(gabriel.ServiceMeta.ACC_TCP_STREAMING_IP)
+    acc_port = service_list.get(gabriel.ServiceMeta.ACC_TCP_STREAMING_PORT)
+    audio_ip = service_list.get(gabriel.ServiceMeta.AUDIO_TCP_STREAMING_IP)
+    audio_port = service_list.get(gabriel.ServiceMeta.AUDIO_TCP_STREAMING_PORT)
     ucomm_ip = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_IP)
     ucomm_port = service_list.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT)
 
-    # image receiving thread
+    # this queue is shared by multiple sensor processing threads
+    result_queue = multiprocessing.Queue()
+    command_queue = Queue.Queue()
+
+    # image receiving and processing
     image_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
     print "TOKEN SIZE OF OFFLOADING ENGINE: %d" % gabriel.Const.APP_LEVEL_TOKEN_SIZE
     video_streaming = gabriel.proxy.SensorReceiveClient((video_ip, video_port), image_queue)
     video_streaming.start()
     video_streaming.isDaemon = True
 
-    # camera control app
-    result_queue = multiprocessing.Queue()
-
-    video_app = CameraControl(image_queue, result_queue, engine_id = "CameraControl")
+    video_app = DummyVideoAppWithControl(image_queue, result_queue, command_queue, engine_id = "Dummy_video")
     video_app.start()
     video_app.isDaemon = True
 
+    ## acc receiving and processing
+    acc_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    acc_streaming = gabriel.proxy.SensorReceiveClient((acc_ip, acc_port), acc_queue)
+    acc_streaming.start()
+    acc_streaming.isDaemon = True
+
+    acc_app = DummyAccAppWithControl(acc_queue, result_queue, engine_id = "Dummy_acc")
+    acc_app.start()
+    acc_app.isDaemon = True
+
+    # audio receiving and processing
+    audio_queue = Queue.Queue(gabriel.Const.APP_LEVEL_TOKEN_SIZE)
+    audio_streaming = gabriel.proxy.SensorReceiveClient((audio_ip, audio_port), audio_queue)
+    audio_streaming.start()
+    audio_streaming.isDaemon = True
+
+    audio_app = DummyAudioAppWithControl(audio_queue, result_queue, engine_id = "Dummy_audio")
+    audio_app.start()
+    audio_app.isDaemon = True
+
+    # control UI thread
+    control_thread = ControlThread(command_queue)
+    control_thread.start()
+    control_thread.isDaemon = True
+
     # result pub/sub
-    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue)
+    result_pub = gabriel.proxy.ResultPublishClient((ucomm_ip, ucomm_port), result_queue, log_flag = False)
     result_pub.start()
     result_pub.isDaemon = True
 
@@ -160,4 +251,14 @@ if __name__ == "__main__":
             video_streaming.terminate()
         if video_app is not None:
             video_app.terminate()
+        if acc_streaming is not None:
+            acc_streaming.terminate()
+        if acc_app is not None:
+            acc_app.terminate()
+        if audio_streaming is not None:
+            audio_streaming.terminate()
+        if audio_app is not None:
+            audio_app.terminate()
+        if control_thread is not None:
+            control_thread.terminate()
         result_pub.terminate()
