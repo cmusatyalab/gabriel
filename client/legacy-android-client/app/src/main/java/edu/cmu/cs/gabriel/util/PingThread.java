@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabriel.util;
 
 import android.util.Log;
 import edu.cmu.cs.gabriel.Const;

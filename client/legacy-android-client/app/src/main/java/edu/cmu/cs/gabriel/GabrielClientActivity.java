@@ -1,6 +1,5 @@
 package edu.cmu.cs.gabriel;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Locale;
@@ -8,6 +7,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
@@ -39,11 +39,12 @@ import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.AudioStreamingThread;
 import edu.cmu.cs.gabriel.network.ControlThread;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
-import edu.cmu.cs.gabriel.network.PingThread;
+import edu.cmu.cs.gabriel.util.PingThread;
 import edu.cmu.cs.gabriel.network.ResultReceivingThread;
 import edu.cmu.cs.gabriel.network.VideoStreamingThread;
 import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
 import edu.cmu.cs.gabriel.token.TokenController;
+import edu.cmu.cs.gabriel.util.ResourceMonitoringService;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener{
 
@@ -82,7 +83,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private Thread audioRecordingThread = null;
     private boolean isAudioRecording = false;
     private int audioBufferSize = -1;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -173,6 +173,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 startAudioRecording();
             }
         }
+
+        startResourceMonitoring();
 
         isRunning = true;
     }
@@ -558,7 +560,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             tokenController.close();
             tokenController = null;
         }
-
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -576,8 +577,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             sensorManager = null;
             sensorAcc = null;
         }
-        if (audioRecorder != null)
+        if (audioRecorder != null) {
             stopAudioRecording();
+        }
+        stopResourceMonitoring();
     }
 
     /**************** SensorEventListener ***********************/
@@ -678,4 +681,26 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
     }
     /**************** End of audio recording ********************/
+
+    /**************** Battery recording *************************/
+    /*
+	 * Resource monitoring of the mobile device
+     * Checks battery and CPU usage, as well as device temperature
+	 */
+    Intent resourceMonitoringIntent = null;
+
+    public void startResourceMonitoring() {
+        Log.i(LOG_TAG, "Starting Battery Recording Service");
+        resourceMonitoringIntent = new Intent(this, ResourceMonitoringService.class);
+        startService(resourceMonitoringIntent);
+    }
+
+    public void stopResourceMonitoring() {
+        Log.i(LOG_TAG, "Stopping Battery Recording Service");
+        if (resourceMonitoringIntent != null) {
+            stopService(resourceMonitoringIntent);
+            resourceMonitoringIntent = null;
+        }
+    }
+    /**************** End of battery recording ******************/
 }
