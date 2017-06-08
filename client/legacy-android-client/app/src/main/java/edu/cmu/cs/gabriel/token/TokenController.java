@@ -39,6 +39,11 @@ public class TokenController {
         }
     }
 
+    public void reset() {
+        this.prevRecvFrameID = 0;
+        this.sentPackets.clear();
+    }
+
     public void writeString(String str) {
         try {
             Log.d(LOG_TAG, "writeString received string:" + str);

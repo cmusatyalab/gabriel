@@ -127,24 +127,6 @@ public class VideoStreamingThread extends Thread {
         return files;
     }
 
-    /**
-     * @return a String representing the received message from @reader
-     */
-    private String receiveMsg(DataInputStream reader) throws IOException {
-        int retLength = reader.readInt();
-        byte[] recvByte = new byte[retLength];
-        int readSize = 0;
-        while(readSize < retLength){
-            int ret = reader.read(recvByte, readSize, retLength-readSize);
-            if(ret <= 0){
-                break;
-            }
-            readSize += ret;
-        }
-        String receivedString = new String(recvByte);
-        return receivedString;
-    }
-
     public void run() {
         this.isRunning = true;
         Log.i(LOG_TAG, "Video streaming thread running");

@@ -349,6 +349,38 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             JSONObject msgJSON = new JSONObject(msg);
 
             // Switching on/off image sensor
+            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE)) {
+                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE);
+                if (sw) { // turning on
+                    Const.SENSOR_VIDEO = true;
+                    tokenController.reset();
+                    if (preview == null) {
+                        preview = (CameraPreview) findViewById(R.id.camera_preview);
+                        mCamera = preview.checkCamera();
+                        preview.start();
+                        mCamera.setPreviewCallbackWithBuffer(previewCallback);
+                        reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
+                        mCamera.addCallbackBuffer(reusedBuffer);
+                    }
+                    if (videoStreamingThread == null) {
+                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
+                        videoStreamingThread.start();
+                    }
+                } else { // turning off
+                    Const.SENSOR_VIDEO = false;
+                    if (preview != null) {
+                        mCamera.setPreviewCallback(null);
+                        preview.close();
+                        reusedBuffer = null;
+                        preview = null;
+                        mCamera = null;
+                    }
+                    if (videoStreamingThread != null) {
+                        videoStreamingThread.stopStreaming();
+                        videoStreamingThread = null;
+                    }
+                }
+            }
 
             // Switching on/off ACC sensor
             if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_ACC)) {
@@ -535,6 +567,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             preview.close();
             reusedBuffer = null;
             preview = null;
+            mCamera = null;
         }
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
