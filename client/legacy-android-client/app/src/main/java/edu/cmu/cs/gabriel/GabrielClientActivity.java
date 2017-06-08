@@ -434,15 +434,17 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
 
             // Camera configs
-            int targetFps = -1, imgWidth = -1, imgHeight = -1;
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
-                targetFps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
-                imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
-                imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
-            if (targetFps != -1 || imgWidth != -1)
-                preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight);
+            if (preview != null) {
+                int targetFps = -1, imgWidth = -1, imgHeight = -1;
+                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
+                    targetFps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
+                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
+                    imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
+                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
+                    imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
+                if (targetFps != -1 || imgWidth != -1)
+                    preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight);
+            }
 
         } catch (JSONException e) {
             Log.e(LOG_TAG, msg);
