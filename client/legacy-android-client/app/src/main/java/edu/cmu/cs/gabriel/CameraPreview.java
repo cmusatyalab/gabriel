@@ -16,10 +16,12 @@ import android.view.SurfaceView;
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
     private static final String LOG_TAG = "CameraPreview";
 
-    public SurfaceHolder mHolder;
-    public Camera mCamera = null;
-    public List<int[]> supportingFPS = null;
-    public List<Camera.Size> supportingSize = null;
+    private SurfaceHolder mHolder;
+    private boolean isSurfaceReady = false;
+    private boolean waitingToStart = false;
+    private Camera mCamera = null;
+    private List<int[]> supportingFPS = null;
+    private List<Camera.Size> supportingSize = null;
 
     public CameraPreview(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -48,6 +50,23 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             mCamera = Camera.open();
         }
         return mCamera;
+    }
+
+    public void start() {
+        if (mCamera == null) {
+            mCamera = Camera.open();
+        }
+        if (isSurfaceReady) {
+            try {
+                mCamera.setPreviewDisplay(mHolder);
+            } catch (IOException exception) {
+                Log.e(LOG_TAG, "Error in setting camera holder: " + exception.getMessage());
+                this.close();
+            }
+            updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT);
+        } else {
+            waitingToStart = true;
+        }
     }
 
     public void close() {
@@ -81,63 +100,41 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
     public void surfaceCreated(SurfaceHolder holder) {
         Log.d(LOG_TAG, "++surfaceCreated");
+        isSurfaceReady = true;
         if (mCamera == null) {
             mCamera = Camera.open();
-            // mCamera.setDisplayOrientation(90);
         }
         if (mCamera != null) {
-            try {
-                mCamera.setPreviewDisplay(holder);
-                // set fps to capture
-                Camera.Parameters parameters = mCamera.getParameters();
-                List<int[]> supportedFps = parameters.getSupportedPreviewFpsRange();
-                for (int[] range: supportedFps) {
-                    Log.i(LOG_TAG, "available fps ranges:" + range[0] + ", " + range[1]);
-                }
-                if(this.supportingFPS == null)
-                    this.supportingFPS = supportedFps;
-                int index = 0, fpsDiff = Integer.MAX_VALUE;
-                for (int i = 0; i < supportedFps.size(); i++){
-                    int[] frameRate = supportedFps.get(i);
-                    int diff = Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[0]) + Math.abs(Const.CAPTURE_FPS * 1000 - frameRate[1]);
-                    if (diff < fpsDiff){
-                        fpsDiff = diff;
-                        index = i;
-                    }
-                }
-                int[] targetRange = supportedFps.get(index);
-
-                // set resolution
-                List<Camera.Size> supportedSizes = parameters.getSupportedPreviewSizes();
-                for (Camera.Size size: supportedSizes) {
-                    Log.i(LOG_TAG, "available sizes:" + size.width + ", " + size.height);
-                }
-                if(this.supportingSize == null)
-                    this.supportingSize = supportedSizes;
-                index = 0;
-                int sizeDiff = Integer.MAX_VALUE;
-                for (int i = 0; i < supportedSizes.size(); i++){
-                    Camera.Size size = supportedSizes.get(i);
-                    int diff = Math.abs(size.width - Const.IMAGE_WIDTH) + Math.abs(size.height - Const.IMAGE_HEIGHT);
-                    if (diff < sizeDiff){
-                        sizeDiff = diff;
-                        index = i;
-                    }
-                }
-                Camera.Size target_size = supportedSizes.get(index);
-//              List<Integer> supportedFormat = parameters.getSupportedPreviewFormats();
-
-                changeConfiguration(targetRange, target_size);
-                mCamera.startPreview();
-
-            } catch (IOException exception) {
-                Log.e("Error", "exception:surfaceCreated Camera Open ");
-                this.close();
+            // get fps to capture
+            Camera.Parameters parameters = mCamera.getParameters();
+            this.supportingFPS = parameters.getSupportedPreviewFpsRange();
+            for (int[] range: this.supportingFPS) {
+                Log.i(LOG_TAG, "available fps ranges:" + range[0] + ", " + range[1]);
             }
+
+            // get resolution
+            this.supportingSize = parameters.getSupportedPreviewSizes();
+            for (Camera.Size size: this.supportingSize) {
+                Log.i(LOG_TAG, "available sizes:" + size.width + ", " + size.height);
+            }
+
+            if (waitingToStart) {
+                waitingToStart = false;
+                try {
+                    mCamera.setPreviewDisplay(mHolder);
+                } catch (IOException exception) {
+                    Log.e(LOG_TAG, "Error in setting camera holder: " + exception.getMessage());
+                    this.close();
+                }
+                updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT);
+            }
+        } else {
+            Log.w(LOG_TAG, "Camera is not open");
         }
     }
 
     public void surfaceDestroyed(SurfaceHolder holder) {
+        isSurfaceReady = false;
         this.close();
     }
 
@@ -148,28 +145,6 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
          * parameters.setPreviewSize(w, h); mCamera.setParameters(parameters);
          * mCamera.startPreview();
          */
-    }
-
-    public void setPreviewCallback(PreviewCallback previewCallback) {
-        if (this.mCamera != null){
-            mCamera.setPreviewCallback(previewCallback);
-        }
-    }
-
-    public void setPreviewCallbackWithBuffer(PreviewCallback previewCallback) {
-        if (this.mCamera != null){
-            mCamera.setPreviewCallbackWithBuffer(previewCallback);
-        }
-    }
-
-    public void addCallbackBuffer(byte[] buffer) {
-        if (this.mCamera != null) {
-            mCamera.addCallbackBuffer(buffer);
-        }
-    }
-
-    public Camera getCamera() {
-        return mCamera;
     }
 
     public void updateCameraConfigurations(int targetFps, int imgWidth, int imgHeight) {

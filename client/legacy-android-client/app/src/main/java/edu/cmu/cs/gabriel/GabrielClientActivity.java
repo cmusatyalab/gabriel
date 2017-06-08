@@ -135,11 +135,15 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
      */
     private void initOnce() {
         Log.v(LOG_TAG, "++initOnce");
-        preview = (CameraPreview) findViewById(R.id.camera_preview);
-        mCamera = preview.checkCamera();
-        preview.setPreviewCallbackWithBuffer(previewCallback);
-        reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
-        preview.addCallbackBuffer(reusedBuffer);
+
+        if (Const.SENSOR_VIDEO) {
+            preview = (CameraPreview) findViewById(R.id.camera_preview);
+            mCamera = preview.checkCamera();
+            preview.start();
+            mCamera.setPreviewCallbackWithBuffer(previewCallback);
+            reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
+            mCamera.addCallbackBuffer(reusedBuffer);
+        }
 
         Const.ROOT_DIR.mkdirs();
         Const.EXP_DIR.mkdirs();
@@ -247,8 +251,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
         resultThread.start();
 
-        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
-        videoStreamingThread.start();
+        if (Const.SENSOR_VIDEO) {
+            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
+            videoStreamingThread.start();
+        }
 
         if (Const.SENSOR_ACC) {
             accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
@@ -525,8 +531,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             tts = null;
         }
         if (preview != null) {
-            preview.setPreviewCallback(null);
+            mCamera.setPreviewCallback(null);
             preview.close();
+            reusedBuffer = null;
             preview = null;
         }
         if (sensorManager != null) {
