@@ -80,7 +80,7 @@ class DummyVideoAppWithControl(gabriel.proxy.CognitiveProcessThread):
         self.command_queue = command_queue
 
     def handle(self, header, data):
-        print "image\r\n",
+        #print "image\r\n",
 
         # PERFORM Cognitive Assistance Processing
         header['status'] = "success"
@@ -107,7 +107,7 @@ class DummyAccAppWithControl(gabriel.proxy.CognitiveProcessThread):
             yield data[i : i + n]
 
     def handle(self, header, data):
-        print "acc\r\n",
+        #print "acc\r\n",
 
         ACC_SEGMENT_SIZE = 12 # (float, float, float)
         for chunk in self.chunks(data, ACC_SEGMENT_SIZE):
@@ -134,7 +134,7 @@ class DummyAudioAppWithControl(gabriel.proxy.CognitiveProcessThread):
         self.command_queue = command_queue
 
     def handle(self, header, data):
-        print "audio\r\n",
+        #print "audio\r\n",
 
         header['status'] = "success"
         if self.wav_file is not None:
