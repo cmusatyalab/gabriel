@@ -205,8 +205,8 @@ How to use
     is working fine, you can run another cognitive engine by
 
     ```
-    $ cd <gabriel-repo>/bin
-    $ ./gabriel-proxy-http-display/proxy.py
+    $ cd <gabriel-repo>/bin/gabriel-proxy-http-display
+    $ ./proxy.py
     ```
     
     This cognitive engine sets up an HTTP server to publish the received images.
