@@ -58,15 +58,6 @@ If you want to save server received video for debugging, you'll also need opencv
     sudo apt-get install python-opencv
     sudo pip install numpy
 
-Installation - Default networking interface.
--------------
-If your default networking interface is not `eth0`,
-the current method to configuring other interfaces is
-to replace `eth0` occurrences in the following files.
-
-+ `<gabriel-repo>/gabriel/lib/gabriel_REST_server`
-+ `<gabriel-repo>/bin/gabriel-ucomm`
-
 
 Installation - Application
 -------------
@@ -92,33 +83,57 @@ How to use
     ```
     $ cd <gabriel-repo>/bin
     $ ./gabriel-control
-    INFO     Start RESTful API Server
+    INFO     Start RESTful API Server (port :8021)
     INFO     Start UPnP Server
     INFO     Start monitoring offload engines
-    INFO     * Mobile server(<class 'mobile_server.MobileVideoHandler'>) configuration
+    INFO     * Mobile server(<class 'gabriel.control.mobile_server.MobileControlHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 22222)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Mobile server(<class 'gabriel.control.mobile_server.MobileVideoHandler'>) configuration
     INFO      - Open TCP Server at ('0.0.0.0', 9098)
     INFO      - Disable nagle (No TCP delay)  : 1
     INFO     --------------------------------------------------
-    INFO     * Mobile server(<class 'mobile_server.MobileAccHandler'>) configuration
+    INFO     * Mobile server(<class 'gabriel.control.mobile_server.MobileAccHandler'>) configuration
     INFO      - Open TCP Server at ('0.0.0.0', 9099)
     INFO      - Disable nagle (No TCP delay)  : 1
     INFO     --------------------------------------------------
-    INFO     * Mobile server(<class 'mobile_server.MobileResultHandler'>) configuration
-    INFO      - Open TCP Server at ('0.0.0.0', 9101)
+    INFO     * Mobile server(<class 'gabriel.control.mobile_server.MobileAudioHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9100)
     INFO      - Disable nagle (No TCP delay)  : 1
     INFO     --------------------------------------------------
-    INFO     * Application server(<class 'app_server.VideoSensorHandler'>) configuration
-    INFO      - Open TCP Server at ('0.0.0.0', 10101)
+    INFO     * Mobile server(<class 'gabriel.control.mobile_server.MobileResultHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 9111)
     INFO      - Disable nagle (No TCP delay)  : 1
     INFO     --------------------------------------------------
-    INFO     * Application server(<class 'app_server.AccSensorHandler'>) configuration
-    INFO      - Open TCP Server at ('0.0.0.0', 10102)
-    INFO      - Disable nagle (No TCP delay)  : 1
-    INFO     --------------------------------------------------
-    INFO     * UComm server configuration
+    INFO     * UComm relay server(<class 'gabriel.control.ucomm_relay_server.UCommRelayHandler'>) configuration
     INFO      - Open TCP Server at ('0.0.0.0', 9090)
     INFO      - Disable nagle (No TCP delay)  : 1
     INFO     --------------------------------------------------
+    INFO     * Application server(<class 'gabriel.control.publish_server.VideoPublishHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 10101)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Application server(<class 'gabriel.control.publish_server.AccPublishHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 10102)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    INFO     * Application server(<class 'gabriel.control.publish_server.AudioPublishHandler'>) configuration
+    INFO      - Open TCP Server at ('0.0.0.0', 10103)
+    INFO      - Disable nagle (No TCP delay)  : 1
+    INFO     --------------------------------------------------
+    ```
+
+    If your default networking interface is not `eth0` on the control server, you should use the `-n` parameter to pass the correct value. For example:
+
+    ```
+    $ ./gabriel-control -n eno1
+    ```
+
+    If you are using any of the provided Gabriel client that starts with "legacy", you should also enable legacy mode when running the Gabriel control, by passing the `-l` parameter.
+
+    ```
+    $ ./gabriel-control -l
     ```
 
 2. Run `ucomm server` from the binary directory.
@@ -136,6 +151,13 @@ How to use
     INFO     - Disable nagle (No TCP delay)  : 1
     INFO    --------------------------------------------------
     INFO    Start forwarding data
+    ```
+
+    Gabriel by default uses UPnP to discover `control server` from the `ucomm server` and `cognitive engines`. 
+    If this discovery protocol doesn't work in your case (possibly due to network settings), you can specify the IP address of `control server` directly.
+
+    ```
+    $ ./gabriel-ucomm -s x.x.x.x:8021
     ```
 
     If `ucomm server` is successfully connected to `control server`, you can see
@@ -163,6 +185,11 @@ How to use
       ...
     ```
  
+    Similarly, you can specify the IP address of `control server` through the `-s` parameter.
+
+    ```
+    $ ./gabriel-proxy-sample.py -s x.x.x.x:8021
+    ```
 
     If `cognitive engine` is successfully connected to `ucomm server`, you can
     see a log message __"INFO    new Offlaoding Engine is connected"__ at
