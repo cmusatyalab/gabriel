@@ -81,7 +81,7 @@ How to use
 1. Run the `control server` from the binary directory.
 
     ```
-    $ cd <gabriel-repo>/bin
+    $ cd <gabriel-repo>/server/bin
     $ ./gabriel-control
     INFO     Start RESTful API Server (port :8021)
     INFO     Start UPnP Server
@@ -139,18 +139,26 @@ How to use
 2. Run `ucomm server` from the binary directory.
 
     ```
-    $ cd <gabriel-repo>/bin
+    $ cd <gabriel-repo>/server/bin
     $ ./gabriel-ucomm
-    INFO     execute : java -jar /home/krha/gabriel/src/control/lib/gabriel_upnp_client.jar
+    INFO     execute : java -jar /home/ubuntu/Workspace/gabriel/src/control/lib/gabriel_upnp_client.jar
+    INFO     Gabriel Server :
       ...
-    INFO    Gabriel Server :
-      ...
+    INFO     {u'acc_tcp_streaming_ip': u'x.x.x.x',
+     u'acc_tcp_streaming_port': 10102,
+     u'audio_tcp_streaming_ip': u'x.x.x.x',
+     u'audio_tcp_streaming_port': 10103,
+     u'ucomm_relay_ip': u'x.x.x.x',
+     u'ucomm_relay_port': 9090,
+     u'ucomm_server_ip': None,
+     u'ucomm_server_port': None,
+     u'video_tcp_streaming_ip': u'x.x.x.x',
+     u'video_tcp_streaming_port': 10101}
     INFO    connecting to x.x.x.x:9090
     INFO    * UCOMM server configuration
     INFO     - Open TCP Server at ('0.0.0.0', 10120)
     INFO     - Disable nagle (No TCP delay)  : 1
     INFO    --------------------------------------------------
-    INFO    Start forwarding data
     ```
 
     Gabriel by default uses UPnP to discover `control server` from the `ucomm server` and `cognitive engines`. 
@@ -158,6 +166,12 @@ How to use
 
     ```
     $ ./gabriel-ucomm -s x.x.x.x:8021
+    ```
+
+    Again, if your default networking interface is not `eth0` on the ucomm server, you should use the `-n` parameter to pass the correct value. For example:
+
+    ```
+    $ ./gabriel-ucomm -n eno1
     ```
 
     If `ucomm server` is successfully connected to `control server`, you can see
@@ -170,21 +184,24 @@ How to use
     frame from a mobile device.
 
     ```
-    $ cd <gabriel-repo>/bin
-    $ ./gabriel-proxy-sample.py
+    $ cd <gabriel-repo>/server/bin/example-proxies/
+    $ ./gabriel-proxy-dummy
     Discovery Control VM
     INFO     execute : java -jar /home/ubuntu/gabriel/gabriel/lib/gabriel_upnp_client.jar
     INFO     Gabriel Server :
-      ...
-    INFO     Success to connect to (u'x.x.x.x', 10101)
-    INFO     Start getting data from the server
-    INFO     Start publishing data
-    INFO     New connection is starting at 1404328176.629762
-    processing: {u'sensor_type': u'mjepg', u'type': u'emulated', u'id': 6503}
-    INFO     returning result: {"result": "dummy", "sensor_type": "mjepg", "type": "emulated", "id": 6503, "engine_id": "dummy"}
-      ...
+    INFO     {u'acc_tcp_streaming_ip': u'x.x.x.x',
+     u'acc_tcp_streaming_port': 10102,
+     u'audio_tcp_streaming_ip': u'x.x.x.x',
+     u'audio_tcp_streaming_port': 10103,
+     u'ucomm_relay_ip': u'x.x.x.x',
+     u'ucomm_relay_port': 9090,
+     u'ucomm_server_ip': u'x.x.x.x',
+     u'ucomm_server_port': 10120,
+     u'video_tcp_streaming_ip': u'x.x.x.x',
+     u'video_tcp_streaming_port': 10101}
+    TOKEN SIZE OF OFFLOADING ENGINE: 1
     ```
- 
+
     Similarly, you can specify the IP address of `control server` through the `-s` parameter.
 
     ```
@@ -205,7 +222,7 @@ How to use
     is working fine, you can run another cognitive engine by
 
     ```
-    $ cd <gabriel-repo>/bin/gabriel-proxy-http-display
+    $ cd <gabriel-repo>/server/bin/example-proxies/gabriel-proxy-http-display
     $ ./proxy.py
     ```
     
