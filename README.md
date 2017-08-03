@@ -141,7 +141,7 @@ How to use
     ```
     $ cd <gabriel-repo>/server/bin
     $ ./gabriel-ucomm
-    INFO     execute : java -jar /home/ubuntu/Workspace/gabriel/src/control/lib/gabriel_upnp_client.jar
+    INFO     execute : java -jar /home/ubuntu/Workspace/gabriel/server/gabriel/lib/gabriel_upnp_client.jar
     INFO     Gabriel Server :
       ...
     INFO     {u'acc_tcp_streaming_ip': u'x.x.x.x',
@@ -187,7 +187,7 @@ How to use
     $ cd <gabriel-repo>/server/bin/example-proxies/
     $ ./gabriel-proxy-dummy
     Discovery Control VM
-    INFO     execute : java -jar /home/ubuntu/gabriel/gabriel/lib/gabriel_upnp_client.jar
+    INFO     execute : java -jar /home/ubuntu/Workspace/gabriel/server/gabriel/lib/gabriel_upnp_client.jar
     INFO     Gabriel Server :
     INFO     {u'acc_tcp_streaming_ip': u'x.x.x.x',
      u'acc_tcp_streaming_port': 10102,
