@@ -24,6 +24,7 @@ class Protocol_client(object):
     JSON_KEY_RESULT_MESSAGE = "result"
     JSON_KEY_FRAME_ID = "frame_id"
     JSON_KEY_ENGINE_ID = "engine_id"
+    JSON_KEY_ENGINE_NUMBER = "engine_number"
     JSON_KEY_TOKEN_INJECT = "token_inject"
     JSON_KEY_STATUS = "status"
     JSON_KEY_DATA_SIZE = "data_size"

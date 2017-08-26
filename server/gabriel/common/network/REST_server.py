@@ -23,7 +23,6 @@
 import json
 from optparse import OptionParser
 import os
-import Queue
 import sys
 from flask import Flask
 from flask import request
@@ -67,17 +66,17 @@ class CustomService(object):
         self.service_name = service_name
         self.content = data
 
-    def update_data(self, json_str):
-        self.content = json_str
-
     def get_service_name(self):
         return self.service_name
 
     def get_data(self):
         return self.content
 
+    def update_data(self, json_str):
+        self.content = json_str
 
-class UpdateService(Resource):
+
+class ServiceInfoUpdate(Resource):
     def _find_service(self, requested_service):
         global custom_service_list
 
@@ -144,7 +143,7 @@ class UpdateService(Resource):
         return ret_msg, 202
 
 
-class ManageService(Resource):
+class ServiceInfo(Resource):
     def get(self):
         ret_list = list()
         for service in custom_service_list:
@@ -160,8 +159,6 @@ class ManageService(Resource):
 
 
 class GabrielInfo(Resource):
-    parser = reqparse.RequestParser()
-    parser.add_argument('task', type = str)
     global net_interface
     ip_addr = gabriel.network.get_ip(net_interface)
     service_info = {
@@ -209,14 +206,12 @@ class GabrielInfo(Resource):
         return ret_msg, 202
 
 
-parser = reqparse.RequestParser()
 ## run REST server
 app = Flask(__name__)
 api = restful.Api(app)
 api.add_resource(GabrielInfo, '/')
-# the service registry is currently not used
-#api.add_resource(ManageService, '/services/')
-#api.add_resource(UpdateService, '/services/<string:service_name>')
+api.add_resource(ServiceInfo, '/services/')
+api.add_resource(ServiceInfoUpdate, '/services/<string:service_name>')
 
 # do no turn on debug mode. it make a mess for graceful terminate
 #app.run(debug=True)

@@ -38,6 +38,9 @@ def process_command_line(argv):
     parser.add_option(
             '-s', '--address', action = 'store',
             help = "(IP address:port number) of directory server")
+    parser.add_option(
+            '-n', '--net_interface', action = 'store', default = "eth0",
+            help = "the network interface of the current service (file)")
 
     settings, args = parser.parse_args(argv)
 
