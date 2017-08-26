@@ -40,6 +40,7 @@ public class TokenController {
     }
 
     public void reset() {
+        this.currentToken = Const.TOKEN_SIZE;
         this.prevRecvFrameID = 0;
         this.sentPackets.clear();
     }

@@ -328,6 +328,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     videoStreamingThread.push(frame, parameters);
                 }
             }
+            mCamera.addCallbackBuffer(frame);
         }
     };
 

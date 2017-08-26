@@ -246,7 +246,6 @@ public class VideoStreamingThread extends Thread {
             } catch (IOException e) {
             }
         }
-        mCamera.addCallbackBuffer(frame);
     }
 
     public void stopStreaming() {
