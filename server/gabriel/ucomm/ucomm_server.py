@@ -2,8 +2,8 @@
 #
 # Cloudlet Infrastructure for Mobile Computing
 #
-#   Author: Kiryong Ha <krha@cmu.edu>
-#           Zhuo Chen <zhuoc@cs.cmu.edu>
+#   Author: Zhuo Chen <zhuoc@cs.cmu.edu>
+#           Kiryong Ha <krha@cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,6 +141,76 @@ class ResultForwardingClient(gabriel.network.CommonClient):
 
         except Queue.Empty as e:
             pass
+
+
+class ResultForwardingClientBase(gabriel.network.CommonClient):
+    """
+    This client will forward offloading engine's processed
+    result (from @result_queue) to the control VM.
+    Also, it marks any duplicated results.
+    """
+    def __init__(self, control_address):
+        gabriel.network.CommonClient.__init__(self, control_address)
+
+        # info about most recently forwarded message
+        self.previous_sent_time_dict = dict()
+        self.previous_sent_dict = dict()
+
+        self.data_queue = result_queue
+
+        LOG.info("Result forwarding thread created")
+
+    def __repr__(self):
+        return "Result Forwarding Client"
+
+    def terminate(self):
+        gabriel.network.CommonClient.terminate(self)
+
+    def _handle_queue_data(self):
+        try:
+            ## get data and result
+            forward_header, state = self.data_queue.get(timeout = 0.0001)
+            forward_header_json = json.loads(forward_header)
+            engine_id = forward_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
+
+            result_str = self._generate_guidance(forward_header_json, state, engine_id)
+            # in case of non-standard return
+            if result_str is None or len(result_str.strip()) == 0 or result_str == 'nothing':
+                result_str = json.dumps({'status': 'nothing'})
+            forward_data = result_str
+            result_json = json.loads(result_str)
+
+            status = result_json.get('status')
+
+            ## mark duplicate message
+            prev_sent_data = self.previous_sent_dict.get(engine_id, None)
+            if status == "success":
+                if prev_sent_data is not None and prev_sent_data.lower() == forward_data.lower():
+                    prev_sent_time = self.previous_sent_time_dict.get(engine_id, 0)
+                    time_diff = time.time() - prev_sent_time
+                    if time_diff < gabriel.Const.DUPLICATE_MIN_INTERVAL:
+                        forward_header_json[gabriel.Protocol_result.JSON_KEY_STATUS] = "duplicate"
+            self.previous_sent_time_dict[engine_id] = time.time()
+            self.previous_sent_dict[engine_id] = forward_data
+
+            ## time measurement
+            if gabriel.Debug.TIME_MEASUREMENT:
+                forward_header_json[gabriel.Protocol_measurement.JSON_KEY_UCOMM_SENT_TIME] = time.time()
+
+            ## send packet to control VM
+            forward_header = json.dumps(forward_header_json)
+            total_size = len(forward_header) + len(forward_data)
+            packet = struct.pack("!II{}s{}s".format(len(forward_header), len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
+            self.sock.sendall(packet)
+            LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_header))
+
+        except Queue.Empty as e:
+            pass
+
+    def _generate_guidance(self, state, engine_id):
+        result_json = {'status': 'nothing'}
+        return json.dumps(result_json)
+
 
 
 def main():
