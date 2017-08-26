@@ -243,13 +243,12 @@ class DataPublishHandler(gabriel.network.CommonHandler):
         '''
         engine_info = self.server.queue_dict.get(engine_id, None)
         if engine_info is None:
-            self.server.queue_dict[engine_id] = {'queues': [queue], 'total': 1, 'tokens': [1]}
+            self.server.queue_dict[engine_id] = {'queues': [queue], 'tokens': [1]}
             return 0
         else:
             engine_info['queues'].append(queue)
-            engine_info['total'] += 1
             engine_info['tokens'].append(1)
-            return engine_info['total'] - 1
+            return len(engine_info['queues']) - 1
 
     def _unregister_engine(self, queue, engine_id):
         #TODO
