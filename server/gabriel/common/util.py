@@ -41,6 +41,9 @@ def process_command_line(argv):
     parser.add_option(
             '-n', '--net_interface', action = 'store', default = "eth0",
             help = "the network interface of the current service (file)")
+    parser.add_option(
+            '-g', '--engine_id', action = 'store', default = "LEGO_SLOW",
+            help = "specify the algorithm to be used, choice of {LEGO_SLOW, LEGO_FAST}")
 
     settings, args = parser.parse_args(argv)
 
