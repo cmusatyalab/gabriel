@@ -16,12 +16,12 @@ public class TokenController {
 
     // the number of tokens remained
     private int currentToken = 0;
-    
+
     // information about all sent packets, the key is the frameID and the value documents relevant timestamps
     private ConcurrentHashMap<Long, SentPacketInfo> sentPackets = new ConcurrentHashMap<Long, SentPacketInfo>();
-    
+
     private Object tokenLock = new Object();
-    
+
     private FileWriter fileWriter = null;
 
     // timestamp when the last ACK was received
@@ -70,7 +70,7 @@ public class TokenController {
                 ReceivedPacketInfo receivedPacket = (ReceivedPacketInfo) msg.obj;
                 long recvFrameID = receivedPacket.frameID;
                 String recvEngineID = receivedPacket.engineID;
-                
+
                 // increase appropriate amount of tokens
                 long increaseCount = 0;
                 for (long frameID = prevRecvFrameID + 1; frameID < recvFrameID; frameID++) {
@@ -98,14 +98,15 @@ public class TokenController {
                     if (Const.IS_EXPERIMENT) {
                         try {
                             String log = recvFrameID + "\t" + recvEngineID + "\t" +
-                                    sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" + 
-                                    receivedPacket.msgRecvTime + "\t" + receivedPacket.guidanceDoneTime + "\t" + 
+                                    sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" +
+                                    receivedPacket.msgRecvTime + "\t" + receivedPacket.guidanceDoneTime + "\t" +
                                     receivedPacket.status;
                             fileWriter.write(log + "\n");
                         } catch (IOException e) {}
                     }
                 }
-                prevRecvFrameID = recvFrameID;
+                if (recvFrameID > prevRecvFrameID)
+                    prevRecvFrameID = recvFrameID;
             }
         }
     };
