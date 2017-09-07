@@ -19,6 +19,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     private SurfaceHolder mHolder;
     private boolean isSurfaceReady = false;
     private boolean waitingToStart = false;
+    private boolean isPreviewing = false;
     private Camera mCamera = null;
     private List<int[]> supportingFPS = null;
     private List<Camera.Size> supportingSize = null;
@@ -72,6 +73,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     public void close() {
         if (mCamera != null) {
             mCamera.stopPreview();
+            isPreviewing = false;
             mCamera.release();
             mCamera = null;
         }
@@ -157,7 +159,9 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
                 Const.IMAGE_HEIGHT = imgHeight;
             }
 
-            mCamera.stopPreview();
+            if (isPreviewing)
+                mCamera.stopPreview();
+
             // set fps to capture
             int index = 0, fpsDiff = Integer.MAX_VALUE;
             for (int i = 0; i < this.supportingFPS.size(); i++){
@@ -186,6 +190,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             changeConfiguration(targetRange, target_size);
 
             mCamera.startPreview();
+            isPreviewing = true;
         }
     }
 
