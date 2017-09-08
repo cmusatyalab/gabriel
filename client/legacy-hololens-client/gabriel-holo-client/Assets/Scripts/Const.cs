@@ -28,7 +28,7 @@ namespace gabriel_client
         // port protocol to the server
         public static int VIDEO_STREAM_PORT = 9098;
         public static int ACC_STREAM_PORT = 9099;
-        public static int RESULT_RECEIVING_PORT = 9101;
+        public static int RESULT_RECEIVING_PORT = 9111;
         public static int CONTROL_PORT = 22222;
 
         // load images (JPEG) from files and pretend they are just captured by the camera
