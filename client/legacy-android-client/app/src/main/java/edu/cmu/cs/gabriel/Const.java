@@ -6,6 +6,13 @@ import android.media.AudioFormat;
 import android.os.Environment;
 
 public class Const {
+    public enum DeviceModel {
+        GoogleGlass,
+        Nexus6,
+    }
+
+    public static final DeviceModel deviceModel = DeviceModel.Nexus6;
+
     // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;
 
