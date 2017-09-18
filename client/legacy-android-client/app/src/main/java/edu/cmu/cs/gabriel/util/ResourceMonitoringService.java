@@ -143,13 +143,6 @@ public class ResourceMonitoringService extends IntentService {
 
     }
 
-
-
-    enum PhoneModel {
-        GoogleGlass,
-        Nexus6,
-    }
-
     public void checkBattery() {
         try {
             int current = 0;
@@ -157,9 +150,7 @@ public class ResourceMonitoringService extends IntentService {
 
             String BatteryInfoPath = null, CurrentFileName = null, VoltageFileName = null;
 
-            PhoneModel currentModel = PhoneModel.Nexus6;
-
-            switch (currentModel) {
+            switch (Const.deviceModel) {
 
                 case GoogleGlass:
                     BatteryInfoPath = "/sys/class/power_supply/bq27520-0/";
