@@ -7,13 +7,17 @@ import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Vector;
 
+import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.token.TokenController;
 
 public class AudioStreamingThread extends Thread {
@@ -31,6 +35,8 @@ public class AudioStreamingThread extends Thread {
     // The audio data
     private ByteArrayOutputStream audioStream = null;
     private Object audioLock = new Object();
+    private byte[] audioData; // preloaded audio data
+    private int audioDataIdx = 0;
 
     private Handler networkHander = null;
     private TokenController tokenController = null;
@@ -51,6 +57,19 @@ public class AudioStreamingThread extends Thread {
         remotePort = port;
 
         audioStream = new ByteArrayOutputStream();
+
+        if (Const.LOAD_AUDIO) {
+            try {
+                int dataSize = (int) Const.TEST_AUDIO_FILE.length();
+                Log.d(LOG_TAG, "audio file size: " + dataSize);
+                FileInputStream fi = new FileInputStream(Const.TEST_AUDIO_FILE);
+                audioData = new byte[dataSize];
+                int ret = fi.read(audioData, 0, dataSize);
+                Log.d(LOG_TAG, "# of bytes read: " + ret);
+            } catch (FileNotFoundException e) {
+            } catch (IOException e) {
+            }
+        }
     }
 
     public void run() {
@@ -125,7 +144,19 @@ public class AudioStreamingThread extends Thread {
     public void push(byte[] data) {
         synchronized (audioLock) {
             try {
-                audioStream.write(data);
+                if (!Const.LOAD_AUDIO) {
+                    audioStream.write(data);
+                } else {
+                    int l = data.length;
+                    if (audioDataIdx + l <= audioData.length) {
+                        byte[] dataCurrent = Arrays.copyOfRange(audioData, audioDataIdx, audioDataIdx + l);
+                        audioStream.write(dataCurrent);
+                    } else {
+                        byte[] dataCurrent = Arrays.copyOfRange(audioData, audioDataIdx, audioData.length);
+                        audioStream.write(dataCurrent);
+                    }
+                    audioDataIdx = (audioDataIdx + l) % audioData.length;
+                }
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Error in writing data to audio stream: " + e.getMessage());
             }

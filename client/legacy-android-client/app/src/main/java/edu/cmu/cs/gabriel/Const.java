@@ -14,14 +14,18 @@ public class Const {
     public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = false;
+    public static final boolean IS_EXPERIMENT = true;
 
     // whether to use real-time captured images or load images from files for testing
-    public static final boolean LOAD_IMAGES = false;
+    public static final boolean LOAD_IMAGES = true;
+    // whether to use real-time sensed ACC values or load data from files for testing
+    public static final boolean LOAD_ACC = false;
+    // whether to use real-time captured audio or load audio data from files for testing
+    public static final boolean LOAD_AUDIO = true;
 
     // high level sensor control (on/off)
     public static boolean SENSOR_VIDEO = true;
-    public static boolean SENSOR_ACC = true;
+    public static boolean SENSOR_ACC = false;
     public static boolean SENSOR_AUDIO = true;
 
     /************************ In both demo and experiment mode *******************/
@@ -42,10 +46,16 @@ public class Const {
     public static final int RESULT_RECEIVING_PORT = 9111;
     public static final int CONTROL_PORT = 22222;
 
+    // the app name
+    public static final String APP_NAME = "pingpong";
+
     // load images (JPEG) from files and pretend they are just captured by the camera
-    public static final String APP_NAME = "pool";
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
             File.separator + "images-" + APP_NAME + File.separator);
+
+    // load audio data from file
+    public static final File TEST_AUDIO_FILE = new File (ROOT_DIR.getAbsolutePath() +
+            File.separator + "audio-" + APP_NAME + ".raw");
 
     // may include background pinging to keep network active
     public static final boolean BACKGROUND_PING = false;

@@ -639,7 +639,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
     /**************** Audio recording ***************************/
     private void startAudioRecording() {
-        audioBufferSize = AudioRecord.getMinBufferSize(Const.RECORDER_SAMPLERATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        audioBufferSize = AudioRecord.getMinBufferSize(Const.RECORDER_SAMPLERATE, Const.RECORDER_CHANNELS, Const.RECORDER_AUDIO_ENCODING);
         Log.d(LOG_TAG, "buffer size of audio recording: " + audioBufferSize);
         audioRecorder = new AudioRecord(MediaRecorder.AudioSource.MIC,
                 Const.RECORDER_SAMPLERATE, Const.RECORDER_CHANNELS,
