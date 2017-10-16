@@ -40,13 +40,15 @@ public class AudioStreamingThread extends Thread {
 
     private Handler networkHander = null;
     private TokenController tokenController = null;
+    private LogicalTime logicalTime = null;
 
     private long frameID;
 
-    public AudioStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController) {
+    public AudioStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, LogicalTime logicalTime) {
         isRunning = false;
         this.networkHander = handler;
         this.tokenController = tokenController;
+        this.logicalTime = logicalTime;
         this.frameID = 0;
 
         try {
@@ -156,6 +158,9 @@ public class AudioStreamingThread extends Thread {
                         audioStream.write(dataCurrent);
                     }
                     audioDataIdx = (audioDataIdx + l) % audioData.length;
+
+                    this.logicalTime.audioTime += ((double) l) / 2 / Const.RECORDER_SAMPLERATE;
+                    this.logicalTime.imageTime.set((int) (this.logicalTime.audioTime * 15));
                 }
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Error in writing data to audio stream: " + e.getMessage());

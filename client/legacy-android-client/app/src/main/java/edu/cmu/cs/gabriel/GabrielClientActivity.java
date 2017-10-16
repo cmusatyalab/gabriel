@@ -38,6 +38,7 @@ import org.json.JSONObject;
 import edu.cmu.cs.gabriel.network.AccStreamingThread;
 import edu.cmu.cs.gabriel.network.AudioStreamingThread;
 import edu.cmu.cs.gabriel.network.ControlThread;
+import edu.cmu.cs.gabriel.network.LogicalTime;
 import edu.cmu.cs.gabriel.network.NetworkProtocol;
 import edu.cmu.cs.gabriel.util.PingThread;
 import edu.cmu.cs.gabriel.network.ResultReceivingThread;
@@ -73,6 +74,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private MediaController mediaController = null;
 
     private ReceivedPacketInfo receivedPacketInfo = null;
+
+    private LogicalTime logicalTime = null;
 
     // views
     private ImageView imgView = null;
@@ -237,6 +240,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 	        pingThread.start();
         }
 
+        logicalTime = new LogicalTime();
+
         tokenController = new TokenController(tokenSize, latencyFile);
 
         controlThread = new ControlThread(serverIP, Const.CONTROL_PORT, returnMsgHandler, tokenController);
@@ -254,7 +259,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         resultThread.start();
 
         if (Const.SENSOR_VIDEO) {
-            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
+            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera, logicalTime);
             videoStreamingThread.start();
         }
 
@@ -264,7 +269,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         if (Const.SENSOR_AUDIO) {
-            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController);
+            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
             audioStreamingThread.start();
         }
     }
@@ -347,10 +352,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
     }
 
-    private void processServerControl(String msg) {
+    private void processServerControl(JSONObject msgJSON) {
         try {
-            JSONObject msgJSON = new JSONObject(msg);
-
             // Switching on/off image sensor
             if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE)) {
                 boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE);
@@ -366,7 +369,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         mCamera.addCallbackBuffer(reusedBuffer);
                     }
                     if (videoStreamingThread == null) {
-                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera);
+                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera, logicalTime);
                         videoStreamingThread.start();
                     }
                 } else { // turning off
@@ -421,7 +424,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         startAudioRecording();
                     }
                     if (audioStreamingThread == null) {
-                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController);
+                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
                         audioStreamingThread.start();
                     }
                 } else { // turning off
@@ -450,8 +453,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
 
         } catch (JSONException e) {
-            Log.e(LOG_TAG, msg);
-            Log.e(LOG_TAG, "error in processing server control messages");
+            Log.e(LOG_TAG, "" + msgJSON);
+            Log.e(LOG_TAG, "error in processing server control messages" + e);
             return;
         }
     }
@@ -519,7 +522,32 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_CONFIG) {
                 String controlMsg = (String) msg.obj;
-                processServerControl(controlMsg);
+                try {
+                    final JSONObject controlJSON = new JSONObject(controlMsg);
+                    if (controlJSON.has("delay")) {
+                        long delay = controlJSON.getInt("delay");
+
+                        final Timer controlTimer = new Timer();
+                        TimerTask controlTask = new TimerTask() {
+                            @Override
+                            public void run() {
+                                GabrielClientActivity.this.runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        processServerControl(controlJSON);
+                                    }
+                                });
+                            }
+                        };
+
+                        // run 5 minutes for each experiment
+                        controlTimer.schedule(controlTask, delay);
+                    } else {
+                        processServerControl(controlJSON);
+                    }
+                } catch (JSONException e) {
+                    Log.e(LOG_TAG, "error in jsonizing server control messages" + e);
+                }
             }
         }
     };
