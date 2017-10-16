@@ -62,11 +62,13 @@ public class VideoStreamingThread extends Thread {
 
     private Handler networkHandler = null;
     private TokenController tokenController = null;
+    private LogicalTime logicalTime = null;
 
-    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, Camera camera) {
+    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, Camera camera, LogicalTime logicalTime) {
         isRunning = false;
         this.networkHandler = handler;
         this.tokenController = tokenController;
+        this.logicalTime = logicalTime;
         this.mCamera = camera;
 
         try {
@@ -231,6 +233,19 @@ public class VideoStreamingThread extends Thread {
             }
         } else { // use pre-captured images
             try {
+                long frameIDIncValue = 1;
+                if (!Const.SYNC_BASE.equals("none")) {
+                    if (this.frameID > this.logicalTime.imageTime.longValue()) {
+                        Log.v(LOG_TAG, "image feeding too fast; needs to wait");
+                        return;
+                    }
+                    if (this.frameID < this.logicalTime.imageTime.longValue() - 1) {
+                        Log.v(LOG_TAG, "Has to skip " + frameIDIncValue + " images to keep up with audio speed");
+                        frameIDIncValue = this.logicalTime.imageTime.longValue() - 1 - this.frameID;
+                    }
+                }
+
+                indexImageFile = ((int) this.frameID) % this.imageFiles.length;
                 long dataTime = System.currentTimeMillis();
                 int dataSize = (int) this.imageFiles[indexImageFile].length();
                 FileInputStream fi = new FileInputStream(this.imageFiles[indexImageFile]);
@@ -238,10 +253,10 @@ public class VideoStreamingThread extends Thread {
                 fi.read(buffer, 0, dataSize);
                 synchronized (frameLock) {
                     this.frameBuffer = buffer;
-                    this.frameID++;
+                    this.frameID += frameIDIncValue;
                     frameLock.notify();
                 }
-                indexImageFile = (indexImageFile + 1) % this.imageFiles.length;
+
             } catch (FileNotFoundException e) {
             } catch (IOException e) {
             }
