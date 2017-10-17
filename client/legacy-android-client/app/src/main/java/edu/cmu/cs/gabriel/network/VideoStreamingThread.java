@@ -244,7 +244,13 @@ public class VideoStreamingThread extends Thread {
                         frameIDIncValue = this.logicalTime.imageTime.longValue() - 1 - this.frameID;
                     }
                 }
+                if (Const.SYNC_BASE.equals("video")) {
+                    this.logicalTime.increaseImageTime(1);
+                }
 
+                synchronized (frameLock) {
+                    this.frameID += frameIDIncValue - 1;
+                }
                 indexImageFile = ((int) this.frameID) % this.imageFiles.length;
                 long dataTime = System.currentTimeMillis();
                 int dataSize = (int) this.imageFiles[indexImageFile].length();
@@ -253,7 +259,7 @@ public class VideoStreamingThread extends Thread {
                 fi.read(buffer, 0, dataSize);
                 synchronized (frameLock) {
                     this.frameBuffer = buffer;
-                    this.frameID += frameIDIncValue;
+                    this.frameID += 1;
                     frameLock.notify();
                 }
 
