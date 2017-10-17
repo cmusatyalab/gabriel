@@ -159,8 +159,7 @@ public class AudioStreamingThread extends Thread {
                     }
                     audioDataIdx = (audioDataIdx + l) % audioData.length;
 
-                    this.logicalTime.audioTime += ((double) l) / 2 / Const.RECORDER_SAMPLERATE;
-                    this.logicalTime.imageTime.set((int) (this.logicalTime.audioTime * 15));
+                    this.logicalTime.increaseAudioTime((double) l / 2 / Const.RECORDER_SAMPLERATE);
                 }
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Error in writing data to audio stream: " + e.getMessage());
