@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 #
 # Gabriel: Cognitive Assistance System
 #
@@ -15,7 +15,7 @@
 #
 #   unless required by applicable law or agreed to in writing, software
 #   distributed under the license is distributed on an "as is" basis,
-#   without warranties or conditions of any kind, either express or implied.  
+#   without warranties or conditions of any kind, either express or implied.
 #   see the license for the specific language governing permissions and
 #   limitations under the license.
 #
@@ -25,7 +25,7 @@ from gabriel.common.config import Const
 
 from distutils.core import setup
 
-# get all executable file 
+# get all executable file
 def get_all_files(package_dir, target_path, exclude_names=list()):
     data_files = list()
     cur_dir = os.path.abspath(os.curdir)
@@ -47,7 +47,7 @@ setup(
         name='elijah-gabriel',
         version=str(Const.VERSION),
         description='Gabriel: Cognitive Assistance System',
-        long_description=open('README.md', 'r').read(),
+        #long_description=open('README.md', 'r').read(),
         url='https://github.com/cmusatyalab/gabriel',
 
         author='Kiryong Ha',
@@ -60,6 +60,7 @@ setup(
             'gabriel.control',
             'gabriel.ucomm',
             'gabriel.common',
+            'gabriel.common.network',
             'gabriel.proxy',
             ],
         data_files=[],
