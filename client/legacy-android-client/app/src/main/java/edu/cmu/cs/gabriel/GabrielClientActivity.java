@@ -1,6 +1,8 @@
 package edu.cmu.cs.gabriel;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Timer;
@@ -76,6 +78,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private ReceivedPacketInfo receivedPacketInfo = null;
 
     private LogicalTime logicalTime = null;
+
+    private FileWriter controlLogWriter = null;
 
     // views
     private ImageView imgView = null;
@@ -244,6 +248,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         tokenController = new TokenController(tokenSize, latencyFile);
 
+        if (Const.IS_EXPERIMENT) {
+            try {
+                controlLogWriter = new FileWriter(Const.CONTROL_LOG_FILE);
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Control log file cannot be properly opened", e);
+            }
+        }
+
         controlThread = new ControlThread(serverIP, Const.CONTROL_PORT, returnMsgHandler, tokenController);
         controlThread.start();
 
@@ -353,6 +365,14 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     }
 
     private void processServerControl(JSONObject msgJSON) {
+        if (Const.IS_EXPERIMENT) {
+            try {
+                controlLogWriter.write("" + logicalTime.imageTime + "\n");
+                String log = msgJSON.toString();
+                controlLogWriter.write(log + "\n");
+            } catch (IOException e) {}
+        }
+
         try {
             // Switching on/off image sensor
             if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE)) {
@@ -611,6 +631,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             stopAudioRecording();
         }
         stopResourceMonitoring();
+        if (Const.IS_EXPERIMENT) {
+            try {
+                controlLogWriter.close();
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Error in closing control log file");
+            }
+        }
     }
 
     /**************** SensorEventListener ***********************/

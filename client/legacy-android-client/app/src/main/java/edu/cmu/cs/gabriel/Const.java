@@ -28,6 +28,8 @@ public class Const {
     public static boolean SENSOR_ACC = false;
     public static boolean SENSOR_AUDIO = true;
 
+    public static String SYNC_BASE = "audio";
+
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
     public static final File ROOT_DIR = new File(Environment.getExternalStorageDirectory() +
@@ -47,7 +49,7 @@ public class Const {
     public static final int CONTROL_PORT = 22222;
 
     // the app name
-    public static final String APP_NAME = "pingpong";
+    public static final String APP_NAME = "pingpong_energy";
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
@@ -94,4 +96,7 @@ public class Const {
     
     // result file
     public static final File EXP_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
+
+    // control log file
+    public static final File CONTROL_LOG_FILE = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp" + File.separator + "control_log.txt");
 }
