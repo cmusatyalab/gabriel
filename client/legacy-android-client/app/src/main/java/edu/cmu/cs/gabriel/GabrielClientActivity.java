@@ -383,10 +383,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     if (preview == null) {
                         preview = (CameraPreview) findViewById(R.id.camera_preview);
                         mCamera = preview.checkCamera();
-                        preview.start();
                         mCamera.setPreviewCallbackWithBuffer(previewCallback);
                         reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
                         mCamera.addCallbackBuffer(reusedBuffer);
+                        preview.start();
                     }
                     if (videoStreamingThread == null) {
                         videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera, logicalTime);
