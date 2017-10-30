@@ -41,16 +41,16 @@ public class PingThread extends Thread {
             Log.i(LOG_TAG, "ping thread running");
             System.out.println("executeCommand");
             Runtime runtime = Runtime.getRuntime();
-//            String cmd="su -c ";
-//            cmd+="'" + ping_cmd + "'";
+
 //            String[] deviceCommands = {"su", ping_cmd};
 
             String ping_cmd="/system/bin/ping " +"-i "
                     + String.valueOf(ping_interval) +" " + serverIP;
+            //ping_cmd = "su -c " + "'" + ping_cmd + "'";
             Log.i(LOG_TAG, "ping cmd: " + ping_cmd);
             try
             {
-                p = runtime.exec("echo");
+                p = runtime.exec("su");
                 DataOutputStream os = new DataOutputStream(p.getOutputStream());
                 BufferedReader reader = new BufferedReader(new InputStreamReader(
                         p.getInputStream()));
@@ -65,13 +65,11 @@ public class PingThread extends Thread {
 //            reader.read();
 
                 while (true) {
-                	Log.v(LOG_TAG, "aaa");
                     Thread.sleep(5);
-                    Log.v(LOG_TAG, "bbb");
                     String s = null;
                     int idx=0;
                     while ((s = reader.readLine()) != null) {
-                        if (idx % 500 != 0){
+                        if (idx % 5000 == 0){
                             Log.v(LOG_TAG, s);
                         }
                         idx++;
