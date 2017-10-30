@@ -566,7 +566,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                             }
                         };
 
-                        // run 5 minutes for each experiment
+                        // sensor control at a delayed time
                         controlTimer.schedule(controlTask, delay);
                     } else {
                         processServerControl(controlJSON);
