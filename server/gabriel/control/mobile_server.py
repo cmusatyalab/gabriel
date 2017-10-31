@@ -151,6 +151,7 @@ class MobileVideoHandler(MobileSensorHandler):
             if not os.path.exists(gabriel.Const.LOG_IMAGES_PATH):
                 os.makedirs(gabriel.Const.LOG_IMAGES_PATH)
             self.log_images_counter = 0
+            self.log_images_timing = open(os.path.join(gabriel.Const.LOG_IMAGES_PATH, "timing.txt"), "w")
         if gabriel.Debug.SAVE_VIDEO:
             self.log_video_writer_created = False
 
@@ -208,6 +209,8 @@ class MobileVideoHandler(MobileSensorHandler):
             self.log_images_counter += 1
             with open(os.path.join(gabriel.Const.LOG_IMAGES_PATH, "frame-" + gabriel.util.add_preceding_zeros(self.log_images_counter) + ".jpeg"), "w") as f:
                 f.write(image_data)
+            if self.log_images_timing is not None:
+                self.log_images_timing.write("%d,%d\n" % (self.log_images_counter, int(time.time() * 1000)))
 
         ## write images into a video
         if gabriel.Debug.SAVE_VIDEO:
@@ -261,10 +264,10 @@ class MobileAccHandler(MobileSensorHandler):
         ## log acc data
         if gabriel.Debug.SAVE_ACC:
             ACC_SEGMENT_SIZE = 12 # (float, float, float)
-            t = time.time()
+            t = int(time.time() * 1000)
             for chunk in self.chunks(acc_data, ACC_SEGMENT_SIZE):
                 (acc_x, acc_y, acc_z) = struct.unpack("!fff", chunk)
-                self.acc_log.write("%f,%f,%f,%f\n" % (t, acc_x, acc_y, acc_z))
+                self.acc_log.write("%d,%f,%f,%f\n" % (t, acc_x, acc_y, acc_z))
 
         ## put current acc data in all registered cognitive engine queue
         for acc_queue in acc_queue_list:
