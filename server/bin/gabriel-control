@@ -60,6 +60,9 @@ def process_command_line(argv):
             '-r', '--frame_rate', type = "int", action = 'store', dest = 'frame_rate', default = 15,
             help = "the frame rate for loading jpeg images")
     parser.add_option(
+            '-m', '--measurement', action = 'store_true',
+            help = "log timestamps")
+    parser.add_option(
             '--log_images', action = 'store_true',
             help = "set if want to store all received images")
     parser.add_option(
@@ -209,6 +212,8 @@ def main():
         gabriel.Debug.SAVE_VIDEO = True
         if settings.log_images_path is not None:
             gabriel.Const.LOG_VIDEO_PATH = settings.log_video_path
+    if settings.measurement:
+        gabriel.Debug.TIME_MEASUREMENT = True
     if settings.legacy_mode:
         gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
     REST_server.set_interface(settings.net_interface)
