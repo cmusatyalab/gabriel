@@ -56,6 +56,7 @@ class Const(object):
     LOG_FILE_PATH = "/var/tmp/cloudlet/log-gabriel"
     LOG_IMAGES_PATH = "/var/log/gabriel-images"
     LOG_VIDEO_PATH = "/var/log/gabriel-video.avi"
+    LOG_ACC_PATH = "/var/log/gabriel-acc.txt"
 
     ## port number for the server modules
     # communication with mobile
@@ -120,10 +121,11 @@ class ServiceMeta(object):
 
 
 class Debug(object):
-    TIME_MEASUREMENT = True
+    TIME_MEASUREMENT = False
     LOG_LEVEL_FILE = logging.DEBUG
     LOG_LEVEL_CONSOLE = logging.INFO
     LOG_STAT = True
     DIRECT_RETURN = False
     SAVE_IMAGES = False
     SAVE_VIDEO = False
+    SAVE_ACC = False

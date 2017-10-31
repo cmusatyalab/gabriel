@@ -75,6 +75,12 @@ def process_command_line(argv):
             '--log_video_path', action = 'store', default = None,
             help = "path to store log video file")
     parser.add_option(
+            '--log_acc', action = 'store_true',
+            help = "set if want to store all received accelerometer data into a file")
+    parser.add_option(
+            '--log_acc_path', action = 'store', default = None,
+            help = "path to store accelerometer values")
+    parser.add_option(
             '-l', '--legacy_mode', action = 'store_true',
             help = "whether to use the legacy protocal. If true, the result is a pure JSON.")
     parser.add_option(
@@ -212,6 +218,10 @@ def main():
         gabriel.Debug.SAVE_VIDEO = True
         if settings.log_images_path is not None:
             gabriel.Const.LOG_VIDEO_PATH = settings.log_video_path
+    if settings.log_acc:
+        gabriel.Debug.SAVE_ACC = True
+        if settings.log_acc_path is not None:
+            gabriel.Const.LOG_ACC_PATH = settings.log_acc_path
     if settings.measurement:
         gabriel.Debug.TIME_MEASUREMENT = True
     if settings.legacy_mode:
