@@ -228,9 +228,15 @@ class MobileAccHandler(MobileSensorHandler):
         if gabriel.Debug.LOG_STAT:
             self.frame_count = 0
             self.total_recv_size = 0
+        if gabriel.Debug.SAVE_ACC:
+            self.acc_log = open(gabriel.Const.LOG_ACC_PATH, "w")
 
     def __repr__(self):
         return "Mobile Acc Server"
+
+    def chunks(self, data, n):
+        for i in xrange(0, len(data), n):
+            yield data[i : i + n]
 
     def _handle_input_data(self):
         header_size = struct.unpack("!I", self._recv_all(4))[0]
@@ -251,6 +257,14 @@ class MobileAccHandler(MobileSensorHandler):
                 log_msg = "ACC FPS : current(%f), avg(%f), BW(%f Mbps), offloading engine(%d)" % \
                         (current_FPS, average_FPS, 8 * self.total_recv_size / (current_time - self.init_connect_time) / 1000 / 1000, len(acc_queue_list))
                 LOG.info(log_msg)
+
+        ## log acc data
+        if gabriel.Debug.SAVE_ACC:
+            ACC_SEGMENT_SIZE = 12 # (float, float, float)
+            t = time.time()
+            for chunk in self.chunks(acc_data, ACC_SEGMENT_SIZE):
+                (acc_x, acc_y, acc_z) = struct.unpack("!fff", chunk)
+                self.acc_log.write("%f,%f,%f,%f\n" % (t, acc_x, acc_y, acc_z))
 
         ## put current acc data in all registered cognitive engine queue
         for acc_queue in acc_queue_list:
