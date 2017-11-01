@@ -14,21 +14,21 @@ public class Const {
     public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = true;
+    public static final boolean IS_EXPERIMENT = false;
 
     // whether to use real-time captured images or load images from files for testing
-    public static final boolean LOAD_IMAGES = true;
+    public static final boolean LOAD_IMAGES = false;
     // whether to use real-time sensed ACC values or load data from files for testing
     public static final boolean LOAD_ACC = false;
     // whether to use real-time captured audio or load audio data from files for testing
-    public static final boolean LOAD_AUDIO = true;
+    public static final boolean LOAD_AUDIO = false;
 
     // high level sensor control (on/off)
     public static boolean SENSOR_VIDEO = true;
     public static boolean SENSOR_ACC = false;
-    public static boolean SENSOR_AUDIO = true;
+    public static boolean SENSOR_AUDIO = false;
 
-    public static String SYNC_BASE = "audio";
+    public static String SYNC_BASE = "none";
 
     /************************ In both demo and experiment mode *******************/
     // directory for all application related files (input + output)
@@ -49,7 +49,7 @@ public class Const {
     public static final int CONTROL_PORT = 22222;
 
     // the app name
-    public static final String APP_NAME = "pingpong_energy";
+    public static final String APP_NAME = "none";
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
@@ -59,9 +59,17 @@ public class Const {
     public static final File TEST_AUDIO_FILE = new File (ROOT_DIR.getAbsolutePath() +
             File.separator + "audio-" + APP_NAME + ".raw");
 
+    // load acc data from file
+    public static final File TEST_ACC_FILE = new File (ROOT_DIR.getAbsolutePath() +
+            File.separator + "acc-" + APP_NAME + ".txt");
+
+    // load acc to image timing mapping data from file
+    public static final File IMAGE_TIMING_FILE = new File (TEST_IMAGE_DIR +
+            File.separator + "timing.txt");
+
     // may include background pinging to keep network active
     public static final boolean BACKGROUND_PING = false;
-    public static final int PING_INTERVAL = 200;
+    public static final int PING_INTERVAL = 20;
 
     // audio configurations
     public static final int RECORDER_SAMPLERATE = 16000;

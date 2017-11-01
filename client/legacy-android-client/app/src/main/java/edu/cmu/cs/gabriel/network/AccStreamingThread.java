@@ -1,15 +1,21 @@
 package edu.cmu.cs.gabriel.network;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Vector;
 
+import edu.cmu.cs.gabriel.Const;
 import edu.cmu.cs.gabriel.token.TokenController;
 
 import android.hardware.Camera.Size;
@@ -33,24 +39,38 @@ public class AccStreamingThread extends Thread {
     // The ACC data
     private Vector<AccData> accDataList = new Vector<AccData>();
 
+    // ACC data for experiments
+    private ArrayList<AccData> accRecordedData = null;
+    private int accRecordedDataIdx = -1;
+
     private Handler networkHander = null;
     private TokenController tokenController = null;
+    private LogicalTime logicalTime = null;
 
     private long frameID;
 
     class AccData {
         public float x, y, z;
+        public long timestamp;
         public AccData(float x, float y, float z) {
             this.x = x;
             this.y = y;
             this.z = z;
+            this.timestamp = -1;
+        }
+        public AccData(float x, float y, float z, long timestamp) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.timestamp = timestamp;
         }
     }
 
-    public AccStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController) {
+    public AccStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, LogicalTime logicalTime) {
         isRunning = false;
         this.networkHander = handler;
         this.tokenController = tokenController;
+        this.logicalTime = logicalTime;
         this.frameID = 0;
 
         try {
@@ -59,6 +79,26 @@ public class AccStreamingThread extends Thread {
             Log.e(LOG_TAG, "unknown host: " + e.getMessage());
         }
         remotePort = port;
+
+        if (Const.LOAD_ACC) {
+            try {
+                accRecordedData = new ArrayList<AccData>();
+
+                BufferedReader br = new BufferedReader(new FileReader(Const.TEST_ACC_FILE));
+                String line = null;
+                while ((line = br.readLine()) != null) {
+                    String tokens[] = line.split(",");
+                    long timestamp = Long.parseLong(tokens[0]);
+                    float x = Float.parseFloat(tokens[1]);
+                    float y = Float.parseFloat(tokens[2]);
+                    float z = Float.parseFloat(tokens[3]);
+                    accRecordedData.add(new AccData(x, y, z, timestamp));
+                }
+
+                accRecordedDataIdx = 0;
+            } catch (IOException e) {
+            }
+        }
     }
 
     public void run() {
@@ -131,7 +171,15 @@ public class AccStreamingThread extends Thread {
     }
 
     public void push(float[] sensor) {
-        this.accDataList.add(new AccData(sensor[0], sensor[1], sensor[2]));
+        if (!Const.LOAD_ACC) {
+            this.accDataList.add(new AccData(sensor[0], sensor[1], sensor[2]));
+        } else {
+            AccData dataCurrent = accRecordedData.get(accRecordedDataIdx);
+            accRecordedDataIdx = (accRecordedDataIdx + 1) % accRecordedData.size();
+            this.accDataList.add(new AccData(dataCurrent.x, dataCurrent.y, dataCurrent.z));
+
+            this.logicalTime.updateAccTime(dataCurrent.timestamp);
+        }
     }
 
     /**
