@@ -281,7 +281,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         }
 
         if (Const.SENSOR_ACC) {
-            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
+            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
             accStreamingThread.start();
         }
 
@@ -424,7 +424,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
                     }
                     if (accStreamingThread == null) {
-                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController);
+                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
                         accStreamingThread.start();
                     }
                 } else { // turning off
