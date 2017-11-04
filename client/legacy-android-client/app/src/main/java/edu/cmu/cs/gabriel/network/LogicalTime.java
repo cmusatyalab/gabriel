@@ -51,6 +51,11 @@ public class LogicalTime {
     }
 
     public void updateAccTime(long timestamp) {
+        if (accImageMapping == null) {
+            this.accTime = timestamp;
+            return;
+        }
+
         int counter = 0;
         if (timestamp < this.accTime) {
             this.accTime = timestamp;
