@@ -554,7 +554,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                                 GabrielClientActivity.this.runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {
-                                        logicalTime.increaseImageTime((int) (delay * 15 / 1000));
+                                        if (Const.SYNC_BASE.equals("video")) {
+                                            logicalTime.increaseImageTime((int) (delay * 11.5 / 1000)); // in the recorded data set, FPS is roughly 11
+                                        } else if (Const.SYNC_BASE.equals("acc")) {
+                                            logicalTime.increaseAccTime(delay);
+                                        }
                                         processServerControl(controlJSON);
                                     }
                                 });

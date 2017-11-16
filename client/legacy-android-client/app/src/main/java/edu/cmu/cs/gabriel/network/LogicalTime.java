@@ -50,6 +50,10 @@ public class LogicalTime {
         this.audioTime = this.imageTime.doubleValue() / 15;
     }
 
+    public void increaseAccTime(long timeDelta) {
+        this.updateAccTime(this.accTime + timeDelta);
+    }
+
     public void updateAccTime(long timestamp) {
         if (accImageMapping == null) {
             this.accTime = timestamp;
