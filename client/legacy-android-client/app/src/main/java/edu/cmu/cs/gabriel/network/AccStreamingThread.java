@@ -42,6 +42,7 @@ public class AccStreamingThread extends Thread {
     // ACC data for experiments
     private ArrayList<AccData> accRecordedData = null;
     private int accRecordedDataIdx = -1;
+    private int accCounterForGlass = 0;
 
     private Handler networkHander = null;
     private TokenController tokenController = null;
@@ -174,7 +175,19 @@ public class AccStreamingThread extends Thread {
         if (!Const.LOAD_ACC) {
             this.accDataList.add(new AccData(sensor[0], sensor[1], sensor[2]));
         } else {
+            if (Const.deviceModel == Const.DeviceModel.GoogleGlass) {
+                accCounterForGlass ++;
+                if (accCounterForGlass % 30 != 0) {
+                    return;
+                }
+            }
             AccData dataCurrent = accRecordedData.get(accRecordedDataIdx);
+            if (Const.SYNC_BASE.equals("acc")) {
+                while (dataCurrent.timestamp < this.logicalTime.accTime) {
+                    accRecordedDataIdx = (accRecordedDataIdx + 1) % accRecordedData.size();
+                    dataCurrent = accRecordedData.get(accRecordedDataIdx);
+                }
+            }
             accRecordedDataIdx = (accRecordedDataIdx + 1) % accRecordedData.size();
             this.accDataList.add(new AccData(dataCurrent.x, dataCurrent.y, dataCurrent.z));
 
