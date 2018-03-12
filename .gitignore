@@ -9,3 +9,9 @@ test-image/
 *.pyc
 *.class
 *.swp
+
+# virtualenv
+venv/
+
+# Jetbrains stuff
+.idea/
