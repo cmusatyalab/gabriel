@@ -1,4 +1,4 @@
-Gabriel: Platform for Wearable Cognitive Assistance Applications
+Gabriel: Platform for Wearable Cognitive Assistance Applications [![Docker Build Status](https://img.shields.io/docker/build/jamesjue/gabriel.svg)](https://hub.docker.com/r/jamesjue/gabriel) [![Docker Pulls](https://img.shields.io/docker/pulls/jamesjue/gabriel.svg)](https://hub.docker.com/r/jamesjue/gabriel/)
 ========================================================
 Copyright (C) 2013-2014 Carnegie Mellon University
 This is a developing project and some features might not be stable yet.
