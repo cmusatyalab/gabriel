@@ -68,7 +68,7 @@ class RESTServer(threading.Thread):
                         LOG.error("REST API server closed unexpectedly. Return code is %d" % self.proc.returncode)
                         self.proc = None
                         break
-        except KeyboardInterrupt, e:
+        except KeyboardInterrupt as e:
             pass
 
     def set_interface(self, interface):
