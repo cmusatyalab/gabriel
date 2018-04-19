@@ -65,6 +65,12 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
                 this.close();
             }
             updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT);
+
+            // autofocus
+            Camera.Parameters params = mCamera.getParameters();
+            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+            mCamera.setParameters(params);
+
         } else {
             waitingToStart = true;
         }

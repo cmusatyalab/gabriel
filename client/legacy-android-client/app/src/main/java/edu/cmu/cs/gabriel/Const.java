@@ -14,19 +14,19 @@ public class Const {
     public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = true;
+    public static final boolean IS_EXPERIMENT = false;
 
     // whether to use real-time captured images or load images from files for testing
-    public static final boolean LOAD_IMAGES = true;
+    public static final boolean LOAD_IMAGES = false;
     // whether to use real-time sensed ACC values or load data from files for testing
     public static final boolean LOAD_ACC = false;
     // whether to use real-time captured audio or load audio data from files for testing
-    public static final boolean LOAD_AUDIO = true;
+    public static final boolean LOAD_AUDIO = false;
 
     // high level sensor control (on/off)
     public static boolean SENSOR_VIDEO = true;
     public static boolean SENSOR_ACC = false;
-    public static boolean SENSOR_AUDIO = true;
+    public static boolean SENSOR_AUDIO = false;
 
     public static String SYNC_BASE = "audio";
 
@@ -70,7 +70,7 @@ public class Const {
 
     /************************ Demo mode only *************************************/
     // server IP
-    public static final String SERVER_IP = "128.2.213.106";  // Cloudlet
+    public static final String SERVER_IP = "128.237.192.28";  // Cloudlet
 
     // token size
     public static final int TOKEN_SIZE = 1;
@@ -78,7 +78,7 @@ public class Const {
     /************************ Experiment mode only *******************************/
     // server IP list
     public static final String[] SERVER_IP_LIST = {
-            "128.2.213.106",
+            "128.237.192.28",
             };
 
     // token size list
