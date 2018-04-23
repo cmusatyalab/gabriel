@@ -75,7 +75,7 @@ class DummyVideoApp(gabriel.proxy.CognitiveProcessThread):
         LOG.info("processing: ")
         LOG.info("%s\n" % header)
         img = raw2cv_image(data)
-        display_image('input', img, resize_max = 640, wait_time = 1)
+        #display_image('input', img, resize_max = 640, wait_time = 1)
         return json.dumps({'value':'nothing'})
 
 
