@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-import cv2
 import json
 import multiprocessing
 import numpy as np
@@ -37,6 +36,31 @@ def process_command_line(argv):
     if not os.path.isdir(settings.image_dir):
         parser.error("%s is not a directory" % settings.image_dir)
     return settings
+
+
+#################  minimal CV functionality  ################################
+import cv2
+def display_image(display_name, img, wait_time = 1, resize_max = None):
+    if resize_max is not None:
+        img_shape = img.shape
+        height = img_shape[0]; width = img_shape[1]
+        if height > width:
+            img_display = cv2.resize(img, (resize_max * width / height, resize_max), interpolation = cv2.INTER_NEAREST)
+        else:
+            img_display = cv2.resize(img, (resize_max, resize_max * height / width), interpolation = cv2.INTER_NEAREST)
+    else:
+        img_display = img
+
+    cv2.imshow(display_name, img_display)
+    cv2.waitKey(wait_time)
+
+def raw2cv_image(raw_data):
+    img_array = np.asarray(bytearray(raw_data), dtype = np.int8)
+    cv_image = cv2.imdecode(img_array, -1)
+    return cv_image
+#############################################################################
+
+
 
 class TokenController(object):
     def __init__(self, token_size):
@@ -121,6 +145,10 @@ class VideoStreamingThread(gabriel.network.CommonClient):
 
         try:
             (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
+
+            cv_image = raw2cv_image(image_data)
+            display_image("send", cv_image, resize_max = 640)
+
             header_json = json.loads(header_data)
             data_time = time.time()
             frame_id = header_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
@@ -168,6 +196,10 @@ class ResultReceivingThread(gabriel.network.CommonClient):
             # get speech guidance
             speech_feedback = result_json.get("speech", None)
 
+            # get state, if any
+            state = result_json.get("state", None)
+            print state
+
         self.token_controller.refill_tokens(frame_id, time_received)
 
     def terminate(self):
@@ -190,24 +222,6 @@ class ImageFeedingThread(threading.Thread):
         self.frame_count = 1
         threading.Thread.__init__(self, target = self.run)
 
-    def _display_image(self, display_name, img, wait_time = 1, resize_max = None):
-        if resize_max is not None:
-            img_shape = img.shape
-            height = img_shape[0]; width = img_shape[1]
-            if height > width:
-                img_display = cv2.resize(img, (resize_max * width / height, resize_max), interpolation = cv2.INTER_NEAREST)
-            else:
-                img_display = cv2.resize(img, (resize_max, resize_max * height / width), interpolation = cv2.INTER_NEAREST)
-        else:
-            img_display = img
-
-        cv2.imshow(display_name, img_display)
-        cv2.waitKey(wait_time)
-
-    def _raw2cv_image(self, raw_data):
-        img_array = np.asarray(bytearray(raw_data), dtype = np.int8)
-        cv_image = cv2.imdecode(img_array, -1)
-        return cv_image
 
     def run(self):
         image_idx = 0
@@ -219,8 +233,8 @@ class ImageFeedingThread(threading.Thread):
 
             image_file = self.file_list[image_idx]
             image_data = open(image_file, "r").read()
-            cv_image = self._raw2cv_image(image_data)
-            self._display_image("client", cv_image, resize_max = 640)
+            #cv_image = raw2cv_image(image_data)
+            #display_image("client", cv_image, resize_max = 640)
 
             header_data = json.dumps({"type" : "python", gabriel.Protocol_client.JSON_KEY_FRAME_ID : self.frame_count})
             if self.image_queue.full():
