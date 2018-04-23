@@ -103,25 +103,13 @@ class MobileControlHandler(MobileSensorHandler):
             cmd_data = self.data_queue.get(timeout = 0.0001)
             cmd_json = json.loads(cmd_data)
 
-            if "recover" in cmd_json:
-                delay = cmd_json.get('recover')
-                del cmd_json['recover']
-
-                cmd_json1 = cmd_json.copy()
-                cmd_json2 = cmd_json.copy()
-                cmd_json2['delay'] = delay
-                if gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_IMAGE in cmd_json2:
-                    cmd_json2[gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_IMAGE] = not cmd_json2[gabriel.Protocol_control.JSON_KEY_SENSOR_TYPE_IMAGE]
-
-                cmd_data1 = json.dumps(cmd_json1)
-                cmd_data2 = json.dumps(cmd_json2)
-
-                print cmd_data1
-                print cmd_data2
-                packet = struct.pack("!I%dsI%ds" % (len(cmd_data1), len(cmd_data2)), len(cmd_data1), cmd_data1, len(cmd_data2), cmd_data2)
-                self.request.send(packet)
-                self.wfile.flush()
-                LOG.info("command sent to mobile device: %s", cmd_data)
+            if isinstance(cmd_json, list):
+                for cmd_j in cmd_json:
+                    cmd_data = json.dumps(cmd_j)
+                    packet = struct.pack("!I%ds" % len(cmd_data), len(cmd_data), cmd_data)
+                    self.request.send(packet)
+                    self.wfile.flush()
+                    LOG.info("command sent to mobile device: %s", cmd_data)
 
             else:
                 ## send return data to the mobile device
