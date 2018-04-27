@@ -26,7 +26,7 @@ RUN pip install -U pip
 RUN pip install -U setuptools
 RUN pip install -U numpy
 
-RUN git clone https://github.com/junjuew/gabriel.git
+RUN git clone https://github.com/cmusatyalab/gabriel.git
 WORKDIR /gabriel/server
 RUN pip install -r requirements.txt
 RUN python setup.py install
@@ -34,9 +34,9 @@ RUN python setup.py install
 RUN apt-get autoremove \
     && apt-get clean
 
-WORKDIR /gabriel/server/bin
+WORKDIR /
 
 EXPOSE 9098 9111 7070
 
 # Define default command.
-CMD ["bash", "-c", "python gabriel-control -n eth0 & sleep 5; python gabriel-ucomm -s 127.0.0.1:8021 & sleep 5; cd example-proxies/gabriel-proxy-http-display && python proxy.py -s 127.0.0.1:8021"]
+CMD ["bash", "-c", "gabriel-control -n eth0 & sleep 5; gabriel-ucomm -s 127.0.0.1:8021 & sleep 5; cd /gabriel/server/bin/example-proxies/gabriel-proxy-http-display && python proxy.py -s 127.0.0.1:8021"]
