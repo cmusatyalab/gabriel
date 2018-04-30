@@ -45,6 +45,11 @@ result_queue = multiprocessing.Queue()
 # a global queue that contains control messages to be sent to the client
 command_queue = multiprocessing.Queue()
 
+# a global queue used to publish input streams in a web server for debugging purposes
+input_display_queue = multiprocessing.Queue()
+# a global queue used to publish output streams in a web server for debugging purposes
+output_display_queue = multiprocessing.Queue()
+
 
 class MobileCommError(Exception):
     pass
@@ -189,6 +194,18 @@ class MobileVideoHandler(MobileSensorHandler):
                     pass
             try:
                 image_queue.put_nowait((header_data, image_data))
+            except Queue.Full as e:
+                pass
+
+        ## display input stream for debug purpose
+        if gabriel.Debug.WEB_SERVER:
+            if input_display_queue.full():
+                try:
+                    input_display_queue.get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                input_display_queue.put_nowait(image_data)
             except Queue.Full as e:
                 pass
 

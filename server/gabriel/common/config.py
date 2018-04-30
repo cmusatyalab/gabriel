@@ -129,3 +129,4 @@ class Debug(object):
     SAVE_IMAGES = False
     SAVE_VIDEO = False
     SAVE_ACC = False
+    WEB_SERVER = False

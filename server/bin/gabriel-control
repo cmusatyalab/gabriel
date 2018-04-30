@@ -81,6 +81,9 @@ def process_command_line(argv):
             '--log_acc_path', action = 'store', default = None,
             help = "path to store accelerometer values")
     parser.add_option(
+            '-d', '--debug_display', action = 'store_true',
+            help = "set if want to display input/output stream on a webserver")
+    parser.add_option(
             '-l', '--legacy_mode', action = 'store_true',
             help = "whether to use the legacy protocal. If true, the result is a pure JSON.")
     parser.add_option(
@@ -224,11 +227,20 @@ def main():
             gabriel.Const.LOG_ACC_PATH = settings.log_acc_path
     if settings.measurement:
         gabriel.Debug.TIME_MEASUREMENT = True
+    if settings.debug_display:
+        gabriel.Debug.WEB_SERVER = True
     if settings.legacy_mode:
         gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
     REST_server.set_interface(settings.net_interface)
 
     start_background_services()
+
+    ## webserver to display input and output stream for debug purposes
+    if gabriel.Debug.WEB_SERVER:
+        http_server = gabriel.control.ThreadedHTTPServer(('0.0.0.0', 7070), gabriel.control.MJPEGStreamHandler)
+        http_server_thread = threading.Thread(target = http_server.serve_forever)
+        http_server_thread.daemon = True
+        http_server_thread.start()
 
     ## mobile servers that communicate with the mobile device (start with m_)
     m_control_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_CONTROL_PORT, gabriel.control.MobileControlHandler)
@@ -313,6 +325,12 @@ def main():
             p_acc_server.terminate()
         if p_audio_server is not None:
             p_audio_server.terminate()
+
+        if gabriel.Debug.WEB_SERVER:
+            if http_server is not None:
+                print "aaa"
+                http_server.terminate()
+                print "bbb"
 
     '''
     for each_thread in all_thread_list:
