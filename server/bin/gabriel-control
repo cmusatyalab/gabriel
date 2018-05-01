@@ -328,9 +328,7 @@ def main():
 
         if gabriel.Debug.WEB_SERVER:
             if http_server is not None:
-                print "aaa"
                 http_server.terminate()
-                print "bbb"
 
     '''
     for each_thread in all_thread_list:
