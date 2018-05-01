@@ -44,7 +44,6 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 return
             if self.path.endswith(".html"):
                 f = open(dir_file + os.sep + self.path)
-                #f = open(os.curdir + os.sep + self.path)
                 self.send_response(200)
                 self.send_header('Content-type',	'text/html')
                 self.end_headers()
@@ -59,13 +58,21 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")
                 while 1:
-                    image_data = data_queue.get()
-                    self.wfile.write("--aaboundary\r\n")
-                    self.wfile.write("Content-Type: image/jpeg\r\n")
-                    self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
-                    self.wfile.write(image_data)
-                    self.wfile.write("\r\n\r\n\r\n")
-                    time.sleep(0.001)
+                    if self.server.stopped:
+                        break
+
+                    try:
+                        image_data = data_queue.get_nowait()
+                        self.wfile.write("--aaboundary\r\n")
+                        self.wfile.write("Content-Type: image/jpeg\r\n")
+                        self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
+                        self.wfile.write(image_data)
+                        self.wfile.write("\r\n\r\n\r\n")
+                        time.sleep(0.001)
+
+                    except Queue.Empty as e:
+                        pass
+
             elif self.path.endswith(".jpeg"):
                 f = open(curdir + sep + self.path)
                 self.send_response(200)
