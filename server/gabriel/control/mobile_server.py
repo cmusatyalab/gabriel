@@ -375,6 +375,21 @@ class MobileResultHandler(MobileSensorHandler):
                     self.time_breakdown_log.write("%s\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n" %
                             (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_done_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
+            if gabriel.Debug.WEB_SERVER:
+                rtn_data_json = json.loads(rtn_data)
+                image_data = base64.b64decode(rtn_data_json['image'])
+                if output_display_queue.full():
+                    try:
+                        output_display_queue.get_nowait()
+                    except Queue.Empty as e:
+                        pass
+                try:
+                    output_display_queue.put_nowait(image_data)
+                except Queue.Full as e:
+                    pass
+
+
+
             ## send return data to the mobile device
             # packet format: header size, header, data
             # add data size as a field in header for backward compatibility
