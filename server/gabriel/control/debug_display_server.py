@@ -38,8 +38,6 @@ dir_file = os.path.dirname(os.path.realpath(__file__))
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
     def do_GET(self):
-        self.data_queue = gabriel.control.input_display_queue
-
         try:
             self.path = re.sub('[^.a-zA-Z0-9]', "", str(self.path))
             if self.path== "" or self.path is None or self.path[:1] == ".":
@@ -53,11 +51,15 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 self.wfile.write(f.read())
                 f.close()
             elif self.path.endswith(".mjpeg"):
+                if self.path.endswith("camera.mjpeg"):
+                    data_queue = gabriel.control.input_display_queue
+                else:
+                    data_queue = gabriel.control.output_display_queue
                 self.send_response(200)
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")
                 while 1:
-                    image_data = self.data_queue.get()
+                    image_data = data_queue.get()
                     self.wfile.write("--aaboundary\r\n")
                     self.wfile.write("Content-Type: image/jpeg\r\n")
                     self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
