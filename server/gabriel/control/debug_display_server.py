@@ -37,23 +37,19 @@ LOG = gabriel.logging.getLogger(__name__)
 dir_file = os.path.dirname(os.path.realpath(__file__))
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
+    def do_POST(self):
+        pass
+
     def do_GET(self):
         try:
-            self.path = re.sub('[^.a-zA-Z0-9]', "", str(self.path))
-            if self.path== "" or self.path is None or self.path[:1] == ".":
-                return
-            if self.path.endswith(".html"):
-                f = open(dir_file + os.sep + self.path)
-                self.send_response(200)
-                self.send_header('Content-type',	'text/html')
-                self.end_headers()
-                self.wfile.write(f.read())
-                f.close()
-            elif self.path.endswith(".mjpeg"):
+            self.path = self.path.split('?')[0]
+            print self.path
+
+            if self.path.endswith(".mjpeg"):
                 if self.path.endswith("camera.mjpeg"):
                     data_queue = gabriel.control.input_display_queue
                 else:
-                    data_queue = gabriel.control.output_display_queue
+                    data_queue = gabriel.control.output_display_queue_dict['image']
                 self.send_response(200)
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")
@@ -63,6 +59,7 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
 
                     try:
                         image_data = data_queue.get_nowait()
+
                         self.wfile.write("--aaboundary\r\n")
                         self.wfile.write("Content-Type: image/jpeg\r\n")
                         self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
@@ -74,12 +71,56 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                         pass
 
             elif self.path.endswith(".jpeg"):
-                f = open(curdir + sep + self.path)
+                data_queue = gabriel.control.input_display_queue
+
+                try:
+                    image_data = data_queue.get_nowait()
+                    self.send_response(200)
+                    self.send_header('Content-type', 'image/jpeg')
+                    self.end_headers()
+                    self.wfile.write(image_data)
+
+                except Queue.Empty as e:
+                    pass
+
+            elif self.path.endswith("speech"):
+                data_queue = gabriel.control.output_display_queue_dict['text']
+                try:
+                    speech_data = data_queue.get_nowait()
+                    self.send_response(200)
+                    self.send_header('Content-type',	'text/html')
+                    self.end_headers()
+                    self.wfile.write(speech_data)
+
+                except Queue.Empty as e:
+                    self.send_response(200)
+                    self.send_header('Content-type',	'text/html')
+                    self.end_headers()
+                    self.wfile.write("")
+
+            elif self.path.endswith("video"):
+                data_queue = gabriel.control.output_display_queue_dict['video']
+                try:
+                    video_url = data_queue.get_nowait()
+                    self.send_response(200)
+                    self.send_header('Content-type',	'text/html')
+                    self.end_headers()
+                    self.wfile.write(video_url)
+
+                except Queue.Empty as e:
+                    self.send_response(200)
+                    self.send_header('Content-type',	'text/html')
+                    self.end_headers()
+                    self.wfile.write("")
+
+            else:
+                f = open(dir_file + os.sep + self.path)
                 self.send_response(200)
-                self.send_header('Content-type', 'image/jpeg')
+                self.send_header('Content-type',	'text/html')
                 self.end_headers()
                 self.wfile.write(f.read())
                 f.close()
+
             return
         except IOError:
             self.send_error(404,'File Not Found: %s' % self.path)

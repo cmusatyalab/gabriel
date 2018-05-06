@@ -1,13 +1,82 @@
 <HTML>
-<BODY>
 
-<div id="hiddenDiv" style="display:none;visible:hidden;">
-  < iframe src="hidden.html" height="1" width="1" border="0" scrolling="no" name="hiddenFrame" id="hiddenFrame" >< / iframe>
-</div>
+<head>
+	<script type="text/javascript">
 
-<img src="camera.mjpeg" alt="Smiley face" height="480" width="640">
+        var prevVideo = "";
+        var isFirst = true;
 
-<img src="output.mjpeg" alt="Smiley face" height="480" width="640">
+
+		function updateValue(){
+			console.log(1);
+
+            if (isFirst) {
+                isFirst = false;
+                var inputStream = document.getElementById('inputStream');
+                inputStream.src = "camera.mjpeg"
+                var outputStream = document.getElementById('outputStream');
+                outputStream.src = "output.mjpeg"
+            }
+
+            var textHttp = new XMLHttpRequest();
+            try {
+                textHttp.onreadystatechange = function() {
+                    if (textHttp.readyState == 4 && textHttp.status == 200) {
+                        if (textHttp.responseText == "") {
+                            return;
+                        }
+                        document.getElementById("feedbackText").innerHTML = textHttp.responseText;
+                        console.log(textHttp.responseText);
+                    }
+                }
+                textHttp.open("GET", "speech?d=" + Date.now(), true); // true for asynchronous
+                textHttp.send(null);
+
+            } catch(e){
+                console.log('catch', e);
+            }
+
+            var videoHttp = new XMLHttpRequest();
+            try {
+                videoHttp.onreadystatechange = function() {
+                    if (videoHttp.readyState == 4 && videoHttp.status == 200) {
+                        if (videoHttp.responseText == "" || videoHttp.responseText == prevVideo) {
+                            return;
+                        }
+                        prevVideo = videoHttp.responseText;
+                        var video = document.getElementById('feedbackVideo');
+                        var sources = video.getElementsByTagName('source');
+                        sources[0].src = videoHttp.responseText;
+                        video.load();
+                    }
+                }
+                videoHttp.open("GET", "video?d=" + Date.now(), true); // true for asynchronous
+                videoHttp.send(null);
+
+            } catch(e){
+                console.log('catch', e);
+            }
+
+			setTimeout('updateValue()', 500);
+		}
+	</script>
+
+</head>
+
+
+<BODY onLoad="updateValue()">
+
+<img id="inputStream" src="" alt="Smiley face" height="480" width="640">
+
+<img id="outputStream" src="" alt="Smiley face" height="480" width="640">
+
+<video id="feedbackVideo" width="640" height="480" autoplay loop>
+  <source src="" type="video/mp4">
+Your browser does not support the video tag.
+</video>
+
+<p id="feedbackText"></p>
+
 
 </BODY>
 </HTML>
