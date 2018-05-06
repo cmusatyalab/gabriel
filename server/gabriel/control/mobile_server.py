@@ -379,8 +379,9 @@ class MobileResultHandler(MobileSensorHandler):
                 rtn_data_json = json.loads(rtn_data)
 
                 # image response
-                image_data = base64.b64decode(rtn_data_json.get('image', None))
-                if image_data is not None:
+                image_encoded = rtn_data_json.get('image', None)
+                if image_encoded is not None:
+                    image_data = base64.b64decode(image_encoded)
                     if output_display_queue_dict['image'].full():
                         try:
                             output_display_queue_dict['image'].get_nowait()
