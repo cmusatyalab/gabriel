@@ -22,7 +22,7 @@
 import os
 import logging
 import sys
-from config import Const, Debug
+from .config import Const, Debug
 
 loggers = dict()
 DEFAULT_FORMATTER = '%(asctime)s %(name)s %(levelname)s %(message)s'

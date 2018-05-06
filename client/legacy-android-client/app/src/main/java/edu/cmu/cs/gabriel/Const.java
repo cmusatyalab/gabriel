@@ -78,7 +78,7 @@ public class Const {
 
     /************************ Demo mode only *************************************/
     // server IP
-    public static final String SERVER_IP = "128.2.213.106";  // Cloudlet
+    public static final String SERVER_IP = "128.237.192.28";  // Cloudlet
 
     // token size
     public static final int TOKEN_SIZE = 1;
@@ -86,7 +86,7 @@ public class Const {
     /************************ Experiment mode only *******************************/
     // server IP list
     public static final String[] SERVER_IP_LIST = {
-            "128.2.213.106",
+            "128.237.192.28",
             };
 
     // token size list

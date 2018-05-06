@@ -146,6 +146,11 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if (Const.SENSOR_VIDEO) {
             preview = (CameraPreview) findViewById(R.id.camera_preview);
             mCamera = preview.checkCamera();
+
+            Camera.Parameters params = mCamera.getParameters();
+            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+            mCamera.setParameters(params);
+
             preview.start();
             mCamera.setPreviewCallbackWithBuffer(previewCallback);
             reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel

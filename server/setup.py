@@ -45,11 +45,10 @@ executable_files = get_all_files('.', 'gabriel/lib')
 
 setup(
         name='elijah-gabriel',
-        version=str(Const.VERSION),
+        version="0.1.0",
         description='Gabriel: Cognitive Assistance System',
         #long_description=open('README.md', 'r').read(),
         url='https://github.com/cmusatyalab/gabriel',
-
         author='Kiryong Ha',
         author_email='krha@cmu.edu',
         keywords="cloud cloudlet CMU Gabriel Congitive",
@@ -65,6 +64,9 @@ setup(
             ],
         data_files=[],
         requires=[],
-        )
+        classifiers=[
+            'Programming Language :: Python :: 2.7'
+        ]
+)
 
 
