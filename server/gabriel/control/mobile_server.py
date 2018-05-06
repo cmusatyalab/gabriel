@@ -46,9 +46,9 @@ result_queue = multiprocessing.Queue()
 command_queue = multiprocessing.Queue()
 
 # a global queue used to publish input streams in a web server for debugging purposes
-input_display_queue = multiprocessing.Queue()
+input_display_queue = multiprocessing.Queue(1)
 # a global queue used to publish output streams in a web server for debugging purposes
-output_display_queue = multiprocessing.Queue()
+output_display_queue_dict = {'image': multiprocessing.Queue(1), 'text': multiprocessing.Queue(3), 'video': multiprocessing.Queue(3)}
 
 
 class MobileCommError(Exception):
@@ -377,17 +377,45 @@ class MobileResultHandler(MobileSensorHandler):
 
             if gabriel.Debug.WEB_SERVER:
                 rtn_data_json = json.loads(rtn_data)
-                image_data = base64.b64decode(rtn_data_json['image'])
-                if output_display_queue.full():
-                    try:
-                        output_display_queue.get_nowait()
-                    except Queue.Empty as e:
-                        pass
-                try:
-                    output_display_queue.put_nowait(image_data)
-                except Queue.Full as e:
-                    pass
 
+                # image response
+                image_data = base64.b64decode(rtn_data_json.get('image', None))
+                if image_data is not None:
+                    if output_display_queue_dict['image'].full():
+                        try:
+                            output_display_queue_dict['image'].get_nowait()
+                        except Queue.Empty as e:
+                            pass
+                    try:
+                        output_display_queue_dict['image'].put_nowait(image_data)
+                    except Queue.Full as e:
+                        pass
+
+                # text response
+                text_data = rtn_data_json.get('speech', None)
+                if text_data is not None:
+                    if output_display_queue_dict['text'].full():
+                        try:
+                            output_display_queue_dict['text'].get_nowait()
+                        except Queue.Empty as e:
+                            pass
+                    try:
+                        output_display_queue_dict['text'].put_nowait(text_data)
+                    except Queue.Full as e:
+                        pass
+
+                # video response
+                video_url = rtn_data_json.get('video', None)
+                if video_url is not None:
+                    if output_display_queue_dict['video'].full():
+                        try:
+                            output_display_queue_dict['video'].get_nowait()
+                        except Queue.Empty as e:
+                            pass
+                    try:
+                        output_display_queue_dict['video'].put_nowait(video_url)
+                    except Queue.Full as e:
+                        pass
 
 
             ## send return data to the mobile device
