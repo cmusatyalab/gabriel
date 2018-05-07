@@ -3,7 +3,10 @@
 <head>
 	<script type="text/javascript">
 
+        var synth = window.speechSynthesis;
+
         var prevVideo = "";
+        var prevText = "";
         var isFirst = true;
 
 
@@ -22,11 +25,14 @@
             try {
                 textHttp.onreadystatechange = function() {
                     if (textHttp.readyState == 4 && textHttp.status == 200) {
-                        if (textHttp.responseText == "") {
+                        if (textHttp.responseText == "" || textHttp.responseText == prevText) {
                             return;
                         }
+                        prevText = textHttp.responseText;
                         document.getElementById("feedbackText").innerHTML = textHttp.responseText;
                         console.log(textHttp.responseText);
+                        var utterThis = new SpeechSynthesisUtterance(textHttp.responseText);
+                        synth.speak(utterThis);
                     }
                 }
                 textHttp.open("GET", "speech?d=" + Date.now(), true); // true for asynchronous
