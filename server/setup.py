@@ -62,6 +62,7 @@ setup(
             'gabriel.common.network',
             'gabriel.proxy',
             ],
+        package_data={'gabriel': ['control/*.html']},
         data_files=[],
         requires=[],
         classifiers=[
