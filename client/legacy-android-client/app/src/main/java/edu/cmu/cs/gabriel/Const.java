@@ -2,6 +2,7 @@ package edu.cmu.cs.gabriel;
 
 import java.io.File;
 
+import android.hardware.Camera;
 import android.media.AudioFormat;
 import android.os.Environment;
 
@@ -11,7 +12,7 @@ public class Const {
         Nexus6,
     }
 
-    public static final DeviceModel deviceModel = DeviceModel.Nexus6;
+    public static final DeviceModel deviceModel = DeviceModel.GoogleGlass;
 
     // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;
@@ -40,6 +41,8 @@ public class Const {
     // options: 320x180, 640x360, 1280x720, 1920x1080
     public static int IMAGE_WIDTH = 640;
     public static int IMAGE_HEIGHT = 360;
+    public static String FOCUS_MODE = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
+    public static String FLASH_MODE = Camera.Parameters.FLASH_MODE_TORCH;
     
     // port protocol to the server
     public static final int VIDEO_STREAM_PORT = 9098;

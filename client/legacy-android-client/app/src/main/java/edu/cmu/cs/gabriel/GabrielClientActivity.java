@@ -28,6 +28,7 @@ import android.os.Message;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
+import android.util.Patterns;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
@@ -146,11 +147,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if (Const.SENSOR_VIDEO) {
             preview = (CameraPreview) findViewById(R.id.camera_preview);
             mCamera = preview.checkCamera();
-
-            Camera.Parameters params = mCamera.getParameters();
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
-            mCamera.setParameters(params);
-
             preview.start();
             mCamera.setPreviewCallbackWithBuffer(previewCallback);
             reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
@@ -474,7 +470,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
                     imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
                 if (targetFps != -1 || imgWidth != -1)
-                    preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight);
+                    preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight, null, null);
             }
 
         } catch (JSONException e) {
