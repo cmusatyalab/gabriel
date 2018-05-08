@@ -64,13 +64,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
                 Log.e(LOG_TAG, "Error in setting camera holder: " + exception.getMessage());
                 this.close();
             }
-            updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT);
-
-            // autofocus
-            Camera.Parameters params = mCamera.getParameters();
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
-            mCamera.setParameters(params);
-
+            updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT, Const.FOCUS_MODE, Const.FLASH_MODE);
         } else {
             waitingToStart = true;
         }
@@ -91,7 +85,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
-    public void changeConfiguration(int[] range, Size imageSize) {
+    public void changeConfiguration(int[] range, Size imageSize, String focusMode, String flashMode) {
         Camera.Parameters parameters = mCamera.getParameters();
         if (range != null){
             Log.i("Config", "frame rate configuration : " + range[0] + "," + range[1]);
@@ -101,8 +95,14 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             Log.i("Config", "image size configuration : " + imageSize.width + "," + imageSize.height);
             parameters.setPreviewSize(imageSize.width, imageSize.height);
         }
-        //parameters.setPreviewFormat(ImageFormat.JPEG);
-
+        if (focusMode != null) {
+            Log.i("Config", "focus mode configuration : " + focusMode);
+            parameters.setFocusMode(focusMode);
+        }
+        if (flashMode != null){
+            Log.i("Config", "flash mode configuration : " + flashMode);
+            parameters.setFlashMode(flashMode);
+        }
         mCamera.setParameters(parameters);
     }
 
@@ -134,7 +134,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
                     Log.e(LOG_TAG, "Error in setting camera holder: " + exception.getMessage());
                     this.close();
                 }
-                updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT);
+                updateCameraConfigurations(Const.CAPTURE_FPS, Const.IMAGE_WIDTH, Const.IMAGE_HEIGHT, Const.FOCUS_MODE, Const.FLASH_MODE);
             }
         } else {
             Log.w(LOG_TAG, "Camera is not open");
@@ -155,7 +155,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
          */
     }
 
-    public void updateCameraConfigurations(int targetFps, int imgWidth, int imgHeight) {
+    public void updateCameraConfigurations(int targetFps, int imgWidth, int imgHeight, String focusMode, String flashMode) {
         if (mCamera != null) {
             if (targetFps != -1) {
                 Const.CAPTURE_FPS = targetFps;
@@ -193,7 +193,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             }
             Camera.Size target_size = this.supportingSize.get(index);
 
-            changeConfiguration(targetRange, target_size);
+            changeConfiguration(targetRange, target_size, focusMode, flashMode);
 
             mCamera.startPreview();
             isPreviewing = true;

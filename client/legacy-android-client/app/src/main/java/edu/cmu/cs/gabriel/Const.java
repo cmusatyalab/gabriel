@@ -2,6 +2,7 @@ package edu.cmu.cs.gabriel;
 
 import java.io.File;
 
+import android.hardware.Camera;
 import android.media.AudioFormat;
 import android.os.Environment;
 
@@ -40,6 +41,8 @@ public class Const {
     // options: 320x180, 640x360, 1280x720, 1920x1080
     public static int IMAGE_WIDTH = 640;
     public static int IMAGE_HEIGHT = 360;
+    public static String FOCUS_MODE = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
+    public static String FLASH_MODE = null;
     
     // port protocol to the server
     public static final int VIDEO_STREAM_PORT = 9098;
