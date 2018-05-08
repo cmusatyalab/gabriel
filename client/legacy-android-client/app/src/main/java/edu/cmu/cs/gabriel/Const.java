@@ -12,7 +12,7 @@ public class Const {
         Nexus6,
     }
 
-    public static final DeviceModel deviceModel = DeviceModel.GoogleGlass;
+    public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
     public static final boolean IS_EXPERIMENT = false;

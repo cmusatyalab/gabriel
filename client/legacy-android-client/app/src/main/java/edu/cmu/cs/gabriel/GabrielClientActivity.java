@@ -28,7 +28,6 @@ import android.os.Message;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
-import android.util.Patterns;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
