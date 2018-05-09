@@ -32,4 +32,5 @@ public class NetworkProtocol {
     public static final String SERVER_CONTROL_FPS = "fps";
     public static final String SERVER_CONTROL_IMG_WIDTH = "img_width";
     public static final String SERVER_CONTROL_IMG_HEIGHT = "img_height";
+    public static final String SERVER_CONTROL_FLASHLIGHT = "flashlight";
 }

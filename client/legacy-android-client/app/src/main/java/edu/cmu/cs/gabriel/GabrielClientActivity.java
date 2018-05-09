@@ -462,14 +462,23 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             // Camera configs
             if (preview != null) {
                 int targetFps = -1, imgWidth = -1, imgHeight = -1;
+                String focusMode = Const.FOCUS_MODE;
+                String flashMode = Const.FLASH_MODE;
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
                     targetFps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
                     imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
                     imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
-                if (targetFps != -1 || imgWidth != -1)
-                    preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight, null, null);
+                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)){
+                    boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT);
+                    Log.d(LOG_TAG, "flashlighton? " + flashlightOn);
+                    if (flashlightOn) {
+                        flashMode = Camera.Parameters.FLASH_MODE_TORCH;
+                    }
+                }
+//                if (targetFps != -1 || imgWidth != -1)
+                preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight, focusMode, flashMode);
             }
 
         } catch (JSONException e) {
