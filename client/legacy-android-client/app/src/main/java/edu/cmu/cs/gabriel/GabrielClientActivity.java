@@ -13,7 +13,6 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
-import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaPlayer;
 import android.hardware.Sensor;
@@ -67,8 +66,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private boolean isFirstExperiment = true;
 
     private CameraPreview preview = null;
-    private Camera mCamera = null;
-    public byte[] reusedBuffer = null;
 
     private SensorManager sensorManager = null;
     private Sensor sensorAcc = null;
@@ -145,11 +142,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         if (Const.SENSOR_VIDEO) {
             preview = (CameraPreview) findViewById(R.id.camera_preview);
-            mCamera = preview.checkCamera();
-            preview.start();
-            mCamera.setPreviewCallbackWithBuffer(previewCallback);
-            reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
-            mCamera.addCallbackBuffer(reusedBuffer);
+            preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
         }
 
         Const.ROOT_DIR.mkdirs();
@@ -271,7 +264,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         resultThread.start();
 
         if (Const.SENSOR_VIDEO) {
-            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera, logicalTime);
+            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
             videoStreamingThread.start();
         }
 
@@ -382,24 +375,17 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     tokenController.reset();
                     if (preview == null) {
                         preview = (CameraPreview) findViewById(R.id.camera_preview);
-                        mCamera = preview.checkCamera();
-                        mCamera.setPreviewCallbackWithBuffer(previewCallback);
-                        reusedBuffer = new byte[1920 * 1080 * 3 / 2]; // 1.5 bytes per pixel
-                        mCamera.addCallbackBuffer(reusedBuffer);
-                        preview.start();
+                        preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
                     }
                     if (videoStreamingThread == null) {
-                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, mCamera, logicalTime);
+                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
                         videoStreamingThread.start();
                     }
                 } else { // turning off
                     Const.SENSOR_VIDEO = false;
                     if (preview != null) {
-                        mCamera.setPreviewCallback(null);
                         preview.close();
-                        reusedBuffer = null;
                         preview = null;
-                        mCamera = null;
                     }
                     if (videoStreamingThread != null) {
                         videoStreamingThread.stopStreaming();
@@ -461,24 +447,23 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
             // Camera configs
             if (preview != null) {
-                int targetFps = -1, imgWidth = -1, imgHeight = -1;
-                String focusMode = Const.FOCUS_MODE;
-                String flashMode = Const.FLASH_MODE;
+                CameraPreview.CameraConfiguration camConfig = CameraPreview.CameraConfiguration.getInstance();
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
-                    targetFps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
+                    camConfig.fps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
-                    imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
+                    camConfig.imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
-                    imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
+                    camConfig.imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)){
                     boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT);
-                    Log.d(LOG_TAG, "flashlighton? " + flashlightOn);
                     if (flashlightOn) {
-                        flashMode = Camera.Parameters.FLASH_MODE_TORCH;
+                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_TORCH;
+                    } else {
+                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_OFF;
                     }
                 }
-//                if (targetFps != -1 || imgWidth != -1)
-                preview.updateCameraConfigurations(targetFps, imgWidth, imgHeight, focusMode, flashMode);
+                preview.close();
+                preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
             }
 
         } catch (JSONException e) {
@@ -629,11 +614,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             tts = null;
         }
         if (preview != null) {
-            mCamera.setPreviewCallback(null);
             preview.close();
-            reusedBuffer = null;
             preview = null;
-            mCamera = null;
         }
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);

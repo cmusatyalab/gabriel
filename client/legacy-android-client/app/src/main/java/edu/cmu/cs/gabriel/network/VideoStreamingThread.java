@@ -37,8 +37,6 @@ public class VideoStreamingThread extends Thread {
 
     private boolean isRunning = false;
 
-    private Camera mCamera = null;
-    
     // image files for experiments (test and compression)
     private File[] imageFiles = null;
     private File[] imageFilesCompress = null;
@@ -64,12 +62,11 @@ public class VideoStreamingThread extends Thread {
     private TokenController tokenController = null;
     private LogicalTime logicalTime = null;
 
-    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, Camera camera, LogicalTime logicalTime) {
+    public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, LogicalTime logicalTime) {
         isRunning = false;
         this.networkHandler = handler;
         this.tokenController = tokenController;
         this.logicalTime = logicalTime;
-        this.mCamera = camera;
 
         try {
             remoteIP = InetAddress.getByName(serverIP);
