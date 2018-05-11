@@ -454,6 +454,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     camConfig.imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
                     camConfig.imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
+                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FOCUS)){
+                    throw new UnsupportedOperationException("FOCUS adjustment is not yet supported, but easy to add. See FLASHLIGHT on how to add support.");
+                }
                 if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)){
                     boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT);
                     if (flashlightOn) {
