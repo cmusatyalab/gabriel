@@ -63,3 +63,5 @@ class Protocol_control(object):
     JSON_KEY_FPS = "fps";
     JSON_KEY_IMG_WIDTH = "img_width";
     JSON_KEY_IMG_HEIGHT = "img_height";
+    JSON_KEY_FOCUS = "focus";
+    JSON_KEY_FLASHLIGHT = "flashlight";
