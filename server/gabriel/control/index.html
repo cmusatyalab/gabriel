@@ -1,7 +1,7 @@
 <HTML>
 
 <head>
-	<script type="text/javascript">
+    <script type="text/javascript">
 
         var synth = window.speechSynthesis;
 
@@ -10,8 +10,8 @@
         var isFirst = true;
 
 
-		function updateValue(){
-			console.log(1);
+        function updateValue() {
+            console.log(1);
 
             if (isFirst) {
                 isFirst = false;
@@ -23,7 +23,7 @@
 
             var textHttp = new XMLHttpRequest();
             try {
-                textHttp.onreadystatechange = function() {
+                textHttp.onreadystatechange = function () {
                     if (textHttp.readyState == 4 && textHttp.status == 200) {
                         if (textHttp.responseText == "" || textHttp.responseText == prevText) {
                             return;
@@ -38,13 +38,13 @@
                 textHttp.open("GET", "speech?d=" + Date.now(), true); // true for asynchronous
                 textHttp.send(null);
 
-            } catch(e){
+            } catch (e) {
                 console.log('catch', e);
             }
 
             var videoHttp = new XMLHttpRequest();
             try {
-                videoHttp.onreadystatechange = function() {
+                videoHttp.onreadystatechange = function () {
                     if (videoHttp.readyState == 4 && videoHttp.status == 200) {
                         if (videoHttp.responseText == "" || videoHttp.responseText == prevVideo) {
                             return;
@@ -59,30 +59,43 @@
                 videoHttp.open("GET", "video?d=" + Date.now(), true); // true for asynchronous
                 videoHttp.send(null);
 
-            } catch(e){
+            } catch (e) {
                 console.log('catch', e);
             }
 
-			setTimeout('updateValue()', 500);
-		}
-	</script>
+            setTimeout('updateValue()', 500);
+        }
+    </script>
 
 </head>
 
 
 <BODY onLoad="updateValue()">
-
-<img id="inputStream" src="" alt="Smiley face" height="480" width="640">
-
-<img id="outputStream" src="" alt="Smiley face" height="480" width="640">
-
-<video id="feedbackVideo" width="640" height="480" autoplay loop>
-  <source src="" type="video/mp4">
-Your browser does not support the video tag.
-</video>
-
-<p id="feedbackText"></p>
-
+<table style="width:100%">
+    <tr>
+        <th>Input</th>
+        <th>Image</th>
+    </tr>
+    <tr>
+        <th><img id="inputStream" src="" alt="Smiley face" height="480" width="640"></th>
+        <th><img id="outputStream" src="" alt="Smiley face" height="480" width="640"></th>
+    </tr>
+    <tr>
+        <th>Video Instruction</th>
+        <th>Audio Instruction</th>
+    </tr>
+    <tr>
+        <td>
+            <video id="feedbackVideo" width="640" height="480" autoplay loop>
+                <source src="" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </td>
+        <td>
+        <h3 id="feedbackText"></h3>
+        </td>
+    </tr>
+</table>
 
 </BODY>
 </HTML>
