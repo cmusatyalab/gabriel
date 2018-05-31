@@ -17,6 +17,8 @@
                 isFirst = false;
                 var inputStream = document.getElementById('inputStream');
                 inputStream.src = "camera.mjpeg"
+                var debugStream = document.getElementById('debugStream');
+                debugStream.src = "debug.mjpeg"
                 var outputStream = document.getElementById('outputStream');
                 outputStream.src = "output.mjpeg"
             }
@@ -71,29 +73,33 @@
 
 
 <BODY onLoad="updateValue()">
-<table style="width:100%">
+<table style="width:100%" border=1 frame=void rules=row>
     <tr>
         <th>Input</th>
-        <th>Image</th>
+        <th>Annotated Image</th>
     </tr>
     <tr>
         <th><img id="inputStream" src="" alt="Smiley face" height="480" width="640"></th>
-        <th><img id="outputStream" src="" alt="Smiley face" height="480" width="640"></th>
+        <th><img id="debugStream" src="" alt="Smiley face" height="480" width="640"></th>
     </tr>
     <tr>
         <th>Video Instruction</th>
+        <th>Image Instruction</th>
         <th>Audio Instruction</th>
     </tr>
     <tr>
-        <td>
+        <th>
             <video id="feedbackVideo" width="640" height="480" autoplay loop>
                 <source src="" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
-        </td>
-        <td>
+        </th>
+        <th>
+            <img id="outputStream" src="" alt="Smiley face" height="480" width="640">
+        </th>
+        <th>
         <h3 id="feedbackText"></h3>
-        </td>
+        </th>
     </tr>
 </table>
 

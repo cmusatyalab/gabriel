@@ -48,7 +48,10 @@ command_queue = multiprocessing.Queue()
 # a global queue used to publish input streams in a web server for debugging purposes
 input_display_queue = multiprocessing.Queue(1)
 # a global queue used to publish output streams in a web server for debugging purposes
-output_display_queue_dict = {'image': multiprocessing.Queue(1), 'text': multiprocessing.Queue(3), 'video': multiprocessing.Queue(3)}
+output_display_queue_dict = {'image': multiprocessing.Queue(1),
+                             'debug': multiprocessing.Queue(1),
+                             'text': multiprocessing.Queue(3),
+                             'video': multiprocessing.Queue(3)}
 
 
 class MobileCommError(Exception):
@@ -347,6 +350,70 @@ class MobileResultHandler(MobileSensorHandler):
     def __repr__(self):
         return "Mobile Result Server"
 
+    @staticmethod
+    def _add_data_to_debug_server(rtn_header_json, rtn_data_json):
+        """Add data to debug server.
+        Debug server accepts 4 types of data: annotated input image with detected object, video instruction,
+        image instruction, and text instruction. It only supports instructions in json format (legacy).
+        """
+        # only the annotated debug image are in the header, everything else are in the data
+        image_encoded = rtn_header_json.get(gabriel.Protocol_debug.JSON_KEY_ANNOTATED_INPUT_IMAGE, None)
+        if image_encoded is not None:
+            image_data = base64.b64decode(image_encoded)
+            if output_display_queue_dict['debug'].full():
+                try:
+                    output_display_queue_dict['debug'].get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                output_display_queue_dict['debug'].put_nowait(image_data)
+            except Queue.Full as e:
+                pass
+
+        # image response
+        image_encoded = rtn_data_json.get('image', None)
+        if image_encoded is not None:
+            image_data = base64.b64decode(image_encoded)
+            if output_display_queue_dict['image'].full():
+                try:
+                    output_display_queue_dict['image'].get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                output_display_queue_dict['image'].put_nowait(image_data)
+            except Queue.Full as e:
+                pass
+
+        # text response
+        text_data = rtn_data_json.get('speech', None)
+        if text_data is not None:
+            if output_display_queue_dict['text'].full():
+                try:
+                    output_display_queue_dict['text'].get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                output_display_queue_dict['text'].put_nowait(text_data)
+            except Queue.Full as e:
+                pass
+
+        # video response
+        video_url = rtn_data_json.get('video', None)
+        if video_url is not None:
+            if output_display_queue_dict['video'].full():
+                try:
+                    output_display_queue_dict['video'].get_nowait()
+                except Queue.Empty as e:
+                    pass
+            try:
+                output_display_queue_dict['video'].put_nowait(video_url)
+            except Queue.Full as e:
+                pass
+
+    @staticmethod
+    def _remove_debug_header_fields(rtn_header_json):
+        rtn_header_json.pop(gabriel.Protocol_debug.JSON_KEY_ANNOTATED_INPUT_IMAGE, None)
+
     def _handle_queue_data(self):
         try:
             (rtn_header, rtn_data) = self.data_queue.get(timeout = 0.0001)
@@ -376,48 +443,13 @@ class MobileResultHandler(MobileSensorHandler):
                             (frame_id, control_recv_from_mobile_time, app_recv_time, symbolic_done_time, app_sent_time, ucomm_recv_time, ucomm_sent_time, now))
 
             if gabriel.Debug.WEB_SERVER:
-                rtn_data_json = json.loads(rtn_data)
+                if gabriel.Const.LEGACY_JSON_ONLY_RESULT:
+                    rtn_data_json = json.loads(rtn_data)
+                    self._add_data_to_debug_server(rtn_header_json, rtn_data_json)
+                else:
+                    raise NotImplementedError("Debug server only support legacy mode!")
 
-                # image response
-                image_encoded = rtn_data_json.get('image', None)
-                if image_encoded is not None:
-                    image_data = base64.b64decode(image_encoded)
-                    if output_display_queue_dict['image'].full():
-                        try:
-                            output_display_queue_dict['image'].get_nowait()
-                        except Queue.Empty as e:
-                            pass
-                    try:
-                        output_display_queue_dict['image'].put_nowait(image_data)
-                    except Queue.Full as e:
-                        pass
-
-                # text response
-                text_data = rtn_data_json.get('speech', None)
-                if text_data is not None:
-                    if output_display_queue_dict['text'].full():
-                        try:
-                            output_display_queue_dict['text'].get_nowait()
-                        except Queue.Empty as e:
-                            pass
-                    try:
-                        output_display_queue_dict['text'].put_nowait(text_data)
-                    except Queue.Full as e:
-                        pass
-
-                # video response
-                video_url = rtn_data_json.get('video', None)
-                if video_url is not None:
-                    if output_display_queue_dict['video'].full():
-                        try:
-                            output_display_queue_dict['video'].get_nowait()
-                        except Queue.Empty as e:
-                            pass
-                    try:
-                        output_display_queue_dict['video'].put_nowait(video_url)
-                    except Queue.Full as e:
-                        pass
-
+            self._remove_debug_header_fields(rtn_header_json)
 
             ## send return data to the mobile device
             # packet format: header size, header, data
