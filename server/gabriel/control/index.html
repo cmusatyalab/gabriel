@@ -17,10 +17,10 @@
                 isFirst = false;
                 var inputStream = document.getElementById('inputStream');
                 inputStream.src = "camera.mjpeg"
+                var debugStream = document.getElementById('debugStream');
+                debugStream.src = "debug.mjpeg"
                 var outputStream = document.getElementById('outputStream');
                 outputStream.src = "output.mjpeg"
-                var debugStream = document.getElementById('debugStream');
-                outputStream.src = "debug.mjpeg"
             }
 
             var textHttp = new XMLHttpRequest();
@@ -73,7 +73,7 @@
 
 
 <BODY onLoad="updateValue()">
-<table style="width:100%">
+<table style="width:100%" border=1 frame=void rules=row>
     <tr>
         <th>Input</th>
         <th>Annotated Image</th>

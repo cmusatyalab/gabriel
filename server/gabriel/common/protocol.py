@@ -67,4 +67,4 @@ class Protocol_control(object):
     JSON_KEY_FLASHLIGHT = "flashlight";
 
 class Protocol_debug(object):
-    JSON_KEY_DEBUG_ANNOTATED_INPUT_IMAGE = "debug_annotated_image"
+    JSON_KEY_ANNOTATED_INPUT_IMAGE = "debug_annotated_image"
