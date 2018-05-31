@@ -48,8 +48,10 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
             if self.path.endswith(".mjpeg"):
                 if self.path.endswith("camera.mjpeg"):
                     data_queue = gabriel.control.input_display_queue
-                else:
+                elif self.path.endswith("output.mjpeg"):
                     data_queue = gabriel.control.output_display_queue_dict['image']
+                elif self.path.endswith("debug.mjpeg"):
+                    data_queue = gabriel.control.output_display_queue_dict['debug']
                 self.send_response(200)
                 self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
                 self.wfile.write("\r\n\r\n")

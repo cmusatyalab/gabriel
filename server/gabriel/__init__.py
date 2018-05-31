@@ -20,6 +20,7 @@
 
 from .common import log as logging
 from .common.config import Const, ServiceMeta, Debug
-from .common.protocol import Protocol_client, Protocol_measurement, Protocol_result, Protocol_control, Protocol_sensor
+from .common.protocol import Protocol_client, Protocol_measurement, Protocol_result, Protocol_control, \
+    Protocol_sensor, Protocol_debug
 from .common import network
 from .common import util

@@ -48,7 +48,10 @@ command_queue = multiprocessing.Queue()
 # a global queue used to publish input streams in a web server for debugging purposes
 input_display_queue = multiprocessing.Queue(1)
 # a global queue used to publish output streams in a web server for debugging purposes
-output_display_queue_dict = {'image': multiprocessing.Queue(1), 'text': multiprocessing.Queue(3), 'video': multiprocessing.Queue(3)}
+output_display_queue_dict = {'image': multiprocessing.Queue(1),
+                             'debug': multiprocessing.Queue(1),
+                             'text': multiprocessing.Queue(3),
+                             'video': multiprocessing.Queue(3)}
 
 
 class MobileCommError(Exception):
@@ -378,6 +381,22 @@ class MobileResultHandler(MobileSensorHandler):
             if gabriel.Debug.WEB_SERVER:
                 rtn_data_json = json.loads(rtn_data)
 
+                # only the debug image are in the header, everything else are in the data
+                # unnecessary header are removed
+                # annotated debug image
+                image_encoded = rtn_header_json.get(gabriel.Protocol_debug.JSON_KEY_DEBUG_ANNOTATED_INPUT_IMAGE, None)
+                if image_encoded is not None:
+                    image_data = base64.b64decode(image_encoded)
+                    if output_display_queue_dict['debug'].full():
+                        try:
+                            output_display_queue_dict['debug'].get_nowait()
+                        except Queue.Empty as e:
+                            pass
+                    try:
+                        output_display_queue_dict['debug'].put_nowait(image_data)
+                    except Queue.Full as e:
+                        pass
+
                 # image response
                 image_encoded = rtn_data_json.get('image', None)
                 if image_encoded is not None:
@@ -418,6 +437,8 @@ class MobileResultHandler(MobileSensorHandler):
                     except Queue.Full as e:
                         pass
 
+            # remove debug data if there is any
+            rtn_header_json.pop(gabriel.Protocol_debug.JSON_KEY_DEBUG_ANNOTATED_INPUT_IMAGE, None)
 
             ## send return data to the mobile device
             # packet format: header size, header, data
