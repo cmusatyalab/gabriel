@@ -6,7 +6,7 @@
 
     <uses-sdk
         android:minSdkVersion="15"
-        android:targetSdkVersion="19" />
+        android:targetSdkVersion="23" />
     
     <uses-feature android:name="android.hardware.camera" />
 
@@ -19,26 +19,29 @@
     
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme"
         android:largeHeap="true">
         <service
             android:name=".util.ResourceMonitoringService" />
         <activity
+            android:name="edu.cmu.cs.gabriel.ServerListActivity"
+            android:label="@string/title_activity_main"
+            android:screenOrientation="sensor"
+            android:theme="@style/MyGabrielMaterialTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name="edu.cmu.cs.gabriel.GabrielClientActivity"  
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:label="@string/title_activity_main" >
             
-            <!-- Enable this intent-filter for regular Android Application
-            -->  
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            
-            
+
             <!-- Enable below for Google Glass     
             -->
             <intent-filter>

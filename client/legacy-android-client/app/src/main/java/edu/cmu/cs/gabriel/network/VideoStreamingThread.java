@@ -48,6 +48,7 @@ public class VideoStreamingThread extends Thread {
 
     // TCP connection
     private InetAddress remoteIP;
+    private String serverAddress;
     private int remotePort;
     private Socket tcpSocket = null;
     private DataOutputStream networkWriter = null;
@@ -67,12 +68,7 @@ public class VideoStreamingThread extends Thread {
         this.networkHandler = handler;
         this.tokenController = tokenController;
         this.logicalTime = logicalTime;
-
-        try {
-            remoteIP = InetAddress.getByName(serverIP);
-        } catch (UnknownHostException e) {
-            Log.e(LOG_TAG, "unknown host: " + e.getMessage());
-        }
+        serverAddress = serverIP;
         remotePort = port;
 
         if (Const.LOAD_IMAGES) {
@@ -129,7 +125,11 @@ public class VideoStreamingThread extends Thread {
     public void run() {
         this.isRunning = true;
         Log.i(LOG_TAG, "Video streaming thread running");
-
+        try {
+            remoteIP = InetAddress.getByName(serverAddress);
+        } catch (UnknownHostException e) {
+            Log.e(LOG_TAG, "unknown host: " + e.getMessage());
+        }
         // initialization of the TCP connection
         try {
             tcpSocket = new Socket();

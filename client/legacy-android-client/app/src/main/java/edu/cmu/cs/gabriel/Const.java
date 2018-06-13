@@ -24,6 +24,8 @@ public class Const {
     // whether to use real-time captured audio or load audio data from files for testing
     public static final boolean LOAD_AUDIO = false;
 
+    public static boolean SHOW_SUBTITLES = false;
+
     // high level sensor control (on/off)
     public static boolean SENSOR_VIDEO = true;
     public static boolean SENSOR_ACC = false;
@@ -52,7 +54,7 @@ public class Const {
     public static final int CONTROL_PORT = 22222;
 
     // the app name
-    public static final String APP_NAME = "none";
+    public static final String APP_NAME = "sandwich";
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
@@ -81,7 +83,7 @@ public class Const {
 
     /************************ Demo mode only *************************************/
     // server IP
-    public static final String SERVER_IP = "128.237.192.28";  // Cloudlet
+    public static String SERVER_IP = "128.2.211.191";  // Cloudlet
 
     // token size
     public static final int TOKEN_SIZE = 1;

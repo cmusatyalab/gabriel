@@ -10,6 +10,7 @@ import java.util.TimerTask;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
@@ -32,6 +33,7 @@ import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.MediaController;
 import android.widget.VideoView;
+import android.widget.TextView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -81,6 +83,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     // views
     private ImageView imgView = null;
     private VideoView videoView = null;
+    private TextView subtitleView = null;
 
     // audio
     private AudioRecord audioRecorder = null;
@@ -99,6 +102,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         imgView = (ImageView) findViewById(R.id.guidance_image);
         videoView = (VideoView) findViewById(R.id.guidance_video);
+        if(Const.SHOW_SUBTITLES){
+            findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
+        }
     }
 
     @Override
@@ -119,6 +125,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             serverIP = Const.SERVER_IP;
             initPerRun(serverIP, Const.TOKEN_SIZE, null);
         }
+
     }
 
     @Override
@@ -511,6 +518,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         tts.speak(splitMSGs[splitMSGs.length - 1].toString().trim(),TextToSpeech.QUEUE_ADD, map); // the last sentence
                     }
                 }
+                subtitleView = (TextView) findViewById(R.id.subtitleText);
+                subtitleView.setText(ttsMessage);
             }
             if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE || msg.what == NetworkProtocol.NETWORK_RET_ANIMATION) {
                 Bitmap feedbackImg = (Bitmap) msg.obj;

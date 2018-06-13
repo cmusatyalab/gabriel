@@ -1,10 +1,9 @@
-Gabriel: Platform for Wearable Cognitive Assistance Applications [![PyPI](https://img.shields.io/pypi/v/elijah-gabriel.svg)](https://pypi.org/project/elijah-gabriel/) [![Docker Build Status](https://img.shields.io/docker/build/jamesjue/gabriel.svg)](https://hub.docker.com/r/jamesjue/gabriel) [![Docker Pulls](https://img.shields.io/docker/pulls/jamesjue/gabriel.svg)](https://hub.docker.com/r/jamesjue/gabriel/)
+Gabriel: Platform for Wearable Cognitive Assistance Applications [![PyPI](https://img.shields.io/pypi/v/elijah-gabriel.svg)](https://pypi.org/project/elijah-gabriel/) [![Docker Build Status](https://img.shields.io/docker/build/cmusatyalab/gabriel.svg)](https://hub.docker.com/r/cmusatyalab/gabriel) [![Docker Pulls](https://img.shields.io/docker/pulls/cmusatyalab/gabriel.svg)](https://hub.docker.com/r/cmusatyalab/gabriel/)
 ========================================================
-Copyright (C) 2013-2014 Carnegie Mellon University
+Copyright (C) 2013-2018 Carnegie Mellon University
+
 This is a developing project and some features might not be stable yet.
 Please visit our website at [Elijah page](http://elijah.cs.cmu.edu/).
-
-
 
 License
 ----------
@@ -17,10 +16,18 @@ A copy of this license is reproduced in the [LICENSE](LICENSE) file.
 
 Applications
 ------------
-We have built several applications on top of Gabriel with different wearable devices, including Google Glass and Microsoft HoloLens. Video demos for some of them can be found at http://goo.gl/02m0nL.
+We have built several applications on top of Gabriel with different wearable devices, including Google Glass, ODG R-7,  and Microsoft HoloLens.
+Video demos for some of them can be found at http://goo.gl/02m0nL.
+
+Source Code
+* [Sandwich](https://github.com/cmusatyalab/gabriel-sandwich)
+* [Ikea](https://github.com/cmusatyalab/gabriel-ikea)
+* [Lego](https://github.com/cmusatyalab/gabriel-lego)
+
+[Docker Images](https://hub.docker.com/r/cmusatyalab/) for each of the application backends.
 
 
-Installation - Gabriel System
+Installation from Source - Gabriel System
 -------------
 
 Ensure the `python` executable on your PATH is Python 2

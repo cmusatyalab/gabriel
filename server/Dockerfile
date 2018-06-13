@@ -1,5 +1,5 @@
-FROM ubuntu:xenial
-MAINTAINER Junjue Wang, junjuew@cs.cmu.edu
+FROM nvidia/cuda:8.0-cudnn5-devel
+MAINTAINER Satyalab, satya-group@lists.andrew.cmu.edu
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -20,6 +20,7 @@ RUN apt-get install -y \
     python-psutil \
     python-setuptools \
     python-opencv \
+    python-matplotlib \
     git
 
 RUN pip install -U pip
