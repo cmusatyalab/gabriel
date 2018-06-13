@@ -53,9 +53,6 @@
                 android:name="com.google.android.glass.VoiceTrigger"
                 android:resource="@xml/gabriel_start" />
         </activity>
-        <activity
-            android:name="edu.cmu.cs.gabrielclient.SettingsActivity">
-        </activity>
     </application>
 
 </manifest>
