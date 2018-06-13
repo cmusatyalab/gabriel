@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="edu.cmu.cs.gabriel"
+    package="edu.cmu.cs.gabrielclient"
     android:versionCode="1"
     android:versionName="1.0" >
 
@@ -26,7 +26,7 @@
         <service
             android:name=".util.ResourceMonitoringService" />
         <activity
-            android:name="edu.cmu.cs.gabriel.ServerListActivity"
+            android:name=".ServerListActivity"
             android:label="@string/title_activity_main"
             android:screenOrientation="sensor"
             android:theme="@style/MyGabrielMaterialTheme">
@@ -36,7 +36,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name="edu.cmu.cs.gabriel.GabrielClientActivity"  
+            android:name=".GabrielClientActivity"
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:label="@string/title_activity_main" >
@@ -54,7 +54,7 @@
                 android:resource="@xml/gabriel_start" />
         </activity>
         <activity
-            android:name="edu.cmu.cs.gabriel.SettingsActivity">
+            android:name="edu.cmu.cs.gabrielclient.SettingsActivity">
         </activity>
     </application>
 

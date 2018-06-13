@@ -1,19 +1,16 @@
-package edu.cmu.cs.gabriel.util;
+package edu.cmu.cs.gabrielclient.util;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 
 import android.app.IntentService;
 import android.content.Intent;
-import android.os.Environment;
-import android.os.Handler;
 import android.util.Log;
 
-import edu.cmu.cs.gabriel.Const;
+import edu.cmu.cs.gabrielclient.Const;
 
 public class ResourceMonitoringService extends IntentService {
 

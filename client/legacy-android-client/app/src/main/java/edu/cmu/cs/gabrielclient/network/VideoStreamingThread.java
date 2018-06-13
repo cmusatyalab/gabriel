@@ -1,7 +1,6 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -14,22 +13,18 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
-import android.hardware.Camera;
 import android.hardware.Camera.Parameters;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
+import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class VideoStreamingThread extends Thread {
 

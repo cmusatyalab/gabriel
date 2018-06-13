@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package edu.cmu.cs.gabriel;
+package edu.cmu.cs.gabrielclient;
 
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
@@ -32,10 +32,8 @@ import android.support.v7.widget.Toolbar;
 import android.os.Bundle;
 import android.util.Patterns;
 import android.Manifest;
-import android.content.pm.PackageManager;
 import android.os.Build;
 import android.support.v4.app.ActivityCompat;
-import android.util.Log;
 import android.content.Context;
 import android.hardware.camera2.CameraManager;
 
@@ -43,8 +41,6 @@ import java.util.ArrayList;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.Map;
-
-import edu.cmu.cs.gabriel.Const;
 
 
 public class ServerListActivity extends AppCompatActivity  {

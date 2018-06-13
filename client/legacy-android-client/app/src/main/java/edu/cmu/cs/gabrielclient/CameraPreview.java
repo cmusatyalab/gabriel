@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel;
+package edu.cmu.cs.gabrielclient;
 
 import java.io.IOException;
 import java.util.ArrayList;

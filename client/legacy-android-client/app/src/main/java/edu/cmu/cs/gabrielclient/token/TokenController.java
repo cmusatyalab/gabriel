@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.token;
+package edu.cmu.cs.gabrielclient.token;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -8,8 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.network.NetworkProtocol;
+import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
 
 public class TokenController {
     private static final String LOG_TAG = "TokenController";

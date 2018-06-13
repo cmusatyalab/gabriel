@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import android.util.Pair;
 
@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import edu.cmu.cs.gabriel.Const;
+import edu.cmu.cs.gabrielclient.Const;
 
 public class LogicalTime {
     public AtomicInteger imageTime; // in # of frames

@@ -1,5 +1,5 @@
 
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -21,7 +21,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Base64;
 import android.util.Log;
-import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
+import edu.cmu.cs.gabrielclient.token.ReceivedPacketInfo;
 
 public class ResultReceivingThread extends Thread {
 

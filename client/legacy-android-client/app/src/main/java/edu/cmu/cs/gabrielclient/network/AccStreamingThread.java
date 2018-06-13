@@ -1,11 +1,8 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -15,10 +12,9 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Vector;
 
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
+import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.token.TokenController;
 
-import android.hardware.Camera.Size;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;

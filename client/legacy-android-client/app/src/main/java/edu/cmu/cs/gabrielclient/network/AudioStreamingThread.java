@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,10 +15,9 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Arrays;
-import java.util.Vector;
 
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
+import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class AudioStreamingThread extends Thread {
     private static final String LOG_TAG = "AudioStreaming";

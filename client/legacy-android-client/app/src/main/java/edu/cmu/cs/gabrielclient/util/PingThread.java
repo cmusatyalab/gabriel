@@ -1,13 +1,11 @@
-package edu.cmu.cs.gabriel.util;
+package edu.cmu.cs.gabrielclient.util;
 
 import android.util.Log;
-import edu.cmu.cs.gabriel.Const;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.InetAddress;
 
 /**
  * Created by junjuew on 5/14/16.

@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.token;
+package edu.cmu.cs.gabrielclient.token;
 
 public class ReceivedPacketInfo {
     public long frameID;

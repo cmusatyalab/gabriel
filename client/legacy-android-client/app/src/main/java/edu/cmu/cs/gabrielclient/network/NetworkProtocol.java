@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 public class NetworkProtocol {
     // TODO: give better names to these constants

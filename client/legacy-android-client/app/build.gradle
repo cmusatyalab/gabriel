@@ -5,7 +5,7 @@ android {
     // buildToolsVersion "25.0.2"
 
     defaultConfig {
-        applicationId "edu.cmu.cs.gabriel"
+        applicationId "edu.cmu.cs.gabrielclient"
         minSdkVersion 15
         targetSdkVersion 23
     }

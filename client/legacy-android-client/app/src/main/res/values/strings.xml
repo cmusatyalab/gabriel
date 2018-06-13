@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="app_name" translatable="false">GabrielConfig</string>
-    <string name="title_activity_main" translatable="false">GabrielConfig</string>
+    <string name="app_name" translatable="false">Gabriel Client</string>
+    <string name="title_activity_main" translatable="false">Gabriel Client</string>
     <string name="subtitle" translatable="false">Wearable Cognitive Assistance</string>
 
     <!-- activity_serverlist.xml -->

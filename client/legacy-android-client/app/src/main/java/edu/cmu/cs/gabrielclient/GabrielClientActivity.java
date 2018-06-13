@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel;
+package edu.cmu.cs.gabrielclient;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -10,7 +10,6 @@ import java.util.TimerTask;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
@@ -38,17 +37,17 @@ import android.widget.TextView;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import edu.cmu.cs.gabriel.network.AccStreamingThread;
-import edu.cmu.cs.gabriel.network.AudioStreamingThread;
-import edu.cmu.cs.gabriel.network.ControlThread;
-import edu.cmu.cs.gabriel.network.LogicalTime;
-import edu.cmu.cs.gabriel.network.NetworkProtocol;
-import edu.cmu.cs.gabriel.util.PingThread;
-import edu.cmu.cs.gabriel.network.ResultReceivingThread;
-import edu.cmu.cs.gabriel.network.VideoStreamingThread;
-import edu.cmu.cs.gabriel.token.ReceivedPacketInfo;
-import edu.cmu.cs.gabriel.token.TokenController;
-import edu.cmu.cs.gabriel.util.ResourceMonitoringService;
+import edu.cmu.cs.gabrielclient.network.AccStreamingThread;
+import edu.cmu.cs.gabrielclient.network.AudioStreamingThread;
+import edu.cmu.cs.gabrielclient.network.ControlThread;
+import edu.cmu.cs.gabrielclient.network.LogicalTime;
+import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
+import edu.cmu.cs.gabrielclient.util.PingThread;
+import edu.cmu.cs.gabrielclient.network.ResultReceivingThread;
+import edu.cmu.cs.gabrielclient.network.VideoStreamingThread;
+import edu.cmu.cs.gabrielclient.token.ReceivedPacketInfo;
+import edu.cmu.cs.gabrielclient.token.TokenController;
+import edu.cmu.cs.gabrielclient.util.ResourceMonitoringService;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener{
 

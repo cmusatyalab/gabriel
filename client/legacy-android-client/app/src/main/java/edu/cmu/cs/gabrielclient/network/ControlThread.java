@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -20,8 +20,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-import edu.cmu.cs.gabriel.Const;
-import edu.cmu.cs.gabriel.token.TokenController;
+import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class ControlThread extends Thread {
 

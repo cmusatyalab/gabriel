@@ -1,5 +1,5 @@
 
-package edu.cmu.cs.gabriel.network;
+package edu.cmu.cs.gabrielclient.network;
 
 import java.io.DataInputStream;
 
