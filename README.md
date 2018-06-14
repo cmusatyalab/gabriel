@@ -24,8 +24,12 @@ Source Code
 * [Ikea](https://github.com/cmusatyalab/gabriel-ikea)
 * [Lego](https://github.com/cmusatyalab/gabriel-lego)
 
-[Docker Images](https://hub.docker.com/r/cmusatyalab/) for each of the application backends.
+Docker Images for each of the application backends are available from our [Docker Hub](https://hub.docker.com/r/cmusatyalab/) page.
 
+An Android client is available on the Google PlayStore 
+
+<a href='https://play.google.com/store/apps/details?id=edu.cmu.cs.gabrielclient'><img height='125px' width='323px' alt='Get it on Google Play' src='https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png'/></a>
+Google Play and the Google Play logo are trademarks of Google LLC.
 
 Installation from Source - Gabriel System
 -------------
