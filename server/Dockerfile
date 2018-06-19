@@ -37,7 +37,7 @@ RUN apt-get autoremove \
 
 WORKDIR /
 
-EXPOSE 9098 9111 7070
+EXPOSE 9098 9111 7070 22222
 
 # Define default command.
-CMD ["bash", "-c", "gabriel-control -n eth0 & sleep 5; gabriel-ucomm -s 127.0.0.1:8021 & sleep 5; cd /gabriel/server/bin/example-proxies/gabriel-proxy-http-display && python proxy.py -s 127.0.0.1:8021"]
+CMD ["bash", "-c", "gabriel-control -d -n eth0 & sleep 5; gabriel-ucomm -s 127.0.0.1:8021 & sleep 5; cd /gabriel/server/bin/example-proxies/gabriel-proxy-http-display && python proxy.py -s 127.0.0.1:8021"]
