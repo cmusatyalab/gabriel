@@ -19,6 +19,8 @@
     <string name="server_removed">Removed server: </string>
     <string name="server_add_hovertext">Add Server</string>
     <string name="connecting_toast">Connecting to Gabriel server&#8230;</string>
+    <string name="connection_error">Connection Error</string>
+    <string name="back_button">Go Back</string>
 
     <string name="about_menu">About&#8230;</string>
     <string name="about_title" translatable="false">Gabriel - a platform for wearable cognitive assistance</string>
