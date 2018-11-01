@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -204,6 +205,17 @@ public class VideoStreamingThread extends Thread {
         this.isRunning = false;
     }
 
+    private void writeByteArray(ByteArrayOutputStream tmpBuffer, File toFile) throws FileNotFoundException{
+        FileOutputStream fos = new FileOutputStream(toFile);
+        try {
+            fos.write(tmpBuffer.toByteArray());
+            fos.close();
+        } catch (IOException e){
+            Log.v(LOG_TAG, "Cannot save byte array. IO exception");
+            Log.v(LOG_TAG, e.toString());
+        }
+    }
+
     /**
      * Called whenever a new frame is generated
      * Puts the new frame into the @frameBuffer
@@ -221,6 +233,17 @@ public class VideoStreamingThread extends Thread {
                 image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 67, tmpBuffer);
                 this.frameBuffer = tmpBuffer.toByteArray();
                 this.frameID++;
+                if (Const.SAVE_FRAME_SEQUENCE){
+                    try {
+                        File outputJpegFile =
+                                new File(Const.SAVE_FRAME_SEQUENCE_DIR,
+                                        String.format("%010d", this.frameID) + ".jpg");
+                        writeByteArray(tmpBuffer, outputJpegFile);
+                        Log.v(LOG_TAG, "save image to file" + outputJpegFile.getAbsolutePath());
+                    } catch (FileNotFoundException e){
+                        Log.v(LOG_TAG, "Unable to save frame sequence. File path not found");
+                    }
+                }
                 frameLock.notify();
             }
         } else { // use pre-captured images

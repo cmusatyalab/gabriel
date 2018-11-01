@@ -106,6 +106,9 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if(Const.SHOW_SUBTITLES){
             findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
         }
+        if (Const.SAVE_FRAME_SEQUENCE){
+            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
+        }
     }
 
     @Override

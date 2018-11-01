@@ -88,6 +88,11 @@ public class Const {
     // token size
     public static final int TOKEN_SIZE = 1;
 
+    // whether to save the camera feed as frame sequence
+    public static final boolean SAVE_FRAME_SEQUENCE = false;
+    public static final File SAVE_FRAME_SEQUENCE_DIR = new File (ROOT_DIR.getAbsolutePath() +
+            File.separator + "saved-frame-sequence" + File.separator);
+
     /************************ Experiment mode only *******************************/
     // server IP list
     public static final String[] SERVER_IP_LIST = {
