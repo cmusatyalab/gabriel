@@ -76,6 +76,9 @@ public class Const {
     public static final boolean BACKGROUND_PING = false;
     public static final int PING_INTERVAL = 20;
 
+    // whether to monitor system resources
+    public static final boolean MONITOR_RESOURCE =false;
+
     // audio configurations
     public static final int RECORDER_SAMPLERATE = 16000;
     public static final int RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_MONO;
@@ -111,7 +114,10 @@ public class Const {
             File.separator + "images-" + APP_NAME + "-compress" + File.separator);
     // the maximum allowed compress images to load
     public static final int MAX_COMPRESS_IMAGE = 3;
-    
+
+    // whether to send every single frame in the directory by bypassing token
+    public static final boolean BYPASS_TOKEN = true;
+
     // result file
     public static final File EXP_DIR = new File(ROOT_DIR.getAbsolutePath() + File.separator + "exp");
 
