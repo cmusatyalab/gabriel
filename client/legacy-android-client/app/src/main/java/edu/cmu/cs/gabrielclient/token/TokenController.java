@@ -25,7 +25,7 @@ public class TokenController {
     private FileWriter fileWriter = null;
 
     // timestamp when the last ACK was received
-    private long prevRecvFrameID = 0;
+    private long prevRecvFrameID = -1;
 
     public TokenController(int tokenSize, File resultSavingPath) {
         this.currentToken = tokenSize;
@@ -41,7 +41,7 @@ public class TokenController {
 
     public void reset() {
         this.currentToken = Const.TOKEN_SIZE;
-        this.prevRecvFrameID = 0;
+        this.prevRecvFrameID = -1;
         this.sentPackets.clear();
     }
 
@@ -85,7 +85,10 @@ public class TokenController {
                         increaseCount++;
                     }
                 }
-                increaseTokens(increaseCount);
+
+                // TODO(junjuew): not sure why need to increase these tokens here since frame
+                // comes back in order. The token controller right now does not set a upper limit.
+                // increaseTokens(increaseCount);
 
                 // deal with the current response
                 SentPacketInfo sentPacket = sentPackets.get(recvFrameID);
@@ -102,6 +105,7 @@ public class TokenController {
                                     receivedPacket.msgRecvTime + "\t" + receivedPacket.guidanceDoneTime + "\t" +
                                     receivedPacket.status;
                             fileWriter.write(log + "\n");
+                            fileWriter.flush();
                         } catch (IOException e) {}
                     }
                 }

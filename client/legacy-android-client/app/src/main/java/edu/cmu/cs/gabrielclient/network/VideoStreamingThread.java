@@ -52,6 +52,7 @@ public class VideoStreamingThread extends Thread {
 
     // frame data shared between threads
     private long frameID = 0;
+    private long lastSentFrameID = 0;
     private byte[] frameBuffer = null;
     private Object frameLock = new Object();
 
@@ -149,6 +150,7 @@ public class VideoStreamingThread extends Thread {
                     continue;
                 }
 
+                Log.d(LOG_TAG, "token size: " + this.tokenController.getCurrentToken());
                 /*
                  * Stream data to the server.
                  */
@@ -156,7 +158,6 @@ public class VideoStreamingThread extends Thread {
                 byte[] data = null;
                 long dataTime = 0;
                 long compressedTime = 0;
-                long sendingFrameID = 0;
                 synchronized(frameLock){
                     while (this.frameBuffer == null){
                         try {
@@ -166,6 +167,9 @@ public class VideoStreamingThread extends Thread {
                     data = this.frameBuffer;
                     dataTime = System.currentTimeMillis();
 
+                    // TODO(junjuew) The reason here is measuring compression time of a few images
+                    // is because compression happens before token control discard. This seems to be
+                    // here in the first gabriel 2014 version. Need to update.
                     if (Const.IS_EXPERIMENT) { // compress pre-loaded file in experiment mode
                         long tStartCompressing = System.currentTimeMillis();
                         ByteArrayOutputStream bufferNoUse = new ByteArrayOutputStream();
@@ -175,22 +179,23 @@ public class VideoStreamingThread extends Thread {
                         compressedTime = System.currentTimeMillis();
                     }
 
-                    sendingFrameID = this.frameID;
-                    Log.v(LOG_TAG, "sending:" + sendingFrameID);
+                    lastSentFrameID = this.frameID;
+                    Log.v(LOG_TAG, "sending:" + lastSentFrameID);
                     this.frameBuffer = null;
                 }
 
                 // make it as a single packet
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 DataOutputStream dos = new DataOutputStream(baos);
-                byte[] header = ("{\"" + NetworkProtocol.HEADER_MESSAGE_FRAME_ID + "\":" + sendingFrameID + "}").getBytes();
+                byte[] header = ("{\"" + NetworkProtocol.HEADER_MESSAGE_FRAME_ID + "\":" + lastSentFrameID +
+                        "}").getBytes();
                 dos.writeInt(header.length);
                 dos.write(header);
                 dos.writeInt(data.length);
                 dos.write(data);
 
                 // send packet and consume tokens
-                this.tokenController.logSentPacket(sendingFrameID, dataTime, compressedTime);
+                this.tokenController.logSentPacket(lastSentFrameID, dataTime, compressedTime);
                 this.tokenController.decreaseToken();
                 networkWriter.write(baos.toByteArray());
                 networkWriter.flush();
@@ -223,7 +228,7 @@ public class VideoStreamingThread extends Thread {
     public void push(byte[] frame, Parameters parameters) {
         Log.v(LOG_TAG, "push");
         
-        if (!Const.LOAD_IMAGES){ // use real-time captured images
+        if (!Const.LOAD_IMAGES) { // use real-time captured images
             synchronized (frameLock) {
                 Size cameraImageSize = parameters.getPreviewSize();
                 YuvImage image = new YuvImage(frame, parameters.getPreviewFormat(), cameraImageSize.width,
@@ -233,18 +238,40 @@ public class VideoStreamingThread extends Thread {
                 image.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 67, tmpBuffer);
                 this.frameBuffer = tmpBuffer.toByteArray();
                 this.frameID++;
-                if (Const.SAVE_FRAME_SEQUENCE){
+                if (Const.SAVE_FRAME_SEQUENCE) {
                     try {
                         File outputJpegFile =
                                 new File(Const.SAVE_FRAME_SEQUENCE_DIR,
                                         String.format("%010d", this.frameID) + ".jpg");
                         writeByteArray(tmpBuffer, outputJpegFile);
                         Log.v(LOG_TAG, "save image to file" + outputJpegFile.getAbsolutePath());
-                    } catch (FileNotFoundException e){
+                    } catch (FileNotFoundException e) {
                         Log.v(LOG_TAG, "Unable to save frame sequence. File path not found");
                     }
                 }
                 frameLock.notify();
+            }
+        } else if (Const.BYPASS_TOKEN) {
+            synchronized (frameLock) {
+                if (this.frameID < this.imageFiles.length) {
+                    // only advance to the next frame if current frame is sent
+                    if (this.frameID == lastSentFrameID) {
+                        try {
+                            indexImageFile = ((int) this.frameID);
+                            int dataSize = (int) this.imageFiles[indexImageFile].length();
+                            FileInputStream fi = new FileInputStream(this.imageFiles[indexImageFile]);
+                            byte[] buffer = new byte[dataSize];
+                            fi.read(buffer, 0, dataSize);
+                            this.frameBuffer = buffer;
+                            this.frameID += 1;
+                            frameLock.notify();
+                        } catch (FileNotFoundException e) {
+                            Log.e(LOG_TAG, e.toString());
+                        } catch (IOException e) {
+                            Log.e(LOG_TAG, e.toString());
+                        }
+                    }
+                }
             }
         } else { // use pre-captured images
             try {

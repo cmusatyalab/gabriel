@@ -106,9 +106,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         if(Const.SHOW_SUBTITLES){
             findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
         }
-        if (Const.SAVE_FRAME_SEQUENCE){
-            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
-        }
     }
 
     @Override
@@ -159,6 +156,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         Const.ROOT_DIR.mkdirs();
         Const.EXP_DIR.mkdirs();
 
+        if (Const.SAVE_FRAME_SEQUENCE){
+            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
+        }
+
         // TextToSpeech.OnInitListener
         if (tts == null) {
             tts = new TextToSpeech(this, this);
@@ -185,7 +186,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         }
 
-        startResourceMonitoring();
+        // Monitor mobile resources (CPU and power)
+        if (Const.MONITOR_RESOURCE){
+            startResourceMonitoring();
+        }
 
         isRunning = true;
     }
@@ -325,6 +329,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         // run the experiment
                         initPerRun(serverIP, tokenSize, latencyFile);
 
+                        Log.i(LOG_TAG, "Initialized a new experiment");
+
                         // move to the next experiment
                         tokenIndex++;
                         if (tokenIndex == Const.TOKEN_SIZE_LIST.length){
@@ -337,7 +343,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         };
 
         // run 5 minutes for each experiment
-        startTimer.schedule(autoStart, 1000, 5*60*1000);
+        // startTimer.schedule(autoStart, 1000, 5*60*1000);
+        startTimer.schedule(autoStart, 1000);
     }
 
     private PreviewCallback previewCallback = new PreviewCallback() {

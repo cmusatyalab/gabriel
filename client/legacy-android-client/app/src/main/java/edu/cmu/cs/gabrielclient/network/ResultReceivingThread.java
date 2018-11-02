@@ -80,6 +80,7 @@ public class ResultReceivingThread extends Thread {
             try {
                 String recvMsg = this.receiveMsg(networkReader);
                 this.notifyReceivedData(recvMsg);
+
             } catch (IOException e) {
                 Log.w(LOG_TAG, "Error in receiving result, maybe because the app has paused");
                 this.notifyError(e.getMessage());
@@ -130,6 +131,7 @@ public class ResultReceivingThread extends Thread {
             return;
         }
 
+        Log.v(LOG_TAG, "result received: " + frameID);
 
         // return status
         if (sensorType.equals(NetworkProtocol.SENSOR_JPEG)) {
@@ -143,6 +145,7 @@ public class ResultReceivingThread extends Thread {
             if (sensorType.equals(NetworkProtocol.SENSOR_JPEG)) {
                 Message msg = Message.obtain();
                 msg.what = NetworkProtocol.NETWORK_RET_DONE;
+                msg.obj = new ReceivedPacketInfo(frameID, engineID, status);
                 this.returnMsgHandler.sendMessage(msg);
             }
             return;
