@@ -310,9 +310,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                     public void run() {
                         // end condition
                         if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST.length)) {
-                            Log.d(LOG_TAG, "Finish all experiemets");
+                            Log.i(LOG_TAG, "Finish all experiemets");
 
-                            initPerRun(null, 0, null); // just to get another set of ping results
+                            // initPerRun(null, 0, null); // just to get another set of ping
+                            // results
 
                             startTimer.cancel();
                             terminate();

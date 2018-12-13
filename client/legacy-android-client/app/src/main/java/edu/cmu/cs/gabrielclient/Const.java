@@ -15,10 +15,10 @@ public class Const {
     public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = false;
+    public static final boolean IS_EXPERIMENT = true;
 
     // whether to use real-time captured images or load images from files for testing
-    public static final boolean LOAD_IMAGES = false;
+    public static final boolean LOAD_IMAGES = true;
     // whether to use real-time sensed ACC values or load data from files for testing
     public static final boolean LOAD_ACC = false;
     // whether to use real-time captured audio or load audio data from files for testing
@@ -42,7 +42,7 @@ public class Const {
     public static int CAPTURE_FPS = 15;
     // options: 320x180, 640x360, 1280x720, 1920x1080
     public static int IMAGE_WIDTH = 640;
-    public static int IMAGE_HEIGHT = 360;
+    public static int IMAGE_HEIGHT = 480;
     public static String FOCUS_MODE = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
     public static String FLASH_MODE = null;
     
@@ -54,7 +54,7 @@ public class Const {
     public static final int CONTROL_PORT = 22222;
 
     // the app name
-    public static final String APP_NAME = "sandwich";
+    public static final String APP_NAME = "lego";
 
     // load images (JPEG) from files and pretend they are just captured by the camera
     public static final File TEST_IMAGE_DIR = new File (ROOT_DIR.getAbsolutePath() +
@@ -86,7 +86,7 @@ public class Const {
 
     /************************ Demo mode only *************************************/
     // server IP
-    public static String SERVER_IP = "128.2.211.191";  // Cloudlet
+    public static String SERVER_IP = "128.2.211.75";  // Cloudlet
 
     // token size
     public static final int TOKEN_SIZE = 1;
@@ -99,7 +99,7 @@ public class Const {
     /************************ Experiment mode only *******************************/
     // server IP list
     public static final String[] SERVER_IP_LIST = {
-            "128.237.192.28",
+            "128.2.211.75"
             };
 
     // token size list

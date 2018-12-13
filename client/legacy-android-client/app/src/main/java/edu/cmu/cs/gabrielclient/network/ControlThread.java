@@ -82,8 +82,8 @@ public class ControlThread extends Thread {
         try {
             tcpSocket = new Socket();
             tcpSocket.setTcpNoDelay(true);
-            tcpSocket.setSoTimeout(500);
-            tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);
+            tcpSocket.setSoTimeout(0);
+            tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 0);
             networkWriter = new DataOutputStream(tcpSocket.getOutputStream());
             networkReader = new DataInputStream(tcpSocket.getInputStream());
         } catch (IOException e) {
