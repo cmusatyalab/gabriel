@@ -15,6 +15,7 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
+import edu.cmu.cs.gabrielclient.token.TokenController;
 
 /**
  * A generic streaming thread
@@ -38,17 +39,21 @@ public class StreamingThread extends Thread {
     private long lastSentDataID = 0;
     private byte[] dataBuffer = null;
 
+    // auxiliary objects to communicate with caller
+    // and rate control
     private Handler callerHandler = null;
+    private TokenController tc = null;
 
     public StreamingThread(SensorStreamIF.SensorStreamConfig config) {
-        this(config.serverIP, config.serverPort, config.returnMsgHandler);
+        this(config.serverIP, config.serverPort, config.returnMsgHandler, config.tc);
     }
 
-    public StreamingThread(String serverIP, int port, Handler handler){
+    public StreamingThread(String serverIP, int port, Handler handler, TokenController tc) {
         isRunning = false;
         this.callerHandler = handler;
-        serverAddress = serverIP;
-        remotePort = port;
+        this.tc = tc;
+        this.serverAddress = serverIP;
+        this.remotePort = port;
     }
 
     private void initTCPConnection() {
@@ -71,6 +76,7 @@ public class StreamingThread extends Thread {
 
     /**
      * Get gabriel specific transmission protocol packet byte array
+     *
      * @param data
      * @return
      * @throws IOException
@@ -87,11 +93,46 @@ public class StreamingThread extends Thread {
         return baos.toByteArray();
     }
 
+    /**
+     * Called whenever a new data is generated
+     * Puts the new data into the @dataBuffer
+     */
+    public void send(byte[] data) {
+        Log.v(LOG_TAG, "received new data");
+        synchronized (dataLock) {
+            this.dataBuffer = data;
+            this.dataID++;
+            dataLock.notify();
+        }
+    }
+
+    /**
+     * Check with rate control mechanism to see if I can transmit data
+     *
+     * @return
+     */
+    private boolean waitForTranssmisionSlot() {
+        // getCurrentToken is blocking
+        if (this.tc != null && this.tc.getCurrentToken() > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    private void occupyTransmissionSlot(){
+        if (this.tc != null){
+            // send packet and consume tokens
+//            this.tc.logSentPacket(lastSentFrameID, dataTime, compressedTime);
+            this.tc.decreaseToken();
+        }
+    }
+
     public void run() {
         this.isRunning = true;
         Log.i(LOG_TAG, "Streaming thread running");
         initTCPConnection();
         while (this.isRunning) {
+            waitForTranssmisionSlot();
             try {
                 byte[] data;
                 synchronized (dataLock) {
@@ -103,11 +144,12 @@ public class StreamingThread extends Thread {
                     }
                     data = Arrays.copyOf(this.dataBuffer, this.dataBuffer.length);
                     lastSentDataID = this.dataID;
-                    Log.v(LOG_TAG, "sending:" + lastSentDataID);
                     this.dataBuffer = null;
                 }
+                Log.v(LOG_TAG, "sending:" + lastSentDataID);
                 networkWriter.write(getPacketByteArray(data));
                 networkWriter.flush();
+                occupyTransmissionSlot();
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Error in sending packet: " + e);
                 this.notifyError(e.getMessage());
@@ -116,31 +158,6 @@ public class StreamingThread extends Thread {
             }
         }
         this.isRunning = false;
-    }
-
-//    private void writeByteArray(ByteArrayOutputStream tmpBuffer, File toFile) throws FileNotFoundException {
-//        FileOutputStream fos = new FileOutputStream(toFile);
-//        try {
-//            fos.write(tmpBuffer.toByteArray());
-//            fos.close();
-//        } catch (IOException e) {
-//            Log.v(LOG_TAG, "Cannot save byte array. IO exception");
-//            Log.v(LOG_TAG, e.toString());
-//        }
-//    }
-
-
-    /**
-     * Called whenever a new data is generated
-     * Puts the new data into the @dataBuffer
-     */
-    public void send(byte[] data) {
-        Log.v(LOG_TAG, "StremaingThread sending new data");
-        synchronized (dataLock) {
-            this.dataBuffer = data;
-            this.dataID++;
-            dataLock.notify();
-        }
     }
 
     public void stopStreaming() {

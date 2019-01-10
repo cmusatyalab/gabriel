@@ -229,14 +229,15 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void initSensorStreams(){
         streamManager = SensorStreamManager.getInstance();
 //        logicalTime = new LogicalTime();
-//        if (tokenController != null) {
-//            tokenController.close();
-//        }
-//        tokenController = new TokenController(Const.TOKEN_SIZE, null);
+        if (tokenController != null) {
+            tokenController.close();
+        }
+        tokenController = new TokenController(Const.TOKEN_SIZE, null);
         if (Const.SENSOR_VIDEO) {
             SensorStreamIF.SensorStreamConfig config = new SensorStreamIF.SensorStreamConfig();
             config.serverIP = Const.SERVER_IP;
             config.serverPort = Const.VIDEO_STREAM_PORT;
+            config.tc = tokenController;
             VideoStream vs = new VideoStream(config);
             preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
             streamManager.addStream(vs);
