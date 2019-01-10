@@ -1,5 +1,16 @@
 package edu.cmu.cs.gabrielclient.network;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
+import android.hardware.Camera.Parameters;
+import android.hardware.Camera.Size;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.Log;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -14,17 +25,8 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
-import android.hardware.Camera.Parameters;
-import android.hardware.Camera.Size;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.util.Log;
 import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
 import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class VideoStreamingThread extends Thread {
@@ -59,6 +61,10 @@ public class VideoStreamingThread extends Thread {
     private Handler networkHandler = null;
     private TokenController tokenController = null;
     private LogicalTime logicalTime = null;
+
+    public VideoStreamingThread(SensorStreamIF.SensorStreamConfig config){
+        this(config.serverIP, config.serverPort, config.returnMsgHandler, config.tc, config.lt);
+    }
 
     public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, LogicalTime logicalTime) {
         isRunning = false;
@@ -110,9 +116,7 @@ public class VideoStreamingThread extends Thread {
                     return true;
                 if (filename.toLowerCase().endsWith("png"))
                     return true;
-                if (filename.toLowerCase().endsWith("bmp"))
-                    return true;
-                return false;
+                return filename.toLowerCase().endsWith("bmp");
             }
         });
         Arrays.sort(files);

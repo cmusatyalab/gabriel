@@ -92,12 +92,12 @@ public class ServerListActivity extends AppCompatActivity  {
         requestPermission();
         
         setContentView(R.layout.activity_serverlist);
-        Toolbar myToolbar = (Toolbar) findViewById(R.id.toolbar);
+        Toolbar myToolbar = findViewById(R.id.toolbar);
         setSupportActionBar(myToolbar);
-        listView = (ListView) findViewById(R.id.listServers);
-        serverName = (EditText) findViewById(R.id.addServerName);
-        serverAddress = (EditText) findViewById(R.id.addServerAddress);
-        add = (ImageView) findViewById(R.id.imgViewAdd);
+        listView = findViewById(R.id.listServers);
+        serverName = findViewById(R.id.addServerName);
+        serverAddress = findViewById(R.id.addServerAddress);
+        add = findViewById(R.id.imgViewAdd);
         ItemModelList = new ArrayList<Server>();
         serverListAdapter = new ServerListAdapter(getApplicationContext(), ItemModelList);
         listView.setAdapter(serverListAdapter);
@@ -105,7 +105,7 @@ public class ServerListActivity extends AppCompatActivity  {
                 MODE_PRIVATE);
 
 
-        subtitles = (Switch) findViewById(R.id.subtitles);
+        subtitles = findViewById(R.id.subtitles);
 
 
 

@@ -159,7 +159,7 @@ public class ResourceMonitoringService extends IntentService {
                     BatteryInfoPath = "/sys/class/power_supply/battery/";
                     CurrentFileName = "current_now";
                     VoltageFileName = "voltage_now";
-            };
+            }
 
             File f = new File(BatteryInfoPath + CurrentFileName);
             if (f.exists())

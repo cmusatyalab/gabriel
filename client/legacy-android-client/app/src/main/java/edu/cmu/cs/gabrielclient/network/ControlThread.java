@@ -55,7 +55,7 @@ public class ControlThread extends Thread {
     /**
      * @return a String representing the received message from @reader
      */
-    private String receiveMsg(DataInputStream reader) throws SocketTimeoutException, IOException {
+    private String receiveMsg(DataInputStream reader) throws IOException {
         int retLength = reader.readInt();
         byte[] recvByte = new byte[retLength];
         int readSize = 0;

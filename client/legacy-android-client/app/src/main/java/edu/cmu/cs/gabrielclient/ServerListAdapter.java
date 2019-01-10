@@ -38,7 +38,7 @@ public class ServerListAdapter extends BaseAdapter {
         this.context = context;
         this.itemModelList = modelList;
         mSharedPreferences=context.getSharedPreferences(context.getString(R.string.shared_preference_file_key),
-                context.MODE_PRIVATE);
+                Context.MODE_PRIVATE);
     }
     @Override
     public int getCount() {
@@ -59,10 +59,10 @@ public class ServerListAdapter extends BaseAdapter {
             LayoutInflater mInflater = (LayoutInflater) context
                     .getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
             convertView = mInflater.inflate(R.layout.list_item, null);
-            TextView serverName = (TextView) convertView.findViewById(R.id.serverName);
-            TextView serverAddress = (TextView) convertView.findViewById(R.id.serverAddress);
-            ImageView imgRemove = (ImageView) convertView.findViewById(R.id.imgRemove);
-            ImageView imgConnect = (ImageView) convertView.findViewById(R.id.imgConnect);
+            TextView serverName = convertView.findViewById(R.id.serverName);
+            TextView serverAddress = convertView.findViewById(R.id.serverAddress);
+            ImageView imgRemove = convertView.findViewById(R.id.imgRemove);
+            ImageView imgConnect = convertView.findViewById(R.id.imgConnect);
             Server s = itemModelList.get(position);
             serverName.setText(s.getName());
             serverAddress.setText(s.getEndpoint());

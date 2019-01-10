@@ -246,7 +246,7 @@ public class ResultReceivingThread extends Thread {
             if (isRunning)
                 timer.schedule(new animationTask(), animationPeriods[animationDisplayIdx]);
         }
-    };
+    }
 
     public void close() {
         this.isRunning = false;
