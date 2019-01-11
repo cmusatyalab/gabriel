@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 
 import edu.cmu.cs.gabrielclient.network.StreamingThread;
 
+
 public class VideoStream implements SensorStreamIF {
     private StreamingThread streamingThread;
     public Camera.PreviewCallback previewCallback = new Camera.PreviewCallback() {
@@ -22,7 +23,7 @@ public class VideoStream implements SensorStreamIF {
         }
     };
 
-    public VideoStream(SensorStreamConfig config){
+    public VideoStream(SensorStreamConfig config) {
         init(config);
     }
 
@@ -44,7 +45,7 @@ public class VideoStream implements SensorStreamIF {
         }
     }
 
-    private byte[] compress(byte[] data, Camera.Parameters parameters){
+    private byte[] compress(byte[] data, Camera.Parameters parameters) {
         Camera.Size cameraImageSize = parameters.getPreviewSize();
         YuvImage image = new YuvImage(data, parameters.getPreviewFormat(), cameraImageSize.width,
                 cameraImageSize.height, null);

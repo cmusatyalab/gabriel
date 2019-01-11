@@ -127,6 +127,24 @@ public class StreamingThread extends Thread {
         }
     }
 
+    private void networkSendData() throws IOException{
+        byte[] data;
+        synchronized (dataLock) {
+            while (this.dataBuffer == null) {
+                try {
+                    dataLock.wait();
+                } catch (InterruptedException e) {
+                }
+            }
+            data = Arrays.copyOf(this.dataBuffer, this.dataBuffer.length);
+            lastSentDataID = this.dataID;
+            this.dataBuffer = null;
+        }
+        Log.v(LOG_TAG, "sending:" + lastSentDataID);
+        networkWriter.write(getPacketByteArray(data));
+        networkWriter.flush();
+    }
+
     public void run() {
         this.isRunning = true;
         Log.i(LOG_TAG, "Streaming thread running");
@@ -134,21 +152,7 @@ public class StreamingThread extends Thread {
         while (this.isRunning) {
             waitForTranssmisionSlot();
             try {
-                byte[] data;
-                synchronized (dataLock) {
-                    while (this.dataBuffer == null) {
-                        try {
-                            dataLock.wait();
-                        } catch (InterruptedException e) {
-                        }
-                    }
-                    data = Arrays.copyOf(this.dataBuffer, this.dataBuffer.length);
-                    lastSentDataID = this.dataID;
-                    this.dataBuffer = null;
-                }
-                Log.v(LOG_TAG, "sending:" + lastSentDataID);
-                networkWriter.write(getPacketByteArray(data));
-                networkWriter.flush();
+                networkSendData();
                 occupyTransmissionSlot();
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Error in sending packet: " + e);
