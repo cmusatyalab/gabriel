@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabrielclient.sensorstream;
+package edu.cmu.cs.gabrielclient.stream;
 
 import android.graphics.Rect;
 import android.graphics.YuvImage;
@@ -6,42 +6,44 @@ import android.hardware.Camera;
 
 import java.io.ByteArrayOutputStream;
 
-import edu.cmu.cs.gabrielclient.network.StreamingThread;
+import edu.cmu.cs.gabrielclient.network.RateLimitStreamingThread;
 
 
-public class VideoStream implements SensorStreamIF {
-    private StreamingThread streamingThread;
+public class VideoStream implements StreamIF {
+
+    private static final String LOG_TAG = RateLimitStreamingThread.class.getSimpleName();
+    private RateLimitStreamingThread rateLimitStreamingThread;
     public Camera.PreviewCallback previewCallback = new Camera.PreviewCallback() {
         // called whenever a new frame is captured
         public void onPreviewFrame(byte[] frame, Camera mCamera) {
-            if (streamingThread != null) {
+            if (rateLimitStreamingThread != null) {
                 Camera.Parameters parameters = mCamera.getParameters();
                 byte[] compressed = compress(frame, parameters);
-                streamingThread.send(compressed);
+                rateLimitStreamingThread.send(compressed);
             }
             mCamera.addCallbackBuffer(frame);
         }
     };
 
-    public VideoStream(SensorStreamConfig config) {
+    public VideoStream(StreamConfig config) {
         init(config);
     }
 
     @Override
-    public void init(SensorStreamConfig config) {
-        streamingThread = new StreamingThread(config);
+    public void init(StreamConfig config) {
+        rateLimitStreamingThread = new RateLimitStreamingThread(config);
     }
 
     @Override
     public void start() {
-        streamingThread.start();
+        rateLimitStreamingThread.start();
     }
 
     @Override
     public void stop() {
-        if ((streamingThread != null) && (streamingThread.isAlive())) {
-            streamingThread.stopStreaming();
-            streamingThread = null;
+        if ((rateLimitStreamingThread != null) && (rateLimitStreamingThread.isAlive())) {
+            rateLimitStreamingThread.close();
+            rateLimitStreamingThread = null;
         }
     }
 

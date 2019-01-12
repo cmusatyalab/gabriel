@@ -79,7 +79,7 @@ public class AccControlThread extends Thread {
 
     private void notifyError(String errorMessage) {
         Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
+        msg.what = NetworkProtocol.NETWORK_CONNECT_FAILED;
         msg.obj = errorMessage;
         this.networkHandler.sendMessage(msg);
     }

@@ -4,19 +4,13 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.speech.tts.TextToSpeech;
-import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
-import android.widget.MediaController;
 import android.widget.TextView;
 import android.widget.VideoView;
 
@@ -26,23 +20,20 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import edu.cmu.cs.gabrielclient.network.ControlThread;
+import edu.cmu.cs.gabrielclient.control.ControlThread;
 import edu.cmu.cs.gabrielclient.network.LogicalTime;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
-import edu.cmu.cs.gabrielclient.network.ResultReceivingThread;
-import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
-import edu.cmu.cs.gabrielclient.sensorstream.VideoStream;
-import edu.cmu.cs.gabrielclient.token.ReceivedPacketInfo;
+import edu.cmu.cs.gabrielclient.stream.ResultStream;
+import edu.cmu.cs.gabrielclient.stream.StreamIF;
+import edu.cmu.cs.gabrielclient.stream.VideoStream;
 import edu.cmu.cs.gabrielclient.token.TokenController;
 import edu.cmu.cs.gabrielclient.util.PingThread;
 import edu.cmu.cs.gabrielclient.util.ResourceMonitoringService;
 
-public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener{
+public class GabrielClientActivity extends Activity {
 
     private static final String LOG_TAG = GabrielClientActivity.class.getSimpleName();
     // general set up
@@ -55,135 +46,19 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private ImageView imgView = null;
     private VideoView videoView = null;
     private TextView subtitleView = null;
+    private InstructionViewer iv = null;
     // controllers
     private ControlThread controlThread = null;
     private TokenController tokenController = null;
     private FileWriter controlLogWriter = null;
     private PingThread pingThread = null;
     // handling results from server
-    private ResultReceivingThread resultThread = null;
-    private TextToSpeech tts = null;
-    private MediaController mediaController = null;
-    private ReceivedPacketInfo receivedPacketInfo = null;
+    private ResultStream resultStream = null;
     // measurements
     private LogicalTime logicalTime = null;
     private Intent resourceMonitoringIntent = null;
-    /**
-     * Handles messages passed from streaming threads and result receiving threads.
-     */
-    private Handler returnMsgHandler = new Handler() {
-        public void handleMessage(Message msg) {
-            if (msg.what == NetworkProtocol.NETWORK_RET_FAILED) {
-                //terminate();
-                AlertDialog.Builder builder = new AlertDialog.Builder(GabrielClientActivity.this, AlertDialog
-                        .THEME_HOLO_DARK);
-                builder.setMessage(msg.getData().getString("message"))
-                        .setTitle(R.string.connection_error)
-                        .setNegativeButton(R.string.back_button, new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialog, int which) {
-                                        GabrielClientActivity.this.finish();
-                                    }
-                                }
-                        )
-                        .setCancelable(false);
-
-                AlertDialog dialog = builder.create();
-                dialog.show();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_MESSAGE) {
-                receivedPacketInfo = (ReceivedPacketInfo) msg.obj;
-                receivedPacketInfo.setMsgRecvTime(System.currentTimeMillis());
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
-                String ttsMessage = (String) msg.obj;
-
-                if (tts != null) {
-                    Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
-                    // TODO: check if tts is playing something else
-                    tts.setSpeechRate(1.0f);
-                    String[] splitMSGs = ttsMessage.split("\\.");
-                    HashMap<String, String> map = new HashMap<String, String>();
-                    map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "unique");
-
-                    if (splitMSGs.length == 1)
-                        tts.speak(splitMSGs[0].trim(), TextToSpeech.QUEUE_FLUSH, map); // the only sentence
-                    else {
-                        tts.speak(splitMSGs[0].trim(), TextToSpeech.QUEUE_FLUSH, null); // the first sentence
-                        for (int i = 1; i < splitMSGs.length - 1; i++) {
-                            tts.playSilence(350, TextToSpeech.QUEUE_ADD, null); // add pause for every period
-                            tts.speak(splitMSGs[i].trim(), TextToSpeech.QUEUE_ADD, null);
-                        }
-                        tts.playSilence(350, TextToSpeech.QUEUE_ADD, null);
-                        tts.speak(splitMSGs[splitMSGs.length - 1].trim(), TextToSpeech.QUEUE_ADD, map); // the last
-                        // sentence
-                    }
-                }
-                subtitleView = findViewById(R.id.subtitleText);
-                subtitleView.setText(ttsMessage);
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE || msg.what == NetworkProtocol.NETWORK_RET_ANIMATION) {
-                Bitmap feedbackImg = (Bitmap) msg.obj;
-                imgView = findViewById(R.id.guidance_image);
-                videoView = findViewById(R.id.guidance_video);
-                imgView.setVisibility(View.VISIBLE);
-                videoView.setVisibility(View.GONE);
-                imgView.setImageBitmap(feedbackImg);
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_VIDEO) {
-                String url = (String) msg.obj;
-                imgView.setVisibility(View.GONE);
-                videoView.setVisibility(View.VISIBLE);
-                videoView.setVideoURI(Uri.parse(url));
-                videoView.setMediaController(mediaController);
-                //Video Loop
-                videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                    public void onCompletion(MediaPlayer mp) {
-                        videoView.start();
-                    }
-                });
-                videoView.start();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_DONE) {
-                notifyToken();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_CONFIG) {
-                String controlMsg = (String) msg.obj;
-                try {
-                    final JSONObject controlJSON = new JSONObject(controlMsg);
-                    if (controlJSON.has("delay")) {
-                        final long delay = controlJSON.getInt("delay");
-
-                        final Timer controlTimer = new Timer();
-                        TimerTask controlTask = new TimerTask() {
-                            @Override
-                            public void run() {
-                                GabrielClientActivity.this.runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (Const.SYNC_BASE.equals("video")) {
-                                            logicalTime.increaseImageTime((int) (delay * 11.5 / 1000)); // in the
-                                            // recorded data set, FPS is roughly 11
-                                        } else if (Const.SYNC_BASE.equals("acc")) {
-                                            logicalTime.increaseAccTime(delay);
-                                        }
-//                                        processServerControl(controlJSON);
-                                    }
-                                });
-                            }
-                        };
-
-                        // sensor control at a delayed time
-                        controlTimer.schedule(controlTask, delay);
-                    } else {
-//                        processServerControl(controlJSON);
-                    }
-                } catch (JSONException e) {
-                    Log.e(LOG_TAG, "error in jsonizing server control messages" + e);
-                }
-            }
-        }
-    };
+    // Handles messages passed from streaming threads and result receiving threads.
+    private Handler uiHandler = new UIThreadHandler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -193,66 +68,22 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED +
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON +
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-    }
-
-    private void initViews() {
-        imgView = findViewById(R.id.guidance_image);
-        videoView = findViewById(R.id.guidance_video);
-        if (Const.SHOW_SUBTITLES) {
-            findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
-        }
-        if (Const.SENSOR_VIDEO) {
-            preview = findViewById(R.id.camera_preview);
-        }
-    }
-
-    private void initPersistentStorage() {
-        Const.ROOT_DIR.mkdirs();
-        Const.EXP_DIR.mkdirs();
-        if (Const.SAVE_FRAME_SEQUENCE) {
-            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
-        }
-    }
-
-    private void initSystemServices(){
-        // TextToSpeech.OnInitListener
-        if (tts == null) {
-            tts = new TextToSpeech(this, this);
-        }
-        // Media controller
-        if (mediaController == null) {
-            mediaController = new MediaController(this);
-        }
-    }
-
-    private void initSensorStreams(){
-        streamManager = SensorStreamManager.getInstance();
-//        logicalTime = new LogicalTime();
-        if (tokenController != null) {
-            tokenController.close();
-        }
+        initViews();
+        // iv initializes tts and mediaControl, therefore needs to be in onCreate
+        iv = new InstructionViewer(this.getApplicationContext(), imgView, videoView, subtitleView);
         tokenController = new TokenController(Const.TOKEN_SIZE, null);
-        if (Const.SENSOR_VIDEO) {
-            SensorStreamIF.SensorStreamConfig config = new SensorStreamIF.SensorStreamConfig();
-            config.serverIP = Const.SERVER_IP;
-            config.serverPort = Const.VIDEO_STREAM_PORT;
-            config.tc = tokenController;
-            VideoStream vs = new VideoStream(config);
-            preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
-            streamManager.addStream(vs);
-        }
-        streamManager.startStreaming();
+        streamManager = SensorStreamManager.getInstance();
     }
 
     @Override
     protected void onResume() {
         Log.v(LOG_TAG, "++onResume");
         super.onResume();
-        initViews();
+        stopControllers();
+        stopDataStreams();
         initPersistentStorage();
-        initSystemServices();
-        initSensorStreams();
+        initControl();
+        initDataStreams();
 
         // Monitor mobile resources (CPU and power)
         if (Const.MONITOR_RESOURCE) {
@@ -265,6 +96,126 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         } else { // demo mode
 //            initPerRun(serverIP, Const.TOKEN_SIZE, null);
 //            serverIP = Const.SERVER_IP;
+        }
+    }
+
+    private void stopDataStreams() {
+        streamManager.stopStreaming();
+    }
+
+    private void networkReconfig(Message msg) {
+        String controlMsg = (String) msg.obj;
+        try {
+            final JSONObject controlJSON = new JSONObject(controlMsg);
+            if (controlJSON.has("delay")) {
+                final long delay = controlJSON.getInt("delay");
+
+                final Timer controlTimer = new Timer();
+                TimerTask controlTask = new TimerTask() {
+                    @Override
+                    public void run() {
+                        GabrielClientActivity.this.runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (Const.SYNC_BASE.equals("video")) {
+                                    logicalTime.increaseImageTime((int) (delay * 11.5 / 1000)); // in the
+                                    // recorded data set, FPS is roughly 11
+                                } else if (Const.SYNC_BASE.equals("acc")) {
+                                    logicalTime.increaseAccTime(delay);
+                                }
+//                                        processServerControl(controlJSON);
+                            }
+                        });
+                    }
+                };
+
+                // sensor control at a delayed time
+                controlTimer.schedule(controlTask, delay);
+            } else {
+//                        processServerControl(controlJSON);
+            }
+        } catch (JSONException e) {
+            Log.e(LOG_TAG, "error in jsonizing server control messages" + e);
+        }
+    }
+
+    private void showAlert(Message msg) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, AlertDialog
+                .THEME_HOLO_DARK);
+        builder.setMessage(msg.getData().getString("message"))
+                .setTitle(R.string.connection_error)
+                .setNegativeButton(R.string.back_button, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                GabrielClientActivity.this.finish();
+                            }
+                        }
+                )
+                .setCancelable(false);
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+    }
+
+    private void initViews() {
+        imgView = findViewById(R.id.guidance_image);
+        videoView = findViewById(R.id.guidance_video);
+        subtitleView = findViewById(R.id.subtitleText);
+        if (Const.SHOW_SUBTITLES) {
+            findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
+        }
+        if (Const.SENSOR_VIDEO) {
+            preview = (CameraPreview) findViewById(R.id.camera_preview);
+        }
+    }
+
+    private void initPersistentStorage() {
+        Const.ROOT_DIR.mkdirs();
+        Const.EXP_DIR.mkdirs();
+        if (Const.SAVE_FRAME_SEQUENCE) {
+            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
+        }
+    }
+
+    private void initDataStreams() {
+        resultStream = new ResultStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const.RESULT_RECEIVING_PORT,
+                tokenController, uiHandler, null));
+        streamManager.addStream(resultStream);
+        if (Const.SENSOR_VIDEO) {
+            VideoStream vs = new VideoStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const.VIDEO_STREAM_PORT,
+                    tokenController, uiHandler, null));
+            streamManager.addStream(vs);
+            preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
+        }
+        streamManager.startStreaming();
+    }
+
+    private void stopControllers() {
+        if ((controlThread != null) && (controlThread.isAlive())) {
+            controlThread.close();
+            controlThread = null;
+        }
+        if (tokenController != null) {
+            tokenController.close();
+        }
+        if (resultStream != null) {
+            resultStream.stop();
+            resultStream = null;
+        }
+        if ((pingThread != null) && (pingThread.isAlive())) {
+            pingThread.kill();
+            pingThread.interrupt();
+            pingThread = null;
+        }
+    }
+
+    private void initControl() {
+        controlThread = new ControlThread(Const.SERVER_IP, Const.CONTROL_PORT, uiHandler, tokenController);
+        controlThread.start();
+
+        if (Const.BACKGROUND_PING) {
+            pingThread = new PingThread(serverIP, Const.PING_INTERVAL);
+            pingThread.start();
         }
     }
 
@@ -281,23 +232,12 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         super.onDestroy();
     }
 
-
     /**
      * Does initialization before each run (connecting to a specific server).
      * Called once before each experiment.
      */
     private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
         Log.v(LOG_TAG, "++initPerRun");
-
-        if ((pingThread != null) && (pingThread.isAlive())) {
-            pingThread.kill();
-            pingThread.interrupt();
-            pingThread = null;
-        }
-        if ((resultThread != null) && (resultThread.isAlive())) {
-            resultThread.close();
-            resultThread = null;
-        }
 
         if (Const.IS_EXPERIMENT) {
             if (isFirstExperiment) {
@@ -322,12 +262,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         if (serverIP == null) return;
 
-        if (Const.BACKGROUND_PING) {
-            pingThread = new PingThread(serverIP, Const.PING_INTERVAL);
-            pingThread.start();
-        }
-
-
         if (Const.IS_EXPERIMENT) {
             try {
                 controlLogWriter = new FileWriter(Const.CONTROL_LOG_FILE);
@@ -336,8 +270,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         }
 
-        controlThread = new ControlThread(serverIP, Const.CONTROL_PORT, returnMsgHandler, tokenController);
-        controlThread.start();
 
         if (Const.IS_EXPERIMENT) {
             controlThread.sendControlMsg("ping");
@@ -348,9 +280,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         }
 
-        resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
-        resultThread.start();
     }
+
 
     /**
      * Runs a set of experiments with different server IPs and token numbers.
@@ -368,7 +299,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //                    @Override
 //                    public void run() {
 //                        // end condition
-//                        if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST.length)) {
+//                        if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST
+// .length)) {
 //                            Log.i(LOG_TAG, "Finish all experiemets");
 //
 //                            // initPerRun(null, 0, null); // just to get another set of ping
@@ -408,17 +340,41 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //    }
 
     /**
-     * Notifies token controller that some response is back
+     * Terminates all services.
      */
-    private void notifyToken() {
-        Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-        receivedPacketInfo.setGuidanceDoneTime(System.currentTimeMillis());
-        msg.obj = receivedPacketInfo;
-        try {
-            tokenController.tokenHandler.sendMessage(msg);
-        } catch (NullPointerException e) {
-            // might happen because token controller might have been terminated
+    private void terminate() {
+        Log.v(LOG_TAG, "++terminate");
+
+        isRunning = false;
+        stopControllers();
+
+//        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
+//            accStreamingThread.stopStreaming();
+//            accStreamingThread = null;
+//        }
+//        if ((audioStreamingThread != null) && (audioStreamingThread.isAlive())) {
+//            audioStreamingThread.stopStreaming();
+//            audioStreamingThread = null;
+//        }
+        if (preview != null) {
+            preview.close();
+            preview = null;
+        }
+//        if (sensorManager != null) {
+//            sensorManager.unregisterListener(this);
+//            sensorManager = null;
+//            sensorAcc = null;
+//        }
+//        if (audioRecorder != null) {
+//            stopAudioRecording();
+//        }
+        stopResourceMonitoring();
+        if (Const.IS_EXPERIMENT) {
+            try {
+                controlLogWriter.close();
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Error in closing control log file");
+            }
         }
     }
 
@@ -445,7 +401,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //                    }
 //                    if (videoStreamingThread == null) {
 //                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT,
-//                                returnMsgHandler, tokenController, logicalTime);
+//                                callerHandler, tokenController, logicalTime);
 //                        videoStreamingThread.start();
 //                    }
 //                } else { // turning off
@@ -473,7 +429,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //                    }
 //                    if (accStreamingThread == null) {
 //                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT,
-//                                returnMsgHandler, tokenController, logicalTime);
+//                                callerHandler, tokenController, logicalTime);
 //                        accStreamingThread.start();
 //                    }
 //                } else { // turning off
@@ -499,7 +455,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //                    }
 //                    if (audioStreamingThread == null) {
 //                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT,
-//                                returnMsgHandler, tokenController, logicalTime);
+//                                callerHandler, tokenController, logicalTime);
 //                        audioStreamingThread.start();
 //                    }
 //                } else { // turning off
@@ -524,7 +480,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
 //                    camConfig.imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FOCUS)) {
-//                    throw new UnsupportedOperationException("FOCUS adjustment is not yet supported, but easy to add. " +
+//                    throw new UnsupportedOperationException("FOCUS adjustment is not yet supported, but easy to add
+// . " +
 //                            "See FLASHLIGHT on how to add support.");
 //                }
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)) {
@@ -546,64 +503,15 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //        }
 //    }
 
-    /**
-     * Terminates all services.
+    /**************** Battery recording *************************/
+    /*
+     * Resource monitoring of the mobile device
+     * Checks battery and CPU usage, as well as device temperature
      */
-    private void terminate() {
-        Log.v(LOG_TAG, "++terminate");
-
-        isRunning = false;
-
-        if ((pingThread != null) && (pingThread.isAlive())) {
-            pingThread.kill();
-            pingThread.interrupt();
-            pingThread = null;
-        }
-        if ((resultThread != null) && (resultThread.isAlive())) {
-            resultThread.close();
-            resultThread = null;
-        }
-//        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
-//            accStreamingThread.stopStreaming();
-//            accStreamingThread = null;
-//        }
-//        if ((audioStreamingThread != null) && (audioStreamingThread.isAlive())) {
-//            audioStreamingThread.stopStreaming();
-//            audioStreamingThread = null;
-//        }
-        if ((controlThread != null) && (controlThread.isAlive())) {
-            controlThread.close();
-            controlThread = null;
-        }
-        if (tokenController != null) {
-            tokenController.close();
-            tokenController = null;
-        }
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-            tts = null;
-        }
-        if (preview != null) {
-            preview.close();
-            preview = null;
-        }
-//        if (sensorManager != null) {
-//            sensorManager.unregisterListener(this);
-//            sensorManager = null;
-//            sensorAcc = null;
-//        }
-//        if (audioRecorder != null) {
-//            stopAudioRecording();
-//        }
-        stopResourceMonitoring();
-        if (Const.IS_EXPERIMENT) {
-            try {
-                controlLogWriter.close();
-            } catch (IOException e) {
-                Log.e(LOG_TAG, "Error in closing control log file");
-            }
-        }
+    public void startResourceMonitoring() {
+        Log.i(LOG_TAG, "Starting Battery Recording Service");
+        resourceMonitoringIntent = new Intent(this, ResourceMonitoringService.class);
+        startService(resourceMonitoringIntent);
     }
 
     /**************** SensorEventListener ***********************/
@@ -626,41 +534,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //    }
     /**************** End of TextToSpeech.OnInitListener ********/
 
-    /**************** TextToSpeech.OnInitListener ***************/
-    public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) {
-            if (tts == null) {
-                tts = new TextToSpeech(this, this);
-            }
-            int result = tts.setLanguage(Locale.US);
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e(LOG_TAG, "Language is not available.");
-            }
-            int listenerResult = tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override
-                public void onDone(String utteranceId) {
-                    Log.v(LOG_TAG, "progress on Done " + utteranceId);
-//                  notifyToken();
-                }
-
-                @Override
-                public void onError(String utteranceId) {
-                    Log.v(LOG_TAG, "progress on Error " + utteranceId);
-                }
-
-                @Override
-                public void onStart(String utteranceId) {
-                    Log.v(LOG_TAG, "progress on Start " + utteranceId);
-                }
-            });
-            if (listenerResult != TextToSpeech.SUCCESS) {
-                Log.e(LOG_TAG, "failed to add utterance progress listener");
-            }
-        } else {
-            // Initialization failed.
-            Log.e(LOG_TAG, "Could not initialize TextToSpeech.");
-        }
-    }
 
     /**************** Audio recording ***************************/
 //    private void startAudioRecording() {
@@ -709,23 +582,33 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 //            audioRecordingThread = null;
 //        }
 //    }
-
-    /**************** Battery recording *************************/
-    /*
-     * Resource monitoring of the mobile device
-     * Checks battery and CPU usage, as well as device temperature
-     */
-    public void startResourceMonitoring() {
-        Log.i(LOG_TAG, "Starting Battery Recording Service");
-        resourceMonitoringIntent = new Intent(this, ResourceMonitoringService.class);
-        startService(resourceMonitoringIntent);
-    }
-
     public void stopResourceMonitoring() {
         Log.i(LOG_TAG, "Stopping Battery Recording Service");
         if (resourceMonitoringIntent != null) {
             stopService(resourceMonitoringIntent);
             resourceMonitoringIntent = null;
+        }
+    }
+
+    private class UIThreadHandler extends Handler {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case NetworkProtocol.NETWORK_CONNECT_FAILED:
+                    showAlert(msg);
+                    break;
+                case NetworkProtocol.NETWORK_RET_MESSAGE:
+                    String inst = resultStream.parseReturnMsg((String) msg.obj);
+                    if (inst != null) {
+                        iv.parseAndSetInstruction(inst);
+                    }
+                    break;
+                case NetworkProtocol.NETWORK_RET_CONFIG:
+                    networkReconfig(msg);
+                    break;
+                default:
+                    Log.e(LOG_TAG, "unrecognized message type to UI: " + msg.what);
+            }
         }
     }
     /**************** End of battery recording ******************/

@@ -3,7 +3,7 @@ package edu.cmu.cs.gabrielclient.network;
 public class NetworkProtocol {
     // TODO: give better names to these constants
 
-    public static final int NETWORK_RET_FAILED = 1;
+    public static final int NETWORK_CONNECT_FAILED = 1;
     public static final int NETWORK_RET_SPEECH = 2;
     public static final int NETWORK_RET_CONFIG = 3;
     public static final int NETWORK_RET_TOKEN = 4;

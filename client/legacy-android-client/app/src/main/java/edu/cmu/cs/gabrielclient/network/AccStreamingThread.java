@@ -197,7 +197,7 @@ public class AccStreamingThread extends Thread {
     private void notifyError(String message) {
         // callback
         Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
+        msg.what = NetworkProtocol.NETWORK_CONNECT_FAILED;
         Bundle data = new Bundle();
         data.putString("message", message);
         msg.setData(data);

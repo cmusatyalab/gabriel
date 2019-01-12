@@ -26,7 +26,7 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 import edu.cmu.cs.gabrielclient.Const;
-import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
+import edu.cmu.cs.gabrielclient.stream.StreamIF;
 import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class VideoStreamingThread extends Thread {
@@ -62,8 +62,8 @@ public class VideoStreamingThread extends Thread {
     private TokenController tokenController = null;
     private LogicalTime logicalTime = null;
 
-    public VideoStreamingThread(SensorStreamIF.SensorStreamConfig config){
-        this(config.serverIP, config.serverPort, config.returnMsgHandler, config.tc, config.lt);
+    public VideoStreamingThread(StreamIF.StreamConfig config){
+        this(config.serverIP, config.serverPort, config.callerHandler, config.tc, config.lt);
     }
 
     public VideoStreamingThread(String serverIP, int port, Handler handler, TokenController tokenController, LogicalTime logicalTime) {
@@ -335,7 +335,7 @@ public class VideoStreamingThread extends Thread {
     private void notifyError(String message) {
         // callback
         Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
+        msg.what = NetworkProtocol.NETWORK_CONNECT_FAILED;
         Bundle data = new Bundle();
         data.putString("message", message);
         msg.setData(data);

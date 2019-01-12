@@ -1,4 +1,12 @@
-package edu.cmu.cs.gabrielclient.network;
+package edu.cmu.cs.gabrielclient.control;
+
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.Log;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -13,14 +21,8 @@ import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.Queue;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
-import android.util.Log;
 import edu.cmu.cs.gabrielclient.Const;
+import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
 import edu.cmu.cs.gabrielclient.token.TokenController;
 
 public class ControlThread extends Thread {
@@ -208,7 +210,7 @@ public class ControlThread extends Thread {
     private void notifyError(String message) {
         // callback
         Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_FAILED;
+        msg.what = NetworkProtocol.NETWORK_CONNECT_FAILED;
         Bundle data = new Bundle();
         data.putString("message", message);
         msg.setData(data);

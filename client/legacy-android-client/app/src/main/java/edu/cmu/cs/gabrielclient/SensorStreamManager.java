@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import edu.cmu.cs.gabrielclient.network.AccStreamingThread;
 import edu.cmu.cs.gabrielclient.network.AudioStreamingThread;
 import edu.cmu.cs.gabrielclient.network.VideoStreamingThread;
-import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
+import edu.cmu.cs.gabrielclient.stream.StreamIF;
 
 /**
  * Manages sensor streams
@@ -17,7 +17,7 @@ import edu.cmu.cs.gabrielclient.sensorstream.SensorStreamIF;
 public class SensorStreamManager {
     // singleton class
     private static SensorStreamManager instance = null;
-    private ArrayList<SensorStreamIF> streams = new ArrayList<>();
+    private ArrayList<StreamIF> streams = new ArrayList<>();
 
     // sensor data streaming to the server
     // video
@@ -58,30 +58,30 @@ public class SensorStreamManager {
 //        }
     }
 
-    public void addStream(SensorStreamIF s){
+    public void addStream(StreamIF s){
         streams.add(s);
     }
 
     public void startStreaming(){
-        for (SensorStreamIF s: streams){
+        for (StreamIF s: streams){
             s.start();
         }
 //
 //        if (Const.SENSOR_ACC) {
-//            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler,
+//            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, callerHandler,
 //                    tokenController, logicalTime);
 //            accStreamingThread.start();
 //        }
 //
 //        if (Const.SENSOR_AUDIO) {
-//            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler,
+//            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, callerHandler,
 //                    tokenController, logicalTime);
 //            audioStreamingThread.start();
 //        }
     }
 
     public void stopStreaming(){
-        for (SensorStreamIF s: streams){
+        for (StreamIF s: streams){
             s.stop();
         }
 //        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
