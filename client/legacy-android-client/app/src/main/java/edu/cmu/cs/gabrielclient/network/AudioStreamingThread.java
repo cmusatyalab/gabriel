@@ -17,7 +17,7 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 import edu.cmu.cs.gabrielclient.Const;
-import edu.cmu.cs.gabrielclient.token.TokenController;
+import edu.cmu.cs.gabrielclient.control.TokenController;
 
 public class AudioStreamingThread extends Thread {
     private static final String LOG_TAG = "AudioStreaming";

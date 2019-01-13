@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabrielclient.token;
+package edu.cmu.cs.gabrielclient.control;
 
 import android.os.Handler;
 import android.os.Message;
@@ -11,15 +11,20 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import edu.cmu.cs.gabrielclient.Const;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
+import edu.cmu.cs.gabrielclient.token.ReceivedPacketInfo;
+import edu.cmu.cs.gabrielclient.token.SentPacketInfo;
+import edu.cmu.cs.gabrielclient.util.LifeCycleIF;
 
-public class TokenController {
+public class TokenController implements LifeCycleIF {
     private static final String LOG_TAG = "TokenController";
 
     // the number of tokens remained
     private volatile int currentToken = 0;
 
-    // information about all sent packets, the key is the frameID and the value documents relevant timestamps
-    private ConcurrentHashMap<Long, SentPacketInfo> sentPackets = new ConcurrentHashMap<Long, SentPacketInfo>();
+    // information about all sent packets, the key is the frameID and the value documents
+    // relevant timestamps
+    private ConcurrentHashMap<Long, SentPacketInfo> sentPackets = new ConcurrentHashMap<Long,
+            SentPacketInfo>();
 
     private Object tokenLock = new Object();
 
@@ -77,8 +82,10 @@ public class TokenController {
                     if (Const.IS_EXPERIMENT) {
                         try {
                             String log = recvFrameID + "\t" + recvEngineID + "\t" +
-                                    sentPacket.generatedTime + "\t" + sentPacket.compressedTime + "\t" +
-                                    receivedPacket.msgRecvTime + "\t" + receivedPacket.guidanceDoneTime + "\t" +
+                                    sentPacket.generatedTime + "\t" + sentPacket.compressedTime +
+                                    "\t" +
+                                    receivedPacket.msgRecvTime + "\t" + receivedPacket
+                                    .guidanceDoneTime + "\t" +
                                     receivedPacket.status;
                             fileWriter.write(log + "\n");
                             fileWriter.flush();
@@ -97,7 +104,8 @@ public class TokenController {
         if (Const.IS_EXPERIMENT) {
             try {
                 fileWriter = new FileWriter(resultSavingPath);
-                fileWriter.write("FrameID\tEngineID\tStartTime\tCompressedTime\tRecvTime\tDoneTime\tStatus\n");
+                fileWriter.write("FrameID\tEngineID\tStartTime\tCompressedTime\tRecvTime" +
+                        "\tDoneTime\tStatus\n");
             } catch (IOException e) {
                 Log.e(LOG_TAG, "Result file cannot be properly opened", e);
             }
@@ -162,7 +170,18 @@ public class TokenController {
         }
     }
 
-    public void close() {
+    @Override
+    public void onResume() {
+
+    }
+
+    @Override
+    public void onPause() {
+
+    }
+
+    @Override
+    public void onDestroy() {
         sentPackets.clear();
         if (Const.IS_EXPERIMENT) {
             try {

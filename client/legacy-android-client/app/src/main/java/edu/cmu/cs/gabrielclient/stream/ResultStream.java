@@ -6,35 +6,18 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import edu.cmu.cs.gabrielclient.GabrielClientActivity;
+import edu.cmu.cs.gabrielclient.network.ConnectionConfig;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
 import edu.cmu.cs.gabrielclient.network.RateLimitReceivingThread;
+import edu.cmu.cs.gabrielclient.util.LifeCycleIF;
 
-public class ResultStream implements StreamIF {
-
+public class ResultStream implements LifeCycleIF {
     private static final String LOG_TAG = GabrielClientActivity.class.getSimpleName();
+    ConnectionConfig config;
+    private RateLimitReceivingThread networkThread;
 
-    private RateLimitReceivingThread rateLimitReceivingThread;
-
-    public ResultStream(StreamConfig config) {
-        init(config);
-    }
-
-    @Override
-    public void init(StreamConfig config) {
-        rateLimitReceivingThread = new RateLimitReceivingThread(config);
-    }
-
-    @Override
-    public void start() {
-        rateLimitReceivingThread.start();
-    }
-
-    @Override
-    public void stop() {
-        if ((rateLimitReceivingThread != null) && (rateLimitReceivingThread.isAlive())) {
-            rateLimitReceivingThread.close();
-            rateLimitReceivingThread = null;
-        }
+    public ResultStream(ConnectionConfig config) {
+        this.config = config;
     }
 
     public String parseReturnMsg(String recvData) {
@@ -70,5 +53,23 @@ public class ResultStream implements StreamIF {
     }
 
 
+    @Override
+    public void onResume() {
+        networkThread = new RateLimitReceivingThread(this.config);
+        networkThread.start();
+    }
+
+    @Override
+    public void onPause() {
+        if ((networkThread != null) && (networkThread.isAlive())) {
+            networkThread.close();
+            networkThread = null;
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+
+    }
 }
 

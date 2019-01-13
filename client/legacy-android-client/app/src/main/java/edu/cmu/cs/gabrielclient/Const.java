@@ -1,10 +1,10 @@
 package edu.cmu.cs.gabrielclient;
 
-import java.io.File;
-
 import android.hardware.Camera;
 import android.media.AudioFormat;
 import android.os.Environment;
+
+import java.io.File;
 
 public class Const {
     public enum DeviceModel {
@@ -15,7 +15,7 @@ public class Const {
     public static final DeviceModel deviceModel = DeviceModel.Nexus6;
 
     // whether to do a demo or a set of experiments
-    public static final boolean IS_EXPERIMENT = true;
+    public static final boolean IS_EXPERIMENT = false;
 
     // whether to use real-time captured images or load images from files for testing
     public static final boolean LOAD_IMAGES = true;

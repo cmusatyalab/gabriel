@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Vector;
 
 import edu.cmu.cs.gabrielclient.Const;
-import edu.cmu.cs.gabrielclient.token.TokenController;
+import edu.cmu.cs.gabrielclient.control.TokenController;
 
 import android.os.Bundle;
 import android.os.Handler;

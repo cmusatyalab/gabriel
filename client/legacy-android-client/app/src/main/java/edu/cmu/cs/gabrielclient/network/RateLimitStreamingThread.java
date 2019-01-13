@@ -7,7 +7,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 
-import edu.cmu.cs.gabrielclient.stream.StreamIF;
 
 /**
  * Streaming thread with rate limit capability.
@@ -22,7 +21,7 @@ public class RateLimitStreamingThread extends RateLimitTCPNetworkThread {
     private long lastSentDataID = 0;
     private byte[] dataBuffer = null;
 
-    public RateLimitStreamingThread(StreamIF.StreamConfig config) {
+    public RateLimitStreamingThread(ConnectionConfig config) {
         super(config);
     }
 

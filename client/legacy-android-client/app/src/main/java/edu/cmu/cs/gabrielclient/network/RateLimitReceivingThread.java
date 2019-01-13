@@ -6,8 +6,6 @@ import android.util.Log;
 import java.io.DataInputStream;
 import java.io.IOException;
 
-import edu.cmu.cs.gabrielclient.stream.StreamIF;
-
 /**
  * Server result receiving thread.
  * It will refill the tokens of the rate limiter.
@@ -16,7 +14,7 @@ public class RateLimitReceivingThread extends RateLimitTCPNetworkThread {
 
     private static final String LOG_TAG = RateLimitReceivingThread.class.getSimpleName();
 
-    public RateLimitReceivingThread(StreamIF.StreamConfig config) {
+    public RateLimitReceivingThread(ConnectionConfig config) {
         super(config);
     }
 

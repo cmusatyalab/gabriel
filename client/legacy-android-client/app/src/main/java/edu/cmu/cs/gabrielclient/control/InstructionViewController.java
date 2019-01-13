@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabrielclient;
+package edu.cmu.cs.gabrielclient.control;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -22,16 +22,15 @@ import org.json.JSONObject;
 
 import java.util.HashMap;
 import java.util.Locale;
-import java.util.Timer;
-import java.util.TimerTask;
 
-public class InstructionViewer implements TextToSpeech.OnInitListener {
-    private static final String LOG_TAG = InstructionViewer.class.getSimpleName();
+import edu.cmu.cs.gabrielclient.util.LifeCycleIF;
+
+public class InstructionViewController implements TextToSpeech.OnInitListener, LifeCycleIF {
+    private static final String LOG_TAG = InstructionViewController.class.getSimpleName();
     public ImageView imageView = null;
     public VideoView videoView = null;
     public TextView subtitleView = null;
     // animation
-    public Timer timer = null;
     private TextToSpeech tts = null;
     private MediaController mediaController = null;
     private Context appContext = null;
@@ -40,9 +39,9 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
     private int animationDisplayIdx = -1;
     private int nAnimationFrames = -1;
     private Handler uiHandler = new Handler();
+
     private Runnable updateAnimation = new Runnable() {
         public void run() {
-//            Log.d(LOG_TAG, "update animation run");
             animationDisplayIdx = (animationDisplayIdx + 1) % nAnimationFrames;
             setImageInst(animationFrames[animationDisplayIdx]);
             if (imageView != null) {
@@ -51,7 +50,8 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
         }
     };
 
-    public InstructionViewer(Context appContext, ImageView imageView, VideoView videoView, TextView subtitleView) {
+    public InstructionViewController(Context appContext, ImageView imageView, VideoView videoView,
+                                     TextView subtitleView) {
         this.appContext = appContext;
         this.imageView = imageView;
         this.videoView = videoView;
@@ -107,16 +107,6 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
             Log.v(LOG_TAG, "no animation guidance found");
         }
         setInst(speechFeedback, imageFeedback, videoFeedback, animationFeedback);
-
-//        Message msg = Message.obtain();
-//        msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-//        receivedPacketInfo.setGuidanceDoneTime(System.currentTimeMillis());
-//        msg.obj = receivedPacketInfo;
-//        try {
-//            tokenController.tokenHandler.sendMessage(msg);
-//        } catch (NullPointerException e) {
-//            // might happen because token controller might have been terminated
-//        }
     }
 
     public void ttsSpeak(String speechFeedback) {
@@ -136,7 +126,8 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
                 tts.speak(splitMSGs[i].trim(), TextToSpeech.QUEUE_ADD, null);
             }
             tts.playSilence(350, TextToSpeech.QUEUE_ADD, null);
-            tts.speak(splitMSGs[splitMSGs.length - 1].trim(), TextToSpeech.QUEUE_ADD, map); // the last
+            tts.speak(splitMSGs[splitMSGs.length - 1].trim(), TextToSpeech.QUEUE_ADD, map); //
+            // the last
             // sentence
         }
     }
@@ -180,11 +171,7 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
                 animationPeriods[i] = frameArray.getInt(1);
             }
             animationDisplayIdx = -1;
-            uiHandler.postDelayed(updateAnimation, 4000);
-//            if (timer == null) {
-//                timer = new Timer();
-//                timer.schedule(new animationTask(), 0);
-//            }
+            uiHandler.postDelayed(updateAnimation, 0);
         } catch (JSONException e) {
             Log.w(LOG_TAG, "Invalid Animation.");
         }
@@ -209,14 +196,13 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
     /**************** TextToSpeech.OnInitListener ***************/
     public void onInit(int status) {
         if (status == TextToSpeech.SUCCESS) {
-//            if (tts == null) {
-//                tts = new TextToSpeech(this.appContext, this);
-//            }
             int result = tts.setLanguage(Locale.US);
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech
+                    .LANG_NOT_SUPPORTED) {
                 Log.e(LOG_TAG, "Language is not available.");
             }
-            int listenerResult = tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            int listenerResult = tts.setOnUtteranceProgressListener(new UtteranceProgressListener
+                    () {
                 @Override
                 public void onDone(String utteranceId) {
                     Log.v(LOG_TAG, "progress on Done " + utteranceId);
@@ -241,27 +227,22 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
         }
     }
 
-    public void cancelAnimationTimer() {
-        if (timer != null) {
-            timer.cancel();
-            timer = null;
-        }
+    @Override
+    public void onResume() {
+
     }
 
-    public void close() {
-        this.cancelAnimationTimer();
+    @Override
+    public void onPause() {
         this.uiHandler.removeCallbacks(updateAnimation);
+    }
+
+    @Override
+    public void onDestroy() {
         if (tts != null) {
             tts.stop();
             tts.shutdown();
             tts = null;
-        }
-    }
-
-    private class animationTask extends TimerTask {
-        @Override
-        public void run() {
-            Log.v(LOG_TAG, "Running timer task");
         }
     }
 }

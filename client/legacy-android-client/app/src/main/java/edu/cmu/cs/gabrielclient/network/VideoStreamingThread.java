@@ -26,8 +26,7 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 import edu.cmu.cs.gabrielclient.Const;
-import edu.cmu.cs.gabrielclient.stream.StreamIF;
-import edu.cmu.cs.gabrielclient.token.TokenController;
+import edu.cmu.cs.gabrielclient.control.TokenController;
 
 public class VideoStreamingThread extends Thread {
 
@@ -62,7 +61,7 @@ public class VideoStreamingThread extends Thread {
     private TokenController tokenController = null;
     private LogicalTime logicalTime = null;
 
-    public VideoStreamingThread(StreamIF.StreamConfig config){
+    public VideoStreamingThread(ConnectionConfig config){
         this(config.serverIP, config.serverPort, config.callerHandler, config.tc, config.lt);
     }
 

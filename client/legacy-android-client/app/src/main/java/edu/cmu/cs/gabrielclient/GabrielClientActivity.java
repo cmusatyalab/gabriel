@@ -17,21 +17,22 @@ import android.widget.VideoView;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import edu.cmu.cs.gabrielclient.control.ControlThread;
+import edu.cmu.cs.gabrielclient.control.CameraPreviewController;
+import edu.cmu.cs.gabrielclient.control.InstructionViewController;
+import edu.cmu.cs.gabrielclient.control.ResourceMonitorController;
+import edu.cmu.cs.gabrielclient.control.ServerController;
+import edu.cmu.cs.gabrielclient.control.StorageController;
+import edu.cmu.cs.gabrielclient.control.TokenController;
+import edu.cmu.cs.gabrielclient.network.ConnectionConfig;
 import edu.cmu.cs.gabrielclient.network.LogicalTime;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
 import edu.cmu.cs.gabrielclient.stream.ResultStream;
-import edu.cmu.cs.gabrielclient.stream.StreamIF;
 import edu.cmu.cs.gabrielclient.stream.VideoStream;
-import edu.cmu.cs.gabrielclient.token.TokenController;
-import edu.cmu.cs.gabrielclient.util.PingThread;
-import edu.cmu.cs.gabrielclient.util.ResourceMonitoringService;
 
 public class GabrielClientActivity extends Activity {
 
@@ -40,18 +41,17 @@ public class GabrielClientActivity extends Activity {
     private String serverIP = null;
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
-    private SensorStreamManager streamManager;
+    private LifeCycleManager lifeCycleManager;
     // activity views
-    private CameraPreview preview = null;
+    private CameraPreview cameraPreview = null;
     private ImageView imgView = null;
     private VideoView videoView = null;
     private TextView subtitleView = null;
-    private InstructionViewer iv = null;
-    // controllers
-    private ControlThread controlThread = null;
+    // controllers: controlThread, tokenController, and instruction view controller
+    private ServerController serverController = null;
+    private InstructionViewController ivController = null;
     private TokenController tokenController = null;
     private FileWriter controlLogWriter = null;
-    private PingThread pingThread = null;
     // handling results from server
     private ResultStream resultStream = null;
     // measurements
@@ -59,6 +59,7 @@ public class GabrielClientActivity extends Activity {
     private Intent resourceMonitoringIntent = null;
     // Handles messages passed from streaming threads and result receiving threads.
     private Handler uiHandler = new UIThreadHandler();
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,41 +70,79 @@ public class GabrielClientActivity extends Activity {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON +
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         initViews();
-        // iv initializes tts and mediaControl, therefore needs to be in onCreate
-        iv = new InstructionViewer(this.getApplicationContext(), imgView, videoView, subtitleView);
+        lifeCycleManager = LifeCycleManager.getInstance();
+        // initialize controllers
+        // TODO (junjuew): add background ping thread
+        CameraPreviewController cpc = new CameraPreviewController(cameraPreview);
+        lifeCycleManager.add(cpc);
+        ivController = new InstructionViewController(this.getApplicationContext(), imgView,
+                videoView,
+                subtitleView);
+        lifeCycleManager.add(ivController);
         tokenController = new TokenController(Const.TOKEN_SIZE, null);
-        streamManager = SensorStreamManager.getInstance();
+        lifeCycleManager.add(tokenController);
+        serverController = new ServerController(new ConnectionConfig(Const.SERVER_IP, Const
+                .CONTROL_PORT,
+                tokenController, uiHandler, null));
+        lifeCycleManager.add(serverController);
+        StorageController sc = new StorageController();
+        lifeCycleManager.add(sc);
+        if (Const.MONITOR_RESOURCE) {
+            ResourceMonitorController rmc = new ResourceMonitorController(this
+                    .getApplicationContext());
+            lifeCycleManager.add(rmc);
+        }
+        // initialize data streams
+        // TODO(junjuew): add audio and sensor data streams
+        resultStream = new ResultStream(new ConnectionConfig(Const.SERVER_IP, Const
+                .RESULT_RECEIVING_PORT,
+                tokenController, uiHandler, null));
+        lifeCycleManager.add(resultStream);
+        if (Const.SENSOR_VIDEO) {
+            VideoStream vs = new VideoStream(new ConnectionConfig(Const.SERVER_IP, Const
+                    .VIDEO_STREAM_PORT,
+                    tokenController, uiHandler, null));
+            lifeCycleManager.add(vs);
+        }
     }
 
     @Override
     protected void onResume() {
         Log.v(LOG_TAG, "++onResume");
         super.onResume();
-        preview = findViewById(R.id.camera_preview);
-        preview.start(CameraPreview.CameraConfiguration.getInstance(), VideoStream.previewCallback);
-
-        stopControllers();
-        stopDataStreams();
-        initPersistentStorage();
-        initControl();
-        initDataStreams();
-
-        // Monitor mobile resources (CPU and power)
-        if (Const.MONITOR_RESOURCE) {
-            startResourceMonitoring();
-        }
+        lifeCycleManager.onResume();
         isRunning = true;
 
-        if (Const.IS_EXPERIMENT) { // experiment mode
+//        if (Const.IS_EXPERIMENT) { // experiment mode
 //            runExperiments();
-        } else { // demo mode
+//        } else { // demo mode
 //            initPerRun(serverIP, Const.TOKEN_SIZE, null);
 //            serverIP = Const.SERVER_IP;
-        }
+//        }
     }
 
-    private void stopDataStreams() {
-        streamManager.stopStreaming();
+    @Override
+    protected void onPause() {
+        Log.v(LOG_TAG, "++onPause");
+        lifeCycleManager.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Log.v(LOG_TAG, "++onDestroy");
+        lifeCycleManager.onDestroy();
+        super.onDestroy();
+    }
+
+    private void initViews() {
+        imgView = findViewById(R.id.guidance_image);
+        videoView = findViewById(R.id.guidance_video);
+        subtitleView = findViewById(R.id.subtitleText);
+        cameraPreview = findViewById(R.id.camera_preview);
+        if (Const.SHOW_SUBTITLES) {
+            findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
+        }
     }
 
     private void networkReconfig(Message msg) {
@@ -161,130 +200,56 @@ public class GabrielClientActivity extends Activity {
         dialog.show();
     }
 
-    private void initViews() {
-        imgView = findViewById(R.id.guidance_image);
-        videoView = findViewById(R.id.guidance_video);
-        subtitleView = findViewById(R.id.subtitleText);
-        if (Const.SHOW_SUBTITLES) {
-            findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
-        }
-    }
-
-    private void initPersistentStorage() {
-        Const.ROOT_DIR.mkdirs();
-        Const.EXP_DIR.mkdirs();
-        if (Const.SAVE_FRAME_SEQUENCE) {
-            Const.SAVE_FRAME_SEQUENCE_DIR.mkdirs();
-        }
-    }
-
-    private void initDataStreams() {
-        resultStream = new ResultStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const
-                .RESULT_RECEIVING_PORT,
-                tokenController, uiHandler, null));
-        streamManager.addStream(resultStream);
-        if (Const.SENSOR_VIDEO) {
-            VideoStream vs = new VideoStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const
-                    .VIDEO_STREAM_PORT,
-                    tokenController, uiHandler, null));
-            streamManager.addStream(vs);
-//            preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
-        }
-        streamManager.startStreaming();
-    }
-
-    private void stopControllers() {
-        if ((controlThread != null) && (controlThread.isAlive())) {
-            controlThread.close();
-            controlThread = null;
-        }
-        if (tokenController != null) {
-            tokenController.close();
-        }
-        if (resultStream != null) {
-            resultStream.stop();
-            resultStream = null;
-        }
-        if ((pingThread != null) && (pingThread.isAlive())) {
-            pingThread.kill();
-            pingThread.interrupt();
-            pingThread = null;
-        }
-    }
-
-    private void initControl() {
-        controlThread = new ControlThread(Const.SERVER_IP, Const.CONTROL_PORT, uiHandler,
-                tokenController);
-        controlThread.start();
-
-        if (Const.BACKGROUND_PING) {
-            pingThread = new PingThread(serverIP, Const.PING_INTERVAL);
-            pingThread.start();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        Log.v(LOG_TAG, "++onPause");
-        this.terminate();
-        super.onPause();
-    }
-
-    @Override
-    protected void onDestroy() {
-        Log.v(LOG_TAG, "++onDestroy");
-        super.onDestroy();
-    }
 
     /**
      * Does initialization before each run (connecting to a specific server).
      * Called once before each experiment.
      */
-    private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
-        Log.v(LOG_TAG, "++initPerRun");
-
-        if (Const.IS_EXPERIMENT) {
-            if (isFirstExperiment) {
-                isFirstExperiment = false;
-            } else {
-                try {
-                    Thread.sleep(20 * 1000);
-                } catch (InterruptedException e) {
-                }
-                controlThread.sendControlMsg("ping");
-                // wait a while for ping to finish...
-                try {
-                    Thread.sleep(5 * 1000);
-                } catch (InterruptedException e) {
-                }
-            }
-        }
-        if ((controlThread != null) && (controlThread.isAlive())) {
-            controlThread.close();
-            controlThread = null;
-        }
-
-        if (serverIP == null) return;
-
-        if (Const.IS_EXPERIMENT) {
-            try {
-                controlLogWriter = new FileWriter(Const.CONTROL_LOG_FILE);
-            } catch (IOException e) {
-                Log.e(LOG_TAG, "Control log file cannot be properly opened", e);
-            }
-        }
-
-
-        if (Const.IS_EXPERIMENT) {
-            controlThread.sendControlMsg("ping");
-            // wait a while for ping to finish...
-            try {
-                Thread.sleep(5 * 1000);
-            } catch (InterruptedException e) {
-            }
-        }
-
-    }
+//    private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
+//        Log.v(LOG_TAG, "++initPerRun");
+//
+//        if (Const.IS_EXPERIMENT) {
+//            if (isFirstExperiment) {
+//                isFirstExperiment = false;
+//            } else {
+//                try {
+//                    Thread.sleep(20 * 1000);
+//                } catch (InterruptedException e) {
+//                }
+//                controlThread.sendControlMsg("ping");
+//                // wait a while for ping to finish...
+//                try {
+//                    Thread.sleep(5 * 1000);
+//                } catch (InterruptedException e) {
+//                }
+//            }
+//        }
+//        if ((controlThread != null) && (controlThread.isAlive())) {
+//            controlThread.close();
+//            controlThread = null;
+//        }
+//
+//        if (serverIP == null) return;
+//
+//        if (Const.IS_EXPERIMENT) {
+//            try {
+//                controlLogWriter = new FileWriter(Const.CONTROL_LOG_FILE);
+//            } catch (IOException e) {
+//                Log.e(LOG_TAG, "Control log file cannot be properly opened", e);
+//            }
+//        }
+//
+//
+//        if (Const.IS_EXPERIMENT) {
+//            controlThread.sendControlMsg("ping");
+//            // wait a while for ping to finish...
+//            try {
+//                Thread.sleep(5 * 1000);
+//            } catch (InterruptedException e) {
+//            }
+//        }
+//
+//    }
 
 
     /**
@@ -353,7 +318,6 @@ public class GabrielClientActivity extends Activity {
         Log.v(LOG_TAG, "++terminate");
 
         isRunning = false;
-        stopControllers();
 
 //        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
 //            accStreamingThread.stopStreaming();
@@ -363,10 +327,6 @@ public class GabrielClientActivity extends Activity {
 //            audioStreamingThread.stopStreaming();
 //            audioStreamingThread = null;
 //        }
-//        if (preview != null) {
-//            preview.close();
-//            preview = null;
-//        }
 //        if (sensorManager != null) {
 //            sensorManager.unregisterListener(this);
 //            sensorManager = null;
@@ -375,7 +335,6 @@ public class GabrielClientActivity extends Activity {
 //        if (audioRecorder != null) {
 //            stopAudioRecording();
 //        }
-        stopResourceMonitoring();
         if (Const.IS_EXPERIMENT) {
             try {
                 controlLogWriter.close();
@@ -402,9 +361,9 @@ public class GabrielClientActivity extends Activity {
 //                if (sw) { // turning on
 //                    Const.SENSOR_VIDEO = true;
 //                    tokenController.reset();
-//                    if (preview == null) {
-//                        preview = findViewById(R.id.camera_preview);
-//                        preview.start(CameraPreview.CameraConfiguration.getInstance(),
+//                    if (cameraPreview == null) {
+//                        cameraPreview = findViewById(R.id.camera_preview);
+//                        cameraPreview.start(CameraPreview.CameraConfiguration.getInstance(),
 // previewCallback);
 //                    }
 //                    if (videoStreamingThread == null) {
@@ -415,9 +374,9 @@ public class GabrielClientActivity extends Activity {
 //                    }
 //                } else { // turning off
 //                    Const.SENSOR_VIDEO = false;
-//                    if (preview != null) {
-//                        preview.close();
-//                        preview = null;
+//                    if (cameraPreview != null) {
+//                        cameraPreview.close();
+//                        cameraPreview = null;
 //                    }
 //                    if (videoStreamingThread != null) {
 //                        videoStreamingThread.stopStreaming();
@@ -483,7 +442,7 @@ public class GabrielClientActivity extends Activity {
 //            }
 //
 //            // Camera configs
-//            if (preview != null) {
+//            if (cameraPreview != null) {
 //                CameraPreview.CameraConfiguration camConfig = CameraPreview.CameraConfiguration
 // .getInstance();
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
@@ -508,8 +467,8 @@ public class GabrielClientActivity extends Activity {
 //                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_OFF;
 //                    }
 //                }
-//                preview.close();
-//                preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
+//                cameraPreview.close();
+//                cameraPreview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
 //            }
 //
 //        } catch (JSONException e) {
@@ -518,17 +477,6 @@ public class GabrielClientActivity extends Activity {
 //            return;
 //        }
 //    }
-
-    /**************** Battery recording *************************/
-    /*
-     * Resource monitoring of the mobile device
-     * Checks battery and CPU usage, as well as device temperature
-     */
-    public void startResourceMonitoring() {
-        Log.i(LOG_TAG, "Starting Battery Recording Service");
-        resourceMonitoringIntent = new Intent(this, ResourceMonitoringService.class);
-        startService(resourceMonitoringIntent);
-    }
 
     /**************** SensorEventListener ***********************/
 //    @Override
@@ -599,13 +547,6 @@ public class GabrielClientActivity extends Activity {
 //            audioRecordingThread = null;
 //        }
 //    }
-    public void stopResourceMonitoring() {
-        Log.i(LOG_TAG, "Stopping Battery Recording Service");
-        if (resourceMonitoringIntent != null) {
-            stopService(resourceMonitoringIntent);
-            resourceMonitoringIntent = null;
-        }
-    }
 
     private class UIThreadHandler extends Handler {
         @Override
@@ -617,7 +558,7 @@ public class GabrielClientActivity extends Activity {
                 case NetworkProtocol.NETWORK_RET_MESSAGE:
                     String inst = resultStream.parseReturnMsg((String) msg.obj);
                     if (inst != null) {
-                        iv.parseAndSetInstruction(inst);
+                        ivController.parseAndSetInstruction(inst);
                     }
                     break;
                 case NetworkProtocol.NETWORK_RET_CONFIG:

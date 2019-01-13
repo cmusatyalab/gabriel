@@ -7,9 +7,9 @@ import android.util.Log;
 import java.io.IOException;
 import java.net.InetAddress;
 
-import edu.cmu.cs.gabrielclient.stream.StreamIF;
-import edu.cmu.cs.gabrielclient.token.TokenController;
-import edu.cmu.cs.gabrielclient.util.Common;
+import edu.cmu.cs.gabrielclient.control.TokenController;
+
+import static edu.cmu.cs.gabrielclient.network.TCPConnection.getIPFromString;
 
 public class RateLimitTCPNetworkThread extends Thread {
     private static final String LOG_TAG = RateLimitTCPNetworkThread.class.getSimpleName();
@@ -17,26 +17,26 @@ public class RateLimitTCPNetworkThread extends Thread {
     // TCP connection
     InetAddress remoteIP;
     int remotePort;
-    Common.TCPConnection conn;
+    TCPConnection conn;
     Handler callerHandler;
     // rate limited
     TokenController tc;
 
-    public RateLimitTCPNetworkThread(StreamIF.StreamConfig config) {
+    public RateLimitTCPNetworkThread(ConnectionConfig config) {
         this(config.serverIP, config.serverPort, config.callerHandler, config.tc);
     }
 
     public RateLimitTCPNetworkThread(String serverIP, int port, Handler callerHandler, TokenController tc) {
         this.isRunning = false;
         this.callerHandler = callerHandler;
-        this.remoteIP = Common.getIPFromString(serverIP);
+        this.remoteIP = getIPFromString(serverIP);
         this.remotePort = port;
         this.tc = tc;
     }
 
     void initTCPConnection() {
         try {
-            conn = new Common.TCPConnection(this.remoteIP, this.remotePort);
+            conn = new TCPConnection(this.remoteIP, this.remotePort);
         } catch (IOException e) {
             Log.e(LOG_TAG, "Error in initializing Data socket: " + e);
             this.notifyError(e.getMessage());
