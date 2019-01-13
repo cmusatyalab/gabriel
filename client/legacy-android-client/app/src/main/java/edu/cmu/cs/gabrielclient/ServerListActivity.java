@@ -14,36 +14,35 @@
 
 package edu.cmu.cs.gabrielclient;
 
+import android.Manifest;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.hardware.camera2.CameraManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.util.Patterns;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.SeekBar;
 import android.widget.CompoundButton;
 import android.widget.EditText;
-import android.widget.Switch;
-import android.widget.Toast;
-import android.widget.ListView;
 import android.widget.ImageView;
+import android.widget.ListView;
+import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
-import android.support.v7.widget.Toolbar;
-import android.os.Bundle;
-import android.util.Patterns;
-import android.Manifest;
-import android.os.Build;
-import android.support.v4.app.ActivityCompat;
-import android.content.Context;
-import android.hardware.camera2.CameraManager;
+import android.widget.Toast;
 
 import java.util.ArrayList;
-import java.util.regex.Pattern;
-import java.util.regex.Matcher;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-
-public class ServerListActivity extends AppCompatActivity  {
+public class ServerListActivity extends AppCompatActivity {
     ListView listView;
     EditText serverName;
     EditText serverAddress;

@@ -3,7 +3,7 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:keepScreenOn="true"
-    android:orientation="vertical" >
+    android:orientation="vertical">
 
     <TextView
         android:id="@+id/subtitleText"
@@ -14,14 +14,15 @@
         android:visibility="gone" />
 
     <LinearLayout
+        android:id="@+id/linear_layout"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
         android:orientation="horizontal"
-        android:weightSum="1" >
+        android:weightSum="1">
 
         <Space
             android:layout_width="10dp"
-            android:layout_height="fill_parent"/>
+            android:layout_height="fill_parent" />
 
         <ImageView
             android:id="@+id/guidance_image"
@@ -37,13 +38,13 @@
 
         <Space
             android:layout_width="10dp"
-            android:layout_height="fill_parent"/>
-        
+            android:layout_height="fill_parent" />
+
         <edu.cmu.cs.gabrielclient.CameraPreview
             android:id="@+id/camera_preview"
             android:layout_width="300dp"
-            android:layout_height="300dp" />
-
+            android:layout_height="300dp"
+            android:keepScreenOn="true" />
 
 
     </LinearLayout>

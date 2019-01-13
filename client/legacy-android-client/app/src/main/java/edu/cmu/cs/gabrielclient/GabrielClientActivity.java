@@ -79,6 +79,9 @@ public class GabrielClientActivity extends Activity {
     protected void onResume() {
         Log.v(LOG_TAG, "++onResume");
         super.onResume();
+        preview = findViewById(R.id.camera_preview);
+        preview.start(CameraPreview.CameraConfiguration.getInstance(), VideoStream.previewCallback);
+
         stopControllers();
         stopDataStreams();
         initPersistentStorage();
@@ -118,7 +121,8 @@ public class GabrielClientActivity extends Activity {
                             @Override
                             public void run() {
                                 if (Const.SYNC_BASE.equals("video")) {
-                                    logicalTime.increaseImageTime((int) (delay * 11.5 / 1000)); // in the
+                                    logicalTime.increaseImageTime((int) (delay * 11.5 / 1000));
+                                    // in the
                                     // recorded data set, FPS is roughly 11
                                 } else if (Const.SYNC_BASE.equals("acc")) {
                                     logicalTime.increaseAccTime(delay);
@@ -164,9 +168,6 @@ public class GabrielClientActivity extends Activity {
         if (Const.SHOW_SUBTITLES) {
             findViewById(R.id.subtitleText).setVisibility(View.VISIBLE);
         }
-        if (Const.SENSOR_VIDEO) {
-            preview = (CameraPreview) findViewById(R.id.camera_preview);
-        }
     }
 
     private void initPersistentStorage() {
@@ -178,14 +179,16 @@ public class GabrielClientActivity extends Activity {
     }
 
     private void initDataStreams() {
-        resultStream = new ResultStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const.RESULT_RECEIVING_PORT,
+        resultStream = new ResultStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const
+                .RESULT_RECEIVING_PORT,
                 tokenController, uiHandler, null));
         streamManager.addStream(resultStream);
         if (Const.SENSOR_VIDEO) {
-            VideoStream vs = new VideoStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const.VIDEO_STREAM_PORT,
+            VideoStream vs = new VideoStream(new StreamIF.StreamConfig(Const.SERVER_IP, Const
+                    .VIDEO_STREAM_PORT,
                     tokenController, uiHandler, null));
             streamManager.addStream(vs);
-            preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
+//            preview.start(CameraPreview.CameraConfiguration.getInstance(), vs.previewCallback);
         }
         streamManager.startStreaming();
     }
@@ -210,7 +213,8 @@ public class GabrielClientActivity extends Activity {
     }
 
     private void initControl() {
-        controlThread = new ControlThread(Const.SERVER_IP, Const.CONTROL_PORT, uiHandler, tokenController);
+        controlThread = new ControlThread(Const.SERVER_IP, Const.CONTROL_PORT, uiHandler,
+                tokenController);
         controlThread.start();
 
         if (Const.BACKGROUND_PING) {
@@ -299,7 +303,8 @@ public class GabrielClientActivity extends Activity {
 //                    @Override
 //                    public void run() {
 //                        // end condition
-//                        if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const.TOKEN_SIZE_LIST
+//                        if ((ipIndex == Const.SERVER_IP_LIST.length) || (tokenIndex == Const
+// .TOKEN_SIZE_LIST
 // .length)) {
 //                            Log.i(LOG_TAG, "Finish all experiemets");
 //
@@ -314,9 +319,11 @@ public class GabrielClientActivity extends Activity {
 //                        // make a new configuration
 //                        serverIP = Const.SERVER_IP_LIST[ipIndex];
 //                        int tokenSize = Const.TOKEN_SIZE_LIST[tokenIndex];
-//                        File latencyFile = new File(Const.EXP_DIR.getAbsolutePath() + File.separator +
+//                        File latencyFile = new File(Const.EXP_DIR.getAbsolutePath() + File
+// .separator +
 //                                "latency-" + serverIP + "-" + tokenSize + ".txt");
-//                        Log.i(LOG_TAG, "Start new experiment - IP: " + serverIP + "\tToken: " + tokenSize);
+//                        Log.i(LOG_TAG, "Start new experiment - IP: " + serverIP + "\tToken: " +
+// tokenSize);
 //
 //                        // run the experiment
 //                        initPerRun(serverIP, tokenSize, latencyFile);
@@ -356,10 +363,10 @@ public class GabrielClientActivity extends Activity {
 //            audioStreamingThread.stopStreaming();
 //            audioStreamingThread = null;
 //        }
-        if (preview != null) {
-            preview.close();
-            preview = null;
-        }
+//        if (preview != null) {
+//            preview.close();
+//            preview = null;
+//        }
 //        if (sensorManager != null) {
 //            sensorManager.unregisterListener(this);
 //            sensorManager = null;
@@ -397,10 +404,12 @@ public class GabrielClientActivity extends Activity {
 //                    tokenController.reset();
 //                    if (preview == null) {
 //                        preview = findViewById(R.id.camera_preview);
-//                        preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
+//                        preview.start(CameraPreview.CameraConfiguration.getInstance(),
+// previewCallback);
 //                    }
 //                    if (videoStreamingThread == null) {
-//                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT,
+//                        videoStreamingThread = new VideoStreamingThread(serverIP, Const
+// .VIDEO_STREAM_PORT,
 //                                callerHandler, tokenController, logicalTime);
 //                        videoStreamingThread.start();
 //                    }
@@ -425,10 +434,12 @@ public class GabrielClientActivity extends Activity {
 //                    if (sensorManager == null) {
 //                        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 //                        sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-//                        sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
+//                        sensorManager.registerListener(this, sensorAcc, SensorManager
+// .SENSOR_DELAY_NORMAL);
 //                    }
 //                    if (accStreamingThread == null) {
-//                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT,
+//                        accStreamingThread = new AccStreamingThread(serverIP, Const
+// .ACC_STREAM_PORT,
 //                                callerHandler, tokenController, logicalTime);
 //                        accStreamingThread.start();
 //                    }
@@ -454,7 +465,8 @@ public class GabrielClientActivity extends Activity {
 //                        startAudioRecording();
 //                    }
 //                    if (audioStreamingThread == null) {
-//                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT,
+//                        audioStreamingThread = new AudioStreamingThread(serverIP, Const
+// .AUDIO_STREAM_PORT,
 //                                callerHandler, tokenController, logicalTime);
 //                        audioStreamingThread.start();
 //                    }
@@ -472,20 +484,24 @@ public class GabrielClientActivity extends Activity {
 //
 //            // Camera configs
 //            if (preview != null) {
-//                CameraPreview.CameraConfiguration camConfig = CameraPreview.CameraConfiguration.getInstance();
+//                CameraPreview.CameraConfiguration camConfig = CameraPreview.CameraConfiguration
+// .getInstance();
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
 //                    camConfig.fps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
 //                    camConfig.imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
-//                    camConfig.imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
+//                    camConfig.imgHeight = msgJSON.getInt(NetworkProtocol
+// .SERVER_CONTROL_IMG_HEIGHT);
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FOCUS)) {
-//                    throw new UnsupportedOperationException("FOCUS adjustment is not yet supported, but easy to add
+//                    throw new UnsupportedOperationException("FOCUS adjustment is not yet
+// supported, but easy to add
 // . " +
 //                            "See FLASHLIGHT on how to add support.");
 //                }
 //                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)) {
-//                    boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT);
+//                    boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol
+// .SERVER_CONTROL_FLASHLIGHT);
 //                    if (flashlightOn) {
 //                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_TORCH;
 //                    } else {
@@ -537,7 +553,8 @@ public class GabrielClientActivity extends Activity {
 
     /**************** Audio recording ***************************/
 //    private void startAudioRecording() {
-//        audioBufferSize = AudioRecord.getMinBufferSize(Const.RECORDER_SAMPLERATE, Const.RECORDER_CHANNELS, Const
+//        audioBufferSize = AudioRecord.getMinBufferSize(Const.RECORDER_SAMPLERATE, Const
+// .RECORDER_CHANNELS, Const
 //                .RECORDER_AUDIO_ENCODING);
 //        Log.d(LOG_TAG, "buffer size of audio recording: " + audioBufferSize);
 //        audioRecorder = new AudioRecord(MediaRecorder.AudioSource.MIC,
