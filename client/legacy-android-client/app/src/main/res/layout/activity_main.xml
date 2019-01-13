@@ -28,7 +28,7 @@
             android:id="@+id/guidance_image"
             android:layout_width="250dp"
             android:layout_height="250dp"
-            android:visibility="gone" />
+            android:visibility="visible" />
 
         <VideoView
             android:id="@+id/guidance_video"

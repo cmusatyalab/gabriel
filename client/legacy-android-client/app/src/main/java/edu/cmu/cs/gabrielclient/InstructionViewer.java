@@ -46,7 +46,7 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
             animationDisplayIdx = (animationDisplayIdx + 1) % nAnimationFrames;
             setImageInst(animationFrames[animationDisplayIdx]);
             if (imageView != null) {
-                uiHandler.postAtTime(this, animationPeriods[animationDisplayIdx]);
+                uiHandler.postDelayed(this, animationPeriods[animationDisplayIdx]);
             }
         }
     };
@@ -149,6 +149,7 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
     }
 
     public void setImageInst(Bitmap imageFeedback) {
+        Log.d(LOG_TAG, "update image view");
         imageView.setVisibility(View.VISIBLE);
         videoView.setVisibility(View.GONE);
         imageView.setImageBitmap(imageFeedback);
@@ -179,7 +180,7 @@ public class InstructionViewer implements TextToSpeech.OnInitListener {
                 animationPeriods[i] = frameArray.getInt(1);
             }
             animationDisplayIdx = -1;
-            uiHandler.postDelayed(updateAnimation, 0);
+            uiHandler.postDelayed(updateAnimation, 4000);
 //            if (timer == null) {
 //                timer = new Timer();
 //                timer.schedule(new animationTask(), 0);
