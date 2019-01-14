@@ -19,6 +19,8 @@ public class TCPConnection {
     public int port;
 
     public TCPConnection(InetAddress remoteIP, int remotePort) throws IOException {
+        this.ip = remoteIP;
+        this.port = remotePort;
         tcpSocket = new Socket();
         tcpSocket.setTcpNoDelay(true);
         tcpSocket.connect(new InetSocketAddress(remoteIP, remotePort), 5 * 1000);

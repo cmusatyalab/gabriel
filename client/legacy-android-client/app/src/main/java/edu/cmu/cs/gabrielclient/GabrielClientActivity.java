@@ -1,8 +1,6 @@
 package edu.cmu.cs.gabrielclient;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -12,6 +10,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.VideoView;
 
 import org.json.JSONException;
@@ -183,21 +182,8 @@ public class GabrielClientActivity extends Activity {
     }
 
     private void showAlert(Message msg) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this, AlertDialog
-                .THEME_HOLO_DARK);
-        builder.setMessage(msg.getData().getString("message"))
-                .setTitle(R.string.connection_error)
-                .setNegativeButton(R.string.back_button, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                GabrielClientActivity.this.finish();
-                            }
-                        }
-                )
-                .setCancelable(false);
-
-        AlertDialog dialog = builder.create();
-        dialog.show();
+        Toast.makeText(this, (String)msg.obj,
+                Toast.LENGTH_SHORT).show();
     }
 
 
