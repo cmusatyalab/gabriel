@@ -1,9 +1,8 @@
-#!/usr/bin/env python
-#
 # Cloudlet Infrastructure for Mobile Computing
 #
 #   Author: Kiryong Ha <krha@cmu.edu>
 #           Zhuo Chen <zhuoc@cs.cmu.edu>
+#           Junjue Wang <junjuew@cs.cmu.edu>
 #
 #   Copyright (C) 2011-2013 Carnegie Mellon University
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,12 +18,14 @@
 #   limitations under the License.
 #
 
+
 class Protocol_client(object):
     JSON_KEY_CONTROL_MESSAGE = "control"
     JSON_KEY_RESULT_MESSAGE = "result"
     JSON_KEY_FRAME_ID = "frame_id"
     JSON_KEY_ENGINE_ID = "engine_id"
     JSON_KEY_TOKEN_INJECT = "token_inject"
+
 
 class Protocol_application(object):
     JSON_KEY_SENSOR_TYPE = "sensor_type"
@@ -50,4 +51,3 @@ class Protocol_result(object):
     JSON_KEY_SPEECH = "speech"
     JSON_KEY_IMAGES_ANIMATION = "animation"
     JSON_KEY_VIDEO = "video"
-

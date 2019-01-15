@@ -1,15 +1,20 @@
 #! /usr/bin/env python
 
-import socket
-import struct
-import threading
-import Queue
-import StringIO
+from __future__ import absolute_import, division, print_function
+
 import json
-from time import sleep
 import pdb
-import sys
+import Queue
 import select
+import socket
+import StringIO
+import struct
+import sys
+import threading
+from time import sleep
+
+from logzero import logger
+
 
 class ClientCommand(object):
     """ A command to the client thread.
@@ -21,8 +26,8 @@ class ClientCommand(object):
         CLOSE:      None
     """
     CONNECT, SEND, RECEIVE, CLOSE = range(4)
-    ACTIONS=[CONNECT, SEND, RECEIVE, CLOSE]
-    
+    ACTIONS = [CONNECT, SEND, RECEIVE, CLOSE]
+
     def __init__(self, type, data=None):
         self.type = type
         self.data = data
@@ -48,12 +53,13 @@ class SocketClientThread(threading.Thread):
         can be controlled via the cmd_q Queue attribute. Replies are
         placed in the reply_q Queue attribute.
     """
+
     def __init__(self, cmd_q=None, reply_q=None):
         super(SocketClientThread, self).__init__()
         self.cmd_q = cmd_q or Queue.Queue()
         self.reply_q = reply_q or Queue.Queue()
         self.alive = threading.Event()
-        self.alive.set() 
+        self.alive.set()
         self.socket = None
 
         self.handlers = {
@@ -75,11 +81,11 @@ class SocketClientThread(threading.Thread):
     def join(self, timeout=None):
         self.alive.clear()
         threading.Thread.join(self, timeout)
-        print '{} exit'.format(self.__class__.__name__)
+        logger.debug('{} exit'.format(self.__class__.__name__))
 
     def _handle_CONNECT(self, cmd):
         try:
-            print 'connect called\n'
+            logger.debug('connect called\n')
             self.socket = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((cmd.data[0], cmd.data[1]))
