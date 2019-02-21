@@ -1,4 +1,4 @@
-python-opencv
+opencv-python
 fire
 logzero
 numpy
