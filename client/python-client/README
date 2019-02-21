@@ -17,3 +17,9 @@ opencv: sudo apt-get install libopencv-dev python-opencv
 
 For gui version, you'll also need pyQt:
 sudo apt-get install python-qt4
+
+INSTALLATION:
+Create a virtualenv and install the requirements listed in requirements.txt.
+virtualenv --python=python2.7 ./venv
+. ./venv/bin/activate
+pip install -r requirements.txt

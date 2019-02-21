@@ -1,0 +1,5 @@
+python-opencv
+fire
+logzero
+numpy
+
