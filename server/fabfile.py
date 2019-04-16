@@ -47,7 +47,7 @@ def install():
     if sudo("apt-get install default-jre python-pip " +
             "pssh python-psutil").failed:
         abort("Failed to install libraries")
-    if sudo("sudo pip install flask==0.9 flask-restful==0.2.1 six==1.1.0").failed:
+    if sudo("sudo pip install flask==0.12.3 flask-restful==0.3.5 six==1.9.0").failed:
         abort("Failed to install python libraries")
 
     sys.stdout.write("[SUCCESS] Finish installing Gabriel\n")

@@ -53,8 +53,8 @@ You also need the following packages.
 * parallel-ssh
 * psutil >= 0.4.1
 * JRE for UPnP
-* six==1.1.0
-* Flask==0.9
+* six==1.9.0
+* Flask==0.12.3
 * Flask-RESTful==0.3.5
 * opencv >=2.4 (optional)
 * numpy (optional)
