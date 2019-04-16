@@ -53,13 +53,17 @@ def process_command_line(argv):
     parser.add_option(
             '-n', '--net_interface', action = 'store', default = "eth0",
             help = "the network interface with which the cognitive engines communicate")
+    parser.add_option(
+            '-s', '--ip_addr', action = 'store',
+            help = "IP address to return when asking for service endpoints.")
     settings, args = parser.parse_args(argv)
 
     return settings, args
 
-global net_interface
+global net_interface, ip_addr
 settings, args = process_command_line(sys.argv[1:])
 net_interface = settings.net_interface
+ip_addr = settings.ip_addr
 
 class CustomService(object):
     def __init__(self, service_name, data):
@@ -159,8 +163,6 @@ class ServiceInfo(Resource):
 
 
 class GabrielInfo(Resource):
-    global net_interface
-    ip_addr = gabriel.network.get_ip(net_interface)
     service_info = {
             gabriel.ServiceMeta.UCOMM_SERVER_IP: None,
             gabriel.ServiceMeta.UCOMM_SERVER_PORT: None,

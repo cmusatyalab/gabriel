@@ -89,6 +89,9 @@ def process_command_line(argv):
     parser.add_option(
             '-n', '--net_interface', action = 'store', default = "eth0",
             help = "the network interface with which the cognitive engines communicate")
+    parser.add_option(
+            '-s', '--service_ip', action = 'store',
+            help = "Use supplied IP address when returning enpoints for services. Useful when running in a container or VM with a externally assigned public IP.")
     settings, args = parser.parse_args(argv)
 
     if hasattr(settings, 'image_dir') and settings.image_dir is not None:
@@ -232,6 +235,8 @@ def main():
     if settings.legacy_mode:
         gabriel.Const.LEGACY_JSON_ONLY_RESULT = True
     REST_server.set_interface(settings.net_interface)
+    if settings.service_ip is not None:
+        REST_server.set_ip(settings.service_ip)
 
     start_background_services()
 

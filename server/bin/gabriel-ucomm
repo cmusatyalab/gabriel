@@ -63,10 +63,14 @@ def process_command_line(argv):
             parser.error("Need address and port. Ex) 10.0.0.1:8021")
     return settings
 
-def register_ucomm(ip_addr, port, net_interface = "eth0"):
+def register_ucomm(ip_addr, port, address, net_interface = "eth0"):
     url = "http://%s:%d/" % (ip_addr, port)
+    if address is not None:
+       ucomm_ip, _ = address.split(":", 1)
+    else:
+       ucomm_ip = gabriel.network.get_ip(net_interface)
     json_info = {
-        gabriel.ServiceMeta.UCOMM_SERVER_IP: gabriel.network.get_ip(net_interface),
+        gabriel.ServiceMeta.UCOMM_SERVER_IP: ucomm_ip,
         gabriel.ServiceMeta.UCOMM_SERVER_PORT: gabriel.Const.UCOMM_SERVER_PORT
         }
     gabriel.network.http_put(url, json_info)
@@ -82,7 +86,7 @@ def main():
 
     ## register the current ucomm
     try:
-        register_ucomm(ip_addr, port, settings.net_interface)
+        register_ucomm(ip_addr, port, settings.address, settings.net_interface)
     except Exception as e:
         LOG.error(str(e))
         LOG.error("failed to register UCOMM to the control")

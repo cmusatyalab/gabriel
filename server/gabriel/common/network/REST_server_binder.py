@@ -47,11 +47,11 @@ class RESTServer(threading.Thread):
             raise RESTServerError("Cannot find REST server binary: %s" % self.REST_bin)
 
         self.net_interface = "eth0" # default
-
+        self.ip_addr = gabriel.network.get_ip(self.net_interface)
         threading.Thread.__init__(self, target = self.run_exec)
 
     def run_exec(self):
-        cmd = ["python", "%s" % (self.REST_bin), '-n', self.net_interface]
+        cmd = ["python", "%s" % (self.REST_bin), '-n', self.net_interface, '-s', self.ip_addr]
         #_PIPE = subprocess.PIPE
         _PIPE = None
         self.proc = subprocess.Popen(cmd, close_fds = True,
@@ -73,6 +73,9 @@ class RESTServer(threading.Thread):
 
     def set_interface(self, interface):
         self.net_interface = interface
+
+    def set_ip(self, ip):
+        self.ip_addr = ip
 
     def terminate(self):
         self.stop.set()
