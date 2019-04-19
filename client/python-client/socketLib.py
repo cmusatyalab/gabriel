@@ -118,13 +118,13 @@ class SocketClientThread(threading.Thread):
         """ Convenience method for receiving exactly n bytes from
             self.socket (assuming it's open and connected).
         """
-        chunks = []
+        data = ''
         while len(data) < n:
             chunk = self.socket.recv(n - len(data))
             if chunk == '':
                 break
-            chunks.append(chunk)
-        return ''.join(chunks)
+            data += chunk
+        return data
 
     def _error_reply(self, errstr):
         return ClientReply(ClientReply.ERROR, errstr)
