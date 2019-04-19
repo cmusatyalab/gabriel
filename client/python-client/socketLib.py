@@ -119,11 +119,12 @@ class SocketClientThread(threading.Thread):
             self.socket (assuming it's open and connected).
         """
         chunks = []
-        while len(data) < n:
-            chunk = self.socket.recv(n - len(data))
+        while n > 0:
+            chunk = self.socket.recv(n)
             if chunk == '':
                 break
             chunks.append(chunk)
+            n -= len(chunk)
         return ''.join(chunks)
 
     def _error_reply(self, errstr):
