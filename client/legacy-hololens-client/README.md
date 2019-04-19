@@ -23,6 +23,6 @@ after changing this value. This can be done in either of the following two ways:
 
 # Directory Overview
 1. [gabriel-holo-client](gabriel-holo-client) is the Unity Project Directory. Select this directory when opening this project in Unity.
-2. [gabriel-holo-client/App](gabriel-holo-client/App/gabriel-holo-client.sln) is the Visual Studio Solution. 
+2. [gabriel-holo-client/App](gabriel-holo-client/App) is the Visual Studio Solution. 
    1. If you simply want to run the project, open [gabriel-holo-client/App/gabriel-holo-client.sln](gabriel-holo-client/App/gabriel-holo-client.sln) in Visual studio. You can deploy it to the HoloLens using [these instructions](https://docs.microsoft.com/en-us/windows/mixed-reality/using-visual-studio).
    2. The `Build Visual Studio SLN` button in Unity will create a build of the client equivalent to what currently exists in `gabriel-holo-client/App`.
