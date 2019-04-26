@@ -32,6 +32,10 @@ def getLogger(
 
     if loggers.get(name, None) is None:
         logger = logging.getLogger(name)
+        
+        # This passes on every log message to the handlers. 
+        # The actual messages that get logged depend on the level that was
+        # set for each handler.
         logger.setLevel(logging.DEBUG)
 
         # Add stdout logging
