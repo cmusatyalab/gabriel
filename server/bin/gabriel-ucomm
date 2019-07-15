@@ -86,7 +86,7 @@ def main():
 
     ## register the current ucomm
     try:
-        register_ucomm(ip_addr, port, settings.address, settings.net_interface)
+        register_ucomm(ip_addr, port, None, settings.net_interface)
     except Exception as e:
         LOG.error(str(e))
         LOG.error("failed to register UCOMM to the control")
