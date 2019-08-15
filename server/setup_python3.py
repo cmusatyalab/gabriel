@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Gabriel: Cognitive Assistance System
 #
@@ -25,23 +25,7 @@ from gabriel.common.config import Const
 
 from distutils.core import setup
 
-# get all executable file
-def get_all_files(package_dir, target_path, exclude_names=list()):
-    data_files = list()
-    cur_dir = os.path.abspath(os.curdir)
-    os.chdir(package_dir)
-    for (dirpath, dirnames, filenames) in os.walk(target_path):
-        for filename in filenames:
-            if filename.startswith('.') == True:
-                continue
-            if filename in exclude_names:
-                continue
-            data_files.append(os.path.join(dirpath, filename))
-    os.chdir(cur_dir)
-    return data_files
-
-script_files = ['bin/gabriel-ucomm']
-executable_files = get_all_files('.', 'gabriel/lib')
+script_files = ['bin/gabriel-control']
 
 setup(
         name='elijah-gabriel',
@@ -53,7 +37,7 @@ setup(
         author_email='krha@cmu.edu',
         keywords="cloud cloudlet CMU Gabriel Congitive",
         license='Apache License Version 2.0',
-        scripts=script_files+executable_files,
+        scripts=script_files,
         packages=[
             'gabriel',
             'gabriel.control',
@@ -66,7 +50,7 @@ setup(
         data_files=[],
         requires=[],
         classifiers=[
-            'Programming Language :: Python :: 2.7'
+            'Programming Language :: Python :: 3.5'
         ]
 )
 

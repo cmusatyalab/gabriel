@@ -15,6 +15,8 @@ RUN apt-get install -y \
     python2.7 \
     python-dev \
     python-pip \
+    python3.5 \
+    python3-pip \
     default-jre \
     pssh \
     python-psutil \
@@ -26,11 +28,14 @@ RUN apt-get install -y \
 RUN pip install -U pip
 RUN pip install -U setuptools
 RUN pip install -U numpy
+RUN python3 -m pip install -U pip
 
 RUN git clone https://github.com/cmusatyalab/gabriel.git
 WORKDIR /gabriel/server
 RUN pip install -r requirements.txt
+RUN python3 -m pip install -r requirements_python3.txt
 RUN python setup.py install
+RUN python3 setup_python3.py install
 
 RUN apt-get autoremove \
     && apt-get clean
