@@ -97,5 +97,5 @@ if __name__ == '__main__':
         REST_server = RESTServer()
         REST_server.start()
     except RESTServerError as e:
-        print str(e)
+        print(str(e))
         REST_server = None

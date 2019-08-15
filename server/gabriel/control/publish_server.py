@@ -21,15 +21,20 @@
 
 import json
 import multiprocessing
-import Queue
 import select
 import socket
-import SocketServer
 import struct
 import sys
 import threading
 import time
 import traceback
+
+import sys
+
+if (sys.version_info > (3, 0)):
+    import queue as Queue
+else:
+    import Queue
 
 import gabriel
 import gabriel.control
@@ -62,12 +67,12 @@ class VideoPublishHandler(SensorPublishHandler):
         try:
             (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
 
-            header_json = json.loads(header_data)
+            header_json = json.loads(header_data.decode('utf-8'))
             header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_JPEG})
             header_data = json.dumps(header_json)
 
             packet = struct.pack("!II%ds%ds" % (len(header_data), len(image_data)),
-                    len(header_data), len(image_data), header_data, image_data)
+                                 len(header_data), len(image_data), bytes(header_data, 'utf-8'), image_data)
             self.request.send(packet)
             self.wfile.flush()
         except Queue.Empty as e:
@@ -96,7 +101,7 @@ class AccPublishHandler(SensorPublishHandler):
         try:
             (header_data, acc_data) = self.data_queue.get(timeout = 0.0001)
 
-            header_json = json.loads(header_data)
+            header_json = json.loads(header_data.decode('utf-8'))
             header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_ACC})
             header_data = json.dumps(header_json)
 
@@ -130,7 +135,7 @@ class AudioPublishHandler(SensorPublishHandler):
         try:
             (header_data, audio_data) = self.data_queue.get(timeout = 0.0001)
 
-            header_json = json.loads(header_data)
+            header_json = json.loads(header_data.decode('utf-8'))
             header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_AUDIO})
             header_data = json.dumps(header_json)
 

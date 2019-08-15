@@ -30,7 +30,7 @@ def get_ip(iface = 'eth0'):
     sockfd = sock.fileno()
     SIOCGIFADDR = 0x8915
 
-    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
+    ifreq = struct.pack('16sH14s', bytes(iface, 'utf-8'), socket.AF_INET, b'\x00' * 14)
     try:
         res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
     except:

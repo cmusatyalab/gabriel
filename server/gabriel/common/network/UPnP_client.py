@@ -23,7 +23,6 @@ import os
 import subprocess
 import sys
 import threading
-import urllib2
 
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)

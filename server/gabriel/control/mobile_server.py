@@ -23,10 +23,8 @@
 import json
 import multiprocessing
 import os
-import Queue
 import select
 import socket
-import SocketServer
 import struct
 import sys
 import threading
@@ -34,6 +32,12 @@ import time
 import traceback
 import base64
 import gabriel
+
+if (sys.version_info > (3, 0)):
+    import queue as Queue
+else:
+    import Queue
+
 LOG = gabriel.logging.getLogger(__name__)
 
 image_queue_list = list()
@@ -72,7 +76,7 @@ class MobileSensorHandler(gabriel.network.CommonHandler):
             self.previous_time = time.time()
         super(MobileSensorHandler, self).handle()
 
-
+        
 class MobileControlHandler(MobileSensorHandler):
     '''
     The control server that
@@ -94,7 +98,7 @@ class MobileControlHandler(MobileSensorHandler):
         ## receive data
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
-        header_json = json.loads(header_data)
+        header_json = json.loads(header_data.decode('utf-8'))
 
         # if "sync_time" field exists in the header, then this is a time sync request
         # and a local time is returned immediately
@@ -109,7 +113,7 @@ class MobileControlHandler(MobileSensorHandler):
     def _handle_queue_data(self):
         try:
             cmd_data = self.data_queue.get(timeout = 0.0001)
-            cmd_json = json.loads(cmd_data)
+            cmd_json = json.loads(cmd_data.decode('utf-8'))
 
             if isinstance(cmd_json, list):
                 for cmd_j in cmd_json:
@@ -170,7 +174,7 @@ class MobileVideoHandler(MobileSensorHandler):
 
         ## add header data for measurement
         if gabriel.Debug.TIME_MEASUREMENT:
-            header_json = json.loads(header_data)
+            header_json = json.loads(header_data.decode('utf-8'))
             header_json[gabriel.Protocol_measurement.JSON_KEY_CONTROL_RECV_FROM_MOBILE_TIME] = time.time()
             header_data = json.dumps(header_json)
 
@@ -226,7 +230,7 @@ class MobileVideoHandler(MobileSensorHandler):
             import numpy as np
             img_array = np.asarray(bytearray(image_data), dtype = np.int8)
             cv_image = cv2.imdecode(img_array, -1)
-            print cv_image.shape
+            print(cv_image.shape)
             if not self.log_video_writer_created:
                 self.log_video_writer_created = True
                 self.log_video_writer = cv2.VideoWriter(gabriel.Const.LOG_VIDEO_PATH, cv2.cv.CV_FOURCC('X','V','I','D'), 10, (cv_image.shape[1], cv_image.shape[0]))
@@ -304,7 +308,7 @@ class MobileAudioHandler(MobileSensorHandler):
         ## receive data
         header_size = struct.unpack("!I", self._recv_all(4))[0]
         header_data = self._recv_all(header_size)
-        header_json = json.loads(header_data)
+        header_json = json.loads(header_data.decode('utf-8'))
         audio_size = struct.unpack("!I", self._recv_all(4))[0]
         audio_data = self._recv_all(audio_size)
 
@@ -417,7 +421,7 @@ class MobileResultHandler(MobileSensorHandler):
     def _handle_queue_data(self):
         try:
             (rtn_header, rtn_data) = self.data_queue.get(timeout = 0.0001)
-            rtn_header_json = json.loads(rtn_header)
+            rtn_header_json = json.loads(rtn_header.decode('utf-8'))
             ## log measured time
             if gabriel.Debug.TIME_MEASUREMENT:
                 frame_id = rtn_header_json[gabriel.Protocol_client.JSON_KEY_FRAME_ID]
@@ -444,7 +448,7 @@ class MobileResultHandler(MobileSensorHandler):
 
             if gabriel.Debug.WEB_SERVER:
                 if gabriel.Const.LEGACY_JSON_ONLY_RESULT:
-                    rtn_data_json = json.loads(rtn_data)
+                    rtn_data_json = json.loads(rtn_data.decode('utf-8'))
                     self._add_data_to_debug_server(rtn_header_json, rtn_data_json)
                 else:
                     raise NotImplementedError("Debug server only support legacy mode!")
@@ -463,7 +467,7 @@ class MobileResultHandler(MobileSensorHandler):
                 packet = struct.pack("!I{}s".format(len(rtn_header)), len(rtn_header), rtn_header)
                 LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_header_json))
             else:
-                packet = struct.pack("!I{}s{}s".format(len(rtn_header),len(rtn_data)), len(rtn_header), rtn_header, rtn_data)
+                packet = struct.pack("!I{}s{}s".format(len(rtn_header),len(rtn_data)), len(rtn_header), bytes(rtn_header, 'utf-8'), rtn_data)
                 LOG.info("message sent to the Glass: %s", gabriel.util.print_rtn(rtn_header_json))
             self.request.send(packet)
             self.wfile.flush()

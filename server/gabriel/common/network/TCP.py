@@ -21,7 +21,13 @@
 import multiprocessing
 import select
 import socket
-import SocketServer
+
+import sys
+if (sys.version_info > (3, 0)):
+    import socketserver
+else:
+    import SocketServer as socketserver
+
 import threading
 import traceback
 
@@ -35,7 +41,7 @@ class TCPNetworkError(Exception):
 class TCPZeroBytesError(Exception):
     pass
 
-class CommonHandler(SocketServer.StreamRequestHandler, object):
+class CommonHandler(socketserver.StreamRequestHandler, object):
     '''
     A basic handler to be used with TCP server.
     A real handler can extend this class by implementing interesting stuff in
@@ -50,15 +56,17 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         '''
         Received data till a specified size.
         '''
-        data = ''
-        while len(data) < recv_size:
-            tmp_data = self.request.recv(recv_size - len(data))
-            if tmp_data is None:
+        chunks = []
+        bytes_recd = 0
+        while bytes_recd < recv_size:
+            chunk = self.request.recv(recv_size - bytes_recd)
+            if chunk is None:
                 raise TCPNetworkError("Cannot recv data at %s" % str(self))
-            if len(tmp_data) == 0:
+            if chunk == b'':
                 raise TCPZeroBytesError("Recv 0 bytes.")
-            data += tmp_data
-        return data
+            chunks.append(chunk)
+            bytes_recd = bytes_recd + len(chunk)
+        return b''.join(chunks)
 
     def handle(self):
         try:
@@ -123,7 +131,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         self.stop_queue.put("terminate\n")
 
 
-class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+class CommonServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     '''
     A basic TCP server.
     It handles each TCP connection in the @handler provided to __init__.
@@ -135,7 +143,7 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         self.allow_reuse_address = True
         self.handler = handler
         try:
-            SocketServer.TCPServer.__init__(self, self.server_address, handler)
+            socketserver.TCPServer.__init__(self, self.server_address, handler)
         except socket.error as e:
             LOG.error("socket error: %s" % str(e))
             raise TCPNetworkError("Check IP/Port : %s\n" % (str(self.server_address)))
@@ -147,7 +155,7 @@ class CommonServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
             self.handle_request()
 
     def handle_error(self, request, client_address):
-        #SocketServer.TCPServer.handle_error(self, request, client_address)
+        #socketserver.TCPServer.handle_error(self, request, client_address)
         LOG.warning("Exception raised in handling request!")
 
     def terminate(self):

@@ -18,14 +18,13 @@
 #   limitations under the License.
 #
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import multiprocessing
 import os
 import pprint
-import Queue
 import re
-from SocketServer import ThreadingMixIn
+from socketserver import ThreadingMixIn
 import sys
 import threading
 import time
@@ -43,7 +42,7 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
     def do_GET(self):
         try:
             self.path = self.path.split('?')[0]
-            print self.path
+            print(self.path)
 
             if self.path.endswith(".mjpeg"):
                 if self.path.endswith("camera.mjpeg"):
