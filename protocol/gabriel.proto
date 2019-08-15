@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package gabriel;
+
+option java_package = "edu.cmu.cs.gabrielclient.network";
+option java_outer_classname = "Protos";
+
+message Input {
+  required string update_id = 1;
+  enum Type {
+    IMAGE = 0;
+    VIDEO = 1;
+    AUDIO = 2;
+    ACCEL = 3;
+  }
+  required Type type = 2;
+  required bytes data = 3;
+  optional string style = 4;
+  optional string filename = 5;
+}
+
+message Result {
+  required string data = 1;
+  optional string style = 2;
+}
