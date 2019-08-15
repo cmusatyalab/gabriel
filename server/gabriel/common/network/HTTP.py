@@ -65,7 +65,7 @@ def http_put(url, json_string, rtn_format = "json"):
     end_point = urlparse.urlparse("%s" % url)
     params = json.dumps(json_string)
     headers = {"Content-type": "application/json"}
-    
+
     conn = httplib.HTTPConnection(end_point[1])
     conn.request("PUT", "%s" % end_point[2], params, headers)
     response = conn.getresponse()

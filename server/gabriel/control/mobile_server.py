@@ -76,7 +76,7 @@ class MobileSensorHandler(gabriel.network.CommonHandler):
             self.previous_time = time.time()
         super(MobileSensorHandler, self).handle()
 
-        
+
 class MobileControlHandler(MobileSensorHandler):
     '''
     The control server that
