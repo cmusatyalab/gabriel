@@ -257,17 +257,9 @@ def main():
     m_result_server = gabriel.control.MobileCommServer(gabriel.Const.MOBILE_SERVER_RESULT_PORT, gabriel.control.MobileResultHandler)
     ucomm_relay_server = gabriel.control.UCommRelayServer(gabriel.Const.UCOMM_COMMUNICATE_PORT, gabriel.control.UCommRelayHandler)
 
-    ## publish servers that publish sensor streams to offloading engines (start with p_)
-    p_video_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_VIDEO_PORT, gabriel.control.VideoPublishHandler)
-    p_acc_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_ACC_PORT, gabriel.control.AccPublishHandler)
-    p_audio_server = gabriel.control.SensorPublishServer(gabriel.Const.PUBLISH_SERVER_AUDIO_PORT, gabriel.control.AudioPublishHandler)
-
     ## create a thread for each server
     # mobile
     m_control_server_thread = threading.Thread(target = m_control_server.serve_forever)
-    m_video_server_thread = threading.Thread(target = m_video_server.serve_forever)
-    m_acc_server_thread = threading.Thread(target = m_acc_server.serve_forever)
-    m_audio_server_thread = threading.Thread(target = m_audio_server.serve_forever)
     m_result_server_thread = threading.Thread(target = m_result_server.serve_forever)
     ucomm_relay_thread = threading.Thread(target = ucomm_relay_server.serve_forever)
 
@@ -333,12 +325,6 @@ def main():
         if gabriel.Debug.WEB_SERVER:
             if http_server is not None:
                 http_server.terminate()
-
-    '''
-    for each_thread in all_thread_list:
-        if each_thread.is_alive() == True:
-            import pdb;pdb.set_trace()
-    '''
 
 
 if __name__ == '__main__':
