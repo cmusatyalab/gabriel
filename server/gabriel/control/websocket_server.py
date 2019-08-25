@@ -4,7 +4,12 @@ import gabriel_pb2
 import os
 import gabriel
 import time
+import multiprocessing
 LOG = gabriel.logging.getLogger(__name__)
+
+
+image_queue_list = list()
+result_queue = multiprocessing.Queue()
 
 
 class HandlerState:
@@ -34,7 +39,7 @@ async def consumer_handler(websocket, path):
         # TODO Add timing information when
         # gabriel.Debug.TIME_MEASUREMENT is True
 
-        ## stats
+        # stats
         if gabriel.Debug.LOG_STAT:
             state.frame_count += 1
             current_time = time.time()
@@ -50,7 +55,10 @@ async def consumer_handler(websocket, path):
                     (current_FPS, average_FPS, BW, len(image_queue_list)))
                 LOG.info(log_msg)
 
-        ## put input data in all registered cognitive engine queue
+        header_data = json.dumps({'style': input.style})
+        image_data = input.data
+                
+        # put input data in all registered cognitive engine queue
         if input.type == gabriel_pb_2.Input.Type.IMAGE:
             for image_queue in image_queue_list:
                 if image_queue.full():
@@ -63,9 +71,9 @@ async def consumer_handler(websocket, path):
                 except Queue.Full as e:
                     pass        
 
-        ## TODO display input stream for debug purpose
-        ## TODO write images into files
-        ## TODO write images into files
+        # TODO display input stream for debug purpose
+        # TODO write images into files
+        # TODO write images into files
 
 
 async def producer_handler(websocket, path):
@@ -75,8 +83,36 @@ async def producer_handler(websocket, path):
             (rtn_header, rtn_data) = self.data_queue.get(timeout = 0.0001)
             
             rtn_header_json = json.loads(rtn_header)
-        except Queue.Empty:
-            LOG.warning("data queue shouldn't be empty! - %s" % str(self))            
             
-        
-        
+            # TODO Log time
+            # TODO support debug server
+
+            result = gabriel_pb2.Result()
+            result.data = rtn_data
+
+            style = rtn_header_json.get('style')
+            if style is not None
+                result.style = style
+
+            await websocket.send(result.SerializeToString())
+        except Queue.Empty:
+            LOG.warning("data queue shouldn't be empty! - %s" % str(self))
+
+
+async def handler(websocket, path):
+    consumer_task = asyncio.ensure_future(
+        consumer_handler(websocket, path))
+    producer_task = asyncio.ensure_future(
+        producer_handler(websocket, path))
+    done, pending = await asyncio.wait(
+        [consumer_task, producer_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    for task in pending:
+        task.cancel()
+
+
+def launch():
+    start_server = websockets.serve(handler, port=8765)
+    asyncio.get_event_loop().run_until_complete(start_server)
+    asyncio.get_event_loop().run_forever()
