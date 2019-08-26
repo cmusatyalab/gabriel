@@ -1,6 +1,6 @@
 import asyncio
 import websockets
-import gabriel_pb2
+from gabriel.control import gabriel_pb2
 import os
 import gabriel
 import time
@@ -91,7 +91,7 @@ async def producer_handler(websocket, path):
             result.data = rtn_data
 
             style = rtn_header_json.get('style')
-            if style is not None
+            if style is not None:
                 result.style = style
 
             await websocket.send(result.SerializeToString())
