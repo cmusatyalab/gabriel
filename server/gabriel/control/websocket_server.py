@@ -4,12 +4,22 @@ from gabriel.control import gabriel_pb2
 import os
 import gabriel
 import time
-import multiprocessing
+import traceback
+import json
+
+# Show exceptions from websockets server
+import logging
+logger = logging.getLogger('websockets.server')
+logger.setLevel(logging.ERROR)
+logger.addHandler(logging.StreamHandler())
+
 LOG = gabriel.logging.getLogger(__name__)
 
 
-image_queue_list = list()
-result_queue = multiprocessing.Queue()
+image_queue_list = [
+    asyncio.Queue(maxsize=gabriel.Const.MAX_FRAME_SIZE)
+]
+result_queue = asyncio.Queue()
 
 
 class HandlerState:
@@ -32,9 +42,10 @@ class HandlerState:
 async def consumer_handler(websocket, path):
     start_time = time.time()
     state = HandlerState(start_time)
-    async for message in websocket:
+    while True:
+        raw_input = await websocket.recv()
         input = gabriel_pb2.Input()
-        input.ParseFromString(message)
+        input.ParseFromString(raw_input)
 
         # TODO Add timing information when
         # gabriel.Debug.TIME_MEASUREMENT is True
@@ -57,49 +68,46 @@ async def consumer_handler(websocket, path):
 
         header_data = json.dumps({'style': input.style})
         image_data = input.data
-                
+
         # put input data in all registered cognitive engine queue
-        if input.type == gabriel_pb_2.Input.Type.IMAGE:
+        if input.type == gabriel_pb2.Input.Type.IMAGE:
             for image_queue in image_queue_list:
                 if image_queue.full():
                     try:
                         image_queue.get_nowait()
-                    except Queue.Empty as e:
+                    except asyncio.QueueEmpty as e:
                         pass
                 try:
                     image_queue.put_nowait((header_data, image_data))
-                except Queue.Full as e:
-                    pass        
+                except asyncio.QueueFull as e:
+                    pass
 
         # TODO display input stream for debug purpose
         # TODO write images into files
         # TODO write images into files
+                        
 
 
 async def producer_handler(websocket, path):
     while True:
-        try:
-            # TODO Consider a non-blocking call to get
-            (rtn_header, rtn_data) = self.data_queue.get(timeout = 0.0001)
-            
-            rtn_header_json = json.loads(rtn_header)
-            
-            # TODO Log time
-            # TODO support debug server
+        (rtn_header, rtn_data) = await result_queue.get()
 
-            result = gabriel_pb2.Result()
-            result.data = rtn_data
+        rtn_header_json = json.loads(rtn_header)
 
-            style = rtn_header_json.get('style')
-            if style is not None:
-                result.style = style
+        # TODO Log time
+        # TODO support debug server
 
-            await websocket.send(result.SerializeToString())
-        except Queue.Empty:
-            LOG.warning("data queue shouldn't be empty! - %s" % str(self))
+        result = gabriel_pb2.Result()
+        result.data = rtn_data
 
+        style = rtn_header_json.get('style')
+        if style is not None:
+            result.style = style
+
+        await websocket.send(result.SerializeToString())
 
 async def handler(websocket, path):
+    print('Connect')
     consumer_task = asyncio.ensure_future(
         consumer_handler(websocket, path))
     producer_task = asyncio.ensure_future(
@@ -113,6 +121,6 @@ async def handler(websocket, path):
 
 
 def launch():
-    start_server = websockets.serve(handler, port=8765)
+    start_server = websockets.serve(handler, port=9098)
     asyncio.get_event_loop().run_until_complete(start_server)
     asyncio.get_event_loop().run_forever()

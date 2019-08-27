@@ -298,7 +298,9 @@ def main():
         sys.stdout.write("Exit by user\n")
         sys.exit(0)
     except Exception as e:
-        sys.stderr.write(str(e))
+        sys.stderr.write('Exception:\n')
+        sys.stderr.write('{}\n'.format(e.__class__.__name__))
+        sys.stderr.write('{}\n'.format(str(e)))
         sys.exit(1)
     finally:
         finish_background_services()

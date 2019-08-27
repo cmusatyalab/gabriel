@@ -28,6 +28,7 @@ import sys
 import threading
 import time
 import traceback
+import asyncio
 
 import sys
 
@@ -52,9 +53,10 @@ class SensorPublishHandler(gabriel.network.CommonHandler):
 
 class VideoPublishHandler(SensorPublishHandler):
     def setup(self):
+        print('setup start')
         super(VideoPublishHandler, self).setup()
-        self.data_queue = multiprocessing.Queue(gabriel.Const.MAX_FRAME_SIZE)
-        gabriel.control.image_queue_list.append(self.data_queue)
+        self.data_queue = gabriel.control.image_queue_list[0]
+        print('setup end')
 
     def __repr__(self):
         return "Video Publish Server"
@@ -65,7 +67,9 @@ class VideoPublishHandler(SensorPublishHandler):
 
     def _handle_queue_data(self):
         try:
-            (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
+            print('data queue size', self.data_queue.qsize())
+            (header_data, image_data) = self.data_queue.get_nowait()
+            print('Start publish')
 
             header_json = json.loads(header_data.decode('utf-8'))
             header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_JPEG})
@@ -75,8 +79,10 @@ class VideoPublishHandler(SensorPublishHandler):
                                  len(header_data), len(image_data), bytes(header_data, 'utf-8'), image_data)
             self.request.send(packet)
             self.wfile.flush()
-        except Queue.Empty as e:
-            pass
+        except asyncio.QueueEmpty as e:
+            time.sleep(0.1)
+        except Exception as e:
+            traceback.print_stack()
 
     def terminate(self):
         LOG.info("Offloading engine disconnected from video stream")
