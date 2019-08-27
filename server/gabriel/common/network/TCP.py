@@ -90,7 +90,6 @@ class CommonHandler(socketserver.StreamRequestHandler, object):
                 inputready, outputready, exceptready = select.select(input_list, [], except_list)
                 for s in inputready:
                     if s == socket_fd:
-                        print('here handle', type(self))
                         self._handle_input_data()
                     if s == stop_fd:
                         is_running = False

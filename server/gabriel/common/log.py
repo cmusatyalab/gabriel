@@ -25,29 +25,41 @@ import sys
 from .config import Const, Debug
 
 loggers = dict()
-DEFAULT_FORMATTER = '%(asctime)s %(name)s %(levelname)s %(message)s'
 
-def getLogger(name = 'unknown', log_level_file = Debug.LOG_LEVEL_FILE, log_level_console = Debug.LOG_LEVEL_CONSOLE):
+def getLogger(
+        name='unknown', log_level_file=Debug.LOG_LEVEL_FILE,
+        log_level_console=Debug.LOG_LEVEL_CONSOLE):
+
     if loggers.get(name, None) is None:
-        ## default file logging
+        logger = logging.getLogger(name)
+        
+        # This passes on every log message to the handlers. 
+        # The actual messages that get logged depend on the level that was
+        # set for each handler.
+        logger.setLevel(logging.DEBUG)
+
+        # Add stdout logging
+        console = logging.StreamHandler(sys.stdout)
+        console.setLevel(log_level_console)
+        formatter = logging.Formatter('%(levelname)-8s %(message)s')
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+
+        # Add file logging
         if not os.path.exists(os.path.dirname(Const.LOG_FILE_PATH)):
             os.makedirs(os.path.dirname(Const.LOG_FILE_PATH))
             os.chmod(os.path.dirname(Const.LOG_FILE_PATH), 0o777)
             open(Const.LOG_FILE_PATH, "w+").close()
             os.chmod(Const.LOG_FILE_PATH, 0o666)
-        logger = logging.getLogger(name)
-        logging.basicConfig(level = log_level_file,
-                format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                datefmt = '%m-%d %H:%M',
-                filename = Const.LOG_FILE_PATH,
-                filemode = 'a')
 
-        ## add stdout logging with INFO level
-        console = logging.StreamHandler(sys.stderr)
-        console.setLevel(log_level_console)
-        formatter = logging.Formatter('%(levelname)-8s %(message)s')
-        console.setFormatter(formatter)
-        logger.addHandler(console)
+        fileHandler = logging.FileHandler(
+            Const.LOG_FILE_PATH, mode='a')
+        fileHandler.setLevel(log_level_file)
+        formatter = logging.Formatter(
+            '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+            datefmt='%m-%d %H:%M')
+        fileHandler.setFormatter(formatter)
+        logger.addHandler(fileHandler)
 
         loggers[name] = logger
 

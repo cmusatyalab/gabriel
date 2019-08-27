@@ -6,6 +6,12 @@ import gabriel
 import time
 import traceback
 import json
+import sys
+
+if (sys.version_info > (3, 0)):
+    import queue as Queue
+else:
+    import Queue
 
 # Show exceptions from websockets server
 import logging
@@ -16,10 +22,9 @@ logger.addHandler(logging.StreamHandler())
 LOG = gabriel.logging.getLogger(__name__)
 
 
-image_queue_list = [
-    asyncio.Queue(maxsize=gabriel.Const.MAX_FRAME_SIZE)
-]
+image_queue_list = []
 result_queue = asyncio.Queue()
+event_loop = asyncio.get_event_loop()
 
 
 class HandlerState:
@@ -75,11 +80,11 @@ async def consumer_handler(websocket, path):
                 if image_queue.full():
                     try:
                         image_queue.get_nowait()
-                    except asyncio.QueueEmpty as e:
+                    except Queue.Empty as e:
                         pass
                 try:
                     image_queue.put_nowait((header_data, image_data))
-                except asyncio.QueueFull as e:
+                except Queue.Full as e:
                     pass
 
         # TODO display input stream for debug purpose
@@ -92,7 +97,7 @@ async def producer_handler(websocket, path):
     while True:
         (rtn_header, rtn_data) = await result_queue.get()
 
-        rtn_header_json = json.loads(rtn_header)
+        rtn_header_json = json.loads(rtn_header.decode('utf-8'))
 
         # TODO Log time
         # TODO support debug server
@@ -107,7 +112,6 @@ async def producer_handler(websocket, path):
         await websocket.send(result.SerializeToString())
 
 async def handler(websocket, path):
-    print('Connect')
     consumer_task = asyncio.ensure_future(
         consumer_handler(websocket, path))
     producer_task = asyncio.ensure_future(
@@ -122,5 +126,5 @@ async def handler(websocket, path):
 
 def launch():
     start_server = websockets.serve(handler, port=9098)
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+    event_loop.run_until_complete(start_server)
+    event_loop.run_forever()
