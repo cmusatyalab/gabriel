@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='gabriel.proto',
   package='gabriel',
   syntax='proto2',
-  serialized_pb=_b('\n\rgabriel.proto\x12\x07gabriel\"\xa0\x01\n\x05Input\x12\x11\n\tupdate_id\x18\x01 \x02(\t\x12!\n\x04type\x18\x02 \x02(\x0e\x32\x13.gabriel.Input.Type\x12\x0c\n\x04\x64\x61ta\x18\x03 \x02(\x0c\x12\r\n\x05style\x18\x04 \x01(\t\x12\x10\n\x08\x66ilename\x18\x05 \x01(\t\"2\n\x04Type\x12\t\n\x05IMAGE\x10\x00\x12\t\n\x05VIDEO\x10\x01\x12\t\n\x05\x41UDIO\x10\x02\x12\t\n\x05\x41\x43\x43\x45L\x10\x03\"%\n\x06Result\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\t\x12\r\n\x05style\x18\x02 \x01(\tB$\n\x1a\x65\x64u.cmu.cs.gabriel.networkB\x06Protos')
+  serialized_pb=_b('\n\rgabriel.proto\x12\x07gabriel\"\xa0\x01\n\x05Input\x12\x11\n\tupdate_id\x18\x01 \x02(\t\x12!\n\x04type\x18\x02 \x02(\x0e\x32\x13.gabriel.Input.Type\x12\x0c\n\x04\x64\x61ta\x18\x03 \x02(\x0c\x12\r\n\x05style\x18\x04 \x01(\t\x12\x10\n\x08\x66ilename\x18\x05 \x01(\t\"2\n\x04Type\x12\t\n\x05IMAGE\x10\x00\x12\t\n\x05VIDEO\x10\x01\x12\t\n\x05\x41UDIO\x10\x02\x12\t\n\x05\x41\x43\x43\x45L\x10\x03\"%\n\x06Result\x12\x0c\n\x04\x64\x61ta\x18\x01 \x02(\x0c\x12\r\n\x05style\x18\x02 \x01(\tB$\n\x1a\x65\x64u.cmu.cs.gabriel.networkB\x06Protos')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -125,8 +125,8 @@ _RESULT = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='data', full_name='gabriel.Result.data', index=0,
-      number=1, type=9, cpp_type=9, label=2,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=1, type=12, cpp_type=9, label=2,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),

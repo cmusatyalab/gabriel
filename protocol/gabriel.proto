@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package gabriel;
 
-option java_package = "edu.cmu.cs.gabrielclient.network";
+option java_package = "edu.cmu.cs.gabriel.network";
 option java_outer_classname = "Protos";
 
 message Input {
@@ -20,6 +20,6 @@ message Input {
 }
 
 message Result {
-  required string data = 1;
+  required bytes data = 1;
   optional string style = 2;
 }
