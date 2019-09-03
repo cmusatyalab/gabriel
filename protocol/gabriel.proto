@@ -42,6 +42,7 @@ message Output {
         bytes payload = 2;
     }
 
-    Status status = 1;
-    repeated Result results = 2;
+    uint64 frame_id = 1;
+    Status status = 2;
+    repeated Result results = 3;
 }
