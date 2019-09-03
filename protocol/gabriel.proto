@@ -6,20 +6,42 @@ option java_package = "edu.cmu.cs.gabriel.network";
 option java_outer_classname = "Protos";
 
 message Input {
-  string update_id = 1;
-  enum Type {
-    IMAGE = 0;
-    VIDEO = 1;
-    AUDIO = 2;
-    ACCEL = 3;
-  }
-  Type type = 2;
-  bytes data = 3;
-  string style = 4;
-  string filename = 5;
+    int32 frame_id = 1;
+    enum Type {
+        IMAGE = 0;
+        VIDEO = 1;
+        AUDIO = 2;
+        ACCEL = 3;
+    }
+    Type type = 2;
+    bytes payload = 3;
+
+    // engine-specific fields follow:
+    // OpenArtist:
+    string style = 4;
+    string filename = 5;
+
 }
 
-message Result {
-  bytes data = 1;
-  string style = 2;
+message Output {
+    enum Status {
+        SUCCESS = 0;
+        ERROR = 1;
+    }
+
+    enum ResultType {
+        ANIM = 0;
+        VIDEO = 1;
+        IMAGE = 2;
+        AUDIO = 3;
+        TEXT = 4;
+    }
+
+    message Result {
+        ResultType type = 1;
+        bytes payload = 2;
+    }
+
+    Status status = 1;
+    repeated Result results = 2;
 }
