@@ -6,7 +6,7 @@ option java_package = "edu.cmu.cs.gabriel.network";
 option java_outer_classname = "Protos";
 
 message Input {
-    int32 frame_id = 1;
+    uint64 frame_id = 1;
     enum Type {
         IMAGE = 0;
         VIDEO = 1;
