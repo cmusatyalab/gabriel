@@ -3,6 +3,21 @@ MAINTAINER Satyalab, satya-group@lists.andrew.cmu.edu
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Using mirrors is much faster than the standard ubuntu config
+RUN echo 'deb mirror://mirrors.ubuntu.com/mirrors.txt xenial main restricted\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates main restricted\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial universe\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates universe\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial multiverse\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates multiverse\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-backports main restricted universe multiverse\n\
+deb http://archive.canonical.com/ubuntu/ xenial partner\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-security main restricted\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-security universe\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-security multiverse\n\
+deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-proposed multiverse main restricted universe\n\
+' > /etc/apt/sources.list
+
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y \
@@ -25,16 +40,23 @@ RUN apt-get install -y \
     python-matplotlib \
     git
 
-RUN pip install -U pip
-RUN pip install -U setuptools
-RUN pip install -U numpy
-RUN python3 -m pip install -U pip
+RUN pip2 install -U pip
+RUN pip2 install -U setuptools
+RUN pip2 install -U numpy
 
-RUN git clone https://github.com/cmusatyalab/gabriel.git
+RUN pip3 install -U pip
+RUN pip3 install -U setuptools
+RUN pip3 install -U numpy
+
+# RUN python3 -m pip install -U pip
+
+# RUN git clone https://github.com/cmusatyalab/gabriel.git
+# copy local files instead of cloning, to allow for testing with unpushed code
+COPY . /gabriel/server/
 WORKDIR /gabriel/server
-RUN pip install -r requirements.txt
-RUN python3 -m pip install -r requirements_python3.txt
-RUN python setup.py install
+RUN pip2 install -r requirements.txt
+RUN pip3 install -r requirements_python3.txt
+RUN python2 setup.py install
 RUN python3 setup_python3.py install
 
 RUN apt-get autoremove \
