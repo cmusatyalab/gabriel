@@ -21,10 +21,22 @@
 
 import json
 import multiprocessing
-import Queue
 import select
 import socket
-import SocketServer
+try:
+	import Queue
+	import SocketServer
+	def mystr(b):
+		return str(b)
+	def bts(s):
+		return bytes(s)
+except ImportError:
+	import queue as Queue
+	import socketserver as SocketServer
+	def mystr(b):
+		return str(b,'ascii')
+	def bts(s):
+		return bytes(s,'ascii')
 import struct
 import sys
 import threading
@@ -62,12 +74,12 @@ class VideoPublishHandler(SensorPublishHandler):
         try:
             (header_data, image_data) = self.data_queue.get(timeout = 0.0001)
 
-            header_json = json.loads(header_data)
+            header_json = json.loads(mystr(header_data))
             header_json.update({gabriel.Protocol_sensor.JSON_KEY_SENSOR_TYPE : gabriel.Protocol_sensor.JSON_VALUE_SENSOR_TYPE_JPEG})
             header_data = json.dumps(header_json)
 
             packet = struct.pack("!II%ds%ds" % (len(header_data), len(image_data)),
-                    len(header_data), len(image_data), header_data, image_data)
+                    len(header_data), len(image_data), bts(header_data), image_data)
             self.request.send(packet)
             self.wfile.flush()
         except Queue.Empty as e:

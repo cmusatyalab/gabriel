@@ -23,6 +23,14 @@ import socket
 import struct
 
 import gabriel
+try:
+    bytes("qw",'ascii')
+    def bts(s):
+        return bytes(s, 'ascii')
+except:
+    def bts(s):
+        return bytes(s)
+
 
 
 def get_ip(iface = 'eth0'):
@@ -30,7 +38,7 @@ def get_ip(iface = 'eth0'):
     sockfd = sock.fileno()
     SIOCGIFADDR = 0x8915
 
-    ifreq = struct.pack('16sH14s', iface, socket.AF_INET, '\x00' * 14)
+    ifreq = struct.pack('16sH14s', bts(iface), socket.AF_INET, bts('\x00' * 14))
     try:
         res = fcntl.ioctl(sockfd, SIOCGIFADDR, ifreq)
     except:

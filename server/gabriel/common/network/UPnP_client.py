@@ -23,7 +23,15 @@ import os
 import subprocess
 import sys
 import threading
-import urllib2
+#import urllib2
+
+try:
+    str(b'0x1','ascii')
+    def mystr(b):
+        return str(b, 'ascii')
+except:
+    def mystr(b):
+        return str(b)
 
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
@@ -62,7 +70,7 @@ class UPnPClient(threading.Thread):
                 continue
 
             if self.proc.returncode == 0:
-                out = self.proc.stdout.read()
+                out = mystr(self.proc.stdout.read())
                 out_list = out.strip().split("\n")
                 for outline in out_list:
                     if len(outline.strip()) == 0:

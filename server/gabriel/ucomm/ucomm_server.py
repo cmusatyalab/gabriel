@@ -21,10 +21,22 @@
 
 import json
 import multiprocessing
-import Queue
 import select
 import socket
-import SocketServer
+try:
+	import Queue
+	import SocketServer
+	def mystr(b):
+		return str(b)
+	def bts(s):
+		return bytes(s)
+except ImportError:
+	import queue as Queue
+	import socketserver as SocketServer
+	def mystr(b):
+		return str(b, 'ascii')
+	def bts(s):
+		return bytes(s, 'ascii')
 import struct
 import sys
 import threading
@@ -59,7 +71,7 @@ class UCommServerHandler(gabriel.network.CommonHandler):
         rtn_header_size = struct.unpack("!I", self._recv_all(4))[0]
         rtn_header = self._recv_all(rtn_header_size)
         rtn_data = self._recv_all(rtn_size-rtn_header_size)
-        rtn_header_json = json.loads(rtn_header)
+        rtn_header_json = json.loads(mystr(rtn_header))
 
         # check if engine id is provided
         engine_id = rtn_header_json.get(gabriel.Protocol_client.JSON_KEY_ENGINE_ID, None)
@@ -135,7 +147,7 @@ class ResultForwardingClient(gabriel.network.CommonClient):
             ## send packet to control VM
             forward_header = json.dumps(forward_header_json)
             total_size = len(forward_header) + len(forward_data)
-            packet = struct.pack("!II{}s{}s".format(len(forward_header), len(forward_data)), total_size, len(forward_header), forward_header, forward_data)
+            packet = struct.pack("!II{}s{}s".format(len(forward_header), len(forward_data)), total_size, len(forward_header), bts(forward_header), forward_data)
             self.sock.sendall(packet)
             LOG.info("forward the result: %s" % gabriel.util.print_rtn(forward_header))
 

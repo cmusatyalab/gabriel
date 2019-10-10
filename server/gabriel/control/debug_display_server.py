@@ -18,17 +18,29 @@
 #   limitations under the License.
 #
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import json
 import multiprocessing
 import os
 import pprint
-import Queue
 import re
-from SocketServer import ThreadingMixIn
+try:
+	import Queue
+	from SocketServer import ThreadingMixIn
+	from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+except ImportError:
+	import queue as Queue
+	from socketserver import ThreadingMixIn
+	from http.server import BaseHTTPRequestHandler, HTTPServer
 import sys
 import threading
 import time
+try:
+    bts("qw",'ascii')
+    def bts(s):
+        return bts(s, 'ascii')
+except:
+    def bts(s):
+        return bts(s)
 
 import gabriel
 import gabriel.control
@@ -43,7 +55,7 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
     def do_GET(self):
         try:
             self.path = self.path.split('?')[0]
-            print self.path
+            print(self.path)
 
             if self.path.endswith(".mjpeg"):
                 if self.path.endswith("camera.mjpeg"):
@@ -53,8 +65,8 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                 elif self.path.endswith("debug.mjpeg"):
                     data_queue = gabriel.control.output_display_queue_dict['debug']
                 self.send_response(200)
-                self.wfile.write("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary")
-                self.wfile.write("\r\n\r\n")
+                self.wfile.write(bts("Content-Type: multipart/x-mixed-replace; boundary=--aaboundary"))
+                self.wfile.write(bts("\r\n\r\n"))
                 while 1:
                     if self.server.stopped:
                         break
@@ -62,11 +74,11 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                     try:
                         image_data = data_queue.get_nowait()
 
-                        self.wfile.write("--aaboundary\r\n")
-                        self.wfile.write("Content-Type: image/jpeg\r\n")
-                        self.wfile.write("Content-length: " + str(len(image_data)) + "\r\n\r\n")
+                        self.wfile.write(bts("--aaboundary\r\n"))
+                        self.wfile.write(bts("Content-Type: image/jpeg\r\n"))
+                        self.wfile.write(bts("Content-length: " + str(len(image_data)) + "\r\n\r\n"))
                         self.wfile.write(image_data)
-                        self.wfile.write("\r\n\r\n\r\n")
+                        self.wfile.write(bts("\r\n\r\n\r\n"))
                         time.sleep(0.001)
 
                     except Queue.Empty as e:
@@ -98,7 +110,7 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                     self.send_response(200)
                     self.send_header('Content-type',	'text/html')
                     self.end_headers()
-                    self.wfile.write("")
+                    self.wfile.write(bts(""))
 
             elif self.path.endswith("video"):
                 data_queue = gabriel.control.output_display_queue_dict['video']
@@ -113,7 +125,7 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler, object):
                     self.send_response(200)
                     self.send_header('Content-type',	'text/html')
                     self.end_headers()
-                    self.wfile.write("")
+                    self.wfile.write(bts(""))
 
             else:
                 f = open(dir_file + os.sep + self.path)

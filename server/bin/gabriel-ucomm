@@ -22,7 +22,10 @@
 import json
 from optparse import OptionParser
 import pprint
-import Queue
+try:
+	import Queue
+except ImportError:
+	import queue as Queue
 import os
 import socket
 import sys

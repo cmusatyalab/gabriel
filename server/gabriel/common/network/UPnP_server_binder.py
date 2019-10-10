@@ -70,5 +70,5 @@ if __name__ == '__main__':
         UPnP_server.terminate()
         sys.exit(1)
     except UPnPServerError as e:
-        print str(e)
+        print(str(e))
         UPnP_server = None

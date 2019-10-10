@@ -18,10 +18,20 @@
 #   limitations under the License.
 #
 
-import httplib
 import json
-import urllib2
-import urlparse
+try:
+	import urllib2
+	import httplib
+	import urlparse
+	def mystr(b):
+		return str(b)
+except ImportError:
+	import urllib.request as urllib2
+	import http.client as httplib
+	import urllib.parse as urlparse
+	def mystr(b):
+		return str(b, 'ascii')
+
 
 
 class HttpConnectionError(Exception):
@@ -32,7 +42,7 @@ def http_get(url, rtn_format = "json"):
     conn = urllib2.urlopen("%s" % (url))
     rtn_data = conn.read()
     if rtn_format == "json":
-        return json.loads(rtn_data)
+        return json.loads(mystr(rtn_data))
     elif rtn_format == "raw":
         return rtn_data
 
@@ -48,7 +58,7 @@ def http_post(url, json_string, rtn_format = "json"):
     rtn_data = response.read()
     conn.close()
     if rtn_format == "json":
-        return json.loads(rtn_data)
+        return json.loads(mystr(rtn_data))
     elif rtn_format == "raw":
         return rtn_data
 
@@ -64,6 +74,6 @@ def http_put(url, json_string, rtn_format = "json"):
     rtn_data = response.read()
     conn.close()
     if rtn_format == "json":
-        return json.loads(rtn_data)
+        return json.loads(mystr(rtn_data))
     elif rtn_format == "raw":
         return rtn_data

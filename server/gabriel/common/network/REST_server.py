@@ -26,15 +26,29 @@ import os
 import sys
 from flask import Flask
 from flask import request
-from flask.ext import restful
-from flask.ext.restful import abort
-from flask.ext.restful import reqparse
-from flask.ext.restful import Resource
+try:
+	from flask.ext import restful
+	from flask.ext.restful import abort
+	from flask.ext.restful import reqparse
+	from flask.ext.restful import Resource
+except ImportError:
+	import flask_restful as restful
+	from flask_restful import abort, reqparse, Resource
+
+try:
+    str(b'0x1','ascii')
+    def mystr(b):
+        return str(b, 'ascii')
+except:
+    def mystr(b):
+        return str(b)
+
 
 dir_file = os.path.dirname(os.path.realpath(__file__))
 
 sys.path.insert(0, os.path.join(dir_file, "../../.."))
 import gabriel
+LOG = gabriel.logging.getLogger(__name__)
 
 
 KEY_SERVICE_NAME    = "service_name"
@@ -183,7 +197,7 @@ class GabrielInfo(Resource):
         '''
         Registers new ucomm address
         '''
-        data = dict(json.loads(request.data))
+        data = dict(json.loads(mystr(request.data)))
         ucomm_ip = data.get(gabriel.ServiceMeta.UCOMM_SERVER_IP, None)
         ucomm_port = data.get(gabriel.ServiceMeta.UCOMM_SERVER_PORT, None)
         # check if address exists

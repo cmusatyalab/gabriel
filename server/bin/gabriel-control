@@ -21,10 +21,14 @@
 
 
 
+#from __future__ import absolute_import
 import json
 from optparse import OptionParser
 import os
-import Queue
+try:
+	import Queue
+except ImportError:
+	import queue as Queue
 import re
 import sys
 import threading

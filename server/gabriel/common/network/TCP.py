@@ -21,7 +21,14 @@
 import multiprocessing
 import select
 import socket
-import SocketServer
+try:
+	import SocketServer
+	def emptydata():
+		return ''
+except ImportError:
+	import socketserver as SocketServer
+	def emptydata():
+		return b''
 import threading
 import traceback
 
@@ -50,7 +57,7 @@ class CommonHandler(SocketServer.StreamRequestHandler, object):
         '''
         Received data till a specified size.
         '''
-        data = ''
+        data = emptydata()
         while len(data) < recv_size:
             tmp_data = self.request.recv(recv_size - len(data))
             if tmp_data is None:

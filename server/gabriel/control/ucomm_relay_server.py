@@ -22,10 +22,22 @@
 
 import json
 import multiprocessing
-import Queue
 import select
 import socket
-import SocketServer
+try:
+	import Queue
+	import SocketServer
+	def mystr(b):
+		return str(b)
+	def bts(s):
+		return bytes(s)
+except ImportError:
+	import queue as Queue
+	import socketserver as SocketServer
+	def mystr(b):
+		return str(b,'ascii')
+	def bts(s):
+		return bytes(s,'ascii')
 import struct
 import sys
 import threading
@@ -63,7 +75,7 @@ class UCommRelayHandler(gabriel.network.CommonHandler):
         gabriel.control.result_queue.put( (rtn_header, rtn_data) )
 
         # control messages
-        rtn_header_json = json.loads(rtn_header)
+        rtn_header_json = json.loads(mystr(rtn_header))
         message_control = rtn_header_json.get('control', None)
         if message_control is not None:
             message_control = str(message_control) # this will be unicode otherwise

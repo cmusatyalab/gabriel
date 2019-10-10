@@ -51,7 +51,7 @@ class RESTServer(threading.Thread):
         threading.Thread.__init__(self, target = self.run_exec)
 
     def run_exec(self):
-        cmd = ["python", "%s" % (self.REST_bin), '-n', self.net_interface, '-s', self.ip_addr]
+        cmd = ["python", "%s" % (self.REST_bin), '-n', self.net_interface, '-s', "%s" % (self.ip_addr)]
         #_PIPE = subprocess.PIPE
         _PIPE = None
         self.proc = subprocess.Popen(cmd, close_fds = True,
@@ -97,5 +97,5 @@ if __name__ == '__main__':
         REST_server = RESTServer()
         REST_server.start()
     except RESTServerError as e:
-        print str(e)
+        print(str(e))
         REST_server = None
