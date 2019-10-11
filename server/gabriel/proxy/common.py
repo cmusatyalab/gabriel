@@ -22,7 +22,10 @@
 
 import json
 import multiprocessing
-import Queue
+try:
+	import Queue
+except ImportError:
+	import queue as Queue
 import select
 import socket
 import struct
@@ -34,6 +37,17 @@ import traceback
 import gabriel
 LOG = gabriel.logging.getLogger(__name__)
 
+try:
+    str(b'0x1','ascii')
+    def mystr(b):
+        return str(b, 'ascii')
+    def bts(s):
+        return bytes(s, 'ascii')
+except:
+    def mystr(b):
+        return str(b)
+    def bts(s):
+        return bytes(s)
 
 class ProxyError(Exception):
     pass
@@ -57,7 +71,7 @@ class SensorReceiveClient(gabriel.network.CommonClient):
         data_size = struct.unpack("!I", self._recv_all(4))[0]
         header_str = self._recv_all(header_size)
         data = self._recv_all(data_size)
-        header_json = json.loads(header_str)
+        header_json = json.loads(mystr(header_str))
 
         # add header data for measurement
         if gabriel.Debug.TIME_MEASUREMENT:
@@ -179,7 +193,7 @@ class ResultPublishClient(gabriel.network.CommonClient):
             rtn_header, rtn_data = self.data_queue.get(timeout = 0.0001)
             total_size = len(rtn_header) + len(rtn_data)
             # packet format: total size, header size, header, data
-            packet = struct.pack("!II{}s{}s".format(len(rtn_header), len(rtn_data)), total_size, len(rtn_header), rtn_header, rtn_data)
+            packet = struct.pack("!II{}s{}s".format(len(rtn_header), len(rtn_data)), total_size, len(rtn_header), bts(rtn_header), rtn_data)
             self.sock.sendall(packet)
             LOG.info("sending result to ucomm: %s" % gabriel.util.print_rtn(json.loads(rtn_header)))
         except Queue.Empty as e:
@@ -213,14 +227,14 @@ class DataPublishHandler(gabriel.network.CommonHandler):
             header_str = json.dumps(header)
 
             # send data
-            packet = struct.pack("!II%ds%ds" % (len(header_str), len(data)), len(header_str), len(data), header_str, data)
+            packet = struct.pack("!II%ds%ds" % (len(header_str), len(data)), len(header_str), len(data), bts(header_str), data)
             self.request.send(packet)
             self.wfile.flush()
 
             # receive result
             header_size = struct.unpack("!I", self._recv_all(4))[0]
             header_str = self._recv_all(header_size)
-            header = json.loads(header_str)
+            header = json.loads(mystr(header_str))
             state_size = struct.unpack("!I", self._recv_all(4))[0]
             state = self._recv_all(state_size)
 

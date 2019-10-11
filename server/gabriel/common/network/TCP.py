@@ -189,7 +189,7 @@ class CommonClient(threading.Thread):
         '''
         Received data till a specified size.
         '''
-        data = ''
+        data = emptydata()
         while len(data) < recv_size:
             tmp_data = self.sock.recv(recv_size - len(data))
             if tmp_data is None:
