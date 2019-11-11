@@ -16,7 +16,7 @@ package edu.cmu.cs.gabrielclient;
 
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
-import android.support.v7.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -28,12 +28,12 @@ import android.widget.Toast;
 import android.widget.ListView;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.support.v7.widget.Toolbar;
+import androidx.appcompat.widget.Toolbar;
 import android.os.Bundle;
 import android.util.Patterns;
 import android.Manifest;
 import android.os.Build;
-import android.support.v4.app.ActivityCompat;
+import androidx.core.app.ActivityCompat;
 import android.content.Context;
 import android.hardware.camera2.CameraManager;
 

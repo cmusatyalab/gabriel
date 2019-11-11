@@ -16,15 +16,14 @@ import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
 import android.media.AudioRecord;
-import android.media.MediaPlayer;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.media.MediaRecorder;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Message;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
@@ -36,19 +35,10 @@ import android.widget.MediaController;
 import android.widget.VideoView;
 import android.widget.TextView;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import edu.cmu.cs.gabrielclient.network.AccStreamingThread;
-import edu.cmu.cs.gabrielclient.network.AudioStreamingThread;
-import edu.cmu.cs.gabrielclient.network.ControlThread;
-import edu.cmu.cs.gabrielclient.network.LogicalTime;
+import edu.cmu.cs.gabrielclient.network.EngineInput;
+import edu.cmu.cs.gabrielclient.network.FrameSupplier;
+import edu.cmu.cs.gabrielclient.network.InstructionComm;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
-import edu.cmu.cs.gabrielclient.util.PingThread;
-import edu.cmu.cs.gabrielclient.network.ResultReceivingThread;
-import edu.cmu.cs.gabrielclient.network.VideoStreamingThread;
-import edu.cmu.cs.gabrielclient.token.ReceivedPacketInfo;
-import edu.cmu.cs.gabrielclient.token.TokenController;
 import edu.cmu.cs.gabrielclient.util.ResourceMonitoringService;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener{
@@ -57,13 +47,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
     // major components for streaming sensor data and receiving information
     private String serverIP = null;
-    private VideoStreamingThread videoStreamingThread = null;
-    private AccStreamingThread accStreamingThread = null;
-    private AudioStreamingThread audioStreamingThread = null;
-    private ResultReceivingThread resultThread = null;
-    private ControlThread controlThread = null;
-    private TokenController tokenController = null;
-    private PingThread pingThread = null;
+    InstructionComm comm;
+    private EngineInput engineInput;
+    final private Object engineInputLock = new Object();
+    private FrameSupplier frameSupplier;
 
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
@@ -74,10 +61,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private Sensor sensorAcc = null;
     private TextToSpeech tts = null;
     private MediaController mediaController = null;
-
-    private ReceivedPacketInfo receivedPacketInfo = null;
-
-    private LogicalTime logicalTime = null;
 
     private FileWriter controlLogWriter = null;
 
@@ -91,6 +74,72 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private Thread audioRecordingThread = null;
     private boolean isAudioRecording = false;
     private int audioBufferSize = -1;
+
+    // Background threads based on
+    // https://github.com/googlesamples/android-Camera2Basic/blob/master/Application/src/main/java/com/example/android/camera2basic/Camera2BasicFragment.java#L652
+    /**
+     * Thread for running tasks that shouldn't block the UI.
+     */
+    private HandlerThread backgroundThread;
+
+    /**
+     * A {@link Handler} for running tasks in the background.
+     */
+    private Handler backgroundHandler;
+
+    /**
+     * Starts a background thread and its {@link Handler}.
+     */
+    private void startBackgroundThread() {
+        backgroundThread = new HandlerThread("ImageUpload");
+        backgroundThread.start();
+        backgroundHandler = new Handler(backgroundThread.getLooper());
+
+        backgroundHandler.post(imageUpload);
+    }
+
+    /**
+     * Stops the background thread and its {@link Handler}.
+     */
+    private void stopBackgroundThread() {
+        backgroundThread.quitSafely();
+        try {
+            backgroundThread.join();
+            backgroundThread = null;
+            backgroundHandler = null;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public EngineInput getEngineInput() {
+        EngineInput engineInput;
+        synchronized (this.engineInputLock) {
+            try {
+                while (isRunning && this.engineInput == null) {
+                    engineInputLock.wait();
+                }
+
+                engineInput = this.engineInput;
+                this.engineInput = null;  // Prevent sending the same frame again
+            } catch (/* InterruptedException */ Exception e) {
+                Log.e(LOG_TAG, "Error waiting for engine input", e);
+                engineInput = null;
+            }
+        }
+        return engineInput;
+    }
+
+    private Runnable imageUpload = new Runnable() {
+        @Override
+        public void run() {
+            comm.sendSupplier(GabrielClientActivity.this.frameSupplier);
+
+            if (isRunning) {
+                backgroundHandler.post(imageUpload);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -197,60 +246,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void initPerRun(String serverIP, int tokenSize, File latencyFile) {
         Log.v(LOG_TAG, "++initPerRun");
 
-        if ((pingThread != null) && (pingThread.isAlive())) {
-            pingThread.kill();
-            pingThread.interrupt();
-            pingThread = null;
-        }
-        if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
-            videoStreamingThread.stopStreaming();
-            videoStreamingThread = null;
-        }
-        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
-            accStreamingThread.stopStreaming();
-            accStreamingThread = null;
-        }
-        if ((audioStreamingThread != null) && (audioStreamingThread.isAlive())) {
-            audioStreamingThread.stopStreaming();
-            audioStreamingThread = null;
-        }
-        if ((resultThread != null) && (resultThread.isAlive())) {
-            resultThread.close();
-            resultThread = null;
-        }
-
-        if (Const.IS_EXPERIMENT) {
-            if (isFirstExperiment) {
-                isFirstExperiment = false;
-            } else {
-                try {
-                    Thread.sleep(20 * 1000);
-                } catch (InterruptedException e) {}
-                controlThread.sendControlMsg("ping");
-                // wait a while for ping to finish...
-                try {
-                    Thread.sleep(5 * 1000);
-                } catch (InterruptedException e) {}
-            }
-        }
-        if (tokenController != null) {
-            tokenController.close();
-        }
-        if ((controlThread != null) && (controlThread.isAlive())) {
-            controlThread.close();
-            controlThread = null;
-        }
-
         if (serverIP == null) return;
-
-        if (Const.BACKGROUND_PING) {
-	        pingThread = new PingThread(serverIP, Const.PING_INTERVAL);
-	        pingThread.start();
-        }
-
-        logicalTime = new LogicalTime();
-
-        tokenController = new TokenController(tokenSize, latencyFile);
 
         if (Const.IS_EXPERIMENT) {
             try {
@@ -260,34 +256,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             }
         }
 
-        controlThread = new ControlThread(serverIP, Const.CONTROL_PORT, returnMsgHandler, tokenController);
-        controlThread.start();
+        this.setupComm();
+        this.startBackgroundThread();
+    }
 
-        if (Const.IS_EXPERIMENT) {
-            controlThread.sendControlMsg("ping");
-            // wait a while for ping to finish...
-            try {
-                Thread.sleep(5 * 1000);
-            } catch (InterruptedException e) {}
-        }
-
-        resultThread = new ResultReceivingThread(serverIP, Const.RESULT_RECEIVING_PORT, returnMsgHandler);
-        resultThread.start();
-
-        if (Const.SENSOR_VIDEO) {
-            videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-            videoStreamingThread.start();
-        }
-
-        if (Const.SENSOR_ACC) {
-            accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-            accStreamingThread.start();
-        }
-
-        if (Const.SENSOR_AUDIO) {
-            audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-            audioStreamingThread.start();
-        }
+    void setupComm() {
+        this.comm = new InstructionComm(this.serverIP, Const.PORT, this, returnMsgHandler);
+        this.frameSupplier = new FrameSupplier(this, this.comm);
     }
 
     /**
@@ -345,147 +320,17 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
         public void onPreviewFrame(byte[] frame, Camera mCamera) {
             if (isRunning) {
                 Camera.Parameters parameters = mCamera.getParameters();
-                if (videoStreamingThread != null){
-                    videoStreamingThread.push(frame, parameters);
+                if (GabrielClientActivity.this.comm != null){
+                    synchronized (GabrielClientActivity.this.engineInputLock) {
+                        GabrielClientActivity.this.engineInput = new EngineInput(frame, parameters);
+                        GabrielClientActivity.this.engineInput.notify();
+                    }
                 }
             }
             mCamera.addCallbackBuffer(frame);
         }
     };
 
-    /**
-     * Notifies token controller that some response is back
-     */
-    private void notifyToken() {
-        Message msg = Message.obtain();
-        msg.what = NetworkProtocol.NETWORK_RET_TOKEN;
-        receivedPacketInfo.setGuidanceDoneTime(System.currentTimeMillis());
-        msg.obj = receivedPacketInfo;
-        try {
-            tokenController.tokenHandler.sendMessage(msg);
-        } catch (NullPointerException e) {
-            // might happen because token controller might have been terminated
-        }
-    }
-
-    private void processServerControl(JSONObject msgJSON) {
-        if (Const.IS_EXPERIMENT) {
-            try {
-                controlLogWriter.write("" + logicalTime.imageTime + "\n");
-                String log = msgJSON.toString();
-                controlLogWriter.write(log + "\n");
-            } catch (IOException e) {}
-        }
-
-        try {
-            // Switching on/off image sensor
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE)) {
-                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_IMAGE);
-                if (sw) { // turning on
-                    Const.SENSOR_VIDEO = true;
-                    tokenController.reset();
-                    if (preview == null) {
-                        preview = (CameraPreview) findViewById(R.id.camera_preview);
-                        preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
-                    }
-                    if (videoStreamingThread == null) {
-                        videoStreamingThread = new VideoStreamingThread(serverIP, Const.VIDEO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-                        videoStreamingThread.start();
-                    }
-                } else { // turning off
-                    Const.SENSOR_VIDEO = false;
-                    if (preview != null) {
-                        preview.close();
-                        preview = null;
-                    }
-                    if (videoStreamingThread != null) {
-                        videoStreamingThread.stopStreaming();
-                        videoStreamingThread = null;
-                    }
-                }
-            }
-
-            // Switching on/off ACC sensor
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_ACC)) {
-                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_ACC);
-                if (sw) { // turning on
-                    Const.SENSOR_ACC = true;
-                    if (sensorManager == null) {
-                        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-                        sensorAcc = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-                        sensorManager.registerListener(this, sensorAcc, SensorManager.SENSOR_DELAY_NORMAL);
-                    }
-                    if (accStreamingThread == null) {
-                        accStreamingThread = new AccStreamingThread(serverIP, Const.ACC_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-                        accStreamingThread.start();
-                    }
-                } else { // turning off
-                    Const.SENSOR_ACC = false;
-                    if (sensorManager != null) {
-                        sensorManager.unregisterListener(this);
-                        sensorManager = null;
-                        sensorAcc = null;
-                    }
-                    if (accStreamingThread != null) {
-                        accStreamingThread.stopStreaming();
-                        accStreamingThread = null;
-                    }
-                }
-            }
-            // Switching on/off audio sensor
-            if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_AUDIO)) {
-                boolean sw = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_SENSOR_TYPE_AUDIO);
-                if (sw) { // turning on
-                    Const.SENSOR_AUDIO = true;
-                    if (audioRecorder == null) {
-                        startAudioRecording();
-                    }
-                    if (audioStreamingThread == null) {
-                        audioStreamingThread = new AudioStreamingThread(serverIP, Const.AUDIO_STREAM_PORT, returnMsgHandler, tokenController, logicalTime);
-                        audioStreamingThread.start();
-                    }
-                } else { // turning off
-                    Const.SENSOR_AUDIO = false;
-                    if (audioRecorder != null) {
-                        stopAudioRecording();
-                    }
-                    if (audioStreamingThread != null) {
-                        audioStreamingThread.stopStreaming();
-                        audioStreamingThread = null;
-                    }
-                }
-            }
-
-            // Camera configs
-            if (preview != null) {
-                CameraPreview.CameraConfiguration camConfig = CameraPreview.CameraConfiguration.getInstance();
-                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FPS))
-                    camConfig.fps = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_FPS);
-                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH))
-                    camConfig.imgWidth = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_WIDTH);
-                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT))
-                    camConfig.imgHeight = msgJSON.getInt(NetworkProtocol.SERVER_CONTROL_IMG_HEIGHT);
-                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FOCUS)){
-                    throw new UnsupportedOperationException("FOCUS adjustment is not yet supported, but easy to add. See FLASHLIGHT on how to add support.");
-                }
-                if (msgJSON.has(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT)){
-                    boolean flashlightOn = msgJSON.getBoolean(NetworkProtocol.SERVER_CONTROL_FLASHLIGHT);
-                    if (flashlightOn) {
-                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_TORCH;
-                    } else {
-                        camConfig.flashMode = Camera.Parameters.FLASH_MODE_OFF;
-                    }
-                }
-                preview.close();
-                preview.start(CameraPreview.CameraConfiguration.getInstance(), previewCallback);
-            }
-
-        } catch (JSONException e) {
-            Log.e(LOG_TAG, "" + msgJSON);
-            Log.e(LOG_TAG, "error in processing server control messages" + e);
-            return;
-        }
-    }
 
     /**
      * Handles messages passed from streaming threads and result receiving threads.
@@ -508,12 +353,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
                 AlertDialog dialog = builder.create();
                 dialog.show();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_MESSAGE) {
-                receivedPacketInfo = (ReceivedPacketInfo) msg.obj;
-                receivedPacketInfo.setMsgRecvTime(System.currentTimeMillis());
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
+            } else if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
                 String ttsMessage = (String) msg.obj;
 
                 if (tts != null){
@@ -538,65 +378,13 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 }
                 subtitleView = (TextView) findViewById(R.id.subtitleText);
                 subtitleView.setText(ttsMessage);
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE || msg.what == NetworkProtocol.NETWORK_RET_ANIMATION) {
+            } else if (msg.what == NetworkProtocol.NETWORK_RET_IMAGE) {
                 Bitmap feedbackImg = (Bitmap) msg.obj;
                 imgView = (ImageView) findViewById(R.id.guidance_image);
                 videoView = (VideoView) findViewById(R.id.guidance_video);
                 imgView.setVisibility(View.VISIBLE);
                 videoView.setVisibility(View.GONE);
                 imgView.setImageBitmap(feedbackImg);
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_VIDEO) {
-                String url = (String) msg.obj;
-                imgView.setVisibility(View.GONE);
-                videoView.setVisibility(View.VISIBLE);
-                videoView.setVideoURI(Uri.parse(url));
-                videoView.setMediaController(mediaController);
-                //Video Loop
-                videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                    public void onCompletion(MediaPlayer mp) {
-                        videoView.start();
-                    }
-                });
-                videoView.start();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_DONE) {
-                notifyToken();
-            }
-            if (msg.what == NetworkProtocol.NETWORK_RET_CONFIG) {
-                String controlMsg = (String) msg.obj;
-                try {
-                    final JSONObject controlJSON = new JSONObject(controlMsg);
-                    if (controlJSON.has("delay")) {
-                        final long delay = controlJSON.getInt("delay");
-
-                        final Timer controlTimer = new Timer();
-                        TimerTask controlTask = new TimerTask() {
-                            @Override
-                            public void run() {
-                                GabrielClientActivity.this.runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (Const.SYNC_BASE.equals("video")) {
-                                            logicalTime.increaseImageTime((int) (delay * 11.5 / 1000)); // in the recorded data set, FPS is roughly 11
-                                        } else if (Const.SYNC_BASE.equals("acc")) {
-                                            logicalTime.increaseAccTime(delay);
-                                        }
-                                        processServerControl(controlJSON);
-                                    }
-                                });
-                            }
-                        };
-
-                        // sensor control at a delayed time
-                        controlTimer.schedule(controlTask, delay);
-                    } else {
-                        processServerControl(controlJSON);
-                    }
-                } catch (JSONException e) {
-                    Log.e(LOG_TAG, "error in jsonizing server control messages" + e);
-                }
             }
         }
     };
@@ -609,35 +397,20 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
 
         isRunning = false;
 
-        if ((pingThread != null) && (pingThread.isAlive())) {
-            pingThread.kill();
-            pingThread.interrupt();
-            pingThread = null;
+        // Allow this.backgroundHandler to return if it is currently waiting on this.engineInputLock
+        synchronized (this.engineInputLock) {
+            this.engineInputLock.notify();
         }
-        if ((resultThread != null) && (resultThread.isAlive())) {
-            resultThread.close();
-            resultThread = null;
+
+        if (this.backgroundThread != null) {
+            this.stopBackgroundThread();
         }
-        if ((videoStreamingThread != null) && (videoStreamingThread.isAlive())) {
-            videoStreamingThread.stopStreaming();
-            videoStreamingThread = null;
+
+        if (this.comm != null) {
+            this.comm.stop();
+            this.comm = null;
         }
-        if ((accStreamingThread != null) && (accStreamingThread.isAlive())) {
-            accStreamingThread.stopStreaming();
-            accStreamingThread = null;
-        }
-        if ((audioStreamingThread != null) && (audioStreamingThread.isAlive())) {
-            audioStreamingThread.stopStreaming();
-            audioStreamingThread = null;
-        }
-        if ((controlThread != null) && (controlThread.isAlive())) {
-            controlThread.close();
-            controlThread = null;
-        }
-        if (tokenController != null){
-            tokenController.close();
-            tokenController = null;
-        }
+
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -677,9 +450,6 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
          */
         if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER)
             return;
-        if (accStreamingThread != null) {
-            accStreamingThread.push(event.values);
-        }
     }
     /**************** End of SensorEventListener ****************/
 
@@ -741,15 +511,16 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private void readAudioData() {
         byte data[] = new byte[audioBufferSize];
 
-        while (isAudioRecording) {
-            int n = audioRecorder.read(data, 0, audioBufferSize);
-
-            if (n != AudioRecord.ERROR_INVALID_OPERATION && n > 0) {
-                if (audioStreamingThread != null) {
-                    audioStreamingThread.push(data);
-                }
-            }
-        }
+        // TODO: Stream audio data
+//        while (isAudioRecording) {
+//            int n = audioRecorder.read(data, 0, audioBufferSize);
+//
+//            if (n != AudioRecord.ERROR_INVALID_OPERATION && n > 0) {
+//                if (audioStreamingThread != null) {
+//                    audioStreamingThread.push(data);
+//                }
+//            }
+//        }
     }
 
     private void stopAudioRecording() {

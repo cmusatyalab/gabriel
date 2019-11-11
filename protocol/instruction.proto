@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package gabriel;
 
-option java_package = "edu.cmu.cs.gabriel.protocol";
+option java_package = "edu.cmu.cs.gabriel.instruction";
 option java_outer_classname = "Protos";
 
 // Wrap each enum in a message to allow duplicate value names
