@@ -323,7 +323,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 if (GabrielClientActivity.this.comm != null){
                     synchronized (GabrielClientActivity.this.engineInputLock) {
                         GabrielClientActivity.this.engineInput = new EngineInput(frame, parameters);
-                        GabrielClientActivity.this.engineInput.notify();
+                        GabrielClientActivity.this.engineInputLock.notify();
                     }
                 }
             }
