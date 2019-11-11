@@ -58,7 +58,7 @@ public class FrameSupplier implements Supplier<FromClient.Builder> {
             return null;
         }
 
-        EngineFields engineFields = this.instructionComm.getEngingFields();
+        EngineFields engineFields = this.instructionComm.getEngineFields();
         return FrameSupplier.convertEngineInput(engineInput, engineFields);
     }
 

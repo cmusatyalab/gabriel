@@ -38,18 +38,11 @@ public class InstructionComm {
                 try {
                     EngineFields newEngineFields = EngineFields.parseFrom(
                             resultWrapper.getEngineFields().getValue());
-                    if (resultWrapper.getResultsCount() > 0) {
-                        if (InstructionComm.this.engineFields.getLastUpdateFrameId() >
-                                newEngineFields.getLastUpdateFrameId()) {
-                            // Result based on a stale frame
-                            return;
-                        }
-
-                        InstructionComm.this.updateEngineFields(
-                                newEngineFields, resultWrapper.getFrameId());
-                    } else {
-                        InstructionComm.this.engineFields = newEngineFields;
+                    if (newEngineFields.getUpdateCount() <= engineFields.getUpdateCount()) {
+                        // There was no update
+                        return;
                     }
+                    engineFields = newEngineFields;
 
                     for (int i = 0; i < resultWrapper.getResultsCount(); i++) {
                         Protos.ResultWrapper.Result result = resultWrapper.getResults(i);
@@ -109,14 +102,7 @@ public class InstructionComm {
                 activity.getApplication());
     }
 
-    /** Set engineFields after we received an update from the server */
-    private void updateEngineFields(EngineFields newEngineFields, long frameID) {
-        EngineFields.Builder engineFieldsBuilder = EngineFields.newBuilder(newEngineFields);
-        engineFieldsBuilder.setLastUpdateFrameId(frameID);
-        this.engineFields = engineFieldsBuilder.build();
-    }
-
-    public EngineFields getEngingFields() {
+    public EngineFields getEngineFields() {
         return this.engineFields;
     }
 

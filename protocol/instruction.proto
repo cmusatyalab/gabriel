@@ -42,7 +42,7 @@ message Sandwich {
 }
 
 message EngineFields {
-    int64 last_update_frame_id = 1;
+    int64 update_count = 1;
     oneof state {
         Ikea ikea = 2;
 	Sandwich sandwich = 3;
