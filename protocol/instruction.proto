@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package gabriel;
+package instruction;
 
 option java_package = "edu.cmu.cs.gabriel.instruction";
 option java_outer_classname = "Protos";

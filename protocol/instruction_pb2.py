@@ -17,9 +17,9 @@ _sym_db = _symbol_database.Default()
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='instruction.proto',
-  package='gabriel',
+  package='instruction',
   syntax='proto3',
-  serialized_pb=_b('\n\x11instruction.proto\x12\x07gabriel\"\xf2\x01\n\x04Ikea\x12\"\n\x05state\x18\x01 \x01(\x0e\x32\x13.gabriel.Ikea.State\x12\x1e\n\x16\x66rames_with_one_buckle\x18\x02 \x01(\x05\x12\x1f\n\x17\x66rames_with_two_buckles\x18\x03 \x01(\x05\"\x84\x01\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\x08\n\x04\x42\x41SE\x10\x02\x12\x08\n\x04PIPE\x10\x03\x12\t\n\x05SHADE\x10\x04\x12\n\n\x06\x42UCKLE\x10\x05\x12\x10\n\x0c\x42LACK_CIRCLE\x10\x06\x12\x0e\n\nSHADE_BASE\x10\x07\x12\x08\n\x04\x42ULB\x10\x08\x12\x0c\n\x08\x42ULB_TOP\x10\t\"\xa6\x01\n\x08Sandwich\x12&\n\x05state\x18\x01 \x01(\x0e\x32\x17.gabriel.Sandwich.State\"r\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\t\n\x05\x42READ\x10\x02\x12\x07\n\x03HAM\x10\x03\x12\x0b\n\x07LETTUCE\x10\x04\x12\x0c\n\x08\x43UCUMBER\x10\x05\x12\x08\n\x04HALF\x10\x06\x12\n\n\x06TOMATO\x10\x07\x12\x0c\n\x08HAMWRONG\x10\x08\"s\n\x0c\x45ngineFields\x12\x14\n\x0cupdate_count\x18\x01 \x01(\x03\x12\x1d\n\x04ikea\x18\x02 \x01(\x0b\x32\r.gabriel.IkeaH\x00\x12%\n\x08sandwich\x18\x03 \x01(\x0b\x32\x11.gabriel.SandwichH\x00\x42\x07\n\x05stateB(\n\x1e\x65\x64u.cmu.cs.gabriel.instructionB\x06Protosb\x06proto3')
+  serialized_pb=_b('\n\x11instruction.proto\x12\x0binstruction\"\xf6\x01\n\x04Ikea\x12&\n\x05state\x18\x01 \x01(\x0e\x32\x17.instruction.Ikea.State\x12\x1e\n\x16\x66rames_with_one_buckle\x18\x02 \x01(\x05\x12\x1f\n\x17\x66rames_with_two_buckles\x18\x03 \x01(\x05\"\x84\x01\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\x08\n\x04\x42\x41SE\x10\x02\x12\x08\n\x04PIPE\x10\x03\x12\t\n\x05SHADE\x10\x04\x12\n\n\x06\x42UCKLE\x10\x05\x12\x10\n\x0c\x42LACK_CIRCLE\x10\x06\x12\x0e\n\nSHADE_BASE\x10\x07\x12\x08\n\x04\x42ULB\x10\x08\x12\x0c\n\x08\x42ULB_TOP\x10\t\"\xaa\x01\n\x08Sandwich\x12*\n\x05state\x18\x01 \x01(\x0e\x32\x1b.instruction.Sandwich.State\"r\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\t\n\x05\x42READ\x10\x02\x12\x07\n\x03HAM\x10\x03\x12\x0b\n\x07LETTUCE\x10\x04\x12\x0c\n\x08\x43UCUMBER\x10\x05\x12\x08\n\x04HALF\x10\x06\x12\n\n\x06TOMATO\x10\x07\x12\x0c\n\x08HAMWRONG\x10\x08\"{\n\x0c\x45ngineFields\x12\x14\n\x0cupdate_count\x18\x01 \x01(\x03\x12!\n\x04ikea\x18\x02 \x01(\x0b\x32\x11.instruction.IkeaH\x00\x12)\n\x08sandwich\x18\x03 \x01(\x0b\x32\x15.instruction.SandwichH\x00\x42\x07\n\x05stateB(\n\x1e\x65\x64u.cmu.cs.gabriel.instructionB\x06Protosb\x06proto3')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -27,7 +27,7 @@ _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 _IKEA_STATE = _descriptor.EnumDescriptor(
   name='State',
-  full_name='gabriel.Ikea.State',
+  full_name='instruction.Ikea.State',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -74,14 +74,14 @@ _IKEA_STATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=141,
-  serialized_end=273,
+  serialized_start=149,
+  serialized_end=281,
 )
 _sym_db.RegisterEnumDescriptor(_IKEA_STATE)
 
 _SANDWICH_STATE = _descriptor.EnumDescriptor(
   name='State',
-  full_name='gabriel.Sandwich.State',
+  full_name='instruction.Sandwich.State',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -124,35 +124,35 @@ _SANDWICH_STATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=328,
-  serialized_end=442,
+  serialized_start=340,
+  serialized_end=454,
 )
 _sym_db.RegisterEnumDescriptor(_SANDWICH_STATE)
 
 
 _IKEA = _descriptor.Descriptor(
   name='Ikea',
-  full_name='gabriel.Ikea',
+  full_name='instruction.Ikea',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='state', full_name='gabriel.Ikea.state', index=0,
+      name='state', full_name='instruction.Ikea.state', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='frames_with_one_buckle', full_name='gabriel.Ikea.frames_with_one_buckle', index=1,
+      name='frames_with_one_buckle', full_name='instruction.Ikea.frames_with_one_buckle', index=1,
       number=2, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='frames_with_two_buckles', full_name='gabriel.Ikea.frames_with_two_buckles', index=2,
+      name='frames_with_two_buckles', full_name='instruction.Ikea.frames_with_two_buckles', index=2,
       number=3, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -171,20 +171,20 @@ _IKEA = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=31,
-  serialized_end=273,
+  serialized_start=35,
+  serialized_end=281,
 )
 
 
 _SANDWICH = _descriptor.Descriptor(
   name='Sandwich',
-  full_name='gabriel.Sandwich',
+  full_name='instruction.Sandwich',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='state', full_name='gabriel.Sandwich.state', index=0,
+      name='state', full_name='instruction.Sandwich.state', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
@@ -203,34 +203,34 @@ _SANDWICH = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=276,
-  serialized_end=442,
+  serialized_start=284,
+  serialized_end=454,
 )
 
 
 _ENGINEFIELDS = _descriptor.Descriptor(
   name='EngineFields',
-  full_name='gabriel.EngineFields',
+  full_name='instruction.EngineFields',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='update_count', full_name='gabriel.EngineFields.update_count', index=0,
+      name='update_count', full_name='instruction.EngineFields.update_count', index=0,
       number=1, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='ikea', full_name='gabriel.EngineFields.ikea', index=1,
+      name='ikea', full_name='instruction.EngineFields.ikea', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='sandwich', full_name='gabriel.EngineFields.sandwich', index=2,
+      name='sandwich', full_name='instruction.EngineFields.sandwich', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -248,11 +248,11 @@ _ENGINEFIELDS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
     _descriptor.OneofDescriptor(
-      name='state', full_name='gabriel.EngineFields.state',
+      name='state', full_name='instruction.EngineFields.state',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=444,
-  serialized_end=559,
+  serialized_start=456,
+  serialized_end=579,
 )
 
 _IKEA.fields_by_name['state'].enum_type = _IKEA_STATE
@@ -274,21 +274,21 @@ DESCRIPTOR.message_types_by_name['EngineFields'] = _ENGINEFIELDS
 Ikea = _reflection.GeneratedProtocolMessageType('Ikea', (_message.Message,), dict(
   DESCRIPTOR = _IKEA,
   __module__ = 'instruction_pb2'
-  # @@protoc_insertion_point(class_scope:gabriel.Ikea)
+  # @@protoc_insertion_point(class_scope:instruction.Ikea)
   ))
 _sym_db.RegisterMessage(Ikea)
 
 Sandwich = _reflection.GeneratedProtocolMessageType('Sandwich', (_message.Message,), dict(
   DESCRIPTOR = _SANDWICH,
   __module__ = 'instruction_pb2'
-  # @@protoc_insertion_point(class_scope:gabriel.Sandwich)
+  # @@protoc_insertion_point(class_scope:instruction.Sandwich)
   ))
 _sym_db.RegisterMessage(Sandwich)
 
 EngineFields = _reflection.GeneratedProtocolMessageType('EngineFields', (_message.Message,), dict(
   DESCRIPTOR = _ENGINEFIELDS,
   __module__ = 'instruction_pb2'
-  # @@protoc_insertion_point(class_scope:gabriel.EngineFields)
+  # @@protoc_insertion_point(class_scope:instruction.EngineFields)
   ))
 _sym_db.RegisterMessage(EngineFields)
 
