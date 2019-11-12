@@ -1,5 +1,0 @@
-Installation
--------------
-NO library dependecies
-
-
