@@ -36,6 +36,7 @@ message Sandwich {
 	HALF = 6;
 	TOMATO = 7;
 	HAMWRONG = 8;
+	FULL = 9;
     }
 
     State state = 1;
