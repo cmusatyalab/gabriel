@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='instruction.proto',
   package='instruction',
   syntax='proto3',
-  serialized_pb=_b('\n\x11instruction.proto\x12\x0binstruction\"\xf6\x01\n\x04Ikea\x12&\n\x05state\x18\x01 \x01(\x0e\x32\x17.instruction.Ikea.State\x12\x1e\n\x16\x66rames_with_one_buckle\x18\x02 \x01(\x05\x12\x1f\n\x17\x66rames_with_two_buckles\x18\x03 \x01(\x05\"\x84\x01\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\x08\n\x04\x42\x41SE\x10\x02\x12\x08\n\x04PIPE\x10\x03\x12\t\n\x05SHADE\x10\x04\x12\n\n\x06\x42UCKLE\x10\x05\x12\x10\n\x0c\x42LACK_CIRCLE\x10\x06\x12\x0e\n\nSHADE_BASE\x10\x07\x12\x08\n\x04\x42ULB\x10\x08\x12\x0c\n\x08\x42ULB_TOP\x10\t\"\xb4\x01\n\x08Sandwich\x12*\n\x05state\x18\x01 \x01(\x0e\x32\x1b.instruction.Sandwich.State\"|\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\t\n\x05\x42READ\x10\x02\x12\x07\n\x03HAM\x10\x03\x12\x0b\n\x07LETTUCE\x10\x04\x12\x0c\n\x08\x43UCUMBER\x10\x05\x12\x08\n\x04HALF\x10\x06\x12\n\n\x06TOMATO\x10\x07\x12\x0c\n\x08HAMWRONG\x10\x08\x12\x08\n\x04\x46ULL\x10\t\"{\n\x0c\x45ngineFields\x12\x14\n\x0cupdate_count\x18\x01 \x01(\x03\x12!\n\x04ikea\x18\x02 \x01(\x0b\x32\x11.instruction.IkeaH\x00\x12)\n\x08sandwich\x18\x03 \x01(\x0b\x32\x15.instruction.SandwichH\x00\x42\x07\n\x05stateB(\n\x1e\x65\x64u.cmu.cs.gabriel.instructionB\x06Protosb\x06proto3')
+  serialized_pb=_b('\n\x11instruction.proto\x12\x0binstruction\"\xf6\x01\n\x04Ikea\x12&\n\x05state\x18\x01 \x01(\x0e\x32\x17.instruction.Ikea.State\x12\x1e\n\x16\x66rames_with_one_buckle\x18\x02 \x01(\x05\x12\x1f\n\x17\x66rames_with_two_buckles\x18\x03 \x01(\x05\"\x84\x01\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\x08\n\x04\x42\x41SE\x10\x02\x12\x08\n\x04PIPE\x10\x03\x12\t\n\x05SHADE\x10\x04\x12\n\n\x06\x42UCKLE\x10\x05\x12\x10\n\x0c\x42LACK_CIRCLE\x10\x06\x12\x0e\n\nSHADE_BASE\x10\x07\x12\x08\n\x04\x42ULB\x10\x08\x12\x0c\n\x08\x42ULB_TOP\x10\t\"\xb5\x01\n\x08Sandwich\x12*\n\x05state\x18\x01 \x01(\x0e\x32\x1b.instruction.Sandwich.State\"}\n\x05State\x12\t\n\x05START\x10\x00\x12\x0b\n\x07NOTHING\x10\x01\x12\t\n\x05\x42READ\x10\x02\x12\x07\n\x03HAM\x10\x03\x12\x0b\n\x07LETTUCE\x10\x04\x12\x0c\n\x08\x43UCUMBER\x10\x05\x12\x08\n\x04HALF\x10\x06\x12\n\n\x06TOMATO\x10\x07\x12\r\n\tHAM_WRONG\x10\x08\x12\x08\n\x04\x46ULL\x10\t\"{\n\x0c\x45ngineFields\x12\x14\n\x0cupdate_count\x18\x01 \x01(\x03\x12!\n\x04ikea\x18\x02 \x01(\x0b\x32\x11.instruction.IkeaH\x00\x12)\n\x08sandwich\x18\x03 \x01(\x0b\x32\x15.instruction.SandwichH\x00\x42\x07\n\x05stateB(\n\x1e\x65\x64u.cmu.cs.gabriel.instructionB\x06Protosb\x06proto3')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -118,7 +118,7 @@ _SANDWICH_STATE = _descriptor.EnumDescriptor(
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='HAMWRONG', index=8, number=8,
+      name='HAM_WRONG', index=8, number=8,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
@@ -129,7 +129,7 @@ _SANDWICH_STATE = _descriptor.EnumDescriptor(
   containing_type=None,
   options=None,
   serialized_start=340,
-  serialized_end=464,
+  serialized_end=465,
 )
 _sym_db.RegisterEnumDescriptor(_SANDWICH_STATE)
 
@@ -208,7 +208,7 @@ _SANDWICH = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=284,
-  serialized_end=464,
+  serialized_end=465,
 )
 
 
@@ -255,8 +255,8 @@ _ENGINEFIELDS = _descriptor.Descriptor(
       name='state', full_name='instruction.EngineFields.state',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=466,
-  serialized_end=589,
+  serialized_start=467,
+  serialized_end=590,
 )
 
 _IKEA.fields_by_name['state'].enum_type = _IKEA_STATE

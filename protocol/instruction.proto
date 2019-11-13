@@ -35,7 +35,7 @@ message Sandwich {
 	CUCUMBER = 5;
 	HALF = 6;
 	TOMATO = 7;
-	HAMWRONG = 8;
+	HAM_WRONG = 8;
 	FULL = 9;
     }
 
