@@ -40,6 +40,9 @@ message Sandwich {
     }
 
     State state = 1;
+    double holo_x = 2;
+    double holo_y = 3;
+    double holo_depth = 4;
 }
 
 message EngineFields {
