@@ -1,4 +1,4 @@
-Gabriel Instruction Applications [![PyPI](https://img.shields.io/pypi/v/elijah-gabriel.svg)](https://pypi.org/project/elijah-gabriel/) [![Docker Build Status](https://img.shields.io/docker/build/cmusatyalab/gabriel.svg)](https://hub.docker.com/r/cmusatyalab/gabriel) [![Docker Pulls](https://img.shields.io/docker/pulls/cmusatyalab/gabriel.svg)](https://hub.docker.com/r/cmusatyalab/gabriel/)
+Gabriel Instruction Applications 
 ========================================================
 Copyright (C) 2013-2019 Carnegie Mellon University
 
