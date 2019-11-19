@@ -19,13 +19,13 @@ to `10.0.14393`. You can change this value back after compiling the client. See
 [here](https://forum.unity.com/threads/suddenly-unable-to-build-solutions-anymore.466066/#post-3034148) for more details about this issue.
 
 # Building Client
-1. [hololens-client](hololens-client) is the Unity Project Directory. Select this directory when opening this project in Unity.
+1. [hololens-client](.) is the Unity Project Directory. Select this directory when opening this project in Unity.
 2. Build the Unity project by following [these steps](https://github.com/Microsoft/MixedRealityToolkit-Unity/blob/82fc64462b987f1d572d0db9bb3b39fe8f1a56f0/GettingStarted.md#building-your-project-for-hololens).
-3. After you have built the Unity project, you can open [hololens-client/App/gabriel-holo-client.sln](hololens-client/App/gabriel-holo-client.sln) in Visual studio.
+3. After you have built the Unity project, you can open [hololens-client/App/gabriel-holo-client.sln](./App/gabriel-holo-client.sln) in Visual studio.
    Note that you must have built the Unity project at least once. 
    1. You can deploy the client to the HoloLens using [these instructions](https://docs.microsoft.com/en-us/windows/mixed-reality/using-visual-studio).
    
 # Configuring 
 
-The IP address of the server is hard coded [here](gabriel-holo-client/Assets/Scripts/Const.cs). You must rebuild the Visual Studio solution
+The IP address of the server is hard coded [here](./Assets/Scripts/Const.cs). You must rebuild the Visual Studio solution
 after changing this value. You can either build the project with Unity or select `Build -> Rebuild Solution` in Visual Studio.
