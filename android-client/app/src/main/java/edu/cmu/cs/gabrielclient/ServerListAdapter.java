@@ -15,6 +15,8 @@
 package edu.cmu.cs.gabrielclient;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -82,15 +84,30 @@ public class ServerListAdapter extends BaseAdapter {
             imgRemove.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    SharedPreferences.Editor editor = mSharedPreferences.edit();
-                    Server s = itemModelList.get(position);
+                    final Server s = itemModelList.get(position);
+                    AlertDialog.Builder builder = new AlertDialog.Builder(context, AlertDialog.THEME_HOLO_DARK);
+                    builder.setMessage(R.string.server_delete_prompt)
+                            .setTitle(context.getString(R.string.server_delete_title, s.getName()));
+                    builder.setPositiveButton(R.string.yes, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            SharedPreferences.Editor editor = mSharedPreferences.edit();
+                            editor.remove("server:".concat(s.getName()));
+                            editor.commit();
+                            itemModelList.remove(position);
+                            notifyDataSetChanged();
+                            Toast.makeText(context, String.format("%s %s", context.getString(R.string.server_removed), s.getName()),
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                    builder.setNegativeButton(R.string.no, new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int id) {
+                            Toast.makeText(context, String.format("%s", context.getString(R.string.server_kept)),
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
 
-                    editor.remove("server:".concat(s.getName()));
-                    editor.commit();
-                    itemModelList.remove(position);
-                    notifyDataSetChanged();
-                    Toast.makeText(context, String.format("%s %s", context.getString(R.string.server_removed), s.getName()),
-                            Toast.LENGTH_SHORT).show();
+                    AlertDialog dialog = builder.create();
+                    dialog.show();
                 }
             });
         }

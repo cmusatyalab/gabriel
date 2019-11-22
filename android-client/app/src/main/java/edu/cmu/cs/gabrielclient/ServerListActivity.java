@@ -99,7 +99,7 @@ public class ServerListActivity extends AppCompatActivity  {
         serverAddress = (EditText) findViewById(R.id.addServerAddress);
         add = (ImageView) findViewById(R.id.imgViewAdd);
         ItemModelList = new ArrayList<Server>();
-        serverListAdapter = new ServerListAdapter(getApplicationContext(), ItemModelList);
+        serverListAdapter = new ServerListAdapter(this, ItemModelList);
         listView.setAdapter(serverListAdapter);
         mSharedPreferences=getSharedPreferences(getString(R.string.shared_preference_file_key),
                 MODE_PRIVATE);

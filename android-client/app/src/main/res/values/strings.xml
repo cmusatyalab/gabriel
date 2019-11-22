@@ -17,6 +17,11 @@
     <string name="error_invalidURI">Server address is an invalid URI.</string>
     <string name="error_exists">A server by that name already exists.</string>
     <string name="server_removed">Removed server: </string>
+    <string name="server_kept">Server retained.</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="server_delete_prompt">Are you sure you wish to delete this server?</string>
+    <string name="server_delete_title">Remove %s?</string>
     <string name="server_add_hovertext">Add Server</string>
     <string name="connecting_toast">Connecting to Gabriel server&#8230;</string>
     <string name="connection_error">Connection Error</string>
@@ -26,7 +31,7 @@
 
     <string name="about_menu">About&#8230;</string>
     <string name="about_title" translatable="false">Gabriel - a platform for wearable cognitive assistance</string>
-    <string name="about_message" translatable="false">Copyright &#169; 2018\nCarnegie Mellon University\nThis is a developing project.\n\nAll source code and documentation are under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.html)</string>
+    <string name="about_message" translatable="false">Copyright &#169; 2018-2019\nCarnegie Mellon University\nThis is a developing project.\n\nAll source code and documentation are under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.html)</string>
 
     <string name="shared_preference_file_key" translatable="false">edu.cmu.cs.gabriel</string>
 
