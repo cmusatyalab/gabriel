@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<PriInfo>
+	<ResourceMap name="WinRTBridge" version="1.0" primary="true">
+		<Qualifiers/>
+		<ResourceMapSubtree name="Files">
+			<ResourceMapSubtree name="WinRTBridge">
+				<ResourceMapSubtree name="Properties">
+					<NamedResource name="WinRTBridge.rd.xml" uri="ms-resource://WinRTBridge/Files/WinRTBridge/Properties/WinRTBridge.rd.xml">
+						<Candidate type="Path">
+							<Value>WinRTBridge\Properties\WinRTBridge.rd.xml</Value>
+						</Candidate>
+					</NamedResource>
+				</ResourceMapSubtree>
+			</ResourceMapSubtree>
+		</ResourceMapSubtree>
+	</ResourceMap>
+</PriInfo>

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package instruction;
+
+option java_package = "edu.cmu.cs.gabriel.instruction";
+option java_outer_classname = "Protos";
+
+// Wrap each enum in a message to allow duplicate value names
+message Ikea {
+    enum State {
+        START = 0;
+        NOTHING = 1;
+	BASE = 2;
+	PIPE = 3;
+	SHADE = 4;
+	BUCKLE = 5;
+	BLACK_CIRCLE = 6;
+	SHADE_BASE = 7;
+	BULB = 8;
+	BULB_TOP = 9;
+    }
+
+    State state = 1;
+    int32 frames_with_one_buckle = 2;
+    int32 frames_with_two_buckles = 3;
+}
+
+message Sandwich {
+    enum State {
+        START = 0;
+        NOTHING = 1;
+	BREAD = 2;
+	HAM = 3;
+	LETTUCE = 4;
+	CUCUMBER = 5;
+	HALF = 6;
+	TOMATO = 7;
+	HAM_WRONG = 8;
+	FULL = 9;
+    }
+
+    State state = 1;
+    double holo_x = 2;
+    double holo_y = 3;
+    double holo_depth = 4;
+}
+
+message EngineFields {
+    int64 update_count = 1;
+    oneof state {
+        Ikea ikea = 2;
+	Sandwich sandwich = 3;
+    }
+}
