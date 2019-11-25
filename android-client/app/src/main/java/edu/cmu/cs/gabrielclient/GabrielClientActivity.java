@@ -356,7 +356,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             } else if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
                 String ttsMessage = (String) msg.obj;
 
-                if (tts != null){
+                if (tts != null && !tts.isSpeaking()){
                     Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
                     // TODO: check if tts is playing something else
                     tts.setSpeechRate(1.0f);
