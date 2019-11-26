@@ -51,6 +51,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private EngineInput engineInput;
     final private Object engineInputLock = new Object();
     private FrameSupplier frameSupplier;
+    private String previousTts = "";
 
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
@@ -356,25 +357,24 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
             } else if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
                 String ttsMessage = (String) msg.obj;
 
-                if (tts != null && !tts.isSpeaking()){
+                if (tts != null && !ttsMessage.equals(previousTts)){
                     Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
-                    // TODO: check if tts is playing something else
                     tts.setSpeechRate(1.0f);
                     String[] splitMSGs = ttsMessage.split("\\.");
                     HashMap<String, String> map = new HashMap<String, String>();
                     map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "unique");
 
-                    if (splitMSGs.length == 1)
-                        tts.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, map); // the only sentence
-                    else {
-                        tts.speak(splitMSGs[0].toString().trim(), TextToSpeech.QUEUE_FLUSH, null); // the first sentence
-                        for (int i = 1; i < splitMSGs.length - 1; i++) {
-                            tts.playSilence(350, TextToSpeech.QUEUE_ADD, null); // add pause for every period
-                            tts.speak(splitMSGs[i].toString().trim(),TextToSpeech.QUEUE_ADD, null);
-                        }
+                    int queue_mode = TextToSpeech.QUEUE_FLUSH;;
+                    if (tts.isSpeaking()) {
+                        queue_mode = TextToSpeech.QUEUE_ADD;
                         tts.playSilence(350, TextToSpeech.QUEUE_ADD, null);
-                        tts.speak(splitMSGs[splitMSGs.length - 1].toString().trim(),TextToSpeech.QUEUE_ADD, map); // the last sentence
                     }
+                    tts.speak(splitMSGs[0].toString().trim(), queue_mode, map); // the first sentence
+                    for (int i = 1; i < splitMSGs.length; i++) {
+                        tts.playSilence(350, TextToSpeech.QUEUE_ADD, null); // add pause for every period
+                        tts.speak(splitMSGs[i].toString().trim(),TextToSpeech.QUEUE_ADD, null);
+                    }
+                    previousTts = ttsMessage;
                 }
                 subtitleView = (TextView) findViewById(R.id.subtitleText);
                 subtitleView.setText(ttsMessage);
