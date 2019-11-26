@@ -38,7 +38,8 @@ public class InstructionComm {
                 try {
                     EngineFields newEngineFields = EngineFields.parseFrom(
                             resultWrapper.getEngineFields().getValue());
-                    if (newEngineFields.getUpdateCount() <= engineFields.getUpdateCount()) {
+                    if (Const.DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT &&
+                            newEngineFields.getUpdateCount() <= engineFields.getUpdateCount()) {
                         // There was no update or there was an update based on a stale frame
                         return;
                     }

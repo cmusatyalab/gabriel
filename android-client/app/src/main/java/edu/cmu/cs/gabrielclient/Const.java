@@ -50,6 +50,13 @@ public class Const {
 
     public static final String ENGINE_NAME = "instruction";
 
+    // Controls whether the client should discard server's response if the engine update count
+    // is the same. If the user state is tracked on the client side, this field is typically set
+    // to be "true". If the user state is tracked on the server side, and the server will not
+    // send duplicate instructions, then "false".
+    // FSM-based cognitive engines generated with gabrieltool.statemachine set this field to "false"
+    public static final boolean DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT = true;
+
     // audio configurations
     public static final int RECORDER_SAMPLERATE = 16000;
     public static final int RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_MONO;
