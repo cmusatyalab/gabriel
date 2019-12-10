@@ -10,14 +10,14 @@ message Ikea {
     enum State {
         START = 0;
         NOTHING = 1;
-	BASE = 2;
-	PIPE = 3;
-	SHADE = 4;
-	BUCKLE = 5;
-	BLACK_CIRCLE = 6;
-	SHADE_BASE = 7;
-	BULB = 8;
-	BULB_TOP = 9;
+        BASE = 2;
+        PIPE = 3;
+        SHADE = 4;
+        BUCKLE = 5;
+        BLACK_CIRCLE = 6;
+        SHADE_BASE = 7;
+        BULB = 8;
+        BULB_TOP = 9;
     }
 
     State state = 1;
@@ -29,14 +29,14 @@ message Sandwich {
     enum State {
         START = 0;
         NOTHING = 1;
-	BREAD = 2;
-	HAM = 3;
-	LETTUCE = 4;
-	CUCUMBER = 5;
-	HALF = 6;
-	TOMATO = 7;
-	HAM_WRONG = 8;
-	FULL = 9;
+        BREAD = 2;
+        HAM = 3;
+        LETTUCE = 4;
+        CUCUMBER = 5;
+        HALF = 6;
+        TOMATO = 7;
+        HAM_WRONG = 8;
+        FULL = 9;
     }
 
     State state = 1;
@@ -49,6 +49,6 @@ message EngineFields {
     int64 update_count = 1;
     oneof state {
         Ikea ikea = 2;
-	Sandwich sandwich = 3;
+        Sandwich sandwich = 3;
     }
 }
