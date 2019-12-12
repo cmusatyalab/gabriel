@@ -45,10 +45,45 @@ message Sandwich {
     double holo_depth = 4;
 }
 
+message LEGOState {
+    enum STATUS {
+        INIT = 0;
+        WAITING_FOR_BOARD = 1;
+        NORMAL = 2;
+        ERROR = 3;
+        FINISHED = 4;
+    }
+
+    enum FRAME_RESULT  {
+        NO_CHANGE = 0;
+        SUCCESS = 1;
+        TASK_ERROR = 2;
+        JUNK_FRAME = 3;
+        LOW_CONFIDENCE_RECON = 4;
+        OTHER_CV_ERROR = 5;
+    }
+
+    message Timestamps {
+        // unix epoch in seconds
+        double received = 1;
+        double sent = 2;
+    }
+
+    string task_id = 1; // task currently performing
+    Timestamps timestamps = 2;
+    STATUS status = 3;
+    FRAME_RESULT result = 4;
+    int32 target_state_index = 5; // step we want to reach
+    int32 current_state_index = 6; // previous good step
+
+    bytes error_prev_board_state = 7; // optional buffer for error state
+}
+
 message EngineFields {
     int64 update_count = 1;
     oneof state {
         Ikea ikea = 2;
         Sandwich sandwich = 3;
+        LEGOState lego = 4;
     }
 }
