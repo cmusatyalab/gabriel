@@ -34,7 +34,7 @@ Android Client
 --------------
 The Android client is available on [Google Play](https://play.google.com/store/apps/details?id=edu.cmu.cs.gabrielclient).
 
-The source code for this client is the [android-client](android-client) directory of this respository.
+The source code for this client is in the [android-client](android-client) directory of this respository.
 
 Related research works
 --------------------------
