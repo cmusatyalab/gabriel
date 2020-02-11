@@ -7,11 +7,13 @@
 
     <ImageView
         android:id="@+id/imgConnect"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:layout_gravity="center_vertical"
-        android:background="@color/colorPrimary"
-        android:src="@android:drawable/ic_menu_slideshow" />
+        android:tint="@color/colorPrimary"
+        android:foregroundTintMode="screen"
+        android:hapticFeedbackEnabled="true"
+        android:src="@drawable/ic_launch" />
 
     <TextView
         android:id="@+id/serverName"
@@ -22,6 +24,7 @@
         android:padding="8dp"
         android:text="Local Cloudlet"
         android:textColor="#000000"
+        android:textStyle="bold"
         android:textSize="18sp" />
 
     <TextView
@@ -31,14 +34,16 @@
         android:layout_gravity="fill"
         android:layout_weight="1"
         android:text="192.168.0.1"
+        android:typeface="monospace"
         android:textColor="#555555" />
 
     <ImageView
         android:id="@+id/imgRemove"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:layout_gravity="center_vertical"
-        android:background="@color/colorPrimary"
+        android:tint="@color/colorPrimary"
         android:focusable="false"
+        android:hapticFeedbackEnabled="true"
         android:src="@android:drawable/ic_menu_delete" />
 </LinearLayout>

@@ -29,7 +29,7 @@ public class InstructionComm {
     private EngineFields engineFields;
 
     public InstructionComm(
-            String serverIP, int port, final Activity activity, final Handler returnMsgHandler) {
+            String serverURL, final Activity activity, final Handler returnMsgHandler) {
         engineFields = EngineFields.newBuilder().build();
 
         this.consumer = new Consumer<Protos.ResultWrapper>() {
@@ -99,7 +99,7 @@ public class InstructionComm {
         };
 
         this.shownError = false;
-        this.serverCommCore = new ServerComm(this.consumer, this.onDisconnect, serverIP, port,
+        this.serverCommCore = new ServerComm(this.consumer, this.onDisconnect, serverURL,
                 activity.getApplication());
     }
 

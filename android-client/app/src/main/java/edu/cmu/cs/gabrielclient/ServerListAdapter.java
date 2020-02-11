@@ -63,8 +63,8 @@ public class ServerListAdapter extends BaseAdapter {
             convertView = mInflater.inflate(R.layout.list_item, null);
             TextView serverName = (TextView) convertView.findViewById(R.id.serverName);
             TextView serverAddress = (TextView) convertView.findViewById(R.id.serverAddress);
-            ImageView imgRemove = (ImageView) convertView.findViewById(R.id.imgRemove);
-            ImageView imgConnect = (ImageView) convertView.findViewById(R.id.imgConnect);
+            final ImageView imgRemove = (ImageView) convertView.findViewById(R.id.imgRemove);
+            final ImageView imgConnect = (ImageView) convertView.findViewById(R.id.imgConnect);
             Server s = itemModelList.get(position);
             serverName.setText(s.getName());
             serverAddress.setText(s.getEndpoint());
@@ -77,7 +77,7 @@ public class ServerListAdapter extends BaseAdapter {
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     //intent.putExtra("", faceTable);
                     context.startActivity(intent);
-
+                    imgConnect.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                     Toast.makeText(context, R.string.connecting_toast, Toast.LENGTH_SHORT).show();
                 }
             });
@@ -85,6 +85,7 @@ public class ServerListAdapter extends BaseAdapter {
                 @Override
                 public void onClick(View v) {
                     final Server s = itemModelList.get(position);
+                    imgRemove.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                     AlertDialog.Builder builder = new AlertDialog.Builder(context, AlertDialog.THEME_HOLO_DARK);
                     builder.setMessage(R.string.server_delete_prompt)
                             .setTitle(context.getString(R.string.server_delete_title, s.getName()));

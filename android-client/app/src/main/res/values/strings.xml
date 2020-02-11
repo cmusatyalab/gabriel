@@ -12,7 +12,7 @@
     <string name="name_subheading">Name</string>
     <string name="address_subheading">Address</string>
     <string name="name_hint">Server Name</string>
-    <string name="address_hint" translatable="false">192.168.0.1</string>
+    <string name="address_hint" translatable="false">10.0.0.2[:9099]</string>
     <string name="error_empty">Name and address are required.</string>
     <string name="error_invalidURI">Server address is an invalid URI.</string>
     <string name="error_exists">A server by that name already exists.</string>
@@ -28,10 +28,11 @@
     <string name="could_not_connect">Could not connect</string>
     <string name="server_disconnected">Server Disconnected</string>
     <string name="back_button">Go Back</string>
+    <string name="backend_instructions">Gabriel requires a backend server to connect to. You can setup your own backend server by following the instructions at https://github.com/cmusatyalab/gabriel-instruction to launch one of the Gabriel application containers available on Docker Hub.</string>
 
     <string name="about_menu">About&#8230;</string>
     <string name="about_title" translatable="false">Gabriel - a platform for wearable cognitive assistance</string>
-    <string name="about_message" translatable="false">Copyright &#169; 2018-2019\nCarnegie Mellon University\nThis is a developing project.\n\nAll source code and documentation are under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.html)</string>
+    <string name="about_message" translatable="false">Copyright &#169; 2018-2020\nCarnegie Mellon University\nThis is a developing project.\n\nAll source code and documentation are under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0.html)</string>
 
     <string name="shared_preference_file_key" translatable="false">edu.cmu.cs.gabriel</string>
 

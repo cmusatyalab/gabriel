@@ -13,6 +13,7 @@
 // limitations under the License.
 
 package edu.cmu.cs.gabrielclient;
+import static edu.cmu.cs.gabriel.client.Util.ValidateEndpoint;
 
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
@@ -146,24 +147,15 @@ public class ServerListActivity extends AppCompatActivity  {
                 serverListAdapter.notifyDataSetChanged();
             }
     }
-    /**
-     * This is used to check the given URL is valid or not.
-     * @param url
-     * @return true if url is valid, false otherwise.
-     */
-    private boolean isValidUrl(String url) {
-        Pattern p = Patterns.WEB_URL;
-        Matcher m = p.matcher(url.toLowerCase());
-        return m.matches();
-    }
 
     public void addValue(View v) {
+        add.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
         String name = serverName.getText().toString();
         String endpoint = serverAddress.getText().toString();
         if (name.isEmpty() || endpoint.isEmpty()) {
             Toast.makeText(getApplicationContext(), R.string.error_empty ,
                     Toast.LENGTH_SHORT).show();
-        } else if(!isValidUrl(endpoint)) {
+        } else if(ValidateEndpoint(endpoint, Const.PORT) == null) {
             Toast.makeText(getApplicationContext(), R.string.error_invalidURI,
                     Toast.LENGTH_SHORT).show();
         }  else if(mSharedPreferences.contains("server:".concat(name))) {

@@ -40,6 +40,7 @@ import edu.cmu.cs.gabrielclient.network.FrameSupplier;
 import edu.cmu.cs.gabrielclient.network.InstructionComm;
 import edu.cmu.cs.gabrielclient.network.NetworkProtocol;
 import edu.cmu.cs.gabrielclient.util.ResourceMonitoringService;
+import static edu.cmu.cs.gabriel.client.Util.ValidateEndpoint;
 
 public class GabrielClientActivity extends Activity implements TextToSpeech.OnInitListener, SensorEventListener{
 
@@ -262,7 +263,8 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     }
 
     void setupComm() {
-        this.comm = new InstructionComm(this.serverIP, Const.PORT, this, returnMsgHandler);
+        String serverURL = ValidateEndpoint(this.serverIP, Const.PORT);
+        this.comm = new InstructionComm(serverURL, this, returnMsgHandler);
         this.frameSupplier = new FrameSupplier(this, this.comm);
     }
 
