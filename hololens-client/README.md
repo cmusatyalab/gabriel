@@ -1,3 +1,5 @@
+The HoloLens client only works with Gabriel-Sandwich. It might work other Gabriel Instruction applications, but holograms only exist for sandwich. 
+
 This client builds on the computer that it was created on, but I have not gotten it to build on any other computer. 
 I believe the code in this directory could be used to build the client, but it would require fixing a number of errors that pop up
 when you first try to build this. 
