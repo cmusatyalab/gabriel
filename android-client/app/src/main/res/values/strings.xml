@@ -8,6 +8,7 @@
     <!-- activity_serverlist.xml -->
     <string name="options_heading">Options</string>
     <string name="subtitles">Show Subtitles for Audio Feedback</string>
+    <string name="speech_dedup">Period to Suppress Identical Speech (in Seconds)</string>
     <string name="serverlist_heading">Server List</string>
     <string name="name_subheading">Name</string>
     <string name="address_subheading">Address</string>
