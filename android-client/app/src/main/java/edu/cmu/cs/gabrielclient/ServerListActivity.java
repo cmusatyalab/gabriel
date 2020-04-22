@@ -18,6 +18,9 @@ import static edu.cmu.cs.gabriel.client.Util.ValidateEndpoint;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import androidx.appcompat.app.AppCompatActivity;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -54,6 +57,7 @@ public class ServerListActivity extends AppCompatActivity  {
     SeekBar seekBar = null;
     TextView intervalLabel = null;
     Switch subtitles = null;
+    EditText speechDedupInterval = null;
     CameraManager camMan = null;
     private SharedPreferences mSharedPreferences;
     private static final int MY_PERMISSIONS_REQUEST_CAMERA = 23;
@@ -105,12 +109,8 @@ public class ServerListActivity extends AppCompatActivity  {
         mSharedPreferences=getSharedPreferences(getString(R.string.shared_preference_file_key),
                 MODE_PRIVATE);
 
-
+        // app options
         subtitles = (Switch) findViewById(R.id.subtitles);
-
-
-
-
         subtitles.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 Const.SHOW_SUBTITLES = isChecked;
@@ -120,6 +120,34 @@ public class ServerListActivity extends AppCompatActivity  {
             }
         });
         subtitles.setChecked(mSharedPreferences.getBoolean("option:subtitles", false));
+
+        speechDedupInterval = (EditText) findViewById(R.id.speechDedupInterval);
+        speechDedupInterval.addTextChangedListener(
+                new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    }
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    }
+                    @Override
+                    public void afterTextChanged(Editable s) {
+                        try {
+                            Const.SPEECH_DEDUP_INTERVAL = Integer.parseInt(s.toString());
+                            SharedPreferences.Editor editor = mSharedPreferences.edit();
+                            editor.putInt("option:speechDedupInterval",
+                                    Const.SPEECH_DEDUP_INTERVAL);
+                            editor.commit();
+                        } catch (NumberFormatException e) {
+                            Log.e(this.getClass().getName(), "Invalid int string (" +
+                                    s.toString() + ").. Failed to set SPEECH_DEDUP_INTERVAL");
+                        }
+                    }
+                }
+        );
+        Const.SPEECH_DEDUP_INTERVAL = mSharedPreferences.getInt("option:speechDedupInterval",
+                Const.SPEECH_DEDUP_INTERVAL);
+        speechDedupInterval.setText(String.valueOf(Const.SPEECH_DEDUP_INTERVAL));
 
         camMan = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
 

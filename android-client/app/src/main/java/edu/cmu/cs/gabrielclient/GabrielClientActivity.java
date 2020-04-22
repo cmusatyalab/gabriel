@@ -52,7 +52,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
     private EngineInput engineInput;
     final private Object engineInputLock = new Object();
     private FrameSupplier frameSupplier;
+
+    // TTS
     private String previousTts = "";
+    private long previousTtsTime = 0;
 
     private boolean isRunning = false;
     private boolean isFirstExperiment = true;
@@ -358,8 +361,10 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                 dialog.show();
             } else if (msg.what == NetworkProtocol.NETWORK_RET_SPEECH) {
                 String ttsMessage = (String) msg.obj;
-
-                if (tts != null && !ttsMessage.equals(previousTts)){
+                // suppress the duplicate message if they are adjacent and comes in a short interval
+                boolean isSuppressed = ttsMessage.equals(previousTts) && (
+                        (System.currentTimeMillis()/1000 - previousTtsTime) < Const.SPEECH_DEDUP_INTERVAL);
+                if (tts != null && !isSuppressed){
                     Log.d(LOG_TAG, "tts to be played: " + ttsMessage);
                     tts.setSpeechRate(1.0f);
                     String[] splitMSGs = ttsMessage.split("\\.");
@@ -377,6 +382,7 @@ public class GabrielClientActivity extends Activity implements TextToSpeech.OnIn
                         tts.speak(splitMSGs[i].toString().trim(),TextToSpeech.QUEUE_ADD, null);
                     }
                     previousTts = ttsMessage;
+                    previousTtsTime = System.currentTimeMillis() / 1000;
                 }
                 subtitleView = (TextView) findViewById(R.id.subtitleText);
                 subtitleView.setText(ttsMessage);

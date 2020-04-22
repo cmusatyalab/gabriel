@@ -25,6 +25,8 @@ public class Const {
     public static final boolean LOAD_AUDIO = false;
 
     public static boolean SHOW_SUBTITLES = false;
+    // The time interval in which duplicate TTS speeches are suppressed
+    public static int SPEECH_DEDUP_INTERVAL = 5;
 
     // high level sensor control (on/off)
     public static boolean SENSOR_VIDEO = true;
