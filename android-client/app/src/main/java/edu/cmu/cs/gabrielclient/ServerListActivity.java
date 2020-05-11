@@ -57,6 +57,7 @@ public class ServerListActivity extends AppCompatActivity  {
     SeekBar seekBar = null;
     TextView intervalLabel = null;
     Switch subtitles = null;
+    Switch serverStateful = null;
     EditText speechDedupInterval = null;
     CameraManager camMan = null;
     private SharedPreferences mSharedPreferences;
@@ -110,6 +111,7 @@ public class ServerListActivity extends AppCompatActivity  {
                 MODE_PRIVATE);
 
         // app options
+        // subtitle
         subtitles = (Switch) findViewById(R.id.subtitles);
         subtitles.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -121,6 +123,25 @@ public class ServerListActivity extends AppCompatActivity  {
         });
         subtitles.setChecked(mSharedPreferences.getBoolean("option:subtitles", false));
 
+        // stateful server
+        // if server is stateful, DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT should be
+        // turned off.
+        serverStateful = (Switch) findViewById(R.id.serverStateful);
+        serverStateful.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Const.DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT = !isChecked;
+                SharedPreferences.Editor editor = mSharedPreferences.edit();
+                editor.putBoolean("option:serverStateful",
+                        isChecked);
+                editor.commit();
+            }
+        });
+        boolean initialServerStateful= mSharedPreferences.getBoolean("option:serverStateful",
+                !Const.DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT);
+        Const.DEDUPLICATE_RESPONSE_BY_ENGINE_UPDATE_COUNT = !initialServerStateful;
+        serverStateful.setChecked(initialServerStateful);
+
+        // dedup interval
         speechDedupInterval = (EditText) findViewById(R.id.speechDedupInterval);
         speechDedupInterval.addTextChangedListener(
                 new TextWatcher() {
