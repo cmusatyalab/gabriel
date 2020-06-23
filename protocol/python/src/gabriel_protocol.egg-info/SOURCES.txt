@@ -1,0 +1,10 @@
+LICENSE
+MANIFEST.in
+setup.py
+src/gabriel_protocol/__init__.py
+src/gabriel_protocol/gabriel_pb2.py
+src/gabriel_protocol.egg-info/PKG-INFO
+src/gabriel_protocol.egg-info/SOURCES.txt
+src/gabriel_protocol.egg-info/dependency_links.txt
+src/gabriel_protocol.egg-info/requires.txt
+src/gabriel_protocol.egg-info/top_level.txt
