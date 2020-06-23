@@ -17,7 +17,7 @@ directory:
 
 ## Compiling for Java
 
-1. Open the project in the `java` directory with IntelliJ or Android studio.
+1. Open the project in the `java` directory with Android studio.
 2. Click the `Gradle` button in the top right.
 3. Select `java` > `Tasks` > `build` > `build`. Do not select any of the build
    tasks specific to any of the modules (such as `protocol`).
@@ -28,4 +28,6 @@ Update the version number in python/setup.py. Then follow [these instructions](h
 
 ## Publishing Changes to Maven Central
 
-Follow [these instructions](https://github.com/cmusatyalab/gabriel/android-client/blob/master/README.md#publishing-changes-to-maven-central).
+Run the `uploadArchives` Gradle task from `java` > `Tasks` > `upload`. See
+[these instructions](https://github.com/cmusatyalab/gabriel/android-client/blob/master/README.md#publishing-changes-to-maven-central)
+for more details.
