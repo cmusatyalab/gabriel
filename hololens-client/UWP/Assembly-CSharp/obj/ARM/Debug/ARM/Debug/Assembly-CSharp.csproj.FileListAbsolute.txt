@@ -1,2 +1,0 @@
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp\obj\ARM\Debug\ARM\Debug\Assembly-CSharp.csprojAssemblyReference.cache
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp\obj\ARM\Debug\ARM\Debug\Assembly-CSharp.csproj.CoreCompileInputs.cache

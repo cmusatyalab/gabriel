@@ -1,3 +1,0 @@
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp-firstpass\obj\ARM\Debug\ARM\Debug\Assembly-CSharp-firstpass.csprojAssemblyReference.cache
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp-firstpass\obj\ARM\Debug\ARM\Debug\Assembly-CSharp-firstpass.csproj.CoreCompileInputs.cache
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp-firstpass\obj\ARM\Debug\ARM\Debug\Assembly-CSharp-firstpass.csprojResolveAssemblyReference.cache

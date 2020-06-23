@@ -1,4 +1,0 @@
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\App\gabriel-holo-client\gabriel-holo-client.csproj;x86
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp\Assembly-CSharp.csproj;x86
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp-firstpass\Assembly-CSharp-firstpass.csproj;x86
-D:\Workspace\gabriel\client\legacy-hololens-client\gabriel-holo-client\UWP\Assembly-CSharp-firstpass\Assembly-CSharp-firstpass.csproj;x86
