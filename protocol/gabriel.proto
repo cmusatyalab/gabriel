@@ -62,20 +62,14 @@ message ResultWrapper {
      	string value = 1;
     }
 
-    // The source of the original frame; allows the client to return the token
-    // correctly.
-    string source_name = 1;
-
-    int64 frame_id = 2;
-    Status status = 3;
-    repeated Result results = 4;
-    bool return_token = 5;
+    Status status = 1;
+    repeated Result results = 2;
 
     // Optional additional fields
-    google.protobuf.Any extras = 6;
+    google.protobuf.Any extras = 3;
 
     // Specify the name of the module that produced the result
-    StringValue result_producer_name = 7;
+    StringValue result_producer_name = 4;
 }
 
 message ToClient {
@@ -84,31 +78,28 @@ message ToClient {
 	int32 num_tokens_per_source = 2;
     }
 
-    oneof welcome_or_result {
-        ResultWrapper result_wrapper = 1;
-	Welcome welcome = 2;
+    message Response {
+        // The source of the original frame; allows the client to return the
+        // token correctly.
+        string source_name = 1;
+        int64 frame_id = 2;
+        bool return_token = 3;
+	ResultWrapper result_wrapper = 4;
+    }
+
+    oneof welcome_or_response {
+        Welcome welcome = 1;
+        Response response = 2;
     }
 }
 
-message ToEngine {
-    string host = 1;
-    int32 port = 2;
-    FromClient from_client = 3;
-}
-
-message FromEngine {
-    string host = 1;
-    int32 port = 2;
-    ResultWrapper result_wrapper = 3;
-}
-
-message ToServerRunner {
+message FromStandaloneEngine {
     message Welcome {
         string source_name = 1;
     }
 
-    oneof welcome_or_result {
-        ResultWrapper result_wrapper = 1;
-	Welcome welcome = 2;
+    oneof welcome_or_result_wrapper {
+	Welcome welcome = 1;
+        ResultWrapper result_wrapper = 2;
     }
 }
