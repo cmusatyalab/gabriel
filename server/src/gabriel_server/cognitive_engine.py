@@ -17,8 +17,8 @@ def unpack_extras(extras_class, from_client):
 
 class Engine(ABC):
     @abstractmethod
-    def handle(self, from_client):
-        '''Process a single from_client message.
+    def handle(self, input_frame):
+        '''Process a single gabriel_pb2.InputFrame().
 
         Return an instance of gabriel_pb2.ResultWrapper().'''
         pass

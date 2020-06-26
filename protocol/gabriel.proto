@@ -17,14 +17,17 @@ enum PayloadType {
     OTHER = 6;
 }
 
+message InputFrame {
+    PayloadType payload_type = 1;
+    repeated bytes payloads = 2;
+    // Optional additional fields
+    google.protobuf.Any extras = 3;
+}
+
 message FromClient {
     int64 frame_id = 1;
-    PayloadType payload_type = 2;
-    string source_name = 3;
-    repeated bytes payloads_for_frame = 4;
-
-    // Optional additional fields
-    google.protobuf.Any extras = 5;
+    string source_name = 2;
+    InputFrame input_frame = 3;
 }
 
 message ResultWrapper {

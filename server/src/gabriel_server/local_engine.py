@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import multiprocessing
+import os
 from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.websocket_server import WebsocketServer
@@ -15,23 +16,22 @@ logger = logging.getLogger(__name__)
 
 def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
         message_max_size=None):
+    engine_read, server_write = multiprocessing.Pipe(duplex=False)
+
+    # We cannot read from multiprocessing.Pipe without blocking the event
+    # loop
+    server_read, engine_write = os.pipe()
+
+    local_server = _LocalServer(
+        num_tokens, input_queue_maxsize, server_write, server_read)
+    local_server.add_source_consumed(source_name)
+
+    engine_process = multiprocessing.Process(
+        target=_run_engine,
+        args=(engine_factory, engine_read, server_read, engine_write))
     try:
-        engine_read, server_write = multiprocessing.Pipe(duplex=False)
-
-        # We cannot read from multiprocessing.Pipe without blocking the event
-        # loop
-        server_read, engine_write = os.pipe()
-
-        local_server = _LocalServer(
-            num_tokens, input_queue_maxsize, server_conn)
-        local_server.add_source_consumed(source_name)
-
-        engine_process = multiprocessing.Process(
-            target=_run_engine,
-            args=(engine_factory, engine_read, server_read, engine_write))
         engine_process.start()
         os.close(engine_write)
-
         local_server.launch(port, message_max_size)
     finally:
         local_server.cleanup()
@@ -43,7 +43,7 @@ def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
 class _LocalServer(WebsocketServer):
     def __init__(self, num_tokens_per_source, input_queue_maxsize, write, read):
         super().__init__(num_tokens_per_source)
-        self._input_queue = queue.Queue(input_queue_maxsize)
+        self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._write = write
 
         loop = asyncio.get_event_loop()
@@ -69,9 +69,10 @@ class _LocalServer(WebsocketServer):
         super().launch(port, message_max_size)
 
     async def _engine_comm(self):
+        await self.wait_for_start()
         while self.is_running():
             from_client, address = await self._input_queue.get()
-            self._write.send(from_client.SerializeToString())
+            self._write.send(from_client.input_frame.SerializeToString())
 
             size_bytes = await self._stream_reader.readexactly(
                 _NUM_BYTES_FOR_SIZE)
@@ -81,9 +82,10 @@ class _LocalServer(WebsocketServer):
 
             result_wrapper = gabriel_pb2.ResultWrapper()
             result_wrapper.ParseFromString(result_wrapper_serialized)
-            self.send_result_wrapper(
+            return_token = True
+            await self.send_result_wrapper(
                 address, from_client.source_name, from_client.frame_id,
-                return_token=True, result_wrapper)
+                return_token, result_wrapper)
 
 
 def _run_engine(engine_factory, engine_read, server_read, engine_write):
@@ -93,10 +95,10 @@ def _run_engine(engine_factory, engine_read, server_read, engine_write):
         engine = engine_factory()
         logger.info('Cognitive engine started')
         while True:
-            from_client = gabriel_pb2.FromClient()
-            from_client.ParseFromString(engine_read.recv())
+            input_frame = gabriel_pb2.InputFrame()
+            input_frame.ParseFromString(engine_read.recv())
 
-            result_wrapper = engine.handle(from_client)
+            result_wrapper = engine.handle(input_frame)
             serialized_message = result_wrapper.SerializeToString()
             message_size = len(serialized_message)
             size_bytes = message_size.to_bytes(_NUM_BYTES_FOR_SIZE, _BYTEORDER)
@@ -107,4 +109,4 @@ def _run_engine(engine_factory, engine_read, server_read, engine_write):
             num_bytes_written = os.write(engine_write, serialized_message)
             assert num_bytes_written == message_size, 'Write incomplete'
     finally:
-        os.close(write)
+        os.close(engine_write)

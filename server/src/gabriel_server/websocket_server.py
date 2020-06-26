@@ -26,10 +26,11 @@ class WebsocketServer(ABC):
         self._clients = {}
         self._sources_consumed = set()
         self._server = None
+        self._start_event = asyncio.Event()
 
     @abstractmethod
     async def _send_to_engine(self, from_client, address):
-        '''Send ToEngine to the appropriate engine(s).
+        '''Send FromClient to the appropriate engine(s).
 
         Return True if send succeeded.'''
         pass
@@ -39,7 +40,11 @@ class WebsocketServer(ABC):
         start_server = websockets.serve(
             self._handler, port=port, max_size=message_max_size)
         self._server = event_loop.run_until_complete(start_server)
+        self._start_event.set()
         event_loop.run_forever()
+
+    async def wait_for_start(self):
+        await self._start_event.wait()
 
     async def send_result_wrapper(
             self, address, source_name, frame_id, return_token, result_wrapper):
@@ -54,9 +59,8 @@ class WebsocketServer(ABC):
 
         if source_name not in client.tokens_for_source:
             logger.warning('Send request with invalid source: %s', source_name)
-            return False
-
-        if return_token:
+            # Still send so client gets back token
+        elif return_token:
             client.tokens_for_source[source_name] += 1
 
         to_client = gabriel_pb2.ToClient()
@@ -154,15 +158,14 @@ class WebsocketServer(ABC):
             status = await self._consumer_helper(client, from_client, address)
             if status == ResultWrapper.Status.SUCCESS:
                 client.tokens_for_source[from_client.source_name] -= 1
-                return
+                continue
 
             # Send error message
             to_client = gabriel_pb2.ToClient()
-            result_wrapper = to_client.result_wrapper
-            result_wrapper.source_name = from_client.source_name
-            result_wrapper.frame_id = from_client.frame_id
-            result_wrapper.status = status
-            result_wrapper.return_token = True
+            to_client.response.source_name = from_client.source_name
+            to_client.response.frame_id = from_client.frame_id
+            to_client.response.return_token = True
+            to_client.response.result_wrapper.status = status
             await websocket.send(to_client.SerializeToString())
 
     async def _consumer_helper(self, client, from_client, address):

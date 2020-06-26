@@ -46,16 +46,16 @@ class _Server(WebsocketServer):
 
     def launch(self, websocket_port, message_max_size):
         async def receive_from_engine_worker_loop():
+            await self.wait_for_start()
             while self.is_running():
                 await self._receive_from_engine_worker_helper()
 
         async def heartbeat_loop():
+            await self.wait_for_start()
             while self.is_running():
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
-        # These will not get scheduled until super.launch() stops doing work on
-        # the event loop. self.is_running() will return true by this point.
         asyncio.ensure_future(receive_from_engine_worker_loop())
         asyncio.ensure_future(heartbeat_loop())
 
