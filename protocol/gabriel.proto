@@ -68,7 +68,7 @@ message ResultWrapper {
     // Optional additional fields
     google.protobuf.Any extras = 3;
 
-    // Specify the name of the module that produced the result
+    // Optionally specify the name of the module that produced the result
     StringValue result_producer_name = 4;
 }
 

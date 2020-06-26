@@ -6,30 +6,56 @@ from gabriel_server import cognitive_engine
 from gabriel_server.websocket_server import WebsocketServer
 
 
+_NUM_BYTES_FOR_SIZE = 4
+_BYTEORDER = 'big'
+
+
 logger = logging.getLogger(__name__)
 
 
 def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
         message_max_size=None):
-    server_conn, engine_conn = multiprocessing.Pipe(duplex=True)
+    try:
+        engine_read, server_write = multiprocessing.Pipe(duplex=False)
 
-    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn)
-    local_server.add_source_consumed(source_name)
+        # We cannot read from multiprocessing.Pipe without blocking the event
+        # loop
+        server_read, engine_write = os.pipe()
 
-    engine_process = multiprocessing.Process(
-        target=_run_engine, args=(engine_factory, engine_conn))
-    engine_process.start()
+        local_server = _LocalServer(
+            num_tokens, input_queue_maxsize, server_conn)
+        local_server.add_source_consumed(source_name)
 
-    local_server.launch(port, message_max_size)
+        engine_process = multiprocessing.Process(
+            target=_run_engine,
+            args=(engine_factory, engine_read, server_read, engine_write))
+        engine_process.start()
+        os.close(engine_write)
+
+        local_server.launch(port, message_max_size)
+    finally:
+        local_server.cleanup()
+        os.close(server_read)
 
     raise Exception('Server stopped')
 
 
 class _LocalServer(WebsocketServer):
-    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn):
+    def __init__(self, num_tokens_per_source, input_queue_maxsize, write, read):
         super().__init__(num_tokens_per_source)
         self._input_queue = queue.Queue(input_queue_maxsize)
-        self._conn = conn
+        self._write = write
+
+        loop = asyncio.get_event_loop()
+        self._stream_reader = asyncio.StreamReader()
+        def protocol_factory():
+            return asyncio.StreamReaderProtocol(self._stream_reader)
+        pipe = os.fdopen(read, mode='r')
+        self._transport, _ = loop.run_until_complete(
+            loop.connect_read_pipe(protocol_factory, pipe))
+
+    def cleanup(self):
+        self._transport.close()
 
     async def _send_to_engine(self, from_client, address):
         if self._input_queue.full():
@@ -45,38 +71,40 @@ class _LocalServer(WebsocketServer):
     async def _engine_comm(self):
         while self.is_running():
             from_client, address = await self._input_queue.get()
-            self._conn.send(from_client)
-            asyncio.get_event_loop().add_reader
-            result_wrapper = self._conn.recv()  # TODO make this nonblocking with add_reader
+            self._write.send(from_client.SerializeToString())
+
+            size_bytes = await self._stream_reader.readexactly(
+                _NUM_BYTES_FOR_SIZE)
+            size_of_message = int.from_bytes(size_bytes, _BYTEORDER)
+            result_wrapper_serialized = await self._stream_reader.readexactly(
+                size_of_message)
+
+            result_wrapper = gabriel_pb2.ResultWrapper()
+            result_wrapper.ParseFromString(result_wrapper_serialized)
             self.send_result_wrapper(
                 address, from_client.source_name, from_client.frame_id,
                 return_token=True, result_wrapper)
 
 
-def _run_engine(engine_factory, input_queue, read, write):
+def _run_engine(engine_factory, engine_read, server_read, engine_write):
     try:
-        os.close(read)
+        os.close(server_read)
 
         engine = engine_factory()
         logger.info('Cognitive engine started')
         while True:
-            to_engine = gabriel_pb2.ToEngine()
-            to_engine.ParseFromString(input_queue.get())
+            from_client = gabriel_pb2.FromClient()
+            from_client.ParseFromString(engine_read.recv())
 
-            result_wrapper = engine.handle(to_engine.from_client)
-            result_wrapper.source_name = to_engine.from_client.source_name
-            result_wrapper.return_token = True
-
-            from_engine = cognitive_engine.pack_from_engine(
-                to_engine.host, to_engine.port, result_wrapper)
-            serialized_message = from_engine.SerializeToString()
+            result_wrapper = engine.handle(from_client)
+            serialized_message = result_wrapper.SerializeToString()
             message_size = len(serialized_message)
             size_bytes = message_size.to_bytes(_NUM_BYTES_FOR_SIZE, _BYTEORDER)
 
-            num_bytes_written = os.write(fd, size_bytes)
+            num_bytes_written = os.write(engine_write, size_bytes)
             assert num_bytes_written == _NUM_BYTES_FOR_SIZE, 'Write incomplete'
 
-            num_bytes_written = os.write(fd, serialized_message)
+            num_bytes_written = os.write(engine_write, serialized_message)
             assert num_bytes_written == message_size, 'Write incomplete'
     finally:
         os.close(write)

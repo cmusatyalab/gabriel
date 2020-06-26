@@ -23,67 +23,66 @@ MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
 
 
 def run(websocket_port, zmq_address, num_tokens, input_queue_maxsize,
-        timeout=FIVE_SECONDS):
+        timeout=FIVE_SECONDS, message_max_size=None):
     context = zmq.asyncio.Context()
     zmq_socket = context.socket(zmq.ROUTER)
     zmq_socket.bind(zmq_address)
     logger.info('Waiting for engines to connect')
 
-    server = _Server(websocket_port, num_tokens, zmq_socket, timeout,
-                     input_queue_maxsize)
-    server.launch()
+    server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize)
+    server.launch(websocket_port, message_max_size)
 
 
 class _Server(WebsocketServer):
-    def __init__(self, websocket_port, num_tokens, zmq_socket, timeout,
-                 size_for_queues):
-        super().__init__(websocket_port, num_tokens)
+    def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues):
+        super().__init__(num_tokens)
 
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
         self._source_infos = {}
-        self._from_engines = asyncio.Queue()
+        self._responses = asyncio.Queue()
         self._timeout = timeout
         self._size_for_queues = size_for_queues
 
-    def launch(self):
-        # We cannot use while self.is_running because these loops would
-        # terminate before super().launch() is called launch
+    def launch(self, websocket_port, message_max_size):
         async def receive_from_engine_worker_loop():
-            while True:
+            while self.is_running():
                 await self._receive_from_engine_worker_helper()
 
         async def heartbeat_loop():
-            while True:
+            while self.is_running():
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
+        # These will not get scheduled until super.launch() stops doing work on
+        # the event loop. self.is_running() will return true by this point.
         asyncio.ensure_future(receive_from_engine_worker_loop())
         asyncio.ensure_future(heartbeat_loop())
-        super().launch()
+
+        super().launch(websocket_port, message_max_size)
 
     async def _receive_from_engine_worker_helper(self):
         address, _, payload = await self._zmq_socket.recv_multipart()
 
         engine_worker = self._engine_workers.get(address)
         if payload == network_engine.HEARTBEAT:
-            if engine_worker == None:
+            if engine_worker is None:
                 logger.error('Heartbeat from unknown engine')
             else:
                 engine_worker.record_heatbeat()
             return
-        to_server_runner = gabriel_pb2.ToServerRunner()
-        to_server_runner.ParseFromString(payload)
 
+        from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
+        from_standalone_engine.ParseFromString(payload)
         if engine_worker is None:
-            await self._add_engine_worker(address, to_server_runner)
+            await self._add_engine_worker(address, from_standalone_engine)
             return
 
-        if to_server_runner.HasField('welcome'):
+        if from_standalone_engine.HasField('welcome'):
             logger.error('Engine sent duplicate welcome message')
             return
 
-        result_wrapper = to_server_runner.result_wrapper
+        result_wrapper = from_standalone_engine.result_wrapper
         engine_worker_metadata = engine_worker.get_current_input_metadata()
         source_info = engine_worker.get_source_info()
         latest_input = source_info.get_latest_input()
@@ -106,23 +105,22 @@ class _Server(WebsocketServer):
             # Give the worker the latest input
             await engine_worker.send_payload(latest_input)
 
-    async def _add_engine_worker(self, address, to_server_runner):
-        if to_server_runner.HasField('welcome'):
-            source_name = to_server_runner.welcome.source_name
-            logger.info('New engine connected that consumes frames from '
-                        'source: %s', source_name)
-        elif to_server_runner.HasField('result_wrapper'):
-            # The engine was probably running for too long.
-            source_name = to_server_runner.result_wrapper.source_name
-            logger.warning('Result from unrecognized engines that consumes '
-                           'frames from source: %s', source_name)
-            logger.info('Adding engine as if it were new')
+    async def _add_engine_worker(self, address, from_standalone_engine):
+        if not from_standalone_engine.HasField('welcome'):
+            logger.warning('Non-welcome message from unknown engine. Consider '
+                           'increasing timeout.')
+            return
+
+        source_name = from_standalone_engine.welcome.source_name
+        logger.info('New engine connected that consumes frames from source: %s',
+                    source_name)
 
         source_info = self._source_infos.get(source_name)
         if source_info is None:
-            logger.info('First engine for inputs from source: %s', source_name)
+            logger.info('First engine that consumes from source: %s',
+                        source_name)
             source_info = _SourceInfo(
-                source_name, self._size_for_queues, self._from_engines)
+                source_name, self._size_for_queues, self._responses)
             self._source_infos[source_name] = source_info
 
             # Tell super() to accept inputs from source_name
@@ -158,11 +156,9 @@ class _Server(WebsocketServer):
                 del self._source_infos[source_name]
                 self.remove_source_consumed(source_name)
 
-    async def _send_to_engine(self, to_engine):
-        source_name = to_engine.from_client.source_passed
-        source_info = self._source_infos[source_name]
-
-        return await source_info.handle_new_to_engine(to_engine)
+    async def _send_to_engine(self, from_client, address):
+        source_info = self._source_infos[from_client.source_passed]
+        return await source_info.handle_new_to_engine(from_client, address)
 
     async def _recv_from_engine(self):
         return await self._from_engines.get()
@@ -212,12 +208,9 @@ class _EngineWorker:
             self._current_input_metadata == latest_input.metadata):
             # Return token for frame engine was in the middle of processing
             status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
-            metadata = self._current_input_metadata
-            source_name = self._source_info.get_name()
-            result_wrapper = cognitive_engine.error_result_wrapper(
-                metadata.frame_id, status, source_name)
+            result_wrapper = cognitive_engine.error_result_wrapper(status)
             await self._source_info.respond_to_client(
-                metadata, result_wrapper, return_token=True)
+                self._current_input_metadata, result_wrapper, return_token=True)
 
         self._source_info.remove_engine_worker(self)
 
@@ -281,9 +274,8 @@ class _SourceInfo:
         return True
 
     async def respond_to_client(self, metadata, result_wrapper, return_token):
-        result_wrapper.source_name = self.get_name()
-        result_wrapper.frame_id = metadata.frame_id
-        result_wrapper.return_token = return_token
+        to_client = cognitive_engine.pack_to_client(
+            self.get_name(), metadata.frame_id, return_token, result_wrapper)
         from_engine = cognitive_engine.pack_from_engine(
             metadata.host, metadata.port, result_wrapper, return_token)
         await self._from_engines.put(from_engine)
