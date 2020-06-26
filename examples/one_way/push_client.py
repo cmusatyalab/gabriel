@@ -1,8 +1,8 @@
 import argparse
 import cv2
-import time
+import logging
 import multiprocessing
-import numpy as np
+import time
 from multiprocessing import Process
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client import push_source
@@ -10,6 +10,9 @@ from gabriel_protocol import gabriel_pb2
 
 
 DEFAULT_SOURCE_NAME = '0'
+
+
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def send_frames(source):
@@ -37,6 +40,7 @@ def main():
     client = WebsocketClient(
         'localhost', 9099, producer_wrappers, push_source.consumer)
     client.launch()
+    p.terminate()
 
 
 if __name__ == '__main__':

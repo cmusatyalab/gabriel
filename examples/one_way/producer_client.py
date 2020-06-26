@@ -1,7 +1,6 @@
 import argparse
 import cv2
 import time
-import numpy as np
 import logging
 from multiprocessing import Process
 from gabriel_protocol import gabriel_pb2
