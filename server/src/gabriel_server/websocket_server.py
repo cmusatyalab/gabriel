@@ -47,7 +47,7 @@ class WebsocketServer(ABC):
         await self._start_event.wait()
 
     async def send_result_wrapper(
-            self, address, source_name, frame_id, return_token, result_wrapper):
+            self, address, source_name, frame_id, result_wrapper, return_token):
         '''Send result to client at address.
 
         Returns True if send succeeded.'''

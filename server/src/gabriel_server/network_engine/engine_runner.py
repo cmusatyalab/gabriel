@@ -11,16 +11,18 @@ REQUEST_RETRIES = 3
 logger = logging.getLogger(__name__)
 
 
-def run(engine, source_name, server_address, timeout=TEN_SECONDS,
-        request_retries=REQUEST_RETRIES):
+def run(engine, source_name, server_address, all_responses_required=False,
+        timeout=TEN_SECONDS, request_retries=REQUEST_RETRIES):
     context = zmq.Context()
 
     while request_retries > 0:
         socket = context.socket(zmq.REQ)
         socket.connect(server_address)
-        to_server_runner = gabriel_pb2.ToServerRunner()
-        to_server_runner.welcome.source_name = source_name
-        socket.send(to_server_runner.SerializeToString())
+        from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
+        from_standalone_engine.welcome.source_name = source_name
+        from_standalone_engine.welcome.all_responses_required = (
+            all_responses_required)
+        socket.send(from_standalone_engine.SerializeToString())
         logger.info('Sent welcome message to server')
 
         while True:
@@ -36,13 +38,12 @@ def run(engine, source_name, server_address, timeout=TEN_SECONDS,
                 socket.send(network_engine.HEARTBEAT)
                 continue
 
-            from_client = gabriel_pb2.FromClient()
-            from_client.ParseFromString(message_from_server)
-            assert from_client.source_name == source_name
-            result_wrapper = engine.handle(from_client)
+            input_frame = gabriel_pb2.InputFrame()
+            input_frame.ParseFromString(message_from_server)
+            result_wrapper = engine.handle(input_frame)
 
-            to_server_runner = gabriel_pb2.ToServerRunner()
-            to_server_runner.result_wrapper.CopyFrom(result_wrapper)
-            socket.send(to_server_runner.SerializeToString())
+            from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
+            from_standalone_engine.result_wrapper.CopyFrom(result_wrapper)
+            socket.send(from_standalone_engine.SerializeToString())
 
     logger.warning('Ran out of retires. Abandoning server connection.')

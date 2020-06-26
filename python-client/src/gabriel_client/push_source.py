@@ -8,7 +8,7 @@ _NUM_BYTES_FOR_SIZE = 4
 _BYTEORDER = 'big'
 
 
-def consumer():
+def consumer(_):
     pass
 
 

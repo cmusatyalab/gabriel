@@ -80,9 +80,9 @@ class _LocalServer(WebsocketServer):
             result_wrapper_serialized = await self._stream_reader.readexactly(
                 size_of_message)
 
+            return_token = True
             result_wrapper = gabriel_pb2.ResultWrapper()
             result_wrapper.ParseFromString(result_wrapper_serialized)
-            return_token = True
             await self.send_result_wrapper(
                 address, from_client.source_name, from_client.frame_id,
                 return_token, result_wrapper)

@@ -16,7 +16,7 @@ FIVE_SECONDS = 5
 logger = logging.getLogger(__name__)
 
 
-Metadata = namedtuple('Metadata', ['frame_id', 'host', 'port'])
+Metadata = namedtuple('Metadata', ['frame_id', 'client_address'])
 
 
 MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
@@ -40,7 +40,6 @@ class _Server(WebsocketServer):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
         self._source_infos = {}
-        self._responses = asyncio.Queue()
         self._timeout = timeout
         self._size_for_queues = size_for_queues
 
@@ -89,14 +88,18 @@ class _Server(WebsocketServer):
         if (latest_input is not None and
             latest_input.metadata == engine_worker_metadata):
             # Send response to client
-            await source_info.respond_to_client(
-                engine_worker_metadata, result_wrapper, return_token=True)
+            await self.send_result_wrapper(
+                engine_worker_metadata.client_address, source_info.get_name(),
+                engine_worker_metadata.frame_id, result_wrapper,
+                return_token=True)
             await engine_worker.send_message_from_queue()
             return
 
-        if len(result_wrapper.results) > 0:
-            await source_info.respond_to_client(
-                engine_worker_metadata, result_wrapper, return_token=False)
+        if engine_worker.get_all_responses_required():
+            await self.send_result_wrapper(
+                engine_worker_metadata.client_address, source_info.get_name(),
+                engine_worker_metadata.frame_id, result_wrapper,
+                return_token=False)
 
         if latest_input is None:
             # There is no new input to give the worker
@@ -111,7 +114,8 @@ class _Server(WebsocketServer):
                            'increasing timeout.')
             return
 
-        source_name = from_standalone_engine.welcome.source_name
+        welcome = from_standalone_engine.welcome
+        source_name = welcome.source_name
         logger.info('New engine connected that consumes frames from source: %s',
                     source_name)
 
@@ -119,14 +123,15 @@ class _Server(WebsocketServer):
         if source_info is None:
             logger.info('First engine that consumes from source: %s',
                         source_name)
-            source_info = _SourceInfo(
-                source_name, self._size_for_queues, self._responses)
+            source_info = _SourceInfo(source_name, self._size_for_queues)
             self._source_infos[source_name] = source_info
 
             # Tell super() to accept inputs from source_name
             self.add_source_consumed(source_name)
 
-        engine_worker = _EngineWorker(self._zmq_socket, source_info, address)
+        all_responses_required = welcome.all_responses_required
+        engine_worker = _EngineWorker(
+            self._zmq_socket, source_info, address, all_responses_required)
         self._engine_workers[address] = engine_worker
 
         source_info.add_engine_worker(engine_worker)
@@ -146,7 +151,20 @@ class _Server(WebsocketServer):
             source_info = engine_worker.get_source_info()
             logger.info('Lost connection to engine worker that consumes items '
                         'from source: %s', source_info.get_name())
-            await engine_worker.drop()
+
+            latest_input = source_info.get_latest_input()
+            current_input_metadata = engine_worker.get_current_input_metadata()
+            if (latest_input is not None and
+                current_input_metadata == latest_input.metadata):
+                # Return token for frame engine was in the middle of processing
+                status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
+                result_wrapper = cognitive_engine.create_result_wrapper(status)
+                await self.send_result_wrapper(
+                    current_input_metadata.client_address,
+                    source_info.get_name(), current_input_metadata.frame_id,
+                    result_wrapper, return_token=True)
+
+            source_info.remove_engine_worker(engine_worker)
             del self._engine_workers[address]
 
             if source_info.has_no_engine_workers():
@@ -156,19 +174,19 @@ class _Server(WebsocketServer):
                 del self._source_infos[source_name]
                 self.remove_source_consumed(source_name)
 
-    async def _send_to_engine(self, from_client, address):
-        source_info = self._source_infos[from_client.source_passed]
-        return await source_info.handle_new_to_engine(from_client, address)
-
-    async def _recv_from_engine(self):
-        return await self._from_engines.get()
+    async def _send_to_engine(self, from_client, client_address):
+        source_info = self._source_infos[from_client.source_name]
+        return await source_info.process_input_from_client(
+            from_client, client_address)
 
 
 class _EngineWorker:
-    def __init__(self, zmq_socket, source_info, address):
+    def __init__(
+            self, zmq_socket, source_info, address, all_responses_required):
         self._zmq_socket = zmq_socket
         self._source_info = source_info
         self._address = address
+        self._all_responses_required = all_responses_required
         self._last_sent = 0
         self._awaiting_heartbeat_response = False
         self._current_input_metadata = None
@@ -181,6 +199,9 @@ class _EngineWorker:
 
     def get_current_input_metadata(self):
         return self._current_input_metadata
+
+    def get_all_responses_required(self):
+        return self._all_responses_required
 
     def clear_current_input_metadata(self):
         self._current_input_metadata = None
@@ -202,18 +223,6 @@ class _EngineWorker:
         await self._zmq_socket.send_multipart([self._address, b'', payload])
         self._last_sent = time.time()
 
-    async def drop(self):
-        latest_input = self._source_info.get_latest_input()
-        if (latest_input is not None and
-            self._current_input_metadata == latest_input.metadata):
-            # Return token for frame engine was in the middle of processing
-            status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
-            result_wrapper = cognitive_engine.error_result_wrapper(status)
-            await self._source_info.respond_to_client(
-                self._current_input_metadata, result_wrapper, return_token=True)
-
-        self._source_info.remove_engine_worker(self)
-
     async def send_payload(self, metadata_payload):
         self._current_input_metadata = metadata_payload.metadata
         await self._send_helper(metadata_payload.payload)
@@ -230,10 +239,9 @@ class _EngineWorker:
             await self.send_payload(metadata_payload)
 
 class _SourceInfo:
-    def __init__(self, source_name, fresh_inputs_queue_size, from_engines):
+    def __init__(self, source_name, fresh_inputs_queue_size):
         self._source_name = source_name
         self._unsent_inputs = asyncio.Queue(maxsize=fresh_inputs_queue_size)
-        self._from_engines = from_engines
         self._latest_input = None
         self._engine_workers = set()
 
@@ -252,11 +260,11 @@ class _SourceInfo:
     def get_latest_input(self):
         return self._latest_input
 
-    async def handle_new_to_engine(self, to_engine):
+    async def process_input_from_client(self, from_client, client_address):
         sent_to_engine = False
-        metadata = Metadata(frame_id=to_engine.from_client.frame_id,
-                            host=to_engine.host, port=to_engine.port)
-        payload = to_engine.from_client.SerializeToString()
+        metadata = Metadata(
+            frame_id=from_client.frame_id, client_address=client_address)
+        payload = from_client.input_frame.SerializeToString()
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
         for engine_worker in self._engine_workers:
             if engine_worker.get_current_input_metadata() is None:
@@ -273,31 +281,15 @@ class _SourceInfo:
         self._unsent_inputs.put_nowait(metadata_payload)
         return True
 
-    async def respond_to_client(self, metadata, result_wrapper, return_token):
-        to_client = cognitive_engine.pack_to_client(
-            self.get_name(), metadata.frame_id, return_token, result_wrapper)
-        from_engine = cognitive_engine.pack_from_engine(
-            metadata.host, metadata.port, result_wrapper, return_token)
-        await self._from_engines.put(from_engine)
-
-        if return_token:
-            self._latest_input = None
-
     def advance_unsent_queue(self):
         '''
-        Remove an item from the queue of unsent to_engine messages, and store
+        Remove an item from the queue of unsent input_frame messages, and store
         this as the latest input.
 
-        Return metadata_payload if there was an item pulled off the queue.
-        Return None otherwise.
+        Return the latest item, or None if the queue was empty
         '''
 
-        if self._unsent_inputs.empty():
-            # We do not need to update latest input, because respond_to_client
-            # has already cleared latest_input
-            return None
+        self._latest_input = (None if self._unsent_inputs.empty() else
+                              self._unsent_inputs.get_nowait())
 
-        metadata_payload = self._unsent_inputs.get_nowait()
-        self._latest_input = metadata_payload
-
-        return metadata_payload
+        return self._latest_input
