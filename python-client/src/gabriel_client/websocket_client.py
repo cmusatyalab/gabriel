@@ -79,29 +79,31 @@ class WebsocketClient:
             to_client = gabriel_pb2.ToClient()
             to_client.ParseFromString(raw_input)
 
-            if to_client.HasField('response'):
-                result_wrapper = to_client.response.result_wrapper
-                if (result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS):
-                    self.consumer(result_wrapper)
-                elif (result_wrapper.status ==
-                      gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE):
-                    raise Exception('No engine for source')
-                else:
-                    status = result_wrapper.Status.Name(result_wrapper.status)
-                    logger.error('Output status was: %s', status)
-
-                if to_client.response.return_token:
-                    self._sources[to_client.response.source_name].return_token()
-            elif to_client.HasField('welcome'):
-                source_names = to_client.welcome.sources_consumed
-                num_tokens = to_client.welcome.num_tokens_per_source
-                self._sources = {
-                    source_name: _Source(num_tokens)
-                    for source_name in source_names
-                }
-                self._welcome_event.set()
+            if to_client.HasField('welcome'):
+                self.process_welcome(to_client.welcome)
+            elif to_client.HasField('response'):
+                self.process_response(to_client.resopnse)
             else:
                 raise Exception('Empty to_client message')
+
+    def _process_welcome(self, welcome):
+        for source_name in welcome.sources_consumed:
+            self._sources[source_name] = _Source(welcome.num_tokens_per_source)
+        self._welcome_event.set()
+
+    def _process_response(self, response):
+        result_wrapper = response.result_wrapper
+        if (result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS):
+            self.consumer(result_wrapper)
+        elif (result_wrapper.status ==
+              gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE):
+            raise Exception('No engine for source')
+        else:
+            status = result_wrapper.Status.Name(result_wrapper.status)
+            logger.error('Output status was: %s', status)
+
+        if response.return_token:
+            self._sources[response.source_name].return_token()
 
     async def _producer_handler(self, producer, source_name):
         '''
@@ -126,13 +128,16 @@ class WebsocketClient:
             from_client.frame_id = source.get_frame_id()
             from_client.source_name = source_name
             from_client.input_frame.CopyFrom(input_frame)
-            try:
-                await self._websocket.send(from_client.SerializeToString())
-            except websockets.exceptions.ConnectionClosed:
-                return  # stop the handler
+            await self._send_from_client(from_client)
             logger.debug('num_tokens for %s is now %d', source_name,
                          source.get_num_tokens())
             source.next_frame()
+
+    async def _send_from_client(self, from_client):
+        try:
+            await self._websocket.send(from_client.SerializeToString())
+        except websockets.exceptions.ConnectionClosed:
+            return  # stop the handler
 
 
 class _Source:
