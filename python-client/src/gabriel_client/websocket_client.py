@@ -23,8 +23,8 @@ class WebsocketClient:
         '''
         producer should take no arguments and return an instance of
         gabriel_pb2.InputFrame.
-        consumer should take one gabriel_pb2.ResultWrapper argument and return
-        None.
+        consumer should take one gabriel_pb2.ResultWrapper and does not need to
+        return anything.
         '''
 
         self._welcome_event = asyncio.Event()
@@ -82,7 +82,7 @@ class WebsocketClient:
             if to_client.HasField('welcome'):
                 self._process_welcome(to_client.welcome)
             elif to_client.HasField('response'):
-                self._process_response(to_client.resopnse)
+                self._process_response(to_client.response)
             else:
                 raise Exception('Empty to_client message')
 
