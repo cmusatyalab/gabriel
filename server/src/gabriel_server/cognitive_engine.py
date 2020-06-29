@@ -9,9 +9,9 @@ def create_result_wrapper(status):
     return result_wrapper
 
 
-def unpack_extras(extras_class, from_client):
+def unpack_extras(extras_class, input_frame):
     extras = extras_class()
-    from_client.extras.Unpack(extras)
+    input_frame.extras.Unpack(extras)
     return extras
 
 

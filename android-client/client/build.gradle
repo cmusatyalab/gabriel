@@ -1,0 +1,55 @@
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 28
+    buildToolsVersion "29.0.2"
+
+
+    defaultConfig {
+        minSdkVersion 19
+        targetSdkVersion 28
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.tinder.scarlet:scarlet:0.1.10'
+    implementation 'com.tinder.scarlet:websocket-okhttp:0.1.10'
+    implementation 'com.tinder.scarlet:lifecycle-android:0.1.10'
+
+    // TODO: Switch to api once MobilEdgeX supports protobuf-javalite.
+    // We need this to be compileOnly so openrtist can use edu.cmu.cs.gabriel:protocol-old-protobuf
+    // with MobilEdgeX
+    compileOnly 'edu.cmu.cs.gabriel:protocol:0.1.15'
+
+    // TODO: Remove these once MobilEdgeX supports protobuf-javalite and gabriel.protocol implements
+    //       this
+    compileOnly 'com.google.protobuf:protobuf-lite:3.0.1'
+    compileOnly 'com.google.protobuf:protobuf-java:3.11.3'
+}
+
+// Avoid build failure when running gradlew from the command line
+// when Java 11's javadoc is installed.
+tasks.withType(Javadoc).all { enabled = false }
+
+// The default PgpSigner can't handle PGP hardware keys or smartcards, also
+// Gnupg2 no longer maintains a secring file by default. It should be more
+// reliable to just use gpg2 for signing.
+// RI: I had to uncomment these lines to be able to push. I'll have to set up gpg2 in the future.
+//apply plugin: 'signing'
+//signing {
+//    useGpgCmd()
+//}
+
+apply plugin: 'com.vanniktech.maven.publish'
