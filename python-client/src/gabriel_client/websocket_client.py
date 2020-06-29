@@ -80,9 +80,9 @@ class WebsocketClient:
             to_client.ParseFromString(raw_input)
 
             if to_client.HasField('welcome'):
-                self.process_welcome(to_client.welcome)
+                self._process_welcome(to_client.welcome)
             elif to_client.HasField('response'):
-                self.process_response(to_client.resopnse)
+                self._process_response(to_client.resopnse)
             else:
                 raise Exception('Empty to_client message')
 
