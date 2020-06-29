@@ -1,4 +1,4 @@
-import argparse
+import common
 import cv2
 import time
 import logging
@@ -8,7 +8,6 @@ from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.websocket_client import ProducerWrapper
 
 
-DEFAULT_NUM_SOURCES = 1
 ORG = (0, 120)
 FONT_FACE = cv2.FONT_HERSHEY_PLAIN
 FONT_SCALE = 10
@@ -23,11 +22,7 @@ def consumer(result_wrapper):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('num_sources', type=int, nargs='?',
-                        default=DEFAULT_NUM_SOURCES)
-    args = parser.parse_args()
-
+    num_sources = common.parse_num_sources()
     capture = cv2.VideoCapture(0)
     def gen_producer(n):
         text = 'client {}'.format(n)
@@ -44,7 +39,7 @@ def main():
 
     producer_wrappers = [
         ProducerWrapper(producer=gen_producer(i), source_name=str(i))
-        for i in range(args.num_sources)
+        for i in range(num_sources)
     ]
     client = WebsocketClient(
         'localhost', 9099, producer_wrappers, consumer)

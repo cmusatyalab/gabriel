@@ -1,4 +1,4 @@
-import argparse
+import common
 import cv2
 import logging
 import multiprocessing
@@ -7,9 +7,6 @@ from multiprocessing import Process
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client import push_source
 from gabriel_protocol import gabriel_pb2
-
-
-DEFAULT_SOURCE_NAME = '0'
 
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -29,13 +26,10 @@ def send_frames(source):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('source_name', nargs='?', default=DEFAULT_SOURCE_NAME)
-    args = parser.parse_args()
-    source = push_source.Source(args.source_name)
+    source_name = common.parse_source_name()
+    source = push_source.Source(source_name)
     p = multiprocessing.Process(target=send_frames, args=(source,))
     p.start()
-
     producer_wrappers = [source.get_producer_wrapper()]
     client = WebsocketClient(
         'localhost', 9099, producer_wrappers, push_source.consumer)

@@ -1,4 +1,4 @@
-import argparse
+import common
 import cv2
 import time
 import logging
@@ -11,14 +11,14 @@ import numpy as np
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
-DEFAULT_SOURCE_NAME = '0'
-
-
 class DisplayEngine(cognitive_engine.Engine):
+    def __init__(self, source_name):
+        self._source_name = source_name
+
     def handle(self, input_frame):
         np_data = np.fromstring(input_frame.payloads[0], dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
-        cv2.imshow("Image sent to server", frame)
+        cv2.imshow("Image from source: {}".format(self._source_name), frame)
         cv2.waitKey(1)
 
         status = gabriel_pb2.ResultWrapper.Status.SUCCESS
@@ -27,12 +27,10 @@ class DisplayEngine(cognitive_engine.Engine):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('source_name', nargs='?', default=DEFAULT_SOURCE_NAME)
-    args = parser.parse_args()
-    engine = DisplayEngine()
+    source_name = common.parse_source_name()
+    engine = DisplayEngine(source_name)
 
-    engine_runner.run(engine, args.source_name,
+    engine_runner.run(engine, source_name,
                       server_address='tcp://localhost:5555')
 
 
