@@ -1,4 +1,4 @@
-#Gabriel Examples
+# Gabriel Examples
 
 These examples show simple Gabriel use cases. You must install all dependencies
 listed in `requirements.txt`. I recommend using a
@@ -11,7 +11,7 @@ commands that assume the client and server are running on the same computer
 client or engine running on a different computer than the server is running on,
 specify the `server_host` command-line flag when starting the client or engine.
 
-# Round Trip
+## Round Trip
 
 The round trip client captures a frame from your webcam, sends it to the server,
 the server returns the frame to the client, and then the client displays the
@@ -22,7 +22,7 @@ The round trip server uses Gabriel's single engine workflow.
 Start the server by running `python3 round_trip/server.py` in one terminal, and
 then run `python3 round_trip/client.py` in a second terminal.
 
-# One Way
+## One Way
 
 The one way clients capture a frame, send it to the server, but then the server
 sends frames to cognitive engines that display the frames. The server replices
