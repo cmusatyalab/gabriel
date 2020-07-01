@@ -7,7 +7,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-import edu.cmu.cs.gabriel.protocol.Protos;
+import edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper;
+import edu.cmu.cs.gabriel.protocol.Protos.ToClient;
 
 public class MeasurementResultObserver extends ResultObserver {
     private final int outputFreq;
@@ -15,7 +16,7 @@ public class MeasurementResultObserver extends ResultObserver {
     private final Map<String, MeasurementSource> measurementSources;
 
     public MeasurementResultObserver(
-            int tokenLimit, Consumer<Protos.ResultWrapper> resultConsumer,
+            int tokenLimit, Consumer<ResultWrapper> resultConsumer,
             int outputFreq, Consumer<SourceRttFps> intervalReporter) {
         super(tokenLimit, resultConsumer);
         this.outputFreq = outputFreq;
@@ -24,7 +25,7 @@ public class MeasurementResultObserver extends ResultObserver {
     }
 
     @Override
-    synchronized void processWelcome(Protos.ToClient.Welcome welcome) {
+    void processWelcome(ToClient.Welcome welcome) {
         super.processWelcome(welcome);
         for (String sourceName : welcome.getSourcesConsumedList()) {
             MeasurementSource measurementSource = new MeasurementSource(
@@ -34,7 +35,7 @@ public class MeasurementResultObserver extends ResultObserver {
     }
 
     @Override
-    void processResponse(Protos.ToClient.Response response) {
+    void processResponse(ToClient.Response response) {
         long time = SystemClock.elapsedRealtime();
         super.processResponse(response);
         String sourceName = response.getSourceName();
@@ -42,7 +43,7 @@ public class MeasurementResultObserver extends ResultObserver {
                 response.getFrameId(), time);
     }
 
-    void logSend(String sourceName, long frameId, long time) {
+    public void logSend(String sourceName, long frameId, long time) {
         Objects.requireNonNull(this.measurementSources.get(sourceName)).logSend(frameId, time);
     }
 

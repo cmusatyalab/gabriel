@@ -1,7 +1,6 @@
 package edu.cmu.cs.gabriel.client.comm;
 
 import android.app.Application;
-import android.util.Log;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -15,8 +14,6 @@ import edu.cmu.cs.gabriel.protocol.Protos.InputFrame;
 import edu.cmu.cs.gabriel.protocol.Protos.FromClient;
 
 public class ServerComm {
-    private static final String TAG = "ServerComm";
-
     private final SocketWrapper socketWrapper;
     private final ResultObserver resultObserver;
 
@@ -41,13 +38,17 @@ public class ServerComm {
         this.resultObserver = resultObserver;
     }
 
+    void sendFromClient(FromClient fromClient) {
+        this.socketWrapper.send(fromClient);
+    }
+
     private void sendHelper(Source source, String sourceName, InputFrame inputFrame) {
         long frameId = source.nextFrame();
         FromClient fromClient = FromClient.newBuilder()
                 .setFrameId(frameId)
                 .setSourceName(sourceName)
                 .setInputFrame(inputFrame).build();
-        this.socketWrapper.send(fromClient);
+        this.sendFromClient(fromClient);
     }
 
     /**

@@ -42,26 +42,26 @@ public class MeasurementSource {
     public void logReceive(long frameId, long time) {
         this.receivedTimestamps.put(frameId, time);
         this.count++; // Count should always be frameId + 1
+        this.lastReceiveTime = time;
 
         if ((this.count % this.outputFreq) == 0) {
             double rtt = this.computeIntervalRtt();
-            double fps = this.computeIntervalFps(time);
+            double fps = this.computeIntervalFps();
             this.intervalReporter.accept(new SourceRttFps(this.sourceName, rtt, fps));
             this.intervalStartTime = SystemClock.elapsedRealtime();
         }
-        this.lastReceiveTime = time;
     }
 
-    public double computeIntervalFps(long currentTime) {
-        return MeasurementSource.computeFps(this.outputFreq, currentTime, this.intervalStartTime);
+    public double computeIntervalFps() {
+        return this.computeFps(this.outputFreq, this.intervalStartTime);
     }
 
     public double computeOverallFps() {
-        return MeasurementSource.computeFps(this.count, this.lastReceiveTime, this.startTime);
+        return this.computeFps(this.count, this.startTime);
     }
 
-    private static double computeFps(long numFrames, long currentTime, long startTime) {
-        return (double)numFrames / ((currentTime - startTime) / 1000.0);
+    private double computeFps(long numFrames, long startTime) {
+        return (double)numFrames / ((this.lastReceiveTime - startTime) / 1000.0);
     }
 
     public double computeIntervalRtt() {
@@ -77,7 +77,7 @@ public class MeasurementSource {
         int numFrames = this.receivedTimestamps.size();
         // Do not clear this.sentTimestamps because we might have sent frames and not received
         // responses yet. Note that timestamps we don't need are removed when
-        // his.sentTimestamps#remove is called above
+        // this.sentTimestamps#remove is called above
         this.receivedTimestamps.clear();
         return ((double)totalRtt) / numFrames;
     }

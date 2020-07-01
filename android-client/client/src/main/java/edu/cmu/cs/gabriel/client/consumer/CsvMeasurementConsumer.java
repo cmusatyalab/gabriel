@@ -21,15 +21,15 @@ public class CsvMeasurementConsumer implements Consumer<SourceRttFps> {
     private boolean createSucceeded;
 
     public CsvMeasurementConsumer(String directoryName, Context context) {
-        File resultDirectory = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOCUMENTS), directoryName);
+        File resultDirectory = new File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                directoryName);
         if (!resultDirectory.exists()){
             if (!resultDirectory.mkdirs()) {
                 Log.e(TAG, "Failed to create directory for results!");
                 return;
             }
         }
-
 
         try {
             File resultsFile = File.createTempFile(FILE_PREFIX, FILE_SUFFIX, resultDirectory);
