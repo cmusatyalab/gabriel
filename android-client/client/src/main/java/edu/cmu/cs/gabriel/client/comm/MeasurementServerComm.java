@@ -18,7 +18,7 @@ public class MeasurementServerComm extends ServerComm {
 
     // TODO: Replace these factory methods with a builder to allow setting tokenLimit without
     //       setting outputFreq
-    public static ServerComm createServerComm(
+    public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
             Consumer<SourceRttFps> intervalReporter, int tokenLimit, int outputFreq) {
@@ -29,20 +29,20 @@ public class MeasurementServerComm extends ServerComm {
                 endpoint, port, application, onDisconnect, measurementResultObserver);
     }
 
-    public static ServerComm createServerComm(
+    public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
             Consumer<SourceRttFps> intervalReporter, int tokenLimit) {
-        return MeasurementServerComm.createServerComm(
+        return MeasurementServerComm.createMeasurementServerComm(
                 resultConsumer, endpoint, port, application, onDisconnect, intervalReporter,
                 tokenLimit, DEFAULT_OUTPUT_FREQ);
     }
 
-    public static ServerComm createServerComm(
+    public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
             Consumer<SourceRttFps> intervalReporter) {
-        return MeasurementServerComm.createServerComm(
+        return MeasurementServerComm.createMeasurementServerComm(
                 resultConsumer, endpoint, port, application, onDisconnect, intervalReporter,
                 Integer.MAX_VALUE);
     }
