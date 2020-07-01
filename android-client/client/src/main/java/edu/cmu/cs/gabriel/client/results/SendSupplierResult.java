@@ -1,4 +1,4 @@
-package edu.cmu.cs.gabriel.client.comm;
+package edu.cmu.cs.gabriel.client.results;
 
 public enum SendSupplierResult {
     SUCCESS,

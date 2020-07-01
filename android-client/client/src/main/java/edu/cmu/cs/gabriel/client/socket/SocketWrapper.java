@@ -1,60 +1,68 @@
 package edu.cmu.cs.gabriel.client.socket;
 
 import android.app.Application;
-import android.os.Build;
 import android.security.NetworkSecurityPolicy;
 
 import com.tinder.scarlet.Lifecycle;
 import com.tinder.scarlet.Scarlet;
-import com.tinder.scarlet.ShutdownReason;
-import com.tinder.scarlet.lifecycle.LifecycleRegistry;
 import com.tinder.scarlet.lifecycle.android.AndroidLifecycle;
 import com.tinder.scarlet.websocket.okhttp.OkHttpClientUtils;
 
+import java.util.function.Consumer;
+
 import edu.cmu.cs.gabriel.client.observer.EventObserver;
 import edu.cmu.cs.gabriel.client.observer.ResultObserver;
+import edu.cmu.cs.gabriel.client.results.ErrorType;
 import edu.cmu.cs.gabriel.protocol.Protos.FromClient;
 
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 
 public class SocketWrapper {
-    private LifecycleRegistry lifecycleRegistry;
-    private GabrielSocket webSocketInterface;
+    private final EventObserver eventObserver;
+    private final GabrielSocket webSocketInterface;
 
-    public SocketWrapper(
-            String serverURL, Application application, LifecycleRegistry lifecycleRegistry,
-            ResultObserver resultObserver, EventObserver eventObserver) {
+    public SocketWrapper(String endpoint, int port, Application application,
+                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
 
-        // HttpUrl can't parse websocket URLs
-        serverURL = serverURL.replaceFirst("^ws://", "http://").replaceFirst("^wss://", "https://");
-        HttpUrl url = HttpUrl.parse(serverURL);
-
-        if (!url.isHttps()) {
-            if ((Build.VERSION.SDK_INT > 23 &&
-                    !NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(url.host())) ||
-                (Build.VERSION.SDK_INT == 23 &&
-                    !NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted())) {
+        UriOutput uriOutput = formatURI(endpoint, port);
+        String wsURL;
+        switch (uriOutput.getOutputType()) {
+            case CLEARTEXT_WITHOUT_PERMISSION:
                 throw new RuntimeException(
                         "Manifest file or security config does not allow cleartext connections.");
-            }
+            case INVALID:
+                throw new RuntimeException("Invalid endpoint.");
+            case VALID:
+                wsURL = uriOutput.getOutput();
+                break;
+            default:
+                throw new IllegalStateException("Unexpected value: " + uriOutput.getOutputType());
         }
 
-        String wsURL = url.toString().replaceFirst("^http", "ws");
+        Runnable onErrorResult = new Runnable() {
+            @Override
+            public void run() {
+                onDisconnect.accept(ErrorType.SERVER_ERROR);
+                SocketWrapper.this.stop();
+            }
+        };
+        resultObserver.setOnErrorResult(onErrorResult);
 
-        this.lifecycleRegistry = lifecycleRegistry;
-        this.lifecycleRegistry.onNext(Lifecycle.State.Started.INSTANCE);
-
+        this.eventObserver = new EventObserver(onDisconnect);
         Lifecycle androidLifecycle = AndroidLifecycle.ofApplicationForeground(application);
-
         OkHttpClient okClient = new OkHttpClient();
 
         this.webSocketInterface = (new Scarlet.Builder())
                 .webSocketFactory(OkHttpClientUtils.newWebSocketFactory(okClient, wsURL))
-                .lifecycle(androidLifecycle.combineWith(lifecycleRegistry))
+                .lifecycle(androidLifecycle.combineWith(this.eventObserver.getLifecycleRegistry()))
                 .build().create(GabrielSocket.class);
         this.webSocketInterface.receive().start(resultObserver);
-        this.webSocketInterface.observeWebSocketEvent().start(eventObserver);
+        this.webSocketInterface.observeWebSocketEvent().start(this.eventObserver);
+    }
+
+    public boolean isRunning() {
+        return this.eventObserver.isRunning();
     }
 
     public void send(FromClient fromClient) {
@@ -62,6 +70,57 @@ public class SocketWrapper {
     }
 
     public void stop() {
-        lifecycleRegistry.onNext(new Lifecycle.State.Stopped.WithReason(ShutdownReason.GRACEFUL));
+        this.eventObserver.stop();
+    }
+
+    /**
+     * This is used to check the given URL is valid or not.
+     * @param endpoint     (host|IP) or websocket url
+     * @return true if URI is valid
+     */
+    public static boolean validUri(String endpoint, int port) {
+        return formatURI(endpoint, port).getOutputType() == UriOutput.OutputType.VALID;
+    }
+
+    /**
+     * Format URI with port
+     *
+     * @param endpoint     (host|IP) or websocket url
+     * @return String url if valid, null otherwise.
+     */
+    private static UriOutput formatURI(String endpoint, int port) {
+        if (endpoint.isEmpty()) {
+            return new UriOutput(UriOutput.OutputType.INVALID);
+        }
+
+        // make sure there is a scheme before we try to parse this
+        if (!endpoint.matches("^[a-zA-Z]+://.*$")) {
+            endpoint = "ws://" + endpoint;
+        }
+
+        // okhttp3.HttpUrl can only parse URIs starting with http or https
+        endpoint = endpoint.replaceFirst("^ws://", "http://");
+        endpoint = endpoint.replaceFirst("^wss://", "https://");
+        HttpUrl httpurl = HttpUrl.parse(endpoint);
+
+        if (httpurl == null) {
+            return new UriOutput(UriOutput.OutputType.INVALID);
+        }
+
+        if (!httpurl.isHttps() &&
+                !NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(httpurl.host())) {
+            return new UriOutput(UriOutput.OutputType.CLEARTEXT_WITHOUT_PERMISSION);
+        }
+
+        try {
+            httpurl = httpurl.newBuilder().port(port).build();
+        } catch (IllegalArgumentException e) {
+            return new UriOutput(UriOutput.OutputType.INVALID);
+        }
+
+        String output = httpurl.toString().replaceFirst(
+                "^http://", "ws://");
+        output = output.replaceFirst("^https://", "wss://");
+        return new UriOutput(UriOutput.OutputType.VALID, output);
     }
 }

@@ -8,20 +8,24 @@ import com.tinder.scarlet.Stream.Observer;
 import com.tinder.scarlet.WebSocket.Event;
 import com.tinder.scarlet.lifecycle.LifecycleRegistry;
 
-import edu.cmu.cs.gabriel.client.token.TokenManager;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.function.Consumer;
+
+import edu.cmu.cs.gabriel.client.results.ErrorType;
 
 public class EventObserver implements Observer<Event> {
     private static final String TAG = "EventObserver";
 
-    private TokenManager tokenManager;
-    private Runnable onConnectionProblem;
-    private LifecycleRegistry lifecycleRegistry;
+    private final LifecycleRegistry lifecycleRegistry;
+    private final Consumer<ErrorType> onDisconnect;
+    private boolean running;
 
-    public EventObserver(TokenManager tokenManager, Runnable onConnectionProblem,
-                         LifecycleRegistry lifecycleRegistry) {
-        this.tokenManager = tokenManager;
-        this.onConnectionProblem = onConnectionProblem;
-        this.lifecycleRegistry = lifecycleRegistry;
+    public EventObserver(Consumer<ErrorType> onDisconnect) {
+        this.lifecycleRegistry = new LifecycleRegistry(0L);
+        this.lifecycleRegistry.onNext(Lifecycle.State.Started.INSTANCE);
+        this.onDisconnect = onDisconnect;
+        this.running = false;
     }
 
     @Override
@@ -30,13 +34,13 @@ public class EventObserver implements Observer<Event> {
             Log.i(TAG, receivedUpdate.toString());
 
             if (receivedUpdate instanceof Event.OnConnectionOpened) {
-                this.tokenManager.start();
+                this.running = true;
             } else if (receivedUpdate instanceof Event.OnConnectionFailed) {
-                this.onConnectionProblem.run();
-
-                // Do not try to reconnect
-                this.lifecycleRegistry.onNext(
-                        new Lifecycle.State.Stopped.WithReason(ShutdownReason.GRACEFUL));
+                ErrorType errorType = this.running
+                        ? ErrorType.SERVER_DISCONNECTED
+                        : ErrorType.COULD_NOT_CONNECT;
+                this.onDisconnect.accept(errorType);
+                this.stop();  // Will prevent Scarlet from trying to reconnect
             }
 
             // We do not check for Event.OnConnectionClosed because this is what gets sent when the
@@ -45,8 +49,22 @@ public class EventObserver implements Observer<Event> {
         }
     }
 
+    public LifecycleRegistry getLifecycleRegistry() {
+        return lifecycleRegistry;
+    }
+
+    public boolean isRunning() {
+        return this.running;
+    }
+
+    public void stop() {
+        this.running = false;
+        this.lifecycleRegistry.onNext(
+                new Lifecycle.State.Stopped.WithReason(ShutdownReason.GRACEFUL));
+    }
+
     @Override
-    public void onError(Throwable throwable) {
+    public void onError(@NotNull Throwable throwable) {
         Log.e(TAG, "Event onError", throwable);
 
     }

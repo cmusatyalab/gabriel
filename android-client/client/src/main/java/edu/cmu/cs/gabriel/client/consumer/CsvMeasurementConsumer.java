@@ -1,26 +1,26 @@
-package edu.cmu.cs.gabriel.client.comm;
+package edu.cmu.cs.gabriel.client.consumer;
 
 import android.content.Context;
 import android.os.Environment;
 import android.util.Log;
-import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.function.Consumer;
 
-import edu.cmu.cs.gabriel.client.function.Consumer;
+import edu.cmu.cs.gabriel.client.observer.SourceRttFps;
 
-public class CsvLogRttFpsConsumer implements Consumer<RttFps> {
-    private static final String TAG = "LogRttFpsConsumer";
+public class CsvMeasurementConsumer implements Consumer<SourceRttFps> {
+    private static final String TAG = "CsvMeasurementConsumer";
     private static final String FILE_PREFIX = "gabriel";
     private static final String FILE_SUFFIX = ".txt";  // Stock Android can open .txt , but not .csv
-    private static final String CSV_HEADING = "rtt,fps";
-    private static final CharSequence TOAST_ERROR_TEXT = "Could not create CSV file";
+    private static final String CSV_HEADING = "source name,rtt,fps";
 
     private PrintStream printStream;
+    private boolean createSucceeded;
 
-    public CsvLogRttFpsConsumer(String directoryName, Context context) {
+    public CsvMeasurementConsumer(String directoryName, Context context) {
         File resultDirectory = new File(Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_DOCUMENTS), directoryName);
         if (!resultDirectory.exists()){
@@ -34,20 +34,26 @@ public class CsvLogRttFpsConsumer implements Consumer<RttFps> {
         try {
             File resultsFile = File.createTempFile(FILE_PREFIX, FILE_SUFFIX, resultDirectory);
             this.printStream = new PrintStream(resultsFile);
+            this.printStream.println(CSV_HEADING);
+            this.createSucceeded = true;
         } catch (IOException e) {
             Log.e(TAG, "Error creating CSV file", e);
-            Toast.makeText(context, TOAST_ERROR_TEXT, Toast.LENGTH_LONG).show();
+            this.createSucceeded = false;
         }
-        this.printStream.println(CSV_HEADING);
+    }
+
+    public boolean getCreateSucceeded() {
+        return createSucceeded;
     }
 
     @Override
-    public void accept(RttFps rttFps) {
-        if (this.printStream == null) {
+    public void accept(SourceRttFps sourceRttFps) {
+        if (!createSucceeded) {
             Log.e(TAG, "Results file was not created");
         }
 
-        this.printStream.println(rttFps.getRtt() + "," + rttFps.getFps());
+        this.printStream.println(sourceRttFps.getSourceName() + "," + sourceRttFps.getRtt() + "," +
+                sourceRttFps.getFps());
     }
 
     /**
@@ -55,7 +61,7 @@ public class CsvLogRttFpsConsumer implements Consumer<RttFps> {
      * @return True if save succeeded
      */
     public boolean saveFile() {
-        if (this.printStream == null) {
+        if (!createSucceeded) {
             return false;
         }
 
