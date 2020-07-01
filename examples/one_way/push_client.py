@@ -26,13 +26,13 @@ def send_frames(source):
 
 
 def main():
-    source_name = common.parse_source_name()
-    source = push_source.Source(source_name)
+    args = common.parse_source_name_server_host()
+    source = push_source.Source(args.source_name)
     p = multiprocessing.Process(target=send_frames, args=(source,))
     p.start()
     producer_wrappers = [source.get_producer_wrapper()]
-    client = WebsocketClient(
-        'localhost', 9099, producer_wrappers, push_source.consumer)
+    client = WebsocketClient(args.server_host, common.WEBSOCKET_PORT,
+                             producer_wrappers, push_source.consumer)
     client.launch()
     p.terminate()
 

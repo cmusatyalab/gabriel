@@ -8,6 +8,9 @@ from gabriel_server import cognitive_engine
 import numpy as np
 
 
+SERVER_ADDRESS_FORMAT = 'tcp://{}:{}'
+
+
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
@@ -27,11 +30,12 @@ class DisplayEngine(cognitive_engine.Engine):
 
 
 def main():
-    source_name = common.parse_source_name()
-    engine = DisplayEngine(source_name)
+    args = common.parse_source_name_server_host()
+    engine = DisplayEngine(args.source_name)
 
-    engine_runner.run(engine, source_name,
-                      server_address='tcp://localhost:5555')
+    server_address = SERVER_ADDRESS_FORMAT.format(
+        args.server_host, common.ZMQ_PORT)
+    engine_runner.run(engine, source_name, server_address)
 
 
 if __name__ == '__main__':

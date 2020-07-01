@@ -1,11 +1,5 @@
 apply plugin: 'com.android.library'
 
-repositories {
-    maven {
-        url "https://oss.sonatype.org/content/repositories/snapshots"
-    }
-}
-
 android {
     compileSdkVersion 29
     buildToolsVersion "29.0.3"
@@ -38,7 +32,7 @@ dependencies {
     // TODO: Switch to api once MobilEdgeX supports protobuf-javalite.
     // We need this to be compileOnly so openrtist can use edu.cmu.cs.gabriel:protocol-old-protobuf
     // with MobilEdgeX
-    compileOnly 'edu.cmu.cs.gabriel:protocol:2.0.0-SNAPSHOT'
+    compileOnly 'edu.cmu.cs.gabriel:protocol:2.0.1'
 
     // TODO: Remove these once MobilEdgeX supports protobuf-javalite and gabriel.protocol implements
     //       this

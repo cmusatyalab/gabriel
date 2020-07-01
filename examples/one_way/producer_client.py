@@ -22,7 +22,7 @@ def consumer(result_wrapper):
 
 
 def main():
-    num_sources = common.parse_num_sources()
+    args = common.parse_num_sources_server_host()
     capture = cv2.VideoCapture(0)
     def gen_producer(n):
         text = 'client {}'.format(n)
@@ -39,10 +39,10 @@ def main():
 
     producer_wrappers = [
         ProducerWrapper(producer=gen_producer(i), source_name=str(i))
-        for i in range(num_sources)
+        for i in range(args.num_sources)
     ]
     client = WebsocketClient(
-        'localhost', 9099, producer_wrappers, consumer)
+        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, consumer)
     client.launch()
 
 
