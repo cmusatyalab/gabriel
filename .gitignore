@@ -1,5 +1,15 @@
 *.pyc
 gabriel_client.egg-info/
+gabriel_protocol.egg-info/
+gabriel_server.egg-info/
 build/
 dist/
 env/
+
+.idea
+.gradle
+local.properties
+.DS_Store
+/android-client/captures
+.externalNativeBuild
+.cxx
