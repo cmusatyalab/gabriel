@@ -1,1 +1,4 @@
 *.pyc
+gabriel_client.egg-info/
+build/
+dist/
