@@ -35,7 +35,7 @@ def main():
 
     server_address = SERVER_ADDRESS_FORMAT.format(
         args.server_host, common.ZMQ_PORT)
-    engine_runner.run(engine, source_name, server_address)
+    engine_runner.run(engine, args.source_name, server_address)
 
 
 if __name__ == '__main__':
