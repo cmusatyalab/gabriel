@@ -13,6 +13,6 @@ public class LogMeasurementConsumer implements Consumer<SourceRttFps> {
     public void accept(SourceRttFps sourceRttFps) {
         String sourceName = sourceRttFps.getSourceName();
         Log.i(TAG, sourceName + " Interval FPS: " + sourceRttFps.getFps());
-        Log.i(TAG, sourceName + " Interval RTT: " + sourceRttFps.getRtt() + " ms");
+        Log.i(TAG, sourceName + " Average RTT for interval: " + sourceRttFps.getRtt() + " ms");
     }
 }

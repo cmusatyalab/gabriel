@@ -22,7 +22,7 @@ public class Source {
             return false;
         }
 
-        this.frameId++;
+        this.tokenCounter--;
         return true;
     }
 
@@ -40,7 +40,7 @@ public class Source {
             }
         }
 
-        this.frameId++;
+        this.tokenCounter--;
         return true;
     }
 
@@ -51,7 +51,7 @@ public class Source {
     public long nextFrame() {
         long frameIdToSend = this.frameId;
         this.frameId++;
-        return this.frameId;
+        return frameIdToSend;
     }
 
     public synchronized void returnToken() {

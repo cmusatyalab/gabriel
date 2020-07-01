@@ -48,6 +48,10 @@ public class MeasurementResultObserver extends ResultObserver {
     }
 
     public double computeOverallFps(String sourceName) {
-        return Objects.requireNonNull(this.measurementSources.get(sourceName)).computeOverallFps();
+        MeasurementSource measurementSource = this.measurementSources.get(sourceName);
+        if (measurementSource == null) {
+            return 0.0;
+        }
+        return measurementSource.computeOverallFps();
     }
 }
