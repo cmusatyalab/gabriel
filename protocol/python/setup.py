@@ -6,7 +6,7 @@ DESCRIPTION = "Protocol for Wearable Cognitive Assistance Applications"
 
 setuptools.setup(
     name="gabriel-protocol",
-    version="1.0.0",
+    version="2.0.1",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     description=DESCRIPTION,
