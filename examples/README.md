@@ -8,7 +8,7 @@ The clients need to be run on a computer with a webcam. The server and engines
 can be run on a computer without a webcam. The following instructions provide
 commands that assume the client and server are running on the same computer
 (unless otherwise stated). If you would like to run these examples with a
-client or engine running on a different computer than the server is running on,
+client or engine running on a different computer then the server is running on,
 specify the `server_host` command-line flag when starting the client or engine.
 
 ## Round Trip
