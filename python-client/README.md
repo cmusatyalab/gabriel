@@ -26,7 +26,7 @@ by the server and then calls the `consume_frame` function that was passed to the
 `ResultWrapper` contains more than one result, or a result that is not an
 image. However, you can still use the producer from `OpencvAdapter` and write
 your own custom consumer. The `OpencvAdapter` adapter requires OpenCV to be
-isntalled and accessible to Python. The
+installed and accessible to Python. The
 [opencv-python package](https://pypi.org/project/opencv-python) is a convenient
 way to install OpenCV for Python. If you do not use `OpencvAdapter`, you do not
 have to have OpenCV installed.

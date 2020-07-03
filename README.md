@@ -34,8 +34,8 @@ measurements, or app state. Embedding binary data to circumvent the
 "one type of media per source" restriction will likely lead to cognitive
 engines that are difficult for other people to maintain. Multiple payloads can
 be sent in a single `InputFrame` message. This is intended for cases where an
-input to a filter must contain several consecutive images. A single `InputFrame`
-message should represent one single input to a cognitive engine.
+input to an engine must contain several consecutive images. A single
+`InputFrame` message should represent one single input to a cognitive engine.
 
 Each client has one set of tokens per source. This allows the client to send
 frames that have passed "source x" at a different rate than it sends frames that
@@ -47,11 +47,11 @@ source.
 The Gabriel server returns a token to the client for "source x" as soon as the
 first cognitive engine that consumes frames from "source x" returns a
 `ResultWrapper` for that frame. When a second cognitive engine that also
-consumes frames from "filter x" returns a `ResultWrapper` for the same frame,
+consumes frames from "source x" returns a `ResultWrapper` for the same frame,
 the Gabriel server does not return a second token to the client. Engines can be
 configured to allow the server to ignore a `ResultWrapper` if this engine was
 not the first to return a `ResultWrapper` for a frame. Engines can also be
-configured to force the server to send `ResultWrapper` message to the client.
+configured to force the server to send `ResultWrapper` messages to the client.
 When an engine configured to require all responses is not the first engine to
 return a `ResultWrapper` for a frame, the server will send the client this
 `ResultWrapper`, but it will not return a token (because it already returned the
@@ -73,7 +73,7 @@ server, this consumes a token for the source that produced the frame. When the
 first cognitive engine finishes processing this frame, the client gets back the
 token that was consumed sending the frame. This ensures that frames are sent to
 the server at the rate that the fastest engine consuming this frame can
-processes them. If the server runs into an error processing a frame, it
+process them. If the server runs into an error processing a frame, it
 immediately sends a message to the client indicating the return of a token.
 
 After a client consumes all of its tokens for a source, the client will only
@@ -160,7 +160,7 @@ Therefore, we assume that messages are delivered reliably and in order.
       for. Therefore, this seems like a bad option.
    3. You can start a subprocess by calling a python script with
       `asyncio.create_subprocess_exec`. Unfortunately you can only communicate
-      with these subprocesses using stdin/stoud or file descriptors that you
+      with these subprocesses using stdin/stdoud or file descriptors that you
       leave open with the `close_fds` or `pass_fds` arguments. This leaves us
       strictly worse off; having to send and receive data to and from the
       subprocess using `os.pipe`.

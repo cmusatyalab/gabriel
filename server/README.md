@@ -71,9 +71,9 @@ When `all_responses_required` is False, the client will not receive a result
 from this engine, if a different engine processing the same frame already
 returned a result for the same frame. When `all_responses_required` is True,
 the server will send every result this engine returns. Typically, you should set
-`all_responses_required` to True when an engine returns results the clients, and
-false when an engine stores results but does not include anything useful for the
-client in the `ResultWrapper` instance that it returns.
+`all_responses_required` to True when an engine returns results to the clients,
+and false when an engine stores results but does not include anything useful for
+the client in the `ResultWrapper` instance that it returns.
 
 The server should be started before the engine runner.
 

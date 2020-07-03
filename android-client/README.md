@@ -9,7 +9,7 @@ Your project must include either the `jcenter()` repository or the
 `mavenCentral()` repository.
 
 Your app must allow cleartext traffic. If your app does not have an Android
-Network Security Config, you must sepcify `android:usesCleartextTraffic="true"`
+Network Security Config, you must specify `android:usesCleartextTraffic="true"`
 in the
 [application element](https://developer.android.com/guide/topics/manifest/application-element)
 of your Manifest file.
@@ -43,7 +43,7 @@ results to a database and/or logs additional information.
 
 I recommend creating a separate
 [product flavor](https://developer.android.com/studio/build/build-variants#product-flavors)
-for measuerments. Create an instance of `MeasurementServerComm` instead of
+for measurements. Create an instance of `MeasurementServerComm` instead of
 `ServerComm`. Pass an instance of `LogMeasurementConsumer` as the
 `intervalReporter` argument to
 `MeasurementServerComm#createMeasurementServerComm`, to send measurements to log
@@ -60,7 +60,7 @@ output. Use `CsvMeasurementConsumer` to write measurements to a file.
 4. Run uploadArchives
 5. Snapshots will be published to
    https://oss.sonatype.org/content/repositories/snapshots/edu/cmu/cs/gabriel/client/.
-6. Relases should show up at https://oss.sonatype.org/#stagingRepositories.
+6. Releases should show up at https://oss.sonatype.org/#stagingRepositories.
    1. Publish a release by first clicking the `Close` button. Then click the
       `Release` button when it becomes available.
    2. Releases will be published to
