@@ -1,12 +1,9 @@
 # Gabriel Android Library
 
-Android library for communicating with a
-[Gabriel Server](https://github.com/cmusatyalab/gabriel-server-common).
-
 ## Usage
 
-Add the lines `implementation 'edu.cmu.cs.gabriel:client:0.2.0'` and
-`implementation 'edu.cmu.cs.gabriel:protocol:0.1.15'` to your app's build.gradle
+Add the lines `implementation 'edu.cmu.cs.gabriel:client:2.0.1'` and
+`implementation 'edu.cmu.cs.gabriel:protocol:2.0.1'` to your app's build.gradle
 file.
 Your project must include either the `jcenter()` repository or the
 `mavenCentral()` repository.
@@ -22,39 +19,36 @@ config. See
 [here](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
 for more details.
 
-Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm`. The
-constructor takes an instance of `edu.cmu.cs.gabriel.client.function.Consumer`
-that gets run whenever a new result is available from the server.
-[Example](https://github.com/cmusatyalab/openrtist/blob/dfc3e246031a3006bdf0f5fcaa192ed0a5237ab8/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L18).
-The `ServerComm` constructor also takes an `onDisconnect` `Consuer` that gets
-called when there is a connection problem. This `onDisconnect` consumer should
-start the process of presenting an error message to the user, cleaning up the
-app state, and then bringing the user back to a screen to modify connection
-settings.
+Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm`. Using the
+static `ServerComm#createServerComm` method.
+[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L28).
+This method takes one `Consumer` instance `resultConsumer` that gets called
+whenever a new result is available from the server, and a second `Consumer`
+instance `onDisconnect` that gets called when there is a connection problem.
+This `onDisconnect` consumer should start the process of presenting an error
+message to the user, cleaning up the app state, and then bringing the user back
+to a screen to modify connection settings.
 
 Send messages to the server using `ServerComm`'s `sendNoWait`, `sendBlocking`,
 or `sendSupplier` methods.
-[Example](https://github.com/cmusatyalab/openrtist/blob/dfc3e246031a3006bdf0f5fcaa192ed0a5237ab8/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/BaseComm.java#L152).
-You should check the result from all three of these functions.
-The most common reason that `sendBlocking` and `sendSupplier` will fail is that
-the server does not have any engines that consume the specified filter. You can
-explicitly check this using `ServerComm#acceptsInputForFilter`.
+[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L49).
 
 ### Measurement
 
 This library includes instrumentation to measure the average RTT and FPS. These
 results can be sent using
 [Log](https://developer.android.com/reference/android/util/Log) or written to a
-file. You can also implement your own `Consumer<RttFps>` that writes results to
-a database and/or logs additional information.
+file. You can also implement your own `Consumer<SourceRttFps>` that writes
+results to a database and/or logs additional information.
 
 I recommend creating a separate
 [product flavor](https://developer.android.com/studio/build/build-variants#product-flavors)
 for measuerments. Create an instance of `MeasurementServerComm` instead of
-`ServerComm`. Pass an instance of `LogRttFpsConsumer` to the constructor of
-`MeasurementServerComm` to send measurements to log output. Use
-`CsvLogRttFpsConsumer` to write measurements to a file.
-[Example](https://github.com/cmusatyalab/openrtist/blob/dfc3e246031a3006bdf0f5fcaa192ed0a5237ab8/android-client/app/src/measurement/java/edu/cmu/cs/gabriel/network/MeasurementComm.java#L24)
+`ServerComm`. Pass an instance of `LogMeasurementConsumer` as the
+`intervalReporter` argument to
+`MeasurementServerComm#createMeasurementServerComm`, to send measurements to log
+output. Use `CsvMeasurementConsumer` to write measurements to a file.
+[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/measurement/java/edu/cmu/cs/gabriel/network/MeasurementComm.java#L28)
 
 ## Publishing Changes to Maven Central
 
