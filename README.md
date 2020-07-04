@@ -33,7 +33,7 @@ should not change. For example, if a source sends images, it should only ever
 send images, and it should not also include audio along with an image. Audio and
 images should be sent by two different sources. `InputFrame` messages have an
 `extras` field that can be used to send metadata, such as GPS and IMU
-measurements, or app state. Embedding binary data to circumvent the
+measurements, or app state. Embedding binary data as `extras` to circumvent the
 "one type of media per source" restriction will likely lead to cognitive
 engines that are difficult for other people to maintain. Multiple payloads can
 be sent in a single `InputFrame` message. This is intended for cases where an
@@ -54,7 +54,8 @@ consumes frames from "source x" returns a `ResultWrapper` for the same frame,
 the Gabriel server does not return a second token to the client. Engines can be
 configured to allow the server to ignore a `ResultWrapper` if this engine was
 not the first to return a `ResultWrapper` for a frame. Engines can also be
-configured to force the server to send `ResultWrapper` messages to the client.
+configured to force the server to send all `ResultWrapper` messages to the
+client.
 When an engine configured to require all responses is not the first engine to
 return a `ResultWrapper` for a frame, the server will send the client this
 `ResultWrapper`, but it will not return a token (because it already returned the
@@ -132,11 +133,10 @@ Therefore, we assume that messages are delivered reliably and in order.
    2. If support for multiple instances of the same engine is added, should this
       identity be used when a group is set to assign a client to one specific
       instance of an engine?
-4. When using the `network_engine` modules, the Python and Android clients do
+4. When cognitive engines are run separately from the server, clients do
    not handle the case when all engines that consume a source disconnect. To
-   handle this case, the Gabriel server should tell all clients when all engines
-   for a certain source disconnect. Then the clients need to remove their tokens
-   for this source.
+   handle this case, the Gabriel server would need to tell clients when this
+   happens. The clients would then need to stop sending inputs from this source.
 5. The server's
    [`local_engine`](https://github.com/cmusatyalab/gabriel/blob/390b6605a23a18ff55e5cc27182c43df1644b739/server/src/gabriel_server/local_engine.py)
    module sends results from the process running the cognitive engine to
@@ -153,8 +153,8 @@ Therefore, we assume that messages are delivered reliably and in order.
       that coroutines are run on the event loop, so this seems like a bad idea.
       Another option would be to use the `asyncio` event loop's
       `run_in_executor` method with a `concurrent.futures.ThreadPoolExecutor`
-      to read the pipe. Reading from the pipe in a different OS thread seems
-      like overkill, but I have not profiled it.
+      to read from the pipe. Reading from the pipe in a different OS thread
+      seems like overkill, but I have not profiled it.
    2. Run the cognitive engine using the `asyncio` event loop's
       `run_in_executor`
       method with a `concurrent.futures.ProcessPoolExecutor`. This does not seem
