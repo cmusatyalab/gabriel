@@ -1,18 +1,17 @@
 # Gabriel Python Module
 
-Python module for communicating with a [Gabriel Server](https://github.com/cmusatyalab/gabriel-server-common).
-
 ## Installation
-Requires Python >= 3.5
+
+Requires Python 3.5 or later.
 
 Run `pip install gabriel-client`
 
 ## Usage
 
 Create an instance of `websocket_client.WebsocketClient`. Then call
-the `launch()` method. The constructor to `WevsocketClient` takes `host`,
+the `launch()` method. The constructor to `WebsocketClient` takes `host`,
 `port`, `producer_wrappers` (a list of
-`server_comm.ProducerWrapper` instances), and `consumer` (a
+`websocket_client.ProducerWrapper` instances), and `consumer` (a
 function called whenever a new result is available).
 
 `opencv_adater.OpencvAdapter` provides `producer_wrappers` and a consumer.
@@ -27,7 +26,7 @@ by the server and then calls the `consume_frame` function that was passed to the
 image. However, you can still use the producer from `OpencvAdapter` and write
 your own custom consumer. The `OpencvAdapter` adapter requires OpenCV to be
 installed and accessible to Python. The
-[opencv-python package](https://pypi.org/project/opencv-python) is a convenient
+[opencv-python](https://pypi.org/project/opencv-python) package is a convenient
 way to install OpenCV for Python. If you do not use `OpencvAdapter`, you do not
 have to have OpenCV installed.
 
@@ -83,14 +82,14 @@ average RTT and FPS information will be printed automatically, every
    [client](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/examples/round_trip/client.py#L41)
    uses `OpencvAdapter`.
 2. The one way example
-   [Producer Client](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/examples/one_way/producer_client.py#L44)
+   [producer client](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/examples/one_way/producer_client.py#L44)
    uses a custom producer.
 3. The one way example
-   [Push Client](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/examples/one_way/push_client.py#L34)
+   [push client](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/examples/one_way/push_client.py#L34)
    uses `push_source.Source`.
 4. The OpenRTiST
    [playback stream client](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/python-client/playback_stream.py#L35)
-   uses `TimingClient`.
+   uses `MeasurementClient`.
 
 ## Publishing Changes to PyPi
 

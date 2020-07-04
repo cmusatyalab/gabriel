@@ -11,7 +11,7 @@ You find links to download protoc for other platforms on
 [this page](https://github.com/protocolbuffers/protobuf/releases). Just make
 sure the archive you download begins with "protoc."
 
-After you have extracted the compile, run the following line from this
+After you have extracted the compiler, run the following line from this
 directory:
 `/path/to/protoc --python_out=python/src/gabriel_protocol/ gabriel.proto`
 
@@ -24,10 +24,11 @@ directory:
 
 ## Publishing Changes to PyPi
 
-Update the version number in python/setup.py. Then follow [these instructions](https://packaging.python.org/tutorials/packaging-projects/#generating-distribution-archives).
+Update the version number in `python/setup.py`. Then follow
+[these instructions](https://packaging.python.org/tutorials/packaging-projects/#generating-distribution-archives).
 
 ## Publishing Changes to Maven Central
 
 Run the `uploadArchives` Gradle task from `java` > `Tasks` > `upload`. See
-[these instructions](https://github.com/cmusatyalab/gabriel/android-client/blob/master/README.md#publishing-changes-to-maven-central)
+[these instructions](https://github.com/cmusatyalab/gabriel/blob/master/android-client/README.md#publishing-changes-to-maven-central)
 for more details.

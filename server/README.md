@@ -1,11 +1,12 @@
 # Gabriel Server Library
 
-## Usage
+## Installation
 
-You must run this using Python 3.5 or newer. Install by running
-```bash
-pip install gabriel-server
-```
+Requires Python 3.5 or newer.
+
+Run `pip install gabriel-server`
+
+## Usage
 
 Data is processed by Cognitive Engines. Each cognitive engine is implemented in
 a separate class that inherits `cognitive_engine.Engine`. The `handle` method is
@@ -69,7 +70,7 @@ that runs the constructor for the engine. Unlike `local_engine`,
 
 When `all_responses_required` is False, the client will not receive a result
 from this engine, if a different engine processing the same frame already
-returned a result for the same frame. When `all_responses_required` is True,
+returned a result for this frame. When `all_responses_required` is True,
 the server will send every result this engine returns. Typically, you should set
 `all_responses_required` to True when an engine returns results to the clients,
 and false when an engine stores results but does not include anything useful for

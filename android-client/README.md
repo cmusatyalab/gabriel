@@ -19,7 +19,7 @@ config. See
 [here](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
 for more details.
 
-Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm`. Using the
+Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm` using the
 static `ServerComm#createServerComm` method.
 [Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L28).
 This method takes one `Consumer` instance `resultConsumer` that gets called
@@ -39,7 +39,7 @@ This library includes instrumentation to measure the average RTT and FPS. These
 results can be sent using
 [Log](https://developer.android.com/reference/android/util/Log) or written to a
 file. You can also implement your own `Consumer<SourceRttFps>` that writes
-results to a database and/or logs additional information.
+results to a database and logs additional information.
 
 I recommend creating a separate
 [product flavor](https://developer.android.com/studio/build/build-variants#product-flavors)

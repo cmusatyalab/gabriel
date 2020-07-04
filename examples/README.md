@@ -6,7 +6,8 @@ listed in `requirements.txt`. I recommend using a
 
 The clients need to be run on a computer with a webcam. The server and engines
 can be run on a computer without a webcam. The following instructions provide
-commands that assume the client and server are running on the same computer
+commands that assume the client, server, and engine(s) are all running on the
+same computer
 (unless otherwise stated). If you would like to run these examples with a
 client or engine running on a different computer then the server is running on,
 specify the `server_host` command-line flag when starting the client or engine.
@@ -25,11 +26,10 @@ then run `python3 round_trip/client.py` in a second terminal.
 ## One Way
 
 The one way clients capture a frame, send it to the server, but then the server
-sends frames to cognitive engines that display the frames. The server replices
+sends frames to cognitive engines that display the frames. The server replies
 to the clients to return tokens, but these replies do not contain any results.
 
-The producer client marks frames with the number corresponding to the producer
-that generated them.
+The producer client adds text to images, indicating its own number.
 
 Run the following commands in separate terminals:
 
