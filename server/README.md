@@ -15,13 +15,15 @@ passed an
 [`InputFrame`](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/protocol/gabriel.proto#L20).
 It must return a
 [`ResultWrapper`](https://github.com/cmusatyalab/gabriel/blob/2840808c3d90e4980969b2744877e739723c84bb/protocol/gabriel.proto#L33).
-Cognitive engines should create a result wrapper using the
-`cognitive_engine.create_result_wrapper` function. The `ResultWrapper` instance
-returned by the `handle` method must have a status, but all other fields may be
-left blank. The client will get a token back as soon as `handle` returns a
-`ResultWrapper`. Therefore, returning from `handle` before the engine is ready
-for the next frame will cause the engine to get saturated with requests faster
-than they can be processed.
+The `handle` method should create a `ResultWrapper` using the
+`cognitive_engine.create_result_wrapper` function. The `handle` method can add
+results to this `ResultWrapper`, or just return the `ResultWrapper` instance it
+gets from `create_result_wrapper` without adding results (if the client does not
+espect results back). The client will get a token back as soon as `handle`
+returns a `ResultWrapper` (even if the `ResultWrapper` instance just came from
+`create_result_wrapper` and nothing else wass added to it). Therefore, returning
+from `handle` before the engine is ready for the next frame will cause the
+engine to get saturated with requests faster than they can be processed.
 
 ### Single Engine Workflows
 
@@ -73,7 +75,7 @@ from this engine, if a different engine processing the same frame already
 returned a result for this frame. When `all_responses_required` is True,
 the server will send every result this engine returns. Typically, you should set
 `all_responses_required` to True when an engine returns results to the clients,
-and false when an engine stores results but does not include anything useful for
+and False when an engine stores results but does not include anything useful for
 the client in the `ResultWrapper` instance that it returns.
 
 The server should be started before the engine runner.
@@ -95,7 +97,7 @@ messages while the cognitive engine is in the middle of processing a frame.
 
 `engine_runner.run` takes optional `timeout` and `request_retries` parameters.
 `request_retries` specifies the number of attempts that this runner will make to
-reestablish a lost connection with the Gabriel server. The number of retry
+re-establish a lost connection with the Gabriel server. The number of retry
 attempts do not get replenished at any point during the engine runner's
 execution. The default `timeout` and `request_retries` values should be
 sufficient for most configurations.

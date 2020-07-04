@@ -1,7 +1,7 @@
 import setuptools
 
 
-DESCRIPTION = "Protocol for Wearable Cognitive Assistance Applications"
+DESCRIPTION = "Protocol for the Gabriel framework"
 
 
 setuptools.setup(
@@ -10,7 +10,6 @@ setuptools.setup(
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     description=DESCRIPTION,
-    long_description=DESCRIPTION,
     url="http://gabriel.cs.cmu.edu",
     packages=setuptools.find_packages("src"),
     package_dir={"": "src"},

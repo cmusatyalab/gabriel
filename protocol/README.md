@@ -7,7 +7,7 @@ See `gabriel.proto` for protocol definitions.
 You must use protoc version 3.12 or newer. You can download protoc for Linux
 from
 [here](https://github.com/protocolbuffers/protobuf/releases/download/v3.12.3/protoc-3.12.3-linux-x86_64.zip).
-You find links to download protoc for other platforms on
+You can find links to download protoc for other platforms on
 [this page](https://github.com/protocolbuffers/protobuf/releases). Just make
 sure the archive you download begins with "protoc."
 
