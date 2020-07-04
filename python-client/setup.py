@@ -8,7 +8,7 @@ setuptools.setup(
     version="2.0.1",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
-    description="Client for Wearable Cognitive Assistance Applications",
+    description="Networking components for Gabriel Python clients",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="http://gabriel.cs.cmu.edu",
