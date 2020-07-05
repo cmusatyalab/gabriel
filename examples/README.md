@@ -9,7 +9,7 @@ can be run on a computer without a webcam. The following instructions provide
 commands that assume the client, server, and engine(s) are all running on the
 same computer
 (unless otherwise stated). If you would like to run these examples with a
-client or engine running on a different computer then the server is running on,
+client or engine running on a different computer than the server is running on,
 specify the `server_host` command-line flag when starting the client or engine.
 
 ## Round Trip
@@ -25,7 +25,7 @@ then run `python3 round_trip/client.py` in a second terminal.
 
 ## One Way
 
-The one way clients capture a frame, send it to the server, but then the server
+The one way clients capture a frame, sends it to the server, then the server
 sends frames to cognitive engines that display the frames. The server replies
 to the clients to return tokens, but these replies do not contain any results.
 
@@ -45,7 +45,8 @@ python3 one_way/engine.py
 python3 one_way/producer_client.py
 ```
 
-To run two producers and see their outputs, stop the producer client. Then run:
+To run two producers and see their outputs, stop the producer client (but keep
+the server and engine running). Then run:
 
 ```bash
 python3 one_way/engine.py 1
