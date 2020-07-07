@@ -19,7 +19,7 @@ The `handle` method should create a `ResultWrapper` using the
 `cognitive_engine.create_result_wrapper` function. The `handle` method can add
 results to this `ResultWrapper`, or just return the `ResultWrapper` instance it
 gets from `create_result_wrapper` without adding results (if the client does not
-espect results back). The client will get a token back as soon as `handle`
+expect results back). The client will get a token back as soon as `handle`
 returns a `ResultWrapper` (even if the `ResultWrapper` instance just came from
 `create_result_wrapper` and nothing else wass added to it). Therefore, returning
 from `handle` before the engine is ready for the next frame will cause the
