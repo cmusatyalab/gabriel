@@ -72,7 +72,7 @@ class _LocalServer(WebsocketServer):
         await self.wait_for_start()
         while self.is_running():
             from_client, address = await self._input_queue.get()
-            self._write.send(from_client.input_frame.SerializeToString())
+            self._write.send_bytes(from_client.input_frame.SerializeToString())
 
             size_bytes = await self._stream_reader.readexactly(
                 _NUM_BYTES_FOR_SIZE)
@@ -95,7 +95,7 @@ def _run_engine(engine_factory, engine_read, server_read, engine_write):
         logger.info('Cognitive engine started')
         while True:
             input_frame = gabriel_pb2.InputFrame()
-            input_frame.ParseFromString(engine_read.recv())
+            input_frame.ParseFromString(engine_read.recv_bytes())
 
             result_wrapper = engine.handle(input_frame)
             serialized_message = result_wrapper.SerializeToString()

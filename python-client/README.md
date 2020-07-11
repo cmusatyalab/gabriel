@@ -39,22 +39,24 @@ so it is important that the `producer` does not call any function that could
 block. This would cause the whole event loop to block.
 
 If you need to run blocking code to get an input for Gabriel, you can use
-`push_source.Source`. You should also use `Source` whenever you want to run the
-code to produce a frame before a token is available. `Source` should always be
-used for sending frames that pass early discard filters. Create an instance of
-`Source` and include the `ProducerWrapper` returned from
-`Source.get_producer_wrapper()` in the list of `producer_wrappers`
-you pass to the constructor of `WebsocketClient`. You can then pass the `Source`
+`push_source.Source`. You should also use `push_source.Source` whenever you want
+to run the code to produce a frame before a token is available.
+`push_source.Source` should always be used for sending frames that pass early
+discard filters. Create an instance of `push_source.Source` and include the
+`ProducerWrapper` returned from `push_source.Source.get_producer_wrapper()` in
+the list of `producer_wrappers` you pass to the constructor of
+`WebsocketClient`. You can then pass the `push_source.Source`
 instance to a separate process started using the `multiprocessing` module. When
-results are ready, send them with `Source.send()`. `Source.send()` should only
-ever be called from one process. Create at least one `Source` per process that
-you want to send from. Frames sent with `Source.send()` are not guaranteed to be
-sent to the server. As soon as a token becomes available, the most recent unsent
-frame will be sent. If `Source.send()` is called multiple times before a token
+results are ready, send them with `push_source.Source.send()`.
+`push_source.Source.send()` should only ever be called from one process. Create
+at least one `push_source.Source` per process that you want to send from. Frames
+sent with `push_source.Source.send()` are not guaranteed to be sent to the
+server. As soon as a token becomes available, the most recent unsent frame will
+be sent. If `push_source.Source.send()` is called multiple times before a token
 becomes available, only the most recent frame will actually be sent to the
 server. If a token becomes available before the next frame is ready, Gabriel
-will send the next frame after `Source.send()` is called. `Source` will not
-block the event loop.
+will send the next frame after `push_source.Source.send()` is called.
+`push_source.Source` will not block the event loop.
 
 If you want the client to ignore results, you can pass
 `push_source.consumer` as the `consumer` argument to `WebsocketClient`.
