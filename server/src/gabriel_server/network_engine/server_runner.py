@@ -238,6 +238,7 @@ class _EngineWorker:
         else:
             await self.send_payload(metadata_payload)
 
+
 class _SourceInfo:
     def __init__(self, source_name, fresh_inputs_queue_size):
         self._source_name = source_name
