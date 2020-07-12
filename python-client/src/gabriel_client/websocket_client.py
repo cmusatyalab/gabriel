@@ -110,8 +110,6 @@ class WebsocketClient:
 
         await self._welcome_event.wait()
         while self._running:
-            assert source_name in self._sources, (
-                'No engines consume source: {}'.format(source_name))
             source = self._sources[source_name]
             await source.get_token()
 
