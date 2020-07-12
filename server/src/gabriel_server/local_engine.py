@@ -40,9 +40,8 @@ class _LocalServer(WebsocketServer):
         return True
 
     def launch(self, port, message_max_size):
-        def callback():
-            self._result_ready.set()
-        asyncio.get_event_loop().add_reader(self._conn.fileno(), callback)
+        asyncio.get_event_loop().add_reader(
+            self._conn.fileno(), self._result_ready.set)
         asyncio.ensure_future(self._engine_comm())
         super().launch(port, message_max_size)
 
