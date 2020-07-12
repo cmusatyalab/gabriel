@@ -1,7 +1,5 @@
 import logging
 import asyncio
-import multiprocessing
-import queue
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 import websockets
