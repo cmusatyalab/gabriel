@@ -136,6 +136,7 @@ class WebsocketClient:
             source.next_frame()
 
     async def _send_from_client(self, from_client):
+        # Removing this method will break measurement_client
         await self._websocket.send(from_client.SerializeToString())
 
 
