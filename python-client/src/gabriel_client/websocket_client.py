@@ -127,13 +127,16 @@ class WebsocketClient:
             from_client.input_frame.CopyFrom(input_frame)
 
             try:
-                await self._websocket.send(from_client.SerializeToString())
+                await self._send_from_client(from_client)
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
 
             logger.debug('num_tokens for %s is now %d', source_name,
                          source.get_num_tokens())
             source.next_frame()
+
+    async def _send_from_client(self, from_client):
+        await self._websocket.send(from_client.SerializeToString())
 
 
 class _Source:
