@@ -137,48 +137,9 @@ Therefore, we assume that messages are delivered reliably and in order.
    not handle the case when all engines that consume a source disconnect. To
    handle this case, the Gabriel server would need to tell clients when this
    happens. The clients would then need to stop sending inputs from this source.
-5. The server's
-   [`local_engine`](https://github.com/cmusatyalab/gabriel/blob/390b6605a23a18ff55e5cc27182c43df1644b739/server/src/gabriel_server/local_engine.py)
-   module sends results from the process running the cognitive engine to
-   the process running the websocket server using `os.pipe()`. This isn't the
-   cleanest approach, because `os.pipe()` is a low-level interface. However,
-   this seemed better than the following alternatives:
-   1. Send results to the websocket server process using
-      `multiprocessing.Pipe()`. Reading from this pipe directly in the event
-      loop will block it. But we could watch the appropriate file descriptor
-      using the `asyncio` event loop's `add_reader` function. The Python client
-      library's `push_source.Source` class does this. Unfortunately, this would
-      require us to get local variables to the callback that `add_reader` calls.
-      Asyncio does not provide guarantees about the order that coroutines are
-      run on the event loop, so this seems like a bad idea. Putting these local
-      variables into some sort of FIFO queue adds unnecessary complexity to the
-      code.
-   2. Use the `asyncio` event loop's `run_in_executor` method with a
-      `concurrent.futures.ThreadPoolExecutor` to read from the pipe. Reading
-      from the pipe in a different OS thread seems like overkill, but I have not
-      profiled it.
-   3. Run the cognitive engine using the `asyncio` event loop's
-      `run_in_executor` method with a `concurrent.futures.ProcessPoolExecutor`.
-      This does not seem like a good option because we can only get results when
-      the function passed to `run_in_executor` returns. Using this method
-      without restarting the cognitive engine each time we want to process a new
-      frame would probably require a hacky solution that `run_in_executor` was
-      not intended for.
-   4. You can start a subprocess by calling a python script with
-      `asyncio.create_subprocess_exec`. Unfortunately you can only communicate
-      with these subprocesses using stdin/stdout or file descriptors that you
-      leave open with the `close_fds` or `pass_fds` arguments. This leaves us
-      strictly worse off; having to send and receive data to and from the
-      subprocess using `os.pipe()`.
-   5. Future versions of Python might offer a high level interface for
-      interprocess communication that does not block the `asyncio` event loop.
-      This might be a good option for sending results from the cognitive engine
-      to the websocket server. However, we want to support Python 3.5 (or at
-      least 3.6) for a long time.
-6. The security of Gabriel could be improved in a number of areas. The
+5. The security of Gabriel could be improved in a number of areas. The
    connections between clients and the server, and the connections between
-   the server and standalone engine runners, could both be
-   improved. These improvements could be in the form of encrypting traffic,
-   requiring a password for clients and engine runners to connect to the server,
-   and specifying a list of approved clients and engine runners in a server
-   configuration file.
+   the server and standalone engine runners, could both be improved. These
+   improvements could be in the form of encrypting traffic, requiring a password
+   for clients and engine runners to connect to the server, and specifying a
+   list of approved clients and engine runners in a server configuration file.

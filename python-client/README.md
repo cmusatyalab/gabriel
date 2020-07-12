@@ -49,11 +49,11 @@ the list of `producer_wrappers` you pass to the constructor of
 instance to a separate process started using the `multiprocessing` module. When
 results are ready, send them with `push_source.Source.send()`.
 `push_source.Source.send()` should only ever be called from one process. Create
-at least one `push_source.Source` per process that you want to send from. Frames
-sent with `push_source.Source.send()` are not guaranteed to be sent to the
-server. As soon as a token becomes available, the most recent unsent frame will
-be sent. If `push_source.Source.send()` is called multiple times before a token
-becomes available, only the most recent frame will actually be sent to the
+at least one `push_source.Source` per process that you want to send frames from.
+Frames sent with `push_source.Source.send()` are not guaranteed to be sent to
+the server. As soon as a token becomes available, the most recent unsent frame
+will be sent. If `push_source.Source.send()` is called multiple times before a
+token becomes available, only the most recent frame will actually be sent to the
 server. If a token becomes available before the next frame is ready, Gabriel
 will send the next frame after `push_source.Source.send()` is called.
 `push_source.Source` will not block the event loop.
@@ -69,9 +69,9 @@ between when a token comes back and when the next frame is sent.
 `push_source.Source` allows frames to be generated asynchronously from tokens
 returning. The two downsides to this approach are:
 1. Some frames might be generated and never sent.
-2. When a token does come back, the last frame sent to a `Source` might have
-   been generated a while ago. In practice, hopefully tokens will be returned to
-   the client at a reasonable rate.
+2. When a token does come back, the last frame sent to a `push_source.Source`
+   instance might have been generated a while ago. In practice, hopefully tokens
+   will be returned to the client at a reasonable rate.
 
 If you want to measure average round trip time (RTT) and frames per second
 (FPS), use `measurement_client.MeasurementClient` in place of `WebsocketClient`.
