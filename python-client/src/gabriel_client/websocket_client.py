@@ -109,8 +109,11 @@ class WebsocketClient:
         '''
 
         await self._welcome_event.wait()
+        source = self._sources.get(source_name)
+        assert source is not None, (
+            "No engines consume frames from source: {}".format(source_name))
+
         while self._running:
-            source = self._sources[source_name]
             await source.get_token()
 
             input_frame = await producer()
@@ -135,6 +138,7 @@ class WebsocketClient:
 
     async def _send_from_client(self, from_client):
         # Removing this method will break measurement_client
+
         await self._websocket.send(from_client.SerializeToString())
 
 
