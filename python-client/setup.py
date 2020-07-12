@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-client",
-    version="2.0.1",
+    version="2.0.2",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     description="Networking components for Gabriel Python clients",
