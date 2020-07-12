@@ -51,15 +51,16 @@ class _LocalServer(WebsocketServer):
         while self.is_running():
             from_client, address = await self._input_queue.get()
             self._conn.send_bytes(from_client.input_frame.SerializeToString())
+            result_wrapper = gabriel_pb2.ResultWrapper()
 
             await self._result_ready.wait()
-            self._result_ready.clear()
 
-            result_wrapper = gabriel_pb2.ResultWrapper()
             result_wrapper.ParseFromString(self._conn.recv_bytes())
             await self.send_result_wrapper(
                 address, from_client.source_name, from_client.frame_id,
                 result_wrapper, return_token=True)
+
+            self._result_ready.clear()
 
 
 def _run_engine(engine_factory, conn):

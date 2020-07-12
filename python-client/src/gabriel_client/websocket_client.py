@@ -37,9 +37,6 @@ class WebsocketClient:
     def launch(self):
         event_loop = asyncio.get_event_loop()
 
-        # TODO remove this line once we stop supporting Python 3.5
-        asyncio.set_event_loop(event_loop)
-
         try:
             self._websocket = event_loop.run_until_complete(
                 websockets.connect(self._uri))
@@ -107,8 +104,8 @@ class WebsocketClient:
 
     async def _producer_handler(self, producer, source_name):
         '''
-        Loop waiting until there is a token available. Then calls supplier to
-        get the partially built FromClient to send.
+        Loop waiting until there is a token available. Then calls producer to
+        get the gabriel_pb2.InputFrame to send.
         '''
 
         await self._welcome_event.wait()
@@ -128,16 +125,15 @@ class WebsocketClient:
             from_client.frame_id = source.get_frame_id()
             from_client.source_name = source_name
             from_client.input_frame.CopyFrom(input_frame)
-            await self._send_from_client(from_client)
+
+            try:
+                await self._websocket.send(from_client.SerializeToString())
+            except websockets.exceptions.ConnectionClosed:
+                return  # stop the handler
+
             logger.debug('num_tokens for %s is now %d', source_name,
                          source.get_num_tokens())
             source.next_frame()
-
-    async def _send_from_client(self, from_client):
-        try:
-            await self._websocket.send(from_client.SerializeToString())
-        except websockets.exceptions.ConnectionClosed:
-            return  # stop the handler
 
 
 class _Source:
