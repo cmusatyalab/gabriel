@@ -1,7 +1,5 @@
 import common
 import cv2
-import time
-import logging
 from gabriel_protocol import gabriel_pb2
 from gabriel_server.network_engine import engine_runner
 from gabriel_server import cognitive_engine
@@ -9,9 +7,6 @@ import numpy as np
 
 
 SERVER_ADDRESS_FORMAT = 'tcp://{}:{}'
-
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 class DisplayEngine(cognitive_engine.Engine):
@@ -30,6 +25,7 @@ class DisplayEngine(cognitive_engine.Engine):
 
 
 def main():
+    common.configure_logging()
     args = common.parse_source_name_server_host()
     engine = DisplayEngine(args.source_name)
 

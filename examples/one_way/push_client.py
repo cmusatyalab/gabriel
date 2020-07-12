@@ -1,15 +1,10 @@
 import common
 import cv2
-import logging
 import multiprocessing
 import time
-from multiprocessing import Process
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client import push_source
 from gabriel_protocol import gabriel_pb2
-
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def send_frames(source):
@@ -26,6 +21,7 @@ def send_frames(source):
 
 
 def main():
+    common.configure_logging()
     args = common.parse_source_name_server_host()
     source = push_source.Source(args.source_name)
     p = multiprocessing.Process(target=send_frames, args=(source,))

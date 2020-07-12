@@ -1,20 +1,16 @@
+import argparse
 import common
 import cv2
-import time
-import logging
-from multiprocessing import Process
 from gabriel_protocol import gabriel_pb2
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.websocket_client import ProducerWrapper
 
 
+DEFAULT_NUM_SOURCES = 1
 ORG = (0, 120)
 FONT_FACE = cv2.FONT_HERSHEY_PLAIN
 FONT_SCALE = 10
 COLOR = (255, 0, 0)
-
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def consumer(result_wrapper):
@@ -22,7 +18,14 @@ def consumer(result_wrapper):
 
 
 def main():
-    args = common.parse_num_sources_server_host()
+    common.configure_logging()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('num_sources', type=int, nargs='?',
+                        default=DEFAULT_NUM_SOURCES)
+    parser.add_argument('server_host', nargs='?',
+                        default=common.DEFAULT_SERVER_HOST)
+    args = parser.parse_args()
+
     capture = cv2.VideoCapture(0)
     def gen_producer(n):
         text = 'client {}'.format(n)
