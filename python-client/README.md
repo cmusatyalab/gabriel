@@ -9,22 +9,22 @@ Run `pip install gabriel-client`
 ## Usage
 
 Create an instance of `websocket_client.WebsocketClient`. Then call
-the `launch()` method. The constructor to `WebsocketClient` takes `host`,
+the `launch()` method. The `WebsocketClient` constructor's arguments are `host`,
 `port`, `producer_wrappers` (a list of
 `websocket_client.ProducerWrapper` instances), and `consumer` (a
 function called whenever a new result is available).
 
 `opencv_adater.OpencvAdapter` provides `producer_wrappers` and a consumer.
-`push_source.Source` provides producer wrappers.
+`push_source.Source` provides `producer_wrappers`.
 Use of either of these classes is optional. You can define your own producers
 and/or a consumer, and just use `WebsocketClient` with these. `OpencvAdapter` is
 intended for clients that send image frames from a webcam or a video file,
 without doing early discard. `OpencvAdapter.consumer` decodes images returned
-by the server and then calls the `consume_frame` function that was passed to the
+by the server and then calls the `consume_frame` callback that was passed to the
 `OpencvAdapter`'s constructor. This consumer will not work when a
 `ResultWrapper` contains more than one result, or a result that is not an
 image. However, you can still use the producer from `OpencvAdapter` and write
-your own custom consumer. The `OpencvAdapter` adapter requires OpenCV to be
+your own custom consumer. The `OpencvAdapter` requires OpenCV to be
 installed and accessible to Python. The
 [opencv-python](https://pypi.org/project/opencv-python) package is a convenient
 way to install OpenCV for Python. If you do not use `OpencvAdapter`, you do not
@@ -35,8 +35,8 @@ If you choose to write your own `ProducerWrapper`, you must pass a
 as the `producer` argument to the constructor of `ProducerWrapper`. The
 `producer` is run on an
 [asyncio event loop](https://docs.python.org/3/library/asyncio-eventloop.html#event-loop),
-so it is important that the `producer` does not call any function that could
-block. This would cause the whole event loop to block.
+so it is important that the `producer` does not include any blocking code. This
+would cause the whole event loop to block.
 
 If you need to run blocking code to get an input for Gabriel, you can use
 `push_source.Source`. You should also use `push_source.Source` whenever you want
