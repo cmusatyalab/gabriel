@@ -7,7 +7,7 @@ import java.util.function.Consumer;
 
 import edu.cmu.cs.gabriel.client.observer.MeasurementResultObserver;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
-import edu.cmu.cs.gabriel.client.observer.SourceRttFps;
+import edu.cmu.cs.gabriel.client.observer.IntervalMeasurement;
 import edu.cmu.cs.gabriel.protocol.Protos.FromClient;
 import edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper;
 
@@ -21,7 +21,7 @@ public class MeasurementServerComm extends ServerComm {
     public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
-            Consumer<SourceRttFps> intervalReporter, int tokenLimit, int outputFreq) {
+            Consumer<IntervalMeasurement> intervalReporter, int tokenLimit, int outputFreq) {
         MeasurementResultObserver measurementResultObserver = new MeasurementResultObserver(
                 tokenLimit, resultConsumer, outputFreq, intervalReporter);
 
@@ -32,7 +32,7 @@ public class MeasurementServerComm extends ServerComm {
     public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
-            Consumer<SourceRttFps> intervalReporter, int tokenLimit) {
+            Consumer<IntervalMeasurement> intervalReporter, int tokenLimit) {
         return MeasurementServerComm.createMeasurementServerComm(
                 resultConsumer, endpoint, port, application, onDisconnect, intervalReporter,
                 tokenLimit, DEFAULT_OUTPUT_FREQ);
@@ -41,7 +41,7 @@ public class MeasurementServerComm extends ServerComm {
     public static MeasurementServerComm createMeasurementServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect,
-            Consumer<SourceRttFps> intervalReporter) {
+            Consumer<IntervalMeasurement> intervalReporter) {
         return MeasurementServerComm.createMeasurementServerComm(
                 resultConsumer, endpoint, port, application, onDisconnect, intervalReporter,
                 Integer.MAX_VALUE);

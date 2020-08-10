@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 public class MeasurementSource {
     private final String sourceName;
     private final int outputFreq;
-    private final Consumer<SourceRttFps> intervalReporter;
+    private final Consumer<IntervalMeasurement> intervalReporter;
     private final Map<Long, Long> sentTimestamps;
     private final LongSparseArray<Long> receivedTimestamps;
     private long count;
@@ -18,8 +18,11 @@ public class MeasurementSource {
     private long intervalStartTime;
     private long lastReceiveTime;
 
+    private double overallTotalRtt;
+    private long countForOverallTotalRtt;
+
     public MeasurementSource(
-            String sourceName, int outputFreq, Consumer<SourceRttFps> intervalReporter) {
+            String sourceName, int outputFreq, Consumer<IntervalMeasurement> intervalReporter) {
         this.sourceName = sourceName;
         this.outputFreq = outputFreq;
         this.intervalReporter = intervalReporter;
@@ -29,6 +32,9 @@ public class MeasurementSource {
         this.startTime = 0;
         this.intervalStartTime = 0;
         this.lastReceiveTime = 0;
+
+        this.overallTotalRtt = 0;
+        this.countForOverallTotalRtt = 0;
     }
 
     public void logSend(long frameId, long time) {
@@ -45,26 +51,21 @@ public class MeasurementSource {
         this.lastReceiveTime = time;
 
         if ((this.count % this.outputFreq) == 0) {
-            double rtt = this.computeIntervalRtt();
-            double fps = this.computeIntervalFps();
-            this.intervalReporter.accept(new SourceRttFps(this.sourceName, rtt, fps));
+            double intervalRtt = this.computeIntervalRttAndUpdateOverallRtt();
+            double overallRtt = this.computeOverallRtt();
+            double intervalFps = this.computeIntervalFps();
+            double overallFps = this.computeOverallFps();
+            this.intervalReporter.accept(new IntervalMeasurement(
+                    this.sourceName, intervalRtt, overallRtt, intervalFps, overallFps));
             this.intervalStartTime = SystemClock.elapsedRealtime();
         }
     }
 
-    public double computeIntervalFps() {
-        return this.computeFps(this.outputFreq, this.intervalStartTime);
-    }
-
-    public double computeOverallFps() {
-        return this.computeFps(this.count, this.startTime);
-    }
-
-    private double computeFps(long numFrames, long startTime) {
-        return (double)numFrames / ((this.lastReceiveTime - startTime) / 1000.0);
-    }
-
-    public double computeIntervalRtt() {
+    /**
+     * Computer interval RTT and update state used to compute overall RTT.
+     * @return Interval RTT
+     */
+    private double computeIntervalRttAndUpdateOverallRtt() {
         long totalRtt = 0;
         for (int i = 0; i < this.receivedTimestamps.size(); i++) {
             long frameId = this.receivedTimestamps.keyAt(i);
@@ -79,6 +80,26 @@ public class MeasurementSource {
         // responses yet. Note that timestamps we don't need are removed when
         // this.sentTimestamps#remove is called above
         this.receivedTimestamps.clear();
+
+        this.overallTotalRtt += totalRtt;
+        this.countForOverallTotalRtt = this.count;
+
         return ((double)totalRtt) / numFrames;
+    }
+
+    public double computeOverallRtt() {
+        return this.overallTotalRtt / this.countForOverallTotalRtt;
+    }
+
+    public double computeIntervalFps() {
+        return this.computeFps(this.outputFreq, this.intervalStartTime);
+    }
+
+    public double computeOverallFps() {
+        return this.computeFps(this.count, this.startTime);
+    }
+
+    private double computeFps(long numFrames, long startTime) {
+        return (double)numFrames / ((this.lastReceiveTime - startTime) / 1000.0);
     }
 }

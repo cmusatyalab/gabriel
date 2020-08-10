@@ -12,12 +12,12 @@ import edu.cmu.cs.gabriel.protocol.Protos.ToClient;
 
 public class MeasurementResultObserver extends ResultObserver {
     private final int outputFreq;
-    private final Consumer<SourceRttFps> intervalReporter;
+    private final Consumer<IntervalMeasurement> intervalReporter;
     private final Map<String, MeasurementSource> measurementSources;
 
     public MeasurementResultObserver(
             int tokenLimit, Consumer<ResultWrapper> resultConsumer,
-            int outputFreq, Consumer<SourceRttFps> intervalReporter) {
+            int outputFreq, Consumer<IntervalMeasurement> intervalReporter) {
         super(tokenLimit, resultConsumer);
         this.outputFreq = outputFreq;
         this.intervalReporter = intervalReporter;

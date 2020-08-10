@@ -91,11 +91,29 @@ public class ServerComm {
         return true;
     }
 
-    /** Wait until there is a token available. Then call @param supplier to get the frame to send.
+    /**
+     * Wait until there is a token available. Then call @param supplier to get the frame to send.
      * */
     public SendSupplierResult sendSupplier(Supplier<InputFrame> supplier, String sourceName) {
         Source source = this.resultObserver.getSource(sourceName);
         boolean gotToken = source.getToken();
+        if (!gotToken) {
+            return SendSupplierResult.ERROR_GETTING_TOKEN;
+        }
+
+        InputFrame inputFrame = supplier.get();
+        if (inputFrame == null) {
+            source.returnToken();
+            return SendSupplierResult.NULL_FROM_SUPPLIER;
+        }
+
+        this.sendHelper(source, sourceName, inputFrame);
+        return SendSupplierResult.SUCCESS;
+    }
+
+    public SendSupplierResult sendSupplierNoWait(Supplier<InputFrame> supplier, String sourceName) {
+        Source source = this.resultObserver.getSource(sourceName);
+        boolean gotToken = source.getTokenNoWait();
         if (!gotToken) {
             return SendSupplierResult.ERROR_GETTING_TOKEN;
         }
