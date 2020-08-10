@@ -14,24 +14,16 @@ public class Source {
     }
 
     /**
-     * Take token if one is available
+     * Take token, if one is available.
+     * @param wait If true, this method will not return until a token is available, or the current
+     *             thread is interrupted.
      * @return true if a token was taken; false otherwise.
      */
-    public synchronized boolean getTokenNoWait() {
-        if (this.tokenCounter < 1) {
-            return false;
-        }
-
-        this.tokenCounter--;
-        return true;
-    }
-
-    /**
-     * Wait until there is a token available. Then take it.
-     * @return true if a token was taken; false otherwise.
-     */
-    public synchronized boolean getToken() {
+    public synchronized boolean getToken(boolean wait) {
         while (this.tokenCounter < 1) {
+            if (!wait) {
+                return false;
+            }
             try {
                 this.wait();
             } catch(InterruptedException e) {

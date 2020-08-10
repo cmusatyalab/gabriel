@@ -60,29 +60,16 @@ public class ServerComm {
         return this.resultObserver.sourceFor(sourceName);
     }
 
-    /** Send if there is at least one token available. Returns false if there were no tokens. */
-    public boolean sendNoWait(String sourceName, InputFrame inputFrame) {
-        Source source = this.resultObserver.getSource(sourceName);
-        boolean gotToken = source.getTokenNoWait();
-        if (!gotToken) {
-            return false;
-        }
-
-        this.sendHelper(source, sourceName, inputFrame);
-        return true;
-    }
-
     /**
-     * Wait until there is a token available.
-     *
-     * Then send input frame to server
+     * Attempt to get token. Then send frame if we got token successfully.
      *
      * @param inputFrame item to send to server
+     * @param wait If true, will block until a token is available.
      * @return True if send succeeded.
      */
-    public boolean sendBlocking(InputFrame inputFrame, String sourceName) {
+    public boolean sendBlocking(InputFrame inputFrame, String sourceName, boolean wait) {
         Source source = this.resultObserver.getSource(sourceName);
-        boolean gotToken = source.getToken();
+        boolean gotToken = source.getToken(wait);
         if (!gotToken) {
             return false;
         }
@@ -92,28 +79,12 @@ public class ServerComm {
     }
 
     /**
-     * Wait until there is a token available. Then call @param supplier to get the frame to send.
+     * Attempt to get token. Then call @param supplier to get the frame to send.
      * */
-    public SendSupplierResult sendSupplier(Supplier<InputFrame> supplier, String sourceName) {
+    public SendSupplierResult sendSupplier(
+            Supplier<InputFrame> supplier, String sourceName, boolean wait) {
         Source source = this.resultObserver.getSource(sourceName);
-        boolean gotToken = source.getToken();
-        if (!gotToken) {
-            return SendSupplierResult.ERROR_GETTING_TOKEN;
-        }
-
-        InputFrame inputFrame = supplier.get();
-        if (inputFrame == null) {
-            source.returnToken();
-            return SendSupplierResult.NULL_FROM_SUPPLIER;
-        }
-
-        this.sendHelper(source, sourceName, inputFrame);
-        return SendSupplierResult.SUCCESS;
-    }
-
-    public SendSupplierResult sendSupplierNoWait(Supplier<InputFrame> supplier, String sourceName) {
-        Source source = this.resultObserver.getSource(sourceName);
-        boolean gotToken = source.getTokenNoWait();
+        boolean gotToken = source.getToken(wait);
         if (!gotToken) {
             return SendSupplierResult.ERROR_GETTING_TOKEN;
         }
