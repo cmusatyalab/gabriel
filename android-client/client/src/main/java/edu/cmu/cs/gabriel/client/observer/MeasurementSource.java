@@ -1,6 +1,7 @@
 package edu.cmu.cs.gabriel.client.observer;
 
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.LongSparseArray;
 
 import java.util.Map;
@@ -8,6 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public class MeasurementSource {
+    private static final String TAG = "MeasurementSource";
+
     private final String sourceName;
     private final int outputFreq;
     private final Consumer<IntervalMeasurement> intervalReporter;
@@ -17,9 +20,7 @@ public class MeasurementSource {
     private long startTime;
     private long intervalStartTime;
     private long lastReceiveTime;
-
-    private double overallTotalRtt;
-    private long countForOverallTotalRtt;
+    private long overallTotalRtt;
 
     public MeasurementSource(
             String sourceName, int outputFreq, Consumer<IntervalMeasurement> intervalReporter) {
@@ -32,9 +33,7 @@ public class MeasurementSource {
         this.startTime = 0;
         this.intervalStartTime = 0;
         this.lastReceiveTime = 0;
-
         this.overallTotalRtt = 0;
-        this.countForOverallTotalRtt = 0;
     }
 
     public void logSend(long frameId, long time) {
@@ -47,11 +46,18 @@ public class MeasurementSource {
 
     public void logReceive(long frameId, long time) {
         this.receivedTimestamps.put(frameId, time);
-        this.count++; // Count should always be frameId + 1
+        this.count++;  // Count should always be frameId + 1
         this.lastReceiveTime = time;
 
+        Long sentTime = this.sentTimestamps.get(frameId);
+        if (sentTime == null) {
+            Log.e(TAG, "No Sent time for frameID: " + frameId);
+        } else {
+            this.overallTotalRtt += (time - sentTime);
+        }
+
         if ((this.count % this.outputFreq) == 0) {
-            double intervalRtt = this.computeIntervalRttAndUpdateOverallRtt();
+            double intervalRtt = this.computeIntervalRtt();
             double overallRtt = this.computeOverallRtt();
             double intervalFps = this.computeIntervalFps();
             double overallFps = this.computeOverallFps();
@@ -61,11 +67,7 @@ public class MeasurementSource {
         }
     }
 
-    /**
-     * Computer interval RTT and update state used to compute overall RTT.
-     * @return Interval RTT
-     */
-    private double computeIntervalRttAndUpdateOverallRtt() {
+    private double computeIntervalRtt() {
         long totalRtt = 0;
         for (int i = 0; i < this.receivedTimestamps.size(); i++) {
             long frameId = this.receivedTimestamps.keyAt(i);
@@ -76,19 +78,17 @@ public class MeasurementSource {
             totalRtt += (receivedTimestamp - sentTimestamp);
         }
         int numFrames = this.receivedTimestamps.size();
+
         // Do not clear this.sentTimestamps because we might have sent frames and not received
         // responses yet. Note that timestamps we don't need are removed when
         // this.sentTimestamps#remove is called above
         this.receivedTimestamps.clear();
 
-        this.overallTotalRtt += totalRtt;
-        this.countForOverallTotalRtt = this.count;
-
         return ((double)totalRtt) / numFrames;
     }
 
     public double computeOverallRtt() {
-        return this.overallTotalRtt / this.countForOverallTotalRtt;
+        return (double)this.overallTotalRtt / this.count;
     }
 
     public double computeIntervalFps() {
