@@ -29,8 +29,7 @@ This `onDisconnect` consumer should start the process of presenting an error
 message to the user, cleaning up the app state, and then bringing the user back
 to a screen to modify connection settings.
 
-Send messages to the server using `ServerComm`'s `sendNoWait`, `sendBlocking`,
-or `sendSupplier` methods.
+Send messages to the server using `ServerComm`'s `send` or `sendSupplier` methods.
 [Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L49).
 
 ### Measurement
