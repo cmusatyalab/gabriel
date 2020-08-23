@@ -67,7 +67,7 @@ public class ServerComm {
      * @param wait If true, will block until a token is available.
      * @return True if send succeeded.
      */
-    public boolean sendBlocking(InputFrame inputFrame, String sourceName, boolean wait) {
+    public boolean send(InputFrame inputFrame, String sourceName, boolean wait) {
         Source source = this.resultObserver.getSource(sourceName);
         boolean gotToken = source.getToken(wait);
         if (!gotToken) {
