@@ -34,7 +34,7 @@ dependencies {
     // with MobilEdgeX
     compileOnly 'edu.cmu.cs.gabriel:protocol:2.0.1'
 
-    // TODO: Remove these once MobilEdgeX supports protobuf-javalite and gabriel.protocol implements
+    // TODO: Remove these once MobilEdgeX supports protobuf-javalite and gabriel:protocol implements
     //       this
     compileOnly 'com.google.protobuf:protobuf-lite:3.0.1'
     compileOnly 'com.google.protobuf:protobuf-java:3.11.3'

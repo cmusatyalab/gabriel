@@ -2,7 +2,7 @@
 
 ## Usage
 
-Add the lines `implementation 'edu.cmu.cs.gabriel:client:2.0.1'` and
+Add the lines `implementation 'edu.cmu.cs.gabriel:client:2.2.0'` and
 `implementation 'edu.cmu.cs.gabriel:protocol:2.0.1'` to your app's build.gradle
 file.
 Your project must include either the `jcenter()` repository or the
