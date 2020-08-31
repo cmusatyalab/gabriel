@@ -155,7 +155,7 @@ class _Source:
     async def get_token(self):
         while self._num_tokens < 1:
             logger.debug('Waiting for token')
-            self._event.clear()  # Clear because we definitely want wait
+            self._event.clear()  # Clear because we definitely want to wait
             await self._event.wait()
 
         self._num_tokens -= 1
