@@ -3,6 +3,7 @@ import asyncio
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 import websockets
+import socket
 from abc import ABC
 from abc import abstractmethod
 from collections import namedtuple
@@ -16,6 +17,13 @@ websockets_logger.setLevel(logging.INFO)
 
 
 _Client = namedtuple('_Client', ['tokens_for_source', 'websocket'])
+
+
+class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        transport.get_extra_info('socket').setsockopt(
+            socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        super().connection_made(transport)
 
 
 class WebsocketServer(ABC):
@@ -36,7 +44,8 @@ class WebsocketServer(ABC):
     def launch(self, port, message_max_size):
         event_loop = asyncio.get_event_loop()
         start_server = websockets.serve(
-            self._handler, port=port, max_size=message_max_size)
+            self._handler, port=port, max_size=message_max_size,
+            create_protocol=NoDelayProtocol)
         self._server = event_loop.run_until_complete(start_server)
         self._start_event.set()
         event_loop.run_forever()
@@ -113,6 +122,9 @@ class WebsocketServer(ABC):
         return self._server.is_serving()
 
     async def _handler(self, websocket, _):
+        for sock in self._server.sockets:
+            print(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY))
+
         address = websocket.remote_address
         logger.info('New Client connected: %s', address)
 
