@@ -12,11 +12,11 @@ import java.util.function.Consumer;
 
 import edu.cmu.cs.gabriel.client.observer.EventObserver;
 import edu.cmu.cs.gabriel.client.observer.ResultObserver;
+import edu.cmu.cs.gabriel.client.okhttp.GabrielOkHttpClient;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
 import edu.cmu.cs.gabriel.protocol.Protos.FromClient;
 
 import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
 
 public class SocketWrapper {
     private final EventObserver eventObserver;
@@ -51,7 +51,7 @@ public class SocketWrapper {
 
         this.eventObserver = new EventObserver(onDisconnect);
         Lifecycle androidLifecycle = AndroidLifecycle.ofApplicationForeground(application);
-        OkHttpClient okClient = new OkHttpClient();
+        GabrielOkHttpClient okClient = new GabrielOkHttpClient();
 
         this.webSocketInterface = (new Scarlet.Builder())
                 .webSocketFactory(OkHttpClientUtils.newWebSocketFactory(okClient, wsURL))
