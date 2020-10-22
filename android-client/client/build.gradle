@@ -25,8 +25,8 @@ android {
 }
 
 dependencies {
-    // The files in edu.cmu.cs.gabriel.client.okhttp were copied from OkHttp 3.11.0.
-    // If newer versions of Scarlet use a different version of OkHttp, these may have to be updated.
+    // The files in edu.cmu.cs.gabriel.client.okhttp were copied from OkHttp 3.11.0. If newer 
+    // versions of Scarlet use a different version of OkHttp, these files may have to be updated.
     implementation 'com.tinder.scarlet:scarlet:0.1.10'
     implementation 'com.tinder.scarlet:websocket-okhttp:0.1.10'
     implementation 'com.tinder.scarlet:lifecycle-android:0.1.10'
