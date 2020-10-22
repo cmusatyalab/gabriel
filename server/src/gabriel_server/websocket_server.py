@@ -12,18 +12,21 @@ from collections import namedtuple
 logger = logging.getLogger(__name__)
 websockets_logger = logging.getLogger(websockets.__name__)
 
-# The entire payload will be printed if this is allowed to be DEBUG
+# The entire payload will be logged if this is allowed to be DEBUG
 websockets_logger.setLevel(logging.INFO)
 
 
 _Client = namedtuple('_Client', ['tokens_for_source', 'websocket'])
 
 
-class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
-    def connection_made(self, transport: asyncio.BaseTransport) -> None:
-        transport.get_extra_info('socket').setsockopt(
-            socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        super().connection_made(transport)
+# The following class could be passed as the create_protocol to websockets.serve
+# This is not needed because "The socket option TCP_NODELAY is set by default
+# for all TCP connections." as of Python 3.6
+# class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
+#     def connection_made(self, transport: asyncio.BaseTransport) -> None:
+#         sock = websocket.transport.get_extra_info('socket')
+#         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+#         super().connection_made(transport)
 
 
 class WebsocketServer(ABC):
@@ -44,8 +47,7 @@ class WebsocketServer(ABC):
     def launch(self, port, message_max_size):
         event_loop = asyncio.get_event_loop()
         start_server = websockets.serve(
-            self._handler, port=port, max_size=message_max_size,
-            create_protocol=NoDelayProtocol)
+            self._handler, port=port, max_size=message_max_size)
         self._server = event_loop.run_until_complete(start_server)
         self._start_event.set()
         event_loop.run_forever()
@@ -122,8 +124,8 @@ class WebsocketServer(ABC):
         return self._server.is_serving()
 
     async def _handler(self, websocket, _):
-        for sock in self._server.sockets:
-            print(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY))
+        # sock = websocket.transport.get_extra_info('socket')
+        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
 
         address = websocket.remote_address
         logger.info('New Client connected: %s', address)
@@ -151,15 +153,7 @@ class WebsocketServer(ABC):
 
     async def _consumer(self, websocket, client):
         address = websocket.remote_address
-
-        # TODO: ADD this line back in once we can stop supporting Python 3.5
-        # async for raw_input in websocket:
-
-        # TODO: Remove the following two lines when we can stop supporting
-        # Python 3.5
-        while websocket.open:
-            raw_input = await websocket.recv()
-
+        async for raw_input in websocket:
             logger.debug('Received input from %s', address)
 
             from_client = gabriel_pb2.FromClient()
