@@ -23,10 +23,10 @@ ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'source_name'])
 # "The socket option TCP_NODELAY is set by default for all TCP connections"
 # per https://docs.python.org/3/library/asyncio-eventloop.html
 # However, this seems worth keeping in case the default behavior changes.
-class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
+class NoDelayProtocol(websockets.client.WebSocketClientProtocol):
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
-        sock = websocket.transport.get_extra_info('socket')
+        sock = transport.get_extra_info('socket')
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
@@ -55,6 +55,11 @@ class WebsocketClient:
         except ConnectionRefusedError:
             logger.error('Could not connect to server')
             return
+
+        # We don't waste time checking TCP_NODELAY in production.
+        # Note that websocket.transport is an undocumented property.
+        # sock = self._websocket.transport.get_extra_info('socket')
+        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
 
         consumer_task = asyncio.ensure_future(self._consumer_handler())
         tasks = [
@@ -119,11 +124,6 @@ class WebsocketClient:
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
         '''
-
-        # We don't waste time checking TCP_NODELAY in production.
-        # Note that websocket.transport is an undocumented property.
-        # sock = websocket.transport.get_extra_info('socket')
-        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
 
         await self._welcome_event.wait()
         source = self._sources.get(source_name)

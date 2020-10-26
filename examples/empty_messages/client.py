@@ -9,7 +9,6 @@ def main():
 
         # Do not use time.sleep. This would stop the event loop.
         await asyncio.sleep(1)
-
         return gabriel_pb2.InputFrame()
 
     def consumer(_):

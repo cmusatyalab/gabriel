@@ -26,7 +26,7 @@ _Client = namedtuple('_Client', ['tokens_for_source', 'websocket'])
 class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         super().connection_made(transport)
-        sock = websocket.transport.get_extra_info('socket')
+        sock = transport.get_extra_info('socket')
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
