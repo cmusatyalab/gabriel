@@ -1,9 +1,9 @@
-import logging
 import asyncio
+import logging
+import socket
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 import websockets
-import socket
 from abc import ABC
 from abc import abstractmethod
 from collections import namedtuple
@@ -19,14 +19,15 @@ websockets_logger.setLevel(logging.INFO)
 _Client = namedtuple('_Client', ['tokens_for_source', 'websocket'])
 
 
-# The following class could be passed as the create_protocol to websockets.serve
-# This is not needed because "The socket option TCP_NODELAY is set by default
-# for all TCP connections." as of Python 3.6
-# class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
-#     def connection_made(self, transport: asyncio.BaseTransport) -> None:
-#         sock = websocket.transport.get_extra_info('socket')
-#         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-#         super().connection_made(transport)
+# It isn't necessary to do this as of Python 3.6 because
+# "The socket option TCP_NODELAY is set by default for all TCP connections"
+# per https://docs.python.org/3/library/asyncio-eventloop.html
+# However, this seems worth keeping in case the default behavior changes.
+class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        super().connection_made(transport)
+        sock = websocket.transport.get_extra_info('socket')
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
 class WebsocketServer(ABC):
@@ -47,8 +48,13 @@ class WebsocketServer(ABC):
     def launch(self, port, message_max_size):
         event_loop = asyncio.get_event_loop()
         start_server = websockets.serve(
-            self._handler, port=port, max_size=message_max_size)
+            self._handler, port=port, max_size=message_max_size,
+            create_protocol=NoDelayProtocol)
         self._server = event_loop.run_until_complete(start_server)
+
+        # It isn't necessary to set TCP_NODELAY on self._server.sockets because
+        # these are used for listening and not writing.
+
         self._start_event.set()
         event_loop.run_forever()
 
@@ -124,6 +130,9 @@ class WebsocketServer(ABC):
         return self._server.is_serving()
 
     async def _handler(self, websocket, _):
+
+        # We don't waste time checking TCP_NODELAY in production.
+        # Note that websocket.transport is an undocumented property.
         # sock = websocket.transport.get_extra_info('socket')
         # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
 
