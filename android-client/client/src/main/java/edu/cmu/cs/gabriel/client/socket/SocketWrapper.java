@@ -2,23 +2,29 @@ package edu.cmu.cs.gabriel.client.socket;
 
 import android.app.Application;
 import android.security.NetworkSecurityPolicy;
+import android.util.Log;
 
 import com.tinder.scarlet.Lifecycle;
 import com.tinder.scarlet.Scarlet;
 import com.tinder.scarlet.lifecycle.android.AndroidLifecycle;
 import com.tinder.scarlet.websocket.okhttp.OkHttpClientUtils;
 
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.util.function.Consumer;
 
 import edu.cmu.cs.gabriel.client.observer.EventObserver;
 import edu.cmu.cs.gabriel.client.observer.ResultObserver;
-import edu.cmu.cs.gabriel.client.okhttp.GabrielOkHttpClient;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
 import edu.cmu.cs.gabriel.protocol.Protos.FromClient;
 
 import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
 
 public class SocketWrapper {
+    private static final String TAG = "SocketWrapper";
+
     private final EventObserver eventObserver;
     private final GabrielSocket webSocketInterface;
 
@@ -51,7 +57,20 @@ public class SocketWrapper {
 
         this.eventObserver = new EventObserver(onDisconnect);
         Lifecycle androidLifecycle = AndroidLifecycle.ofApplicationForeground(application);
-        GabrielOkHttpClient okClient = new GabrielOkHttpClient();
+
+        OkHttpClient.Builder okHttpClientBuilder = new OkHttpClient.Builder();
+        try {
+            SSLSocketFactoryTcpNoDelay sSLSocketFactoryTcpNoDelay =
+                    new SSLSocketFactoryTcpNoDelay();
+            okHttpClientBuilder.sslSocketFactory(sSLSocketFactoryTcpNoDelay.getSslSocketFactory(),
+                    sSLSocketFactoryTcpNoDelay.getTrustManager());
+        } catch (NoSuchAlgorithmException | KeyStoreException | KeyManagementException e) {
+            Log.e(TAG, "TLS Socket error", e);
+        }
+
+        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
+        okHttpClientBuilder.socketFactory(socketFactoryTcpNoDelay);
+        OkHttpClient okClient = okHttpClientBuilder.build();
 
         this.webSocketInterface = (new Scarlet.Builder())
                 .webSocketFactory(OkHttpClientUtils.newWebSocketFactory(okClient, wsURL))
