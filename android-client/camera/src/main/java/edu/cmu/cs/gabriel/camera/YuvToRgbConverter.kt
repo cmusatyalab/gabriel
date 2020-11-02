@@ -29,7 +29,7 @@ import android.renderscript.Type
 import androidx.camera.core.ImageProxy
 
 /**
- * Helper class used to efficiently convert an [ImageProxy] object from
+ * Helper class used to efficiently convert an ImageProxy object from
  * [ImageFormat.YUV_420_888] format to an RGB [Bitmap] object.
  *
  * The [yuvToRgb] method is able to achieve the same FPS as the CameraX image

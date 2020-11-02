@@ -1,6 +1,5 @@
-plugins {
-    id 'com.android.library'
-}
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion 29
@@ -45,3 +44,5 @@ dependencies {
 
     compileOnly 'com.google.protobuf:protobuf-lite:3.0.1'
 }
+
+apply plugin: 'com.vanniktech.maven.publish'

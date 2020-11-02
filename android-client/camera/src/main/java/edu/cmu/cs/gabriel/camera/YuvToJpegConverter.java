@@ -3,6 +3,7 @@ package edu.cmu.cs.gabriel.camera;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.ImageProxy;
@@ -42,8 +43,10 @@ public class YuvToJpegConverter {
 
         // rotatedBitmap must be its own variable because the dimensions are different
         // from those of bitmap
+        Rect cropRect = imageProxy.getCropRect();
         Bitmap rotatedBitmap = Bitmap.createBitmap(
-                bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+                bitmap, cropRect.left, cropRect.top, cropRect.width(), cropRect.height(), matrix,
+                true);
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, this.jpegQuality, byteArrayOutputStream);
