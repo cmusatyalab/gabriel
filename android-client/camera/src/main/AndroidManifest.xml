@@ -1,1 +1,2 @@
-<manifest package="edu.cmu.cs.gabriel.camera" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+package="edu.cmu.cs.gabriel.camera" />
