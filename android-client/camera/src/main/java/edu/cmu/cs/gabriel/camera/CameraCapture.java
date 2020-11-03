@@ -37,18 +37,18 @@ public class CameraCapture {
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height) {
-        this(activity, analyzer, width, height, DEFAULT_SELECTOR);
+        this(activity, analyzer, width, height, null);
     }
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
-            CameraSelector cameraSelector) {
-        this(activity, analyzer, width, height, cameraSelector, null);
+            PreviewView viewFinder) {
+        this(activity, analyzer, width, height, viewFinder, DEFAULT_SELECTOR);
     }
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
-            CameraSelector cameraSelector, PreviewView viewFinder) {
+            PreviewView viewFinder, CameraSelector cameraSelector) {
         this.activity = activity;
 
         int permission = ContextCompat.checkSelfPermission(this.activity, REQUIRED_PERMISSION);
