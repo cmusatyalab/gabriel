@@ -31,27 +31,34 @@ import java.util.concurrent.Executors;
 public class CameraCapture {
     private static final String TAG = "CameraCapture";
     private static final String REQUIRED_PERMISSION = Manifest.permission.CAMERA;
-    private static final CameraSelector CAMERA_SELECTOR = CameraSelector.DEFAULT_BACK_CAMERA;
+    private static final CameraSelector DEFAULT_SELECTOR = CameraSelector.DEFAULT_BACK_CAMERA;
     private final AppCompatActivity activity;
     private final ExecutorService cameraExecutor;
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height) {
-        this(activity, analyzer, width, height, null);
+        this(activity, analyzer, width, height, DEFAULT_SELECTOR);
     }
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
-            PreviewView viewFinder) {
+            CameraSelector cameraSelector) {
+        this(activity, analyzer, width, height, cameraSelector, null);
+    }
+
+    public CameraCapture(
+            AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
+            CameraSelector cameraSelector, PreviewView viewFinder) {
         this.activity = activity;
 
         int permission = ContextCompat.checkSelfPermission(this.activity, REQUIRED_PERMISSION);
         if (permission == PackageManager.PERMISSION_GRANTED) {
-            this.startCamera(analyzer, width, height, viewFinder);
+            this.startCamera(analyzer, width, height, cameraSelector, viewFinder);
         } else {
             ActivityResultCallback<Boolean> activityResultCallback = isGranted -> {
                 if (isGranted) {
-                    CameraCapture.this.startCamera(analyzer, width, height, viewFinder);
+                    CameraCapture.this.startCamera(analyzer, width, height, cameraSelector,
+                            viewFinder);
                 } else {
                     Toast.makeText(this.activity,
                             "The user denied the camera permission.", Toast.LENGTH_LONG).show();
@@ -70,7 +77,8 @@ public class CameraCapture {
     }
 
     private void startCamera(
-            ImageAnalysis.Analyzer analyzer, int width, int height, PreviewView viewFinder) {
+            ImageAnalysis.Analyzer analyzer, int width, int height, CameraSelector cameraSelector,
+            PreviewView viewFinder) {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this.activity);
         cameraProviderFuture.addListener(() -> {
@@ -88,12 +96,12 @@ public class CameraCapture {
 
                 if (viewFinder == null) {
                     // Bind use cases to camera
-                    cameraProvider.bindToLifecycle(this.activity, CAMERA_SELECTOR, imageAnalysis);
+                    cameraProvider.bindToLifecycle(this.activity, cameraSelector, imageAnalysis);
                 } else {
                     Preview preview = new Preview.Builder().build();
                     preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
                     cameraProvider.bindToLifecycle(
-                            this.activity, CAMERA_SELECTOR, imageAnalysis, preview);
+                            this.activity, cameraSelector, imageAnalysis, preview);
                 }
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Could not setup camera", e);

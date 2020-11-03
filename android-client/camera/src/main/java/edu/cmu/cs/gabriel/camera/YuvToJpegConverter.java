@@ -8,8 +8,6 @@ import android.graphics.Rect;
 import androidx.annotation.NonNull;
 import androidx.camera.core.ImageProxy;
 
-import com.google.protobuf.ByteString;
-
 import java.io.ByteArrayOutputStream;
 
 public class YuvToJpegConverter {
@@ -27,7 +25,7 @@ public class YuvToJpegConverter {
         this(context, DEFAULT_JPEG_QUALITY);
     }
 
-    public ByteString convertToJpeg(@NonNull ImageProxy imageProxy) {
+    public byte[] convertToJpeg(@NonNull ImageProxy imageProxy) {
         // Wait until we have the first image to allocate this, because width and high might not be
         // exactly what was specified to the camera
         if (bitmap == null) {
@@ -51,6 +49,6 @@ public class YuvToJpegConverter {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, this.jpegQuality, byteArrayOutputStream);
 
-        return ByteString.copyFrom(byteArrayOutputStream.toByteArray());
+        return byteArrayOutputStream.toByteArray();
     }
 }
