@@ -1,6 +1,5 @@
-plugins {
-    id 'com.android.library'
-}
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion 29
@@ -11,15 +10,11 @@ android {
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles "consumer-rules.pro"
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
@@ -45,3 +40,9 @@ dependencies {
 
     compileOnly 'com.google.protobuf:protobuf-lite:3.0.1'
 }
+
+// Avoid build failure when running gradlew from the command line
+// when Java 11's javadoc is installed.
+tasks.withType(Javadoc).all { enabled = false }
+
+apply plugin: 'com.vanniktech.maven.publish'
