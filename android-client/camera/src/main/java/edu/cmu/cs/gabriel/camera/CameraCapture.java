@@ -37,19 +37,24 @@ public class CameraCapture {
 
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height) {
+        this(activity, analyzer, width, height, null);
+    }
+
+    public CameraCapture(
+            AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
+            PreviewView viewFinder) {
         this.activity = activity;
 
         int permission = ContextCompat.checkSelfPermission(this.activity, REQUIRED_PERMISSION);
         if (permission == PackageManager.PERMISSION_GRANTED) {
-            this.startCamera(analyzer, width, height);
+            this.startCamera(analyzer, width, height, viewFinder);
         } else {
             ActivityResultCallback<Boolean> activityResultCallback = isGranted -> {
                 if (isGranted) {
-                    CameraCapture.this.startCamera(analyzer, width, height);
+                    CameraCapture.this.startCamera(analyzer, width, height, viewFinder);
                 } else {
                     Toast.makeText(this.activity,
-                            "Permissions not granted by the user.", Toast.LENGTH_SHORT).show();
-                    this.activity.finish();
+                            "The user denied the camera permission.", Toast.LENGTH_LONG).show();
                 }
             };
 
@@ -64,7 +69,8 @@ public class CameraCapture {
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
-    private void startCamera(ImageAnalysis.Analyzer analyzer, int width, int height) {
+    private void startCamera(
+            ImageAnalysis.Analyzer analyzer, int width, int height, PreviewView viewFinder) {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this.activity);
         cameraProviderFuture.addListener(() -> {
@@ -80,28 +86,17 @@ public class CameraCapture {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll();
 
-                // Bind use cases to camera
-                cameraProvider.bindToLifecycle(
-                        this.activity, CAMERA_SELECTOR, imageAnalysis);
+                if (viewFinder == null) {
+                    // Bind use cases to camera
+                    cameraProvider.bindToLifecycle(this.activity, CAMERA_SELECTOR, imageAnalysis);
+                } else {
+                    Preview preview = new Preview.Builder().build();
+                    preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
+                    cameraProvider.bindToLifecycle(
+                            this.activity, CAMERA_SELECTOR, imageAnalysis, preview);
+                }
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Could not setup camera", e);
-            }
-        }, ContextCompat.getMainExecutor(this.activity));
-    }
-
-    public void addPreview(PreviewView viewFinder) {
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
-                ProcessCameraProvider.getInstance(this.activity);
-        cameraProviderFuture.addListener(() -> {
-            try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
-
-                cameraProvider.bindToLifecycle(this.activity, CAMERA_SELECTOR, preview);
-            } catch (ExecutionException | InterruptedException e) {
-                Log.e(TAG, "Could not add preview", e);
             }
         }, ContextCompat.getMainExecutor(this.activity));
     }
