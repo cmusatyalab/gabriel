@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package yuv;
+
+option java_package = "edu.cmu.cs.gabriel";
+option java_outer_classname = "YUVProtos";
+
+message ToServer {
+    int32 width = 1;
+    int32 height = 2;
+    int32 rotation = 3;
+}
