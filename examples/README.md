@@ -24,8 +24,7 @@ you build the App with Android Studio. You must recompile the proto for Python
 by running:
 
 ```bash
-/path/to/protoc --python_out one_way_yuv --proto_path\
-one_way_yuv/android-client/app/src/main/proto yuv.proto
+/path/to/protoc --python_out one_way_yuv --proto_path one_way_yuv/android-client/app/src/main/proto yuv.proto
 ```
 
 ## Round Trip
