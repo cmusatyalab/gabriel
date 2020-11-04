@@ -7,7 +7,7 @@ import java.net.Socket;
 import javax.net.SocketFactory;
 
 public class SocketFactoryTcpNoDelay extends SocketFactory {
-    final private SocketFactory socketFactory;
+    private final SocketFactory socketFactory;
 
     public SocketFactoryTcpNoDelay() {
         socketFactory = SocketFactory.getDefault();

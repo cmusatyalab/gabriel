@@ -16,10 +16,8 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 public class SSLSocketFactoryTcpNoDelay extends SSLSocketFactory {
-    private static final String TAG = "SSLSocketFactoryTCPNoDelay";
-
-    final private X509TrustManager trustManager;
-    final private SSLSocketFactory sslSocketFactory;
+    private final X509TrustManager trustManager;
+    private final SSLSocketFactory sslSocketFactory;
 
     public SSLSocketFactoryTcpNoDelay() throws NoSuchAlgorithmException, KeyStoreException,
             KeyManagementException {
