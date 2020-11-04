@@ -95,13 +95,13 @@ to the engine using YUV NV21 encoding. This saves the smartphone from having to
 do JPEG encoding, and likely avoids compression artifacts. However, it requires
 transmitting 1.5 bytes for every pixel in the image.
 
-The image dimensions and rotation of the image are sent as extras fields in the
-`InputFrame` proto.
+The image dimensions and rotation of the image are added to the extras field of
+the `InputFrame` proto.
 
 ## Empty Messages
 
 The empty messages example sends `InputFrame` protos to the server, without
-adding anything to them. This example functions almost like a ping test.
+adding anything to them. This example functions as a ping test.
 
 This example doesn't have a real sensor slowing down the rate that new inputs
 are produced, so it's important to keep the call to `asyncio.sleep` in the
