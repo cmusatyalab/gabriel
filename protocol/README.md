@@ -1,26 +1,14 @@
 # Gabriel Protocol
 
-See `gabriel.proto` for protocol definitions.
+Protos are defined in `protos/gabriel.proto`.
 
-## Compiling for Python
+## Compiling changes
 
-You must use protoc version 3.12 or newer. You can download protoc for Linux
-from
-[here](https://github.com/protocolbuffers/protobuf/releases/download/v3.12.3/protoc-3.12.3-linux-x86_64.zip).
-You can find links to download protoc for other platforms on
-[this page](https://github.com/protocolbuffers/protobuf/releases). Just make
-sure the archive you download begins with "protoc."
-
-After you have extracted the compiler, run the following line from this
-directory:
-`/path/to/protoc --python_out=python/src/gabriel_protocol/ gabriel.proto`
-
-## Compiling for Java
-
-1. Open the project in the `java` directory with Android studio.
+1. Open this directory as a project in Android Studio.
 2. Click the `Gradle` button in the top right.
-3. Select `java` > `Tasks` > `build` > `build`. Do not select any of the build
-   tasks specific to any of the modules (such as `protocol`).
+3. Select `java` > `Tasks` > `build` > `build`. Do not select any of the build tasks specific to any
+   of the modules (such as `protocol`). Running a task specific to a module will generate the protos
+   in the wrong location.
 
 ## Publishing Changes to PyPi
 
