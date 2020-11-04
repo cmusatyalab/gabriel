@@ -4399,11 +4399,6 @@ public final class Protos {
        * <code>bool all_responses_required = 2;</code>
        */
       boolean getAllResponsesRequired();
-
-      /**
-       * <code>int32 test = 3;</code>
-       */
-      int getTest();
     }
     /**
      * Protobuf type {@code gabriel.FromStandaloneEngine.Welcome}
@@ -4486,30 +4481,6 @@ public final class Protos {
       private void clearAllResponsesRequired() {
         
         allResponsesRequired_ = false;
-      }
-
-      public static final int TEST_FIELD_NUMBER = 3;
-      private int test_;
-      /**
-       * <code>int32 test = 3;</code>
-       */
-      @java.lang.Override
-      public int getTest() {
-        return test_;
-      }
-      /**
-       * <code>int32 test = 3;</code>
-       */
-      private void setTest(int value) {
-        
-        test_ = value;
-      }
-      /**
-       * <code>int32 test = 3;</code>
-       */
-      private void clearTest() {
-        
-        test_ = 0;
       }
 
       public static edu.cmu.cs.gabriel.protocol.Protos.FromStandaloneEngine.Welcome parseFrom(
@@ -4673,30 +4644,6 @@ public final class Protos {
           return this;
         }
 
-        /**
-         * <code>int32 test = 3;</code>
-         */
-        @java.lang.Override
-        public int getTest() {
-          return instance.getTest();
-        }
-        /**
-         * <code>int32 test = 3;</code>
-         */
-        public Builder setTest(int value) {
-          copyOnWrite();
-          instance.setTest(value);
-          return this;
-        }
-        /**
-         * <code>int32 test = 3;</code>
-         */
-        public Builder clearTest() {
-          copyOnWrite();
-          instance.clearTest();
-          return this;
-        }
-
         // @@protoc_insertion_point(builder_scope:gabriel.FromStandaloneEngine.Welcome)
       }
       @java.lang.Override
@@ -4715,11 +4662,10 @@ public final class Protos {
               java.lang.Object[] objects = new java.lang.Object[] {
                 "sourceName_",
                 "allResponsesRequired_",
-                "test_",
               };
               java.lang.String info =
-                  "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0007" +
-                  "\u0003\u0004";
+                  "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0007" +
+                  "";
               return newMessageInfo(DEFAULT_INSTANCE, info, objects);
           }
           // fall through

@@ -4726,11 +4726,6 @@ public final class Protos {
        * <code>optional bool all_responses_required = 2;</code>
        */
       boolean getAllResponsesRequired();
-
-      /**
-       * <code>optional int32 test = 3;</code>
-       */
-      int getTest();
     }
     /**
      * Protobuf type {@code gabriel.FromStandaloneEngine.Welcome}
@@ -4812,29 +4807,6 @@ public final class Protos {
         allResponsesRequired_ = false;
       }
 
-      public static final int TEST_FIELD_NUMBER = 3;
-      private int test_;
-      /**
-       * <code>optional int32 test = 3;</code>
-       */
-      public int getTest() {
-        return test_;
-      }
-      /**
-       * <code>optional int32 test = 3;</code>
-       */
-      private void setTest(int value) {
-        
-        test_ = value;
-      }
-      /**
-       * <code>optional int32 test = 3;</code>
-       */
-      private void clearTest() {
-        
-        test_ = 0;
-      }
-
       public void writeTo(com.google.protobuf.CodedOutputStream output)
                           throws java.io.IOException {
         if (!sourceName_.isEmpty()) {
@@ -4842,9 +4814,6 @@ public final class Protos {
         }
         if (allResponsesRequired_ != false) {
           output.writeBool(2, allResponsesRequired_);
-        }
-        if (test_ != 0) {
-          output.writeInt32(3, test_);
         }
       }
 
@@ -4860,10 +4829,6 @@ public final class Protos {
         if (allResponsesRequired_ != false) {
           size += com.google.protobuf.CodedOutputStream
             .computeBoolSize(2, allResponsesRequired_);
-        }
-        if (test_ != 0) {
-          size += com.google.protobuf.CodedOutputStream
-            .computeInt32Size(3, test_);
         }
         memoizedSerializedSize = size;
         return size;
@@ -5014,29 +4979,6 @@ public final class Protos {
           return this;
         }
 
-        /**
-         * <code>optional int32 test = 3;</code>
-         */
-        public int getTest() {
-          return instance.getTest();
-        }
-        /**
-         * <code>optional int32 test = 3;</code>
-         */
-        public Builder setTest(int value) {
-          copyOnWrite();
-          instance.setTest(value);
-          return this;
-        }
-        /**
-         * <code>optional int32 test = 3;</code>
-         */
-        public Builder clearTest() {
-          copyOnWrite();
-          instance.clearTest();
-          return this;
-        }
-
         // @@protoc_insertion_point(builder_scope:gabriel.FromStandaloneEngine.Welcome)
       }
       protected final Object dynamicMethod(
@@ -5062,8 +5004,6 @@ public final class Protos {
                 !other.sourceName_.isEmpty(), other.sourceName_);
             allResponsesRequired_ = visitor.visitBoolean(allResponsesRequired_ != false, allResponsesRequired_,
                 other.allResponsesRequired_ != false, other.allResponsesRequired_);
-            test_ = visitor.visitInt(test_ != 0, test_,
-                other.test_ != 0, other.test_);
             if (visitor == com.google.protobuf.GeneratedMessageLite.MergeFromVisitor
                 .INSTANCE) {
             }
@@ -5097,11 +5037,6 @@ public final class Protos {
                   case 16: {
 
                     allResponsesRequired_ = input.readBool();
-                    break;
-                  }
-                  case 24: {
-
-                    test_ = input.readInt32();
                     break;
                   }
                 }

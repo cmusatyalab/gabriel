@@ -100,7 +100,6 @@ message FromStandaloneEngine {
     message Welcome {
         string source_name = 1;
         bool all_responses_required = 2;
-        int32 test = 3;
     }
 
     oneof welcome_or_result_wrapper {
