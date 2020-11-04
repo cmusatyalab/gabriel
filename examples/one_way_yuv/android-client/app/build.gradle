@@ -38,6 +38,10 @@ android {
                         option 'lite'
                     }
                     python {
+                        // This gradle file is located in
+                        // <REPOSITORY ROOT>/examples/one_way_yuv/android-client/app
+                        // outputSubDir is relative to
+                        // <REPOSITORY ROOT>/examples/one_way_yuv/android-client/app/build/generated/source/proto/debug
                         outputSubDir = '../../../../../../..'
                     }
                 }
