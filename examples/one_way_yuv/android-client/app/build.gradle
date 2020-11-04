@@ -35,7 +35,10 @@ android {
             all().each { task ->
                 task.builtins {
                     java {
-                        option "lite"
+                        option 'lite'
+                    }
+                    python {
+                        outputSubDir = '../../../../../../..'
                     }
                 }
             }

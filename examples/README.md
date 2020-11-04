@@ -15,17 +15,12 @@ flag when starting the client or engine.
 All examples have Python clients. Only the Round Trip and One Way YUV examples
 have Android clients. You need to specify the server host for the Android
 clients by adding the line `gabrielHost="<THE_HOST>"` to
-`android-client/local.properties` for the client you are trying to run.
+`android-client/local.properties` before you build the client.
 
-The extra `ToServer` protobuf fields for the One Way YUV example are specified
-in `one_way_yuv/android-client/app/src/main/proto/yuv.proto`. If you modify
-these fields, the proto will be rebuilt for Android automatically, the next time
-you build the App with Android Studio. You must recompile the proto for Python
-by running:
-
-```bash
-/path/to/protoc --python_out one_way_yuv --proto_path one_way_yuv/android-client/app/src/main/proto yuv.proto
-```
+The `ToServer` proto (that the One Way YUV example uses) is specified
+in `one_way_yuv/android-client/app/src/main/proto/yuv.proto`. If you modify this
+proto, it will be rebuilt for both Python and Android, the next time you start
+the Android app from Android Studio.
 
 ## Round Trip
 
@@ -95,8 +90,8 @@ to the engine using YUV NV21 encoding. This saves the smartphone from having to
 do JPEG encoding, and likely avoids compression artifacts. However, it requires
 transmitting 1.5 bytes for every pixel in the image.
 
-The image dimensions and rotation of the image are added to the extras field of
-the `InputFrame` proto.
+The image dimensions and rotation of the image are added to the `extras` field
+of the `InputFrame` proto.
 
 ## Empty Messages
 
@@ -105,4 +100,4 @@ adding anything to them. This example functions as a ping test.
 
 This example doesn't have a real sensor slowing down the rate that new inputs
 are produced, so it's important to keep the call to `asyncio.sleep` in the
-producer. Otherwise the client will send input to the server as fast as it can.
+producer. Otherwise, the client will send input to the server as fast as it can.
