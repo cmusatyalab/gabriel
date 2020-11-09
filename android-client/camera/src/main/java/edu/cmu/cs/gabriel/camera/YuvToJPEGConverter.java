@@ -12,22 +12,22 @@ import com.google.protobuf.ByteString;
 
 import java.io.ByteArrayOutputStream;
 
-public class YuvToJpegConverter {
+public class YuvToJPEGConverter {
     final private static int DEFAULT_JPEG_QUALITY = 67;
     final private YuvToRgbConverter yuvToRgbConverter;
     final private int jpegQuality;
     private Bitmap bitmap;
 
-    public YuvToJpegConverter(Context context, int jpegQuality) {
+    public YuvToJPEGConverter(Context context, int jpegQuality) {
         this.yuvToRgbConverter = new YuvToRgbConverter(context);
         this.jpegQuality = jpegQuality;
     }
 
-    public YuvToJpegConverter(Context context) {
+    public YuvToJPEGConverter(Context context) {
         this(context, DEFAULT_JPEG_QUALITY);
     }
 
-    public synchronized ByteString convertToJpeg(@NonNull ImageProxy imageProxy) {
+    public synchronized ByteString convert(@NonNull ImageProxy imageProxy) {
         // Wait until we have the first image to allocate this, because width and high might not be
         // exactly what was specified to the camera
         if (bitmap == null) {

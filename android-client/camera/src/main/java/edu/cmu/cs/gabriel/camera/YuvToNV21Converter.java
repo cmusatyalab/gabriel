@@ -6,11 +6,11 @@ import androidx.camera.core.ImageProxy;
 
 import com.google.protobuf.ByteString;
 
-public class YuvToNv21Converter {
+public class YuvToNV21Converter {
     private byte[] outputBuffer;
     private int pixelCount;
 
-    public synchronized ByteString convertToBuffer(ImageProxy imageProxy) {
+    public synchronized ByteString convert(ImageProxy imageProxy) {
         // Wait until we have the first image to allocate this, because width and high might not be
         // exactly what was specified to the camera
         if (this.outputBuffer == null) {
