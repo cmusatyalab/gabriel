@@ -2,7 +2,7 @@
 
 ## Usage
 
-Add the lines `implementation 'edu.cmu.cs.gabriel:client:2.2.0'` and
+Add the lines `implementation 'edu.cmu.cs.gabriel:client:2.3.0'` and
 `implementation 'edu.cmu.cs.gabriel:protocol:2.0.1'` to your app's build.gradle
 file.
 Your project must include either the `jcenter()` repository or the
@@ -21,7 +21,7 @@ for more details.
 
 Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm` using the
 static `ServerComm#createServerComm` method.
-[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L28).
+[Example](https://github.com/cmusatyalab/gabriel/blob/d93e6216f4e7f508fe2a288565ea829c45619c3f/examples/round_trip/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L59).
 This method takes one `Consumer` instance `resultConsumer` that gets called
 whenever a new result is available from the server, and a second `Consumer`
 instance `onDisconnect` that gets called when there is a connection problem.
@@ -30,7 +30,7 @@ message to the user, cleaning up the app state, and then bringing the user back
 to a screen to modify connection settings.
 
 Send messages to the server using `ServerComm`'s `send` or `sendSupplier` methods.
-[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/main/java/edu/cmu/cs/gabriel/network/OpenrtistComm.java#L49).
+[Example](https://github.com/cmusatyalab/gabriel/blob/d93e6216f4e7f508fe2a288565ea829c45619c3f/examples/round_trip/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L69).
 
 ### Measurement
 
@@ -47,7 +47,14 @@ for measurements. Create an instance of `MeasurementServerComm` instead of
 `intervalReporter` argument to
 `MeasurementServerComm#createMeasurementServerComm`, to send measurements to log
 output. Use `CsvMeasurementConsumer` to write measurements to a file.
-[Example](https://github.com/cmusatyalab/openrtist/blob/019a58999fbdd7494b09b141e2c688e2fda32fb0/android-client/app/src/measurement/java/edu/cmu/cs/gabriel/network/MeasurementComm.java#L28)
+[Example](https://github.com/cmusatyalab/openrtist/blob/dbfab2399d017b9f5ee29054dea8616dfac3ab5a/android-client/app/src/measurement/java/edu/cmu/cs/gabriel/network/MeasurementComm.java#L27)
+
+### Camera
+
+Add the line `implementation 'edu.cmu.cs.gabriel:camera:2.3.0'` to your app's
+build.gradle file. See
+[this](https://github.com/cmusatyalab/gabriel/blob/d93e6216f4e7f508fe2a288565ea829c45619c3f/examples/one_way_yuv/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L57)
+example client.
 
 ## Publishing Changes to Maven Central
 
