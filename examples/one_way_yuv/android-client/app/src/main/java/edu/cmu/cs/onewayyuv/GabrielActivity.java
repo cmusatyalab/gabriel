@@ -1,4 +1,4 @@
-package edu.cmu.cs.roundtrip;
+package edu.cmu.cs.onewayyuv;
 
 import android.os.Bundle;
 import android.util.Log;
@@ -14,7 +14,7 @@ import com.google.protobuf.ByteString;
 import java.util.function.Consumer;
 
 import edu.cmu.cs.gabriel.camera.CameraCapture;
-import edu.cmu.cs.gabriel.camera.YuvToNv21Converter;
+import edu.cmu.cs.gabriel.camera.YuvToNV21Converter;
 import edu.cmu.cs.gabriel.client.comm.ServerComm;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
 import edu.cmu.cs.gabriel.protocol.Protos;
@@ -30,7 +30,7 @@ public class GabrielActivity extends AppCompatActivity {
     private static final int PORT = 9099;
 
     private ServerComm serverComm;
-    private YuvToNv21Converter yuvToNv21Converter;
+    private YuvToNV21Converter yuvToNV21Converter;
     private CameraCapture cameraCapture;
 
     @Override
@@ -53,7 +53,7 @@ public class GabrielActivity extends AppCompatActivity {
         serverComm = ServerComm.createServerComm(
                 consumer, BuildConfig.GABRIEL_HOST, PORT, getApplication(), onDisconnect);
 
-        yuvToNv21Converter = new YuvToNv21Converter();
+        yuvToNV21Converter = new YuvToNV21Converter();
         cameraCapture = new CameraCapture(this, analyzer, WIDTH, HEIGHT, viewFinder);
     }
 
@@ -70,7 +70,7 @@ public class GabrielActivity extends AppCompatActivity {
         @Override
         public void analyze(@NonNull ImageProxy image) {
             serverComm.sendSupplier(() -> {
-                ByteString nv21ByteString = yuvToNv21Converter.convertToBuffer(image);
+                ByteString nv21ByteString = yuvToNV21Converter.convert(image);
 
                 ToServer toServer = ToServer.newBuilder()
                         .setRotation(image.getImageInfo().getRotationDegrees())

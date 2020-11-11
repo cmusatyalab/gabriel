@@ -22,6 +22,11 @@ in `one_way_yuv/android-client/app/src/main/proto/yuv.proto`. If you modify this
 proto, it will be rebuilt for both Python and Android the next time you start
 the Android app from Android Studio.
 
+The Android clients will only work if you build the debug build variants. If
+Android Studio does not list files correctly in the project view, or if code
+completion does not work, switching to the release build variant and then
+switching back to debug should fix the problem.
+
 ## Round Trip
 
 The round trip client captures a frame from your webcam, sends it to the server,

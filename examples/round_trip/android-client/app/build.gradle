@@ -33,13 +33,9 @@ android {
 }
 
 dependencies {
-    implementation fileTree(dir: "libs", include: ["*.jar"])
-    implementation 'androidx.appcompat:appcompat:1.2.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
-
-    implementation 'edu.cmu.cs.gabriel:client:2.2.3'
+    implementation 'edu.cmu.cs.gabriel:client:2.3.0'
     implementation 'edu.cmu.cs.gabriel:protocol:2.0.1'
-    implementation 'edu.cmu.cs.gabriel:camera:2.2.3'
+    implementation 'edu.cmu.cs.gabriel:camera:2.3.0'
 
     def camerax_version = "1.0.0-beta11"
     // CameraX core library using camera2 implementation

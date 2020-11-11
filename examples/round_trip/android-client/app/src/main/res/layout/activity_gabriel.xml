@@ -25,6 +25,6 @@
         app:layout_constraintHorizontal_bias="0.504"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        android:contentDescription="@string/depiction_of_next_state" />
+        android:contentDescription="@string/from_server" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

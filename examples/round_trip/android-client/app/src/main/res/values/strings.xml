@@ -1,6 +1,4 @@
 <resources>
     <string name="app_name">Gabriel Round Trip</string>
-    <string name="stop_meeting">Stop Meeting</string>
-    <string name="ask_for_help">Ask For Help</string>
-    <string name="depiction_of_next_state">Depiction of next state</string>
+    <string name="from_server">Image sent from server</string>
 </resources>

@@ -15,7 +15,7 @@ import com.google.protobuf.ByteString;
 import java.util.function.Consumer;
 
 import edu.cmu.cs.gabriel.camera.CameraCapture;
-import edu.cmu.cs.gabriel.camera.YuvToJpegConverter;
+import edu.cmu.cs.gabriel.camera.YuvToJPEGConverter;
 import edu.cmu.cs.gabriel.camera.ImageViewUpdater;
 import edu.cmu.cs.gabriel.client.comm.ServerComm;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
@@ -31,7 +31,7 @@ public class GabrielActivity extends AppCompatActivity {
     private static final int HEIGHT = 480;
 
     private ServerComm serverComm;
-    private YuvToJpegConverter yuvToJpegConverter;
+    private YuvToJPEGConverter yuvToJPEGConverter;
     private CameraCapture cameraCapture;
 
     @Override
@@ -59,7 +59,7 @@ public class GabrielActivity extends AppCompatActivity {
         serverComm = ServerComm.createServerComm(
                 consumer, BuildConfig.GABRIEL_HOST, PORT, getApplication(), onDisconnect);
 
-        yuvToJpegConverter = new YuvToJpegConverter(this);
+        yuvToJPEGConverter = new YuvToJPEGConverter(this);
         cameraCapture = new CameraCapture(this, analyzer, WIDTH, HEIGHT, viewFinder);
     }
 
@@ -67,7 +67,7 @@ public class GabrielActivity extends AppCompatActivity {
         @Override
         public void analyze(@NonNull ImageProxy image) {
             serverComm.sendSupplier(() -> {
-                ByteString jpegByteString = yuvToJpegConverter.convertToJpeg(image);
+                ByteString jpegByteString = yuvToJPEGConverter.convert(image);
 
                 return InputFrame.newBuilder()
                         .setPayloadType(Protos.PayloadType.IMAGE)
