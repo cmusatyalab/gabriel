@@ -52,9 +52,8 @@ output. Use `CsvMeasurementConsumer` to write measurements to a file.
 ### Camera
 
 Add the line `implementation 'edu.cmu.cs.gabriel:camera:2.3.0'` to your app's
-build.gradle file. See
-[this](https://github.com/cmusatyalab/gabriel/blob/d93e6216f4e7f508fe2a288565ea829c45619c3f/examples/one_way_yuv/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L57)
-example client.
+build.gradle file. Create an instance of `CameraCapture`.
+[Example](https://github.com/cmusatyalab/gabriel/blob/e50077cfe9d96474b1a7d73e3fac521900c1ee5f/examples/round_trip/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L63)
 
 ## Publishing Changes to Maven Central
 
