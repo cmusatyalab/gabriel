@@ -19,9 +19,9 @@ import edu.cmu.cs.gabriel.camera.YuvToJPEGConverter;
 import edu.cmu.cs.gabriel.camera.ImageViewUpdater;
 import edu.cmu.cs.gabriel.client.comm.ServerComm;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
-import edu.cmu.cs.gabriel.protocol.Protos;
 import edu.cmu.cs.gabriel.protocol.Protos.InputFrame;
 import edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper;
+import edu.cmu.cs.gabriel.protocol.Protos.PayloadType;
 
 public class GabrielActivity extends AppCompatActivity {
     private static final String TAG = "GabrielActivity";
@@ -70,7 +70,7 @@ public class GabrielActivity extends AppCompatActivity {
                 ByteString jpegByteString = yuvToJPEGConverter.convert(image);
 
                 return InputFrame.newBuilder()
-                        .setPayloadType(Protos.PayloadType.IMAGE)
+                        .setPayloadType(PayloadType.IMAGE)
                         .addPayloads(jpegByteString)
                         .build();
             }, SOURCE, false);

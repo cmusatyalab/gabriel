@@ -4,6 +4,7 @@ import cv2
 from gabriel_protocol import gabriel_pb2
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.websocket_client import ProducerWrapper
+from gabriel_client import push_source
 
 
 DEFAULT_NUM_SOURCES = 1
@@ -11,10 +12,6 @@ ORG = (0, 120)
 FONT_FACE = cv2.FONT_HERSHEY_PLAIN
 FONT_SCALE = 10
 COLOR = (255, 0, 0)
-
-
-def consumer(result_wrapper):
-    print('Got back {} results'.format(result_wrapper.results))
 
 
 def main():
@@ -35,7 +32,7 @@ def main():
             _, jpeg_frame=cv2.imencode('.jpg', frame)
             input_frame = gabriel_pb2.InputFrame()
             input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-            input_frame.payloads.append(jpeg_frame.tostring())
+            input_frame.payloads.append(jpeg_frame.tobytes())
 
             return input_frame
         return producer
@@ -45,7 +42,8 @@ def main():
         for i in range(args.num_sources)
     ]
     client = WebsocketClient(
-        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, consumer)
+        args.server_host, common.WEBSOCKET_PORT, producer_wrappers,
+        push_source.consumer)
     client.launch()
 
 

@@ -14,7 +14,7 @@ class DisplayEngine(cognitive_engine.Engine):
         self._source_name = source_name
 
     def handle(self, input_frame):
-        np_data = np.fromstring(input_frame.payloads[0], dtype=np.uint8)
+        np_data = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
         cv2.imshow("Image from source: {}".format(self._source_name), frame)
         cv2.waitKey(1)

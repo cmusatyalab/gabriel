@@ -17,9 +17,9 @@ import edu.cmu.cs.gabriel.camera.CameraCapture;
 import edu.cmu.cs.gabriel.camera.YuvToNV21Converter;
 import edu.cmu.cs.gabriel.client.comm.ServerComm;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
-import edu.cmu.cs.gabriel.protocol.Protos;
 import edu.cmu.cs.gabriel.protocol.Protos.InputFrame;
 import edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper;
+import edu.cmu.cs.gabriel.protocol.Protos.PayloadType;
 import edu.cmu.cs.gabriel.YUVProtos.ToServer;
 
 public class GabrielActivity extends AppCompatActivity {
@@ -79,7 +79,7 @@ public class GabrielActivity extends AppCompatActivity {
                         .build();
 
                 return InputFrame.newBuilder()
-                        .setPayloadType(Protos.PayloadType.IMAGE)
+                        .setPayloadType(PayloadType.IMAGE)
                         .addPayloads(nv21ByteString)
                         .setExtras(GabrielActivity.pack(toServer))
                         .build();

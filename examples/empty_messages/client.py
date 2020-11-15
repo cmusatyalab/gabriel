@@ -1,6 +1,7 @@
 from gabriel_protocol import gabriel_pb2
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.websocket_client import ProducerWrapper
+from gabriel_client import push_source
 import asyncio
 
 
@@ -12,15 +13,12 @@ def main():
 
         return gabriel_pb2.InputFrame()
 
-    def consumer(_):
-        pass
-
     producer_wrappers = [
         ProducerWrapper(producer=producer, source_name='empty')
     ]
     client = WebsocketClient(
         host='localhost', port=9099, producer_wrappers=producer_wrappers,
-        consumer=consumer)
+        consumer=push_source.consumer)
     client.launch()
 
 
