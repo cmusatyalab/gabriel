@@ -59,7 +59,7 @@ class OpencvAdapter:
             logger.error('Got result of type %s', type_name)
             return
 
-        np_data = np.fromstring(result.payload, dtype=np.uint8)
+        np_data = np.frombuffer(result.payload, dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
 
         self._consume_frame(frame, result_wrapper.extras)
