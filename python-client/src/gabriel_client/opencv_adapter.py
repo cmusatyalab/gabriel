@@ -35,7 +35,7 @@ class OpencvAdapter:
 
             input_frame = gabriel_pb2.InputFrame()
             input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-            input_frame.payloads.append(jpeg_frame.tobuffer())
+            input_frame.payloads.append(jpeg_frame.tobytes())
 
             extras = self._produce_extras()
             if extras is not None:
