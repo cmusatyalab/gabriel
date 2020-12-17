@@ -45,6 +45,10 @@ public class GabrielActivity extends AppCompatActivity {
         ImageViewUpdater imageViewUpdater = new ImageViewUpdater(imageView);
 
         Consumer<ResultWrapper> consumer = resultWrapper -> {
+            if (resultWrapper.getResultsCount() == 0) {
+                return;
+            }
+
             ResultWrapper.Result result = resultWrapper.getResults(0);
             ByteString jpegByteString = result.getPayload();
 
