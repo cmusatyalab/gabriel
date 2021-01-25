@@ -7,14 +7,22 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.util.Log;
 import android.util.Size;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.Camera;
+import androidx.camera.core.CameraControl;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.FocusMeteringAction;
 import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.MeteringPoint;
+import androidx.camera.core.MeteringPointFactory;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 
@@ -100,8 +108,48 @@ public class CameraCapture {
                 } else {
                     Preview preview = new Preview.Builder().build();
                     preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
-                    cameraProvider.bindToLifecycle(
+                    Camera camera = cameraProvider.bindToLifecycle(
                             this.activity, cameraSelector, imageAnalysis, preview);
+
+                    // Begin pinch to zoom and tap to focus
+                    CameraControl cameraControl = camera.getCameraControl();
+                    ScaleGestureDetector.SimpleOnScaleGestureListener simpleOnScaleGestureListener =
+                            new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                                @Override
+                                public boolean onScale(ScaleGestureDetector detector) {
+                                    float currentZoomRatio = camera.getCameraInfo()
+                                            .getZoomState().getValue().getZoomRatio();
+
+                                    float delta = detector.getScaleFactor();
+
+                                    cameraControl.setZoomRatio(currentZoomRatio * delta);
+
+                                    return true;
+                                }
+                            };
+                    ScaleGestureDetector scaleGestureDetector = new ScaleGestureDetector(
+                            this.activity, simpleOnScaleGestureListener);
+
+                    // Based on https://stackoverflow.com/a/59087108/859277
+                    viewFinder.setOnTouchListener(new View.OnTouchListener() {
+                        @Override
+                        public boolean onTouch(View view, MotionEvent motionEvent) {
+                            scaleGestureDetector.onTouchEvent(motionEvent);
+                            if (motionEvent.getAction() != MotionEvent.ACTION_UP) {
+                                return true;
+                            }
+
+                            MeteringPointFactory meteringPointFactory = viewFinder.getMeteringPointFactory();
+                            MeteringPoint meteringPoint = meteringPointFactory.createPoint(
+                                    motionEvent.getX(), motionEvent.getY());
+                            FocusMeteringAction action = (
+                                    new FocusMeteringAction.Builder(meteringPoint)).build();
+                            cameraControl.startFocusAndMetering(action);
+
+                            return true;
+                        }
+                    });
+                    // End pinch to zoom and tap to focus
                 }
             } catch (ExecutionException | InterruptedException e) {
                 Log.e(TAG, "Could not setup camera", e);
