@@ -96,24 +96,29 @@ public class ResultObserver implements Observer<byte[]>  {
     }
 
     void processResponse(ToClient.Response response) {
-        if (response.getReturnToken()) {
-            Objects.requireNonNull(this.sources.get(response.getSourceName())).returnToken();
-        }
-
         ResultWrapper resultWrapper = response.getResultWrapper();
         ResultWrapper.Status status = resultWrapper.getStatus();
         if ((this.onErrorResult != null) && (status == ResultWrapper.Status.ENGINE_ERROR ||
                 status == ResultWrapper.Status.WRONG_INPUT_FORMAT ||
                 status == ResultWrapper.Status.NO_ENGINE_FOR_SOURCE)) {
+            if (response.getReturnToken()) {
+                Objects.requireNonNull(this.sources.get(response.getSourceName())).returnToken();
+            }
             this.onErrorResult.run();
         }
 
         if (status != ResultWrapper.Status.SUCCESS) {
             Log.e(TAG, "Output status was: " + status.name());
+            if (response.getReturnToken()) {
+                Objects.requireNonNull(this.sources.get(response.getSourceName())).returnToken();
+            }
             return;
         }
 
         this.resultConsumer.accept(resultWrapper);
+        if (response.getReturnToken()) {
+            Objects.requireNonNull(this.sources.get(response.getSourceName())).returnToken();
+        }
     }
 
     @Override
