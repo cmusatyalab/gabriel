@@ -46,12 +46,13 @@ class WebsocketClient:
         self.producer_wrappers = producer_wrappers
         self.consumer = consumer
 
-    def launch(self):
+    def launch(self, message_max_size=None):
         event_loop = asyncio.get_event_loop()
 
         try:
             self._websocket = event_loop.run_until_complete(
-                websockets.connect(self._uri, create_protocol=NoDelayProtocol))
+                websockets.connect(self._uri, create_protocol=NoDelayProtocol,
+                                   max_size=message_max_size))
         except ConnectionRefusedError:
             logger.error('Could not connect to server')
             return
