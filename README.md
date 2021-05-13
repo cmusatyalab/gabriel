@@ -1,8 +1,9 @@
 # Gabriel
 
-Gabriel is a framework for wearable cognitive assistance using cloudlets. Please
-visit our [website](http://gabriel.cs.cmu.edu) and read our
-[paper](http://dl.acm.org/citation.cfm?id=2594383).
+Gabriel is a framework for wearable cognitive assistance using cloudlets.
+You can find more details about Gabriel from our [design document](design), our
+[paper](http://dl.acm.org/citation.cfm?id=2594383), and our
+[website](http://gabriel.cs.cmu.edu).
 
 ## Getting Started
 
@@ -17,7 +18,10 @@ visit our [website](http://gabriel.cs.cmu.edu) and read our
 The [examples](examples) directory of this repository contains some toy
 workflows.
 
-## High Level Design
+## Details
+
+The following section provides low-level details about how this code works. See
+our [design document](design) for a higher-level explanation.
 
 Clients send one frame to the server at a time. Clients have sources, which
 produce frames. A source can be an interactive application that sends frames
