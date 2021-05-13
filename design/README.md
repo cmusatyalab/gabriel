@@ -49,9 +49,9 @@ cognitive engine takes a long time to process earlier frames. As a result, there
 might be a significant amount of time between when a frame is captured and when
 it gets processed. However, using multiple tokens avoids periods where the
 cloudlet has to wait to receive the next frame. Increasing
-the number of tokens thus increases the possible dealy before a frame gets
+the number of tokens thus increases the possible delay before a frame gets
 processed but reduces the amount of time the cloudlet has no frames to process,
-when network latency is high. The number of rames is thus a parameter that will
+when network latency is high. The number of frames is thus a parameter that will
 increase the framerate for applications that can tolerate higher latency.
 
 When multiple cognitive engines consume frames from the same source, the token
