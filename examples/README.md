@@ -15,10 +15,10 @@ flag when starting the client or engine.
 All examples have Python clients. Only the Round Trip and One Way YUV examples
 have Android clients. You need to specify the server host for the Android
 clients by adding the line `gabrielHost="<THE_HOST>"` to
-`android-client/local.properties` before you build the client.
+`gabriel/examples/THE_EXAMPLE/android-client/local.properties` before you build the client.
 
 The `ToServer` proto (that the One Way YUV example uses) is specified
-in `one_way_yuv/android-client/app/src/main/proto/yuv.proto`. If you modify this
+in `gabriel/examples/one_way_yuv/android-client/app/src/main/proto/yuv.proto`. If you modify this
 proto, it will be rebuilt for both Python and Android the next time you start
 the Android app from Android Studio.
 
