@@ -40,6 +40,7 @@ public class CameraCapture {
     private static final String TAG = "CameraCapture";
     private static final String REQUIRED_PERMISSION = Manifest.permission.CAMERA;
     private static final CameraSelector DEFAULT_SELECTOR = CameraSelector.DEFAULT_BACK_CAMERA;
+    private static final boolean DEFAULT_ENABLE_TORCH = false;
     private final AppCompatActivity activity;
     private final ExecutorService cameraExecutor;
 
@@ -57,16 +58,22 @@ public class CameraCapture {
     public CameraCapture(
             AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
             PreviewView viewFinder, CameraSelector cameraSelector) {
+        this(activity,analyzer, width, height, viewFinder, cameraSelector, DEFAULT_ENABLE_TORCH);
+    }
+
+    public CameraCapture(
+            AppCompatActivity activity, ImageAnalysis.Analyzer analyzer, int width, int height,
+            PreviewView viewFinder, CameraSelector cameraSelector, boolean enableTorch) {
         this.activity = activity;
 
         int permission = ContextCompat.checkSelfPermission(this.activity, REQUIRED_PERMISSION);
         if (permission == PackageManager.PERMISSION_GRANTED) {
-            this.startCamera(analyzer, width, height, cameraSelector, viewFinder);
+            this.startCamera(analyzer, width, height, cameraSelector, viewFinder, enableTorch);
         } else {
             ActivityResultCallback<Boolean> activityResultCallback = isGranted -> {
                 if (isGranted) {
                     CameraCapture.this.startCamera(analyzer, width, height, cameraSelector,
-                            viewFinder);
+                            viewFinder, enableTorch);
                 } else {
                     Toast.makeText(this.activity,
                             "The user denied the camera permission.", Toast.LENGTH_LONG).show();
@@ -86,7 +93,7 @@ public class CameraCapture {
 
     private void startCamera(
             ImageAnalysis.Analyzer analyzer, int width, int height, CameraSelector cameraSelector,
-            PreviewView viewFinder) {
+            PreviewView viewFinder, boolean enableTorch) {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this.activity);
         cameraProviderFuture.addListener(() -> {
@@ -110,6 +117,8 @@ public class CameraCapture {
                     preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
                     Camera camera = cameraProvider.bindToLifecycle(
                             this.activity, cameraSelector, imageAnalysis, preview);
+
+                    camera.getCameraControl().enableTorch(enableTorch);
 
                     // Begin pinch to zoom and tap to focus
                     CameraControl cameraControl = camera.getCameraControl();
@@ -139,11 +148,12 @@ public class CameraCapture {
                                 return true;
                             }
 
-                            MeteringPointFactory meteringPointFactory = viewFinder.getMeteringPointFactory();
+                            MeteringPointFactory meteringPointFactory =
+                                    viewFinder.getMeteringPointFactory();
                             MeteringPoint meteringPoint = meteringPointFactory.createPoint(
                                     motionEvent.getX(), motionEvent.getY());
-                            FocusMeteringAction action = (
-                                    new FocusMeteringAction.Builder(meteringPoint)).build();
+                            FocusMeteringAction action =
+                                    new FocusMeteringAction.Builder(meteringPoint).build();
                             cameraControl.startFocusAndMetering(action);
 
                             return true;
