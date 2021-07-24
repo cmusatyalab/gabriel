@@ -17,7 +17,8 @@ If your app has an Android Network Security Config, you must allow cleartext
 traffic using this
 config. See
 [here](https://developer.android.com/guide/topics/manifest/application-element#usesCleartextTraffic)
-for more details.
+for more details. Your app must also request the `android.permission.INTERNET`
+permission.
 
 Create an instance of `edu.cmu.cs.gabriel.client.comm.ServerComm` using the
 static `ServerComm#createServerComm` method.
@@ -54,6 +55,14 @@ output. Use `CsvMeasurementConsumer` to write measurements to a file.
 Add the line `implementation 'edu.cmu.cs.gabriel:camera:2.3.0'` to your app's
 build.gradle file. Create an instance of `CameraCapture`.
 [Example](https://github.com/cmusatyalab/gabriel/blob/e50077cfe9d96474b1a7d73e3fac521900c1ee5f/examples/round_trip/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L63)
+
+You should also add the following lines to your app's `AndroidManifest.xml`
+file.
+
+```
+<uses-feature android:name="android.hardware.camera" />
+<uses-permission android:name="android.permission.CAMERA" />
+```
 
 ## Publishing Changes to Maven Central
 
