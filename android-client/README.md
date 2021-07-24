@@ -57,7 +57,7 @@ build.gradle file. Create an instance of `CameraCapture`.
 [Example](https://github.com/cmusatyalab/gabriel/blob/e50077cfe9d96474b1a7d73e3fac521900c1ee5f/examples/round_trip/android-client/app/src/main/java/edu/cmu/cs/roundtrip/GabrielActivity.java#L63)
 
 You should also add the following lines to your app's `AndroidManifest.xml`
-file.
+file:
 
 ```
 <uses-feature android:name="android.hardware.camera" />
