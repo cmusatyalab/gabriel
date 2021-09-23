@@ -57,7 +57,13 @@ public class ResultObserver implements Observer<byte[]>  {
 
     public Source getSource(String sourceName) {
         this.ensureReceivedWelcome();
-        return this.sources.get(sourceName);
+
+        Source source = this.sources.get(sourceName);
+        if (source == null) {
+            throw new RuntimeException("No engines consume frames from source: " + sourceName);
+        }
+
+        return source;
     }
 
     public void setOnErrorResult(Runnable onErrorResult){
