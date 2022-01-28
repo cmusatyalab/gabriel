@@ -52,7 +52,8 @@ class _LocalServer(WebsocketServer):
             self._conn.send_bytes(from_client.input_frame.SerializeToString())
             result_wrapper = gabriel_pb2.ResultWrapper()
 
-            await self._result_ready.wait()
+            if not self._conn.poll():
+                await self._result_ready.wait()
 
             result_wrapper.ParseFromString(self._conn.recv_bytes())
             await self.send_result_wrapper(
