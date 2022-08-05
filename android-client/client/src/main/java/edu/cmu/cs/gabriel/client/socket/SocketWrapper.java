@@ -1,6 +1,7 @@
 package edu.cmu.cs.gabriel.client.socket;
 
 import android.app.Application;
+import android.net.Network;
 import android.security.NetworkSecurityPolicy;
 import android.util.Log;
 
@@ -27,10 +28,11 @@ public class SocketWrapper {
 
     private final EventObserver eventObserver;
     private final GabrielSocket webSocketInterface;
+    private Network network;
 
     public SocketWrapper(String endpoint, int port, Application application,
-                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
-
+                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, Network n) {
+        network = n;
         UriOutput uriOutput = formatURI(endpoint, port);
         String wsURL;
         switch (uriOutput.getOutputType()) {
@@ -68,10 +70,15 @@ public class SocketWrapper {
             Log.e(TAG, "TLS Socket error", e);
         }
 
-        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
+        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = null;
+        if (network != null) {
+            socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
+        }
+        else {
+            socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
+        }
         okHttpClientBuilder.socketFactory(socketFactoryTcpNoDelay);
         OkHttpClient okClient = okHttpClientBuilder.build();
-
         this.webSocketInterface = (new Scarlet.Builder())
                 .webSocketFactory(OkHttpClientUtils.newWebSocketFactory(okClient, wsURL))
                 .lifecycle(androidLifecycle.combineWith(this.eventObserver.getLifecycleRegistry()))

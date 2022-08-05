@@ -1,6 +1,7 @@
 package edu.cmu.cs.gabriel.client.comm;
 
 import android.app.Application;
+import android.net.Network;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -21,7 +22,7 @@ public class ServerComm {
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect, int tokenLimit) {
         ResultObserver resultObserver = new ResultObserver(tokenLimit, resultConsumer);
-        return new ServerComm(endpoint, port, application, onDisconnect, resultObserver);
+        return new ServerComm(endpoint, port, application, onDisconnect, resultObserver, null);
     }
 
     public static ServerComm createServerComm(
@@ -31,10 +32,17 @@ public class ServerComm {
                 resultConsumer, endpoint, port, application, onDisconnect, Integer.MAX_VALUE);
     }
 
+    public static ServerComm createServerComm(
+            Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
+            Application application, Consumer<ErrorType> onDisconnect, Network network) {
+        ResultObserver resultObserver = new ResultObserver(Integer.MAX_VALUE, resultConsumer);
+        return new ServerComm(endpoint, port, application, onDisconnect, resultObserver, network);
+    }
+
     ServerComm(String endpoint, int port, Application application, Consumer<ErrorType> onDisconnect,
-               ResultObserver resultObserver) {
+               ResultObserver resultObserver, Network network) {
         this.socketWrapper = new SocketWrapper(
-                endpoint, port, application, onDisconnect, resultObserver);
+                endpoint, port, application, onDisconnect, resultObserver, network);
         this.resultObserver = resultObserver;
     }
 

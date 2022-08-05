@@ -1,5 +1,8 @@
 package edu.cmu.cs.gabriel.client.socket;
 
+import android.net.Network;
+import android.util.Log;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -10,7 +13,12 @@ public class SocketFactoryTcpNoDelay extends SocketFactory {
     private final SocketFactory socketFactory;
 
     public SocketFactoryTcpNoDelay() {
+        Log.i("SocketFactoryTcpNoDelay", "Using default factory...");
         socketFactory = SocketFactory.getDefault();
+    }
+    public SocketFactoryTcpNoDelay(Network network) {
+        Log.i("SocketFactoryTcpNoDelay", "Setting socket factory to that of the passed network...");
+        socketFactory = network.getSocketFactory();
     }
 
     @Override

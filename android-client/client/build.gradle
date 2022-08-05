@@ -17,14 +17,18 @@ android {
             minifyEnabled false
         }
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
 dependencies {
     // The files in edu.cmu.cs.gabriel.client.okhttp were copied from OkHttp 3.11.0. If newer 
     // versions of Scarlet use a different version of OkHttp, these files may have to be updated.
-    implementation 'com.tinder.scarlet:scarlet:0.1.10'
-    implementation 'com.tinder.scarlet:websocket-okhttp:0.1.10'
-    implementation 'com.tinder.scarlet:lifecycle-android:0.1.10'
+    implementation 'com.tinder.scarlet:scarlet:0.1.12'
+    implementation 'com.tinder.scarlet:websocket-okhttp:0.1.12'
+    implementation 'com.tinder.scarlet:lifecycle-android:0.1.12'
 
     // TODO: Switch to api once MobilEdgeX supports protobuf-javalite.
     // We need this to be compileOnly so openrtist can use edu.cmu.cs.gabriel:protocol-old-protobuf
