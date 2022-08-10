@@ -50,7 +50,7 @@ public class MeasurementServerComm extends ServerComm {
     MeasurementServerComm(
             String endpoint, int port, Application application, Consumer<ErrorType> onDisconnect,
             MeasurementResultObserver measurementResultObserver) {
-        super(endpoint, port, application, onDisconnect, measurementResultObserver, null);
+        super(endpoint, port, application, onDisconnect, measurementResultObserver);
         this.measurementResultObserver = measurementResultObserver;
     }
 

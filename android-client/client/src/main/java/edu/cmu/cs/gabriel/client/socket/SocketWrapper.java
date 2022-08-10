@@ -5,6 +5,8 @@ import android.net.Network;
 import android.security.NetworkSecurityPolicy;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import com.tinder.scarlet.Lifecycle;
 import com.tinder.scarlet.Scarlet;
 import com.tinder.scarlet.lifecycle.android.AndroidLifecycle;
@@ -31,8 +33,8 @@ public class SocketWrapper {
     private Network network;
 
     public SocketWrapper(String endpoint, int port, Application application,
-                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, Network n) {
-        network = n;
+                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull Network network) {
+        network = network;
         UriOutput uriOutput = formatURI(endpoint, port);
         String wsURL;
         switch (uriOutput.getOutputType()) {
@@ -70,13 +72,8 @@ public class SocketWrapper {
             Log.e(TAG, "TLS Socket error", e);
         }
 
-        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = null;
-        if (network != null) {
-            socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
-        }
-        else {
-            socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
-        }
+        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
+
         okHttpClientBuilder.socketFactory(socketFactoryTcpNoDelay);
         OkHttpClient okClient = okHttpClientBuilder.build();
         this.webSocketInterface = (new Scarlet.Builder())

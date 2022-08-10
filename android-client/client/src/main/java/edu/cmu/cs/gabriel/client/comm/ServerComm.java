@@ -1,11 +1,16 @@
 package edu.cmu.cs.gabriel.client.comm;
 
+import static androidx.core.content.ContextCompat.getSystemService;
+
 import android.app.Application;
+import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.Network;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import edu.cmu.cs.gabriel.client.observer.MeasurementResultObserver;
 import edu.cmu.cs.gabriel.client.observer.ResultObserver;
 import edu.cmu.cs.gabriel.client.results.ErrorType;
 import edu.cmu.cs.gabriel.client.results.SendSupplierResult;
@@ -18,11 +23,18 @@ public class ServerComm {
     private final SocketWrapper socketWrapper;
     private final ResultObserver resultObserver;
 
+    public ServerComm(String endpoint, int port, Application application, Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
+        ConnectivityManager cm = (ConnectivityManager) application.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        this.socketWrapper = new SocketWrapper(
+                endpoint, port, application, onDisconnect, resultObserver, cm.getActiveNetwork());
+        this.resultObserver = resultObserver;
+    }
+
     public static ServerComm createServerComm(
             Consumer<ResultWrapper> resultConsumer, String endpoint, int port,
             Application application, Consumer<ErrorType> onDisconnect, int tokenLimit) {
         ResultObserver resultObserver = new ResultObserver(tokenLimit, resultConsumer);
-        return new ServerComm(endpoint, port, application, onDisconnect, resultObserver, null);
+        return new ServerComm(endpoint, port, application, onDisconnect, resultObserver);
     }
 
     public static ServerComm createServerComm(
