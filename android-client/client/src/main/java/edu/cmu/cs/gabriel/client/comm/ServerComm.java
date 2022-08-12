@@ -23,10 +23,8 @@ public class ServerComm {
     private final SocketWrapper socketWrapper;
     private final ResultObserver resultObserver;
 
-    public ServerComm(String endpoint, int port, Application application, Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
-        ConnectivityManager cm = (ConnectivityManager) application.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        this.socketWrapper = new SocketWrapper(
-                endpoint, port, application, onDisconnect, resultObserver, cm.getActiveNetwork());
+    ServerComm(String endpoint, int port, Application application, Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
+        this.socketWrapper = new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver);
         this.resultObserver = resultObserver;
     }
 

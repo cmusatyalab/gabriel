@@ -28,13 +28,22 @@ import okhttp3.OkHttpClient;
 public class SocketWrapper {
     private static final String TAG = "SocketWrapper";
 
-    private final EventObserver eventObserver;
-    private final GabrielSocket webSocketInterface;
+    private EventObserver eventObserver;
+    private GabrielSocket webSocketInterface;
     private Network network;
 
-    public SocketWrapper(String endpoint, int port, Application application,
-                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull Network network) {
-        network = network;
+    public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
+        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
+        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, socketFactoryTcpNoDelay);
+    }
+
+    public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull Network network) {
+        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
+        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, socketFactoryTcpNoDelay);
+    }
+
+    private SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull SocketFactoryTcpNoDelay socketFactoryTcpNoDelay)
+    {
         UriOutput uriOutput = formatURI(endpoint, port);
         String wsURL;
         switch (uriOutput.getOutputType()) {
@@ -71,8 +80,6 @@ public class SocketWrapper {
         } catch (NoSuchAlgorithmException | KeyStoreException | KeyManagementException e) {
             Log.e(TAG, "TLS Socket error", e);
         }
-
-        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
 
         okHttpClientBuilder.socketFactory(socketFactoryTcpNoDelay);
         OkHttpClient okClient = okHttpClientBuilder.build();
