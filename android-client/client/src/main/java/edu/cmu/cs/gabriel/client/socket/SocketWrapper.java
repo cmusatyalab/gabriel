@@ -33,13 +33,11 @@ public class SocketWrapper {
     private Network network;
 
     public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
-        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay();
-        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, socketFactoryTcpNoDelay);
+        this(endpoint, port, application, onDisconnect, resultObserver, new SocketFactoryTcpNoDelay());
     }
 
     public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull Network network) {
-        SocketFactoryTcpNoDelay socketFactoryTcpNoDelay = new SocketFactoryTcpNoDelay(network);
-        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, socketFactoryTcpNoDelay);
+        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, new SocketFactoryTcpNoDelay(network));
     }
 
     private SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull SocketFactoryTcpNoDelay socketFactoryTcpNoDelay)
