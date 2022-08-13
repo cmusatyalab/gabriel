@@ -28,20 +28,25 @@ import okhttp3.OkHttpClient;
 public class SocketWrapper {
     private static final String TAG = "SocketWrapper";
 
-    private EventObserver eventObserver;
-    private GabrielSocket webSocketInterface;
-    private Network network;
+    private final EventObserver eventObserver;
+    private final GabrielSocket webSocketInterface;
 
-    public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
-        this(endpoint, port, application, onDisconnect, resultObserver, new SocketFactoryTcpNoDelay());
+    public SocketWrapper(String endpoint, int port, Application application,
+                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver) {
+        this(endpoint, port, application, onDisconnect, resultObserver,
+                new SocketFactoryTcpNoDelay());
     }
 
-    public SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull Network network) {
-        new SocketWrapper(endpoint, port, application, onDisconnect, resultObserver, new SocketFactoryTcpNoDelay(network));
+    public SocketWrapper(String endpoint, int port, Application application,
+                         final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver,
+                         @NonNull Network network) {
+        this(endpoint, port, application, onDisconnect, resultObserver,
+                new SocketFactoryTcpNoDelay(network));
     }
 
-    private SocketWrapper(String endpoint, int port, Application application, final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver, @NonNull SocketFactoryTcpNoDelay socketFactoryTcpNoDelay)
-    {
+    private SocketWrapper(String endpoint, int port, Application application,
+                          final Consumer<ErrorType> onDisconnect, ResultObserver resultObserver,
+                          @NonNull SocketFactoryTcpNoDelay socketFactoryTcpNoDelay) {
         UriOutput uriOutput = formatURI(endpoint, port);
         String wsURL;
         switch (uriOutput.getOutputType()) {
