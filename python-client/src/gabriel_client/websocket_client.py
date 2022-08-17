@@ -2,6 +2,7 @@ import asyncio
 import logging
 import socket
 import websockets
+import websockets.client
 from gabriel_protocol import gabriel_pb2
 from collections import namedtuple
 
