@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-server",
-    version="2.0.2",
+    version="2.1.1",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     description="Server for Wearable Cognitive Assistance Applications",
@@ -28,7 +28,7 @@ setuptools.setup(
     python_requires=">=3.6",
     install_requires=[
         "gabriel-protocol==2.0.1",
-        "websockets==8.1",
+        "websockets==9.1",
         "pyzmq==18.1",
     ],
 )

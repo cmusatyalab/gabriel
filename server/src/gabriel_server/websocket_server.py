@@ -4,6 +4,7 @@ import socket
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 import websockets
+import websockets.server
 from abc import ABC
 from abc import abstractmethod
 from collections import namedtuple
