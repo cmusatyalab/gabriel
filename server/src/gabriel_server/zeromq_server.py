@@ -5,8 +5,11 @@ from gabriel_protocol.gabriel_pb2 import ResultWrapper
 import logging
 import zmq
 import zmq.asyncio
+from abc import abstractmethod
+from abc import ABC
+import pdb
 
-URI_FORMAT = 'tcp://*:{}'
+URI_FORMAT = 'tcp://127.0.0.1:{}'
 CLIENT_TIMEOUT_SECS = 10
 
 logger = logging.getLogger(__name__)
@@ -14,29 +17,28 @@ logger = logging.getLogger(__name__)
 ctx = zmq.asyncio.Context()
 socket = ctx.socket(zmq.ROUTER)
 
-_Client = namedtuple('_Client', ['tokens_for_source', 'work_queue'])
+_Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task'])
 
-class ZeroMQServer:
-    def __init__(self, num_tokens_per_source):
+class ZeroMQServer(ABC):
+    def __init__(self, num_tokens_per_source, engine_cb):
         self._num_tokens_per_source = num_tokens_per_source
         self._clients = {}
         self._sources_consumed = set()
         self._start_event = asyncio.Event()
-        self._work_queue = asyncio.Queue()
+        self._stop_event = asyncio.Event()
         self._is_running = False
+        self._engine_cb = engine_cb
 
-    @abstractmethod
-    async def _send_to_engine(self, from_client, address):
-        '''Send FromClient to the appropriate engine(s).
+    def launch(self, port, message_max_size):
+        asyncio.ensure_future(self.launch_helper(port))
+        asyncio.get_event_loop().run_forever()
 
-        Return True if send succeeded.'''
-        pass
-
-    def launch(self, port):
+    async def launch_helper(self, port):
         socket.bind(URI_FORMAT.format(port))
         self._is_running = True
-        asyncio.create_task(_handler())
+        asyncio.create_task(self._handler())
         self._start_event.set()
+        logger.info(f"Listening on {URI_FORMAT.format(port)}")
 
     async def wait_for_start(self):
         await self._start_event.wait()
@@ -64,10 +66,9 @@ class ZeroMQServer:
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
 
-        logger.debug('Sending to address: %s', address)
+        logger.debug('Sending result to client %s', address)
         await socket.send_multipart([
             address,
-            b'',
             to_client.SerializeToString()
         ])
 
@@ -108,7 +109,7 @@ class ZeroMQServer:
         while self._is_running:
             # Listen for client messages
             try:
-                address, empty, raw_input = await socket.recv_multipart()
+                address, raw_input = await socket.recv_multipart()
             except zmq.ZMQError as error:
                 logging.error(f"Error '{error.msg}' when receiving on ZeroMQ socket")
                 continue
@@ -122,9 +123,8 @@ class ZeroMQServer:
                     tokens_for_source={source_name: self._num_tokens_per_source
                         for source_name in self._sources_consumed},
                     inputs=asyncio.Queue(),
-                    task=None)
+                    task=asyncio.create_task(self._consumer(address)))
                 self._clients[address] = client
-                client.task = asyncio.create_task(_consumer(address))
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
@@ -133,40 +133,61 @@ class ZeroMQServer:
                 to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
                 await socket.send_multipart([
                     address,
-                    b'',
                     to_client.SerializeToString()
                 ])
+                logger.debug('Sent welcome message to new client: %s', address)
+
+            if raw_input == b'Hello message':
+                continue
 
             # Handle input
-            logger.debug('Received input from %s', address)
-            await client.inputs.put(raw_input)
+            if raw_input == b'':
+                logger.debug(f'Received heartbeat from client {address}')
+            else:
+                logger.debug('Received input from %s', address)
+            client.inputs.put_nowait(raw_input)
+
+        logger.debug("Done running handler")
 
     async def _consumer(self, address):
         client = self._clients.get(address)
         if client is None:
             logging.debug(f"Client {address} not registered")
             return
+        logging.debug(f"Consuming inputs for client {address}")
 
         while address in self._clients:
             try:
-                raw_input = asyncio.wait_for(client.inputs.get(), CLIENT_TIMEOUT_SECS)
+                raw_input = await asyncio.wait_for(client.inputs.get(), CLIENT_TIMEOUT_SECS)
             except TimeoutError:
                 logger.info(f"Client disconnected: {address}")
                 del self._clients[address]
                 return
 
-            logger.debug('Consuming input from %s', address)
+            # Received heartbeat, send back heartbeat
+            if raw_input == b'':
+                socket.send_multipart([
+                    address,
+                    b''
+                ])
+                continue
 
             from_client = gabriel_pb2.FromClient()
-            from_client.ParseFromString(raw_input)
+            try:
+                from_client.ParseFromString(raw_input)
+            except DecodeError as e:
+                logger.error(f"Failed to parse input from client {address}: {e}")
+                continue
 
             status = await self._consumer_helper(client, address, from_client)
 
             if status == ResultWrapper.Status.SUCCESS:
+                logging.debug("Consumed input from %s successfully", address)
                 client.tokens_for_source[from_client.source_name] -= 1
-                return
+                continue
 
             # Send error message
+            logging.debug(f"Sending error message to client {address}")
             to_client = gabriel_pb2.ToClient()
             to_client.response.source_name = from_client.source_name
             to_client.response.frame_id = from_client.frame_id
@@ -174,7 +195,6 @@ class ZeroMQServer:
             to_client.response.result_wrapper.status = status
             await socket.send_multipart([
                 address,
-                b'',
                 to_client.SerializeToString()
             ])
 
@@ -190,7 +210,8 @@ class ZeroMQServer:
                 source_name)
             return ResultWrapper.Status.NO_TOKENS
 
-        send_success = await self._send_to_engine(from_client, address)
+        logging.debug(f"Sending input from client {address} to engine")
+        send_success = await self._engine_cb(from_client, address)
         if send_success:
             return ResultWrapper.Status.SUCCESS
         else:
