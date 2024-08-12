@@ -9,7 +9,7 @@ from abc import abstractmethod
 from abc import ABC
 import pdb
 
-URI_FORMAT = 'tcp://127.0.0.1:{}'
+URI_FORMAT = 'tcp://*:{}'
 CLIENT_TIMEOUT_SECS = 10
 
 logger = logging.getLogger(__name__)

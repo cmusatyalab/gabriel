@@ -32,19 +32,13 @@ class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
 
 
 class WebsocketServer(ABC):
-    def __init__(self, num_tokens_per_source):
+    def __init__(self, num_tokens_per_source, engine_cb):
         self._num_tokens_per_source = num_tokens_per_source
         self._clients = {}
         self._sources_consumed = set()
         self._server = None
         self._start_event = asyncio.Event()
-
-    @abstractmethod
-    async def _send_to_engine(self, from_client, address):
-        '''Send FromClient to the appropriate engine(s).
-
-        Return True if send succeeded.'''
-        pass
+        self._engine_cb = engine_cb
 
     def launch(self, port, message_max_size):
         event_loop = asyncio.get_event_loop()
@@ -194,7 +188,7 @@ class WebsocketServer(ABC):
                 source_name)
             return ResultWrapper.Status.NO_TOKENS
 
-        send_success = await self._send_to_engine(from_client, address)
+        send_success = await self._engine_cb(from_client, address)
         if send_success:
             return ResultWrapper.Status.SUCCESS
         else:
