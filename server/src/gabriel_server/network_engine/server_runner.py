@@ -23,7 +23,7 @@ Metadata = namedtuple('Metadata', ['frame_id', 'client_address'])
 MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
 
 
-def run(client_port, zmq_address, num_tokens, input_queue_maxsize,
+def run(websocket_port, zmq_address, num_tokens, input_queue_maxsize,
         timeout=FIVE_SECONDS, message_max_size=None, use_zeromq=False):
     context = zmq.asyncio.Context()
     zmq_socket = context.socket(zmq.ROUTER)
@@ -31,7 +31,7 @@ def run(client_port, zmq_address, num_tokens, input_queue_maxsize,
     logger.info('Waiting for engines to connect')
 
     server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq)
-    server.launch(client_port, message_max_size)
+    server.launch(websocket_port, message_max_size)
 
 class _Server:
     def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq):
