@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-client",
-    version="2.1.1",
+    version="3.0",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     description="Networking components for Gabriel Python clients",
@@ -23,7 +23,7 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.11",
     install_requires=[
         "gabriel-protocol==2.0.1",
         "websockets==9.1",

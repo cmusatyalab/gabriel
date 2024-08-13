@@ -17,6 +17,9 @@ CLIENT_TIMEOUT_SECS = 10
 # Message used to check connectivity between the client and the server
 HEARTBEAT = b''
 
+# Message sent by the client to register with the server
+HELLO_MSG = b'Hello message'
+
 logger = logging.getLogger(__name__)
 
 ctx = zmq.asyncio.Context()
@@ -43,10 +46,12 @@ class ZeroMQServer(ABC):
                 Callback invoked for each input received from a client
         """
         self._num_tokens_per_source = num_tokens_per_source
+        # The clients connected to the server
         self._clients = {}
+        # The sources consumed by the server
         self._sources_consumed = set()
+        # Indicates that the server start up is finished
         self._start_event = asyncio.Event()
-        self._stop_event = asyncio.Event()
         self._is_running = False
         self._engine_cb = engine_cb
 
@@ -197,7 +202,7 @@ class ZeroMQServer(ABC):
                 ])
                 logger.debug('Sent welcome message to new client: %s', address)
 
-            if raw_input == b'Hello message':
+            if raw_input == HELLO_MSG:
                 continue
 
             # Handle input
