@@ -1,52 +1,103 @@
 import asyncio
-from collections import namedtuple
-from gabriel_protocol import gabriel_pb2
 import logging
+import time
 import zmq
 import zmq.asyncio
+
 from google.protobuf.message import DecodeError
+from gabriel_protocol import gabriel_pb2
+from collections import namedtuple
+from gabriel_client.source import _Source
 
 URI_FORMAT = 'tcp://{host}:{port}'
 
 logger = logging.getLogger(__name__)
 
+# Represents an input that this client produces. 'producer' is the method
+# that produces inputs and 'source_name' is the source that the inputs are for.
 ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'source_name'])
+
+# The duration of time after which the server is considered to be disconnected.
+SERVER_TIMEOUT = 10
+
+HEARTBEAT = b''
+# The interval in seconds at which a heartbeat is sent to the server
+HEARTBEAT_INTERVAL = 1
+
+# Message sent to the server to register this client
+HELLO_MSG = b'Hello message'
 
 # ZeroMQ setup
 context = zmq.asyncio.Context()
 socket = context.socket(zmq.DEALER)
 
 class ZeroMQClient:
+    """
+    A Gabriel client that talks to the server over ZeroMQ.
+    """
     def __init__(self, host, port, producer_wrappers, consumer):
+        """
+        Args:
+            host (str): the host of the server to connect to
+            port (int): the port of the server
+            producer_wrappers (list):
+                instances of ProducerWrapper for the inputs produced by this
+                client
+            consumer: callback for results from server
+        """
+        # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
+        # The input sources accepted by the server
         self._sources = {}
         self._running = True
         self._uri = URI_FORMAT.format(host=host, port=port)
         self.producer_wrappers = producer_wrappers
         self.consumer = consumer
+        # Whether the client is connected to the server
         self._connected = asyncio.Event()
-        self._connected.set()
+        # Indicates that a heartbeat was sent to the server but a heartbeat
+        # wasn't received back from the server
         self._pending_heartbeat = False
+        # The last time a heartbeat was sent to the server
+        self._last_heartbeat_time = 0
+        # Set by tasks to schedule a heartbeat to be sent to the server
+        self._schedule_heartbeat = asyncio.Event()
+
+        self._connected.set()
 
     def launch(self, message_max_size=None):
-        asyncio.ensure_future(self.launch_helper())
+        """
+        Launch the client.
+        """
+        asyncio.ensure_future(self._launch_helper())
         asyncio.get_event_loop().run_forever()
 
-    async def launch_helper(self):
+    async def _launch_helper(self):
+        """
+        Launches async tasks for producing inputs, consuming results, and
+        sending heartbeats to the server. Also sends a hello message to the
+        server to register this client with the server.
+        """
         logger.info(f'Connecting to server at {self._uri}')
         socket.connect(self._uri)
+
+        # Wait for all tasks to finish
         async with asyncio.TaskGroup() as tg:
             tg.create_task(self._consumer_handler())
+            tg.create_task(self._heartbeat_loop())
             for producer_wrapper in self.producer_wrappers:
                 tg.create_task(self._producer_handler(
                     producer_wrapper.producer, producer_wrapper.source_name))
-            await socket.send(b'Hello message')
+            await socket.send(HELLO_MSG)
             logger.info("Sent hello message to server")
 
     async def _consumer_handler(self):
+        """
+        Handles messages from the server.
+        """
         while self._running:
             try:
-                raw_input = await asyncio.wait_for(socket.recv(), 10)
+                raw_input = await asyncio.wait_for(socket.recv(), SERVER_TIMEOUT)
             except TimeoutError:
                 if self._connected.is_set():
                     logger.info("Disconected from server")
@@ -57,7 +108,7 @@ class ZeroMQClient:
                 logger.info("Reconnected to server")
                 self._connected.set()
 
-            if raw_input == b'':
+            if raw_input == HEARTBEAT:
                 logger.debug("Received heartbeat from server")
                 self._pending_heartbeat = False
                 continue
@@ -79,11 +130,27 @@ class ZeroMQClient:
                 raise Exception('Empty to_client message')
 
     def _process_welcome(self, welcome):
+        """
+        Process a welcome message received from the server.
+
+        Args:
+            welcome:
+                The gabriel_pb2.ToClient.Welcome message received from the
+                server
+        """
         for source_name in welcome.sources_consumed:
             self._sources[source_name] = _Source(welcome.num_tokens_per_source)
         self._welcome_event.set()
 
     def _process_response(self, response):
+        """
+        Process a response received from the server.
+
+        Args:
+            response:
+                The gabriel_pb2.ToClient.Response message received from
+                the server
+        """
         result_wrapper = response.result_wrapper
         if (result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS):
             try:
@@ -101,28 +168,36 @@ class ZeroMQClient:
             self._sources[response.source_name].return_token()
 
     async def _producer_handler(self, producer, source_name):
-        '''
+        """
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
-        '''
 
+        Args:
+            producer: The method used to produce inputs for the server
+            source_name (str): The name of the source to produce inputs for
+        """
         await self._welcome_event.wait()
+
         source = self._sources.get(source_name)
         assert source is not None, (
             "No engines consume frames from source: {}".format(source_name))
+
+        # Async task used to producer an input
         producer_task = None
 
         while self._running:
             try:
-                await asyncio.wait_for(source.get_token(), timeout=1)
+                # Wait for a token. Time out to send a heartbeat to the server.
+                await asyncio.wait_for(source.get_token(), timeout=HEARTBEAT_INTERVAL)
             except TimeoutError:
-                asyncio.create_task(self._send_heartbeat())
+                self._schedule_heartbeat.set()
                 continue
-
-            if producer_task is not None and not self._connected.is_set():
+            # Stop producing inputs if disconnected from the server
+            if not self._connected.is_set():
                 logger.debug("Stopping producer task")
-                producer_task.cancel()
-                producer_task = None
+                if producer_task is not None:
+                    producer_task.cancel()
+                    producer_task = None
                 await self._connected.wait()
                 logger.debug("Resuming producer task")
 
@@ -130,10 +205,15 @@ class ZeroMQClient:
                 logger.debug("Created new producer task")
                 producer_task = asyncio.create_task(producer())
             try:
-                input_frame = await asyncio.wait_for(asyncio.shield(producer_task), timeout=1)
+                # Wait for the producer to produce an input. Time out to send
+                # a heartbeat to the server. Use an asyncio.shield to prevent
+                # task cancellation.
+                input_frame = await asyncio.wait_for(
+                    asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL)
             except TimeoutError:
                 source.return_token()
-                asyncio.create_task(self._send_heartbeat())
+                self._schedule_heartbeat.set()
+                await asyncio.sleep(0)
                 continue
 
             logger.debug("Got input from producer")
@@ -149,6 +229,7 @@ class ZeroMQClient:
             from_client.source_name = source_name
             from_client.input_frame.CopyFrom(input_frame)
 
+            # Send input to server
             await socket.send(from_client.SerializeToString())
 
             logger.debug('num_tokens for %s is now %d', source_name,
@@ -156,35 +237,28 @@ class ZeroMQClient:
             source.next_frame()
 
     async def _send_heartbeat(self):
+        """
+        Send a heartbeat to the server.
+        """
+        # Do not send a heartbeat if disconnected from server or a heartbeat
+        # is pending.
         if not self._connected.is_set() or self._pending_heartbeat:
             return
         logger.debug("Sending heartbeat to server")
         self._pending_heartbeat = True
-        await socket.send(b'')
+        self._last_heartbeat_time = time.monotonic()
+        await socket.send(HEARTBEAT)
 
-class _Source:
-    def __init__(self, num_tokens):
-        self._num_tokens = num_tokens
-        self._event = asyncio.Event()
-        self._frame_id = 0
-
-    def return_token(self):
-        self._num_tokens += 1
-        self._event.set()
-
-    async def get_token(self):
-        while self._num_tokens < 1:
-            logger.debug('Waiting for token')
-            self._event.clear()  # Clear because we definitely want to wait
-            await self._event.wait()
-
-        self._num_tokens -= 1
-
-    def get_num_tokens(self):
-        return self._num_tokens
-
-    def get_frame_id(self):
-        return self._frame_id
-
-    def next_frame(self):
-        self._frame_id += 1
+    async def _heartbeat_loop(self):
+        """
+        Send a heartbeat when one is scheduled by another task and sufficient
+        time has passed since the last heartbeat was sent.
+        """
+        while self._running:
+            # Wait for heartbeat to be scheduled by another task
+            self._schedule_heartbeat.clear()
+            await self._schedule_heartbeat.wait()
+            # Heartbeat was sent recently
+            if time.monotonic() - self._last_heartbeat_time < HEARTBEAT_INTERVAL:
+                continue
+            await self._send_heartbeat()
