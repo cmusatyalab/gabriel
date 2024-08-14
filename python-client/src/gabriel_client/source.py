@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+logger = logging.getLogger(__name__)
+
 class _Source:
     def __init__(self, num_tokens):
         self._num_tokens = num_tokens
