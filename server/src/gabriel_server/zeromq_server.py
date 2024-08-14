@@ -174,10 +174,11 @@ class ZeroMQServer(ABC):
             # Listen for client messages
             try:
                 address, raw_input = await socket.recv_multipart()
-            except zmq.ZMQError as error:
+            except (zmq.ZMQError, ValueError) as error:
                 logging.error(
                     f"Error '{error.msg}' when receiving on ZeroMQ socket")
                 continue
+
 
             client = self._clients.get(address)
 
