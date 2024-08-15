@@ -27,7 +27,7 @@ setuptools.setup(
     python_requires=">=3.8",
     install_requires=[
         "gabriel-protocol==2.0.1",
-        "websockets==9.1",
+        "websockets>=9.1",
         "opencv-python>=3, <5",
     ],
     extras_require={
