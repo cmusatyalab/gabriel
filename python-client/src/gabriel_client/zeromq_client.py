@@ -81,15 +81,17 @@ class ZeroMQClient:
         logger.info(f'Connecting to server at {self._uri}')
         socket.connect(self._uri)
 
-        # Wait for all tasks to finish
-        async with asyncio.TaskGroup() as tg:
-            tg.create_task(self._consumer_handler())
-            tg.create_task(self._heartbeat_loop())
-            for producer_wrapper in self.producer_wrappers:
-                tg.create_task(self._producer_handler(
-                    producer_wrapper.producer, producer_wrapper.source_name))
-            await socket.send(HELLO_MSG)
-            logger.info("Sent hello message to server")
+        await socket.send(HELLO_MSG)
+        logger.info("Sent hello message to server")
+
+        tasks = [
+            self._producer_handler(producer_wrapper.producer, producer_wrapper.source_name)
+            for producer_wrapper in self.producer_wrappers
+        ]
+        tasks.append(self._consumer_handler())
+        tasks.append(self._heartbeat_loop())
+
+        await asyncio.gather(*tasks)
 
     async def _consumer_handler(self):
         """
