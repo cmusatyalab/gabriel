@@ -8,6 +8,8 @@ setuptools.setup(
     version="3.0",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
+    maintainer="CMU Satyalab",
+    maintainer_email="gabriel@cmusatyalab.org",
     description="Networking components for Gabriel Python clients",
     long_description=long_description,
     long_description_content_type="text/markdown",

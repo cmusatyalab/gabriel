@@ -10,6 +10,8 @@ setuptools.setup(
     version="3.0",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
+    maintainer="CMU Satyalab",
+    maintainer="gabriel@cmusatyalab.org",
     description="Server for Wearable Cognitive Assistance Applications",
     long_description=long_description,
     long_description_content_type="text/markdown",
