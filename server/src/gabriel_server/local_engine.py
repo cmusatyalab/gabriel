@@ -29,9 +29,9 @@ class _LocalServer:
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
-        self._client_server = (
+        self._server = (
             ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens_per_source, self._send_to_engine)
-        self._client_server.add_source_consumed(source_name)
+        self._server.add_source_consumed(source_name)
 
     async def _send_to_engine(self, from_client, address):
         if self._input_queue.full():
@@ -44,11 +44,11 @@ class _LocalServer:
         asyncio.get_event_loop().add_reader(
             self._conn.fileno(), self._result_ready.set)
         asyncio.ensure_future(self._engine_comm())
-        self._client_server.launch(port, message_max_size)
+        self._server.launch(port, message_max_size)
 
     async def _engine_comm(self):
-        await self._client_server.wait_for_start()
-        while self._client_server.is_running():
+        await self._server.wait_for_start()
+        while self._server.is_running():
             from_client, address = await self._input_queue.get()
             self._conn.send_bytes(from_client.input_frame.SerializeToString())
             result_wrapper = gabriel_pb2.ResultWrapper()
@@ -58,7 +58,7 @@ class _LocalServer:
                 self._result_ready.clear()
 
             result_wrapper.ParseFromString(self._conn.recv_bytes())
-            await self._client_server.send_result_wrapper(
+            await self._server.send_result_wrapper(
                 address, from_client.source_name, from_client.frame_id,
                 result_wrapper, return_token=True)
 
