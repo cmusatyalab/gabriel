@@ -3,7 +3,6 @@ import logging
 import multiprocessing
 import os
 from gabriel_protocol import gabriel_pb2
-from gabriel_server import cognitive_engine
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
 
