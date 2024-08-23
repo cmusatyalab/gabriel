@@ -11,7 +11,7 @@ def consumer(_):
 class Source:
     def __init__(self, source_name):
         self._source_name = source_name
-        self._frame_available = asyncio.Event()
+        self._frame_available = asyncio.Semphore()
         self._latest_input_frame = None
         self._read, self._write = multiprocessing.Pipe(duplex=False)
         self._added_callback = False
@@ -21,7 +21,7 @@ class Source:
             input_frame = gabriel_pb2.InputFrame()
             input_frame.ParseFromString(self._read.recv_bytes())
             self._latest_input_frame = input_frame
-            self._frame_available.set()
+            self._frame_available.release()
 
         async def producer():
             if not self._added_callback:
@@ -30,11 +30,7 @@ class Source:
                 asyncio.get_event_loop().add_reader(fd, reader_callback)
                 self._added_callback = True
 
-            await self._frame_available.wait()
-
-            # Clear because we are sending self._latest_input_frame
-            self._frame_available.clear()
-
+            await self._frame_available.acquire()
             return self._latest_input_frame
 
         return ProducerWrapper(producer=producer, source_name=self._source_name)
