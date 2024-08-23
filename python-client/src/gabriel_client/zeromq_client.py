@@ -234,8 +234,8 @@ class ZeroMQClient:
             # Send input to server
             await socket.send(from_client.SerializeToString())
 
-            logger.debug('num_tokens for %s is now %d', source_name,
-                         source.get_num_tokens())
+            logger.debug('Semaphore for %s is %s', source_name,
+                         "LOCKED" if source.is_locked() else "AVAILABLE")
             source.next_frame()
 
     async def _send_heartbeat(self):

@@ -6,23 +6,20 @@ logger = logging.getLogger(__name__)
 class _Source:
     def __init__(self, num_tokens):
         self._num_tokens = num_tokens
-        self._event = asyncio.Event()
+        self._sem = asyncio.Semaphore(num_tokens)
         self._frame_id = 0
 
     def return_token(self):
-        self._num_tokens += 1
-        self._event.set()
+        self._sem.release()
 
     async def get_token(self):
-        while self._num_tokens < 1:
-            logger.debug('Waiting for token')
-            self._event.clear()  # Clear because we definitely want to wait
-            await self._event.wait()
+        logger.debug('Waiting for token')
+        await self._sem.aquire()
 
         self._num_tokens -= 1
 
-    def get_num_tokens(self):
-        return self._num_tokens
+    def is_locked(self):
+        return self._sem.locked()
 
     def get_frame_id(self):
         return self._frame_id
