@@ -3,7 +3,7 @@ import logging
 import socket
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
-from gabriel_server import GabrielServer
+from gabriel_server.gabriel_server import GabrielServer
 import websockets
 import websockets.server
 
@@ -41,7 +41,7 @@ class WebsocketServer(GabrielServer):
     async def send_via_transport(self, address, payload):
         logger.debug('Sending to address: %s', address)
         try:
-            await self._clients.get(address).websocket.send(payload)
+            await self._clients.get(address).websocket.send(payload.SerializeToString())
         except websockets.exceptions.ConnectionClosed:
             logger.info('No connection to address: %s', address)
             return False

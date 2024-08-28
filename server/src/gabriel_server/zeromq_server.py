@@ -1,7 +1,7 @@
 import asyncio
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
-from gabriel_server import GabrielServer
+from gabriel_server.gabriel_server import GabrielServer
 import logging
 import zmq
 import zmq.asyncio
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class ZeroMQServer(GabrielServer):
     def __init__(self, num_tokens_per_source, engine_cb):
-        super.__init__(num_tokens_per_source, engine_cb)
+        super().__init__(num_tokens_per_source, engine_cb)
         self._is_running = False
         self.ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
@@ -45,7 +45,7 @@ class ZeroMQServer(GabrielServer):
         self._start_event.set()
         logger.info(f"Listening on {URI_FORMAT.format(port)}")
 
-    async def send_via_transport(self,address, payload):
+    async def send_via_transport(self, address, payload):
         logger.debug('Sending result to client %s', address)
         await self.sock.send_multipart([
             address,

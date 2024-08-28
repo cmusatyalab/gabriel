@@ -75,8 +75,8 @@ class GabrielServer(ABC):
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
 
-        return await self.send_via_transport(address, to_client.SerializeToString())
-    
+        return await self.send_via_transport(address, to_client)
+
     @abstractmethod
     async def send_via_transport(self, address, payload):
         pass
