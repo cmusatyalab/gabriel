@@ -27,9 +27,7 @@ HEARTBEAT_INTERVAL = 1
 # Message sent to the server to register this client
 HELLO_MSG = b'Hello message'
 
-# ZeroMQ setup
 context = zmq.asyncio.Context()
-socket = context.socket(zmq.DEALER)
 
 class ZeroMQClient:
     """
@@ -45,6 +43,8 @@ class ZeroMQClient:
                 client
             consumer: callback for results from server
         """
+        # Socket used for communicating with the server
+        self._socket = context.socket(zmq.DEALER)
         # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
         # The input sources accepted by the server
@@ -79,9 +79,9 @@ class ZeroMQClient:
         server to register this client with the server.
         """
         logger.info(f'Connecting to server at {self._uri}')
-        socket.connect(self._uri)
+        self._socket.connect(self._uri)
 
-        await socket.send(HELLO_MSG)
+        await self._socket.send(HELLO_MSG)
         logger.info("Sent hello message to server")
 
         tasks = [
@@ -98,13 +98,22 @@ class ZeroMQClient:
         Handles messages from the server.
         """
         while self._running:
-            try:
-                raw_input = await asyncio.wait_for(socket.recv(), SERVER_TIMEOUT)
-            except TimeoutError:
+            # Wait for a message with a timeout
+            if (self._socket.poll(SERVER_TIMEOUT) & zmq.POLLIN) == 0:
                 if self._connected.is_set():
-                    logger.info("Disconected from server")
+                    logger.info("Disconnected from server")
                     self._connected.clear()
+                else:
+                    # Resend heartbeat in case it was lost
+                    logger.debug("Still disconnected; reconnecting and resending heartbeat")
+                    self._socket.close(0)
+                    self._socket = context.socket(zmq.DEALER)
+                    self._socket.connect(self._uri)
+                    # Send heartbeat even though we are disconnected
+                    self._send_heartbeat(True)
                 continue
+
+            raw_input = await self._socket.recv()
 
             if not self._connected.is_set():
                 logger.info("Reconnected to server")
@@ -232,24 +241,30 @@ class ZeroMQClient:
             from_client.input_frame.CopyFrom(input_frame)
 
             # Send input to server
-            await socket.send(from_client.SerializeToString())
+            await self._socket.send(from_client.SerializeToString())
 
             logger.debug('Semaphore for %s is %s', source_name,
                          "LOCKED" if source.is_locked() else "AVAILABLE")
             source.next_frame()
 
-    async def _send_heartbeat(self):
+    async def _send_heartbeat(self, force=False):
         """
         Send a heartbeat to the server.
+
+        Args:
+            force:
+                Send a heartbeat even if disconnected from the server or if
+                sufficient time has not passed since the last heartbeat was
+                sent
         """
         # Do not send a heartbeat if disconnected from server or a heartbeat
-        # is pending.
-        if not self._connected.is_set() or self._pending_heartbeat:
+        # is pending, unless force is True
+        if not force and (not self._connected.is_set() or self._pending_heartbeat):
             return
         logger.debug("Sending heartbeat to server")
         self._pending_heartbeat = True
         self._last_heartbeat_time = time.monotonic()
-        await socket.send(HEARTBEAT)
+        await self._socket.send(HEARTBEAT)
 
     async def _heartbeat_loop(self):
         """
@@ -257,9 +272,11 @@ class ZeroMQClient:
         time has passed since the last heartbeat was sent.
         """
         while self._running:
-            # Wait for heartbeat to be scheduled by another task
+            if not self._schedule_heartbeat.is_set():
+                # Wait for heartbeat to be scheduled by another task
+                await self._schedule_heartbeat.wait()
             self._schedule_heartbeat.clear()
-            await self._schedule_heartbeat.wait()
+
             # Heartbeat was sent recently
             if time.monotonic() - self._last_heartbeat_time < HEARTBEAT_INTERVAL:
                 continue
