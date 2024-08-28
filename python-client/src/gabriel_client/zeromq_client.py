@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 # that produces inputs and 'source_name' is the source that the inputs are for.
 ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'source_name'])
 
-# The duration of time after which the server is considered to be disconnected.
+# The duration of time in seconds after which the server is considered to be
+# disconnected.
 SERVER_TIMEOUT = 10
 
 HEARTBEAT = b''
@@ -98,8 +99,9 @@ class ZeroMQClient:
         Handles messages from the server.
         """
         while self._running:
-            # Wait for a message with a timeout
-            if (self._socket.poll(SERVER_TIMEOUT) & zmq.POLLIN) == 0:
+            # Wait for a message with a timeout, specified in milliseconds
+            poll_result = await self._socket.poll(SERVER_TIMEOUT * 1000)
+            if (poll_result & zmq.POLLIN) == 0:
                 if self._connected.is_set():
                     logger.info("Disconnected from server")
                     self._connected.clear()
@@ -110,7 +112,7 @@ class ZeroMQClient:
                     self._socket = context.socket(zmq.DEALER)
                     self._socket.connect(self._uri)
                     # Send heartbeat even though we are disconnected
-                    self._send_heartbeat(True)
+                    await self._send_heartbeat(True)
                 continue
 
             raw_input = await self._socket.recv()

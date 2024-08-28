@@ -11,7 +11,7 @@ def consumer(_):
 class Source:
     def __init__(self, source_name):
         self._source_name = source_name
-        self._frame_available = asyncio.Semphore()
+        self._frame_available = asyncio.Semaphore()
         self._latest_input_frame = None
         self._read, self._write = multiprocessing.Pipe(duplex=False)
         self._added_callback = False
