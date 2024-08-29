@@ -26,7 +26,7 @@ class GabrielServer(ABC):
         # Metadata for each client. 'tokens_for_source' is a dictionary that stores
         # the tokens available for each source. 'task' is an async task that consumes
         # inputs from 'inputs' for each client.
-        self._Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task'])
+        self._Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task', 'websocket'])
         self._num_tokens_per_source = num_tokens_per_source
         # The clients connected to the server
         self._clients = {}

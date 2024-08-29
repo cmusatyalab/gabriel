@@ -22,7 +22,7 @@ class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
 
 class WebsocketServer(GabrielServer):
     def __init__(self, num_tokens_per_source, engine_cb):
-        super.__init(num_tokens_per_source, engine_cb)
+        super().__init__(num_tokens_per_source, engine_cb)
         self._server = None
 
     def launch(self, port, message_max_size):
@@ -67,6 +67,8 @@ class WebsocketServer(GabrielServer):
         client = self._Client(
             tokens_for_source={source_name: self._num_tokens_per_source
                                for source_name in self._sources_consumed},
+            inputs=None,
+            task=None,
             websocket=websocket)
         self._clients[address] = client
 
@@ -93,8 +95,9 @@ class WebsocketServer(GabrielServer):
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(raw_input)
 
-            status = await self._consumer_helper(client, from_client, address)
+            status = await self._consumer_helper(client, address, from_client)
             if status == ResultWrapper.Status.SUCCESS:
+                # Deduct a token when you get a new input from the client
                 client.tokens_for_source[from_client.source_name] -= 1
                 continue
 
