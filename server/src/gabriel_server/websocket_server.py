@@ -41,7 +41,7 @@ class WebsocketServer(GabrielServer):
     async def send_via_transport(self, address, payload):
         logger.debug('Sending to address: %s', address)
         try:
-            await self._clients.get(address).websocket.send(payload.SerializeToString())
+            await self._clients.get(address).websocket.send(payload)
         except websockets.exceptions.ConnectionClosed:
             logger.info('No connection to address: %s', address)
             return False

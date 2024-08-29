@@ -49,7 +49,7 @@ class ZeroMQServer(GabrielServer):
         logger.debug('Sending result to client %s', address)
         await self.sock.send_multipart([
             address,
-            payload.SerializeToString()
+            payload
         ])
         return True
 
@@ -85,7 +85,8 @@ class ZeroMQServer(GabrielServer):
                     tokens_for_source={source_name: self._num_tokens_per_source
                         for source_name in self._sources_consumed},
                     inputs=asyncio.Queue(),
-                    task=asyncio.create_task(self._consumer(address)))
+                    task=asyncio.create_task(self._consumer(address)),
+                    websocket=None)
                 self._clients[address] = client
 
                 # Send client welcome message

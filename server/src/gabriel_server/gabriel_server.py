@@ -23,9 +23,10 @@ class GabrielServer(ABC):
                 Callback invoked for each input received from a client
         """
 
-        # Metadata for each client. 'tokens_for_source' is a dictionary that stores
-        # the tokens available for each source. 'task' is an async task that consumes
-        # inputs from 'inputs' for each client.
+        # Metadata for each client. 'tokens_for_source' is a dictionary that
+        # stores the tokens available for each source. 'task' is an async task
+        # that consumes inputs from 'inputs' for each client. 'websocket' is
+        # the Websockets handler for this client if using Websockets.
         self._Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task', 'websocket'])
         self._num_tokens_per_source = num_tokens_per_source
         # The clients connected to the server
@@ -75,10 +76,17 @@ class GabrielServer(ABC):
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
 
-        return await self.send_via_transport(address, to_client)
+        return await self.send_via_transport(address, to_client.SerializeToString())
 
     @abstractmethod
     async def send_via_transport(self, address, payload):
+        """
+        Send a payload to the client at the specified address.
+
+        Args:
+            address: the identifier of the client to send the payload to
+            payload (str): the string payload to send to the client
+        """
         pass
 
     def add_source_consumed(self, source_name):
