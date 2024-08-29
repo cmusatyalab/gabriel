@@ -15,6 +15,7 @@ class _Source:
     async def get_token(self):
         logger.debug('Waiting for token')
         await self._sem.acquire()
+        logger.debug('Token acquired')
 
         self._num_tokens -= 1
 
