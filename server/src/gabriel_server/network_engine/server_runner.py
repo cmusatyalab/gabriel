@@ -61,6 +61,7 @@ class _Server:
         self._server.launch(client_port, message_max_size)
 
     async def _receive_from_engine_worker_helper(self):
+        '''Consume from ZeroMQ queue for cognitive engines messages'''
         address, _, payload = await self._zmq_socket.recv_multipart()
 
         engine_worker = self._engine_workers.get(address)
@@ -220,6 +221,7 @@ class _EngineWorker:
         self._awaiting_heartbeat_response = True
 
     async def _send_helper(self, payload):
+        '''Send the payload to the cognitive engine'''
         await self._zmq_socket.send_multipart([self._address, b'', payload])
         self._last_sent = time.time()
 
