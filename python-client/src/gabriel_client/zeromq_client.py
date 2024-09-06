@@ -110,7 +110,7 @@ class ZeroMQClient:
                     self._connected.clear()
                 else:
                     # Resend heartbeat in case it was lost
-                    logger.debug("Still disconnected; reconnecting and resending heartbeat")
+                    logger.info("Still disconnected; reconnecting and resending heartbeat")
                     self._socket.close(0)
                     self._socket = context.socket(zmq.DEALER)
                     self._socket.connect(self._uri)
