@@ -67,7 +67,7 @@ class ZeroMQClient:
         self._connected.set()
 
     async def launch_async(self):
-        asyncio.create_task(self._launch_helper())
+        await self._launch_helper()
 
     def launch(self, message_max_size=None):
         """
