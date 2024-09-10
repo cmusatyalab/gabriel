@@ -166,7 +166,7 @@ class GabrielServer(ABC):
                 source_name)
             return ResultWrapper.Status.NO_TOKENS
 
-        logging.debug(f"Sending input from client {address} to engine")
+        logger.debug(f"Sending input from client {address} to engine")
         send_success = await self._engine_cb(from_client, address)
         if send_success:
             return ResultWrapper.Status.SUCCESS

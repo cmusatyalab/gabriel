@@ -41,7 +41,7 @@ class ZeroMQServer(GabrielServer):
         """
         self.sock.bind(URI_FORMAT.format(port))
         self._is_running = True
-        asyncio.create_task(self._handler())
+        self._handler_task = asyncio.create_task(self._handler())
         self._start_event.set()
         logger.info(f"Listening on {URI_FORMAT.format(port)}")
 
@@ -121,9 +121,9 @@ class ZeroMQServer(GabrielServer):
         """
         client = self._clients.get(address)
         if client is None:
-            logging.debug(f"Client {address} not registered")
+            logger.debug(f"Client {address} not registered")
             return
-        logging.debug(f"Consuming inputs for client {address}")
+        logger.debug(f"Consuming inputs for client {address}")
 
         # Consume inputs for this client as long as it is registered
         while address in self._clients:
@@ -154,12 +154,12 @@ class ZeroMQServer(GabrielServer):
             status = await self._consumer_helper(client, address, from_client)
 
             if status == ResultWrapper.Status.SUCCESS:
-                logging.debug("Consumed input from %s successfully", address)
+                logger.debug("Consumed input from %s successfully", address)
                 client.tokens_for_source[from_client.source_name] -= 1
                 continue
 
             # Send error message
-            logging.debug(f"Sending error message to client {address}")
+            logger.debug(f"Sending error message to client {address}")
             to_client = gabriel_pb2.ToClient()
             to_client.response.source_name = from_client.source_name
             to_client.response.frame_id = from_client.frame_id
