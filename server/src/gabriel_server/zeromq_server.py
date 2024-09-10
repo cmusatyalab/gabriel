@@ -137,7 +137,7 @@ class ZeroMQServer(GabrielServer):
             # Received heartbeat, send back heartbeat
             if raw_input == HEARTBEAT:
                 logger.debug(f"Received heartbeat from client {address}; sending back heartbeat")
-                self.sock.send_multipart([
+                await self.sock.send_multipart([
                     address,
                     HEARTBEAT
                 ])
