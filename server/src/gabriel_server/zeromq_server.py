@@ -91,6 +91,7 @@ class ZeroMQServer(GabrielServer):
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
+                logger.debug(f"{len(self._sources_consumed)} source(s) available for consumption")
                 for source_name in self._sources_consumed:
                     to_client.welcome.sources_consumed.append(source_name)
                 to_client.welcome.num_tokens_per_source = self._num_tokens_per_source

@@ -19,7 +19,7 @@ ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'source_name'])
 
 # The duration of time in seconds after which the server is considered to be
 # disconnected.
-SERVER_TIMEOUT = 10
+SERVER_TIMEOUT_SECS = 10
 
 HEARTBEAT = b''
 # The interval in seconds at which a heartbeat is sent to the server
@@ -103,7 +103,7 @@ class ZeroMQClient:
         """
         while self._running:
             # Wait for a message with a timeout, specified in milliseconds
-            poll_result = await self._socket.poll(SERVER_TIMEOUT * 1000)
+            poll_result = await self._socket.poll(SERVER_TIMEOUT_SECS * 1000)
             if (poll_result & zmq.POLLIN) == 0:
                 if self._connected.is_set():
                     logger.info("Disconnected from server")
@@ -114,6 +114,7 @@ class ZeroMQClient:
                     self._socket.close(0)
                     self._socket = context.socket(zmq.DEALER)
                     self._socket.connect(self._uri)
+
                     # Send heartbeat even though we are disconnected
                     await self._send_heartbeat(True)
                 continue
@@ -154,7 +155,9 @@ class ZeroMQClient:
                 The gabriel_pb2.ToClient.Welcome message received from the
                 server
         """
+        logger.info(f"{len(welcome.sources_consumed)} sources accepted by the server")
         for source_name in welcome.sources_consumed:
+            logger.info(f"Tokens available for source {source_name}={welcome.num_tokens_per_source}")
             self._sources[source_name] = _Source(welcome.num_tokens_per_source)
         self._welcome_event.set()
 

@@ -17,8 +17,6 @@ class _Source:
         await self._sem.acquire()
         logger.debug('Token acquired')
 
-        self._num_tokens -= 1
-
     def is_locked(self):
         return self._sem.locked()
 
