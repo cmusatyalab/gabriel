@@ -129,7 +129,7 @@ class ZeroMQServer(GabrielServer):
         while address in self._clients:
             try:
                 raw_input = await asyncio.wait_for(client.inputs.get(), CLIENT_TIMEOUT_SECS)
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 logger.info(f"Client disconnected: {address}")
                 del self._clients[address]
                 return

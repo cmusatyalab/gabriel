@@ -208,7 +208,7 @@ class ZeroMQClient:
             try:
                 # Wait for a token. Time out to send a heartbeat to the server.
                 await asyncio.wait_for(source.get_token(), timeout=HEARTBEAT_INTERVAL)
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 self._schedule_heartbeat.set()
                 continue
             # Stop producing inputs if disconnected from the server
@@ -229,7 +229,7 @@ class ZeroMQClient:
                 # task cancellation.
                 input_frame = await asyncio.wait_for(
                     asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL)
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 source.return_token()
                 self._schedule_heartbeat.set()
                 await asyncio.sleep(0)
