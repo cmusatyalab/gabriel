@@ -109,14 +109,15 @@ class ZeroMQClient:
                     logger.info("Disconnected from server")
                     self._connected.clear()
                 else:
-                    # Resend heartbeat in case it was lost
                     logger.info("Still disconnected; reconnecting and resending heartbeat")
-                    self._sock.close(0)
-                    self._sock = context.socket(zmq.DEALER)
-                    self._sock.connect(self._uri)
 
-                    # Send heartbeat even though we are disconnected
-                    await self._send_heartbeat(True)
+                # Resend heartbeat in case it was lost
+                self._sock.close(0)
+                self._sock = context.socket(zmq.DEALER)
+                self._sock.connect(self._uri)
+
+                # Send heartbeat even though we are disconnected
+                await self._send_heartbeat(True)
                 continue
 
             raw_input = await self._sock.recv()
