@@ -145,6 +145,7 @@ class ZeroMQClient:
                 logger.debug('Processing response from server')
                 self._process_response(to_client.response)
             else:
+                logger.critical("Fatal error: empty to_client message received from server")
                 raise Exception('Empty to_client message')
 
     def _process_welcome(self, welcome):
@@ -179,6 +180,7 @@ class ZeroMQClient:
                 logger.error(f"Error processing response from server: {e}")
         elif (result_wrapper.status ==
               gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE):
+            logger.critical("Fatal error: no engine for source")
             raise Exception('No engine for source')
         else:
             status = result_wrapper.Status.Name(result_wrapper.status)
