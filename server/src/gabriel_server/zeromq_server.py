@@ -24,9 +24,9 @@ class ZeroMQServer(GabrielServer):
     def __init__(self, num_tokens_per_source, engine_cb):
         super().__init__(num_tokens_per_source, engine_cb)
         self._is_running = False
-        self.ctx = zmq.asyncio.Context()
+        self._ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
-        self.sock = self.ctx.socket(zmq.ROUTER)
+        self._sock = self._ctx.socket(zmq.ROUTER)
 
     def launch(self, port, message_max_size):
         asyncio.ensure_future(self._launch_helper(port))
@@ -39,15 +39,16 @@ class ZeroMQServer(GabrielServer):
         Args:
             port (int): the port to bind to
         """
-        self.sock.bind(URI_FORMAT.format(port))
+        self._sock.bind(URI_FORMAT.format(port))
         self._is_running = True
         self._handler_task = asyncio.create_task(self._handler())
         self._start_event.set()
         logger.info(f"Listening on {URI_FORMAT.format(port)}")
+        await self._handler_task
 
-    async def send_via_transport(self, address, payload):
+    async def _send_via_transport(self, address, payload):
         logger.debug('Sending result to client %s', address)
-        await self.sock.send_multipart([
+        await self._sock.send_multipart([
             address,
             payload
         ])
@@ -69,12 +70,11 @@ class ZeroMQServer(GabrielServer):
         while self._is_running:
             # Listen for client messages
             try:
-                address, raw_input = await self.sock.recv_multipart()
+                address, raw_input = await self._sock.recv_multipart()
             except (zmq.ZMQError, ValueError) as error:
                 logging.error(
                     f"Error '{error.msg}' when receiving on ZeroMQ socket")
                 continue
-
 
             client = self._clients.get(address)
 
@@ -95,7 +95,7 @@ class ZeroMQServer(GabrielServer):
                 for source_name in self._sources_consumed:
                     to_client.welcome.sources_consumed.append(source_name)
                 to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
-                await self.sock.send_multipart([
+                await self._sock.send_multipart([
                     address,
                     to_client.SerializeToString()
                 ])
@@ -119,11 +119,12 @@ class ZeroMQServer(GabrielServer):
         Args:
             address: the identifier of the client to consume inputs for
         """
-        client = self._clients.get(address)
-        if client is None:
-            logger.debug(f"Client {address} not registered")
-            return
-        logger.debug(f"Consuming inputs for client {address}")
+        try:
+            client = self._clients[address]
+        except KeyError:
+            logger.critical(f"Client {address} not registered")
+            raise
+        logger.info(f"Consuming inputs for client {address}")
 
         # Consume inputs for this client as long as it is registered
         while address in self._clients:
@@ -137,7 +138,7 @@ class ZeroMQServer(GabrielServer):
             # Received heartbeat, send back heartbeat
             if raw_input == HEARTBEAT:
                 logger.debug(f"Received heartbeat from client {address}; sending back heartbeat")
-                await self.sock.send_multipart([
+                await self._sock.send_multipart([
                     address,
                     HEARTBEAT
                 ])
@@ -159,13 +160,13 @@ class ZeroMQServer(GabrielServer):
                 continue
 
             # Send error message
-            logger.debug(f"Sending error message to client {address}")
+            logger.error(f"Sending error message to client {address}")
             to_client = gabriel_pb2.ToClient()
             to_client.response.source_name = from_client.source_name
             to_client.response.frame_id = from_client.frame_id
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status
-            await self.sock.send_multipart([
+            await self._sock.send_multipart([
                 address,
                 to_client.SerializeToString()
             ])

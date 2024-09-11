@@ -45,7 +45,7 @@ class ZeroMQClient:
             consumer: callback for results from server
         """
         # Socket used for communicating with the server
-        self._socket = context.socket(zmq.DEALER)
+        self._sock = context.socket(zmq.DEALER)
         # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
         # The input sources accepted by the server
@@ -83,9 +83,9 @@ class ZeroMQClient:
         server to register this client with the server.
         """
         logger.info(f'Connecting to server at {self._uri}')
-        self._socket.connect(self._uri)
+        self._sock.connect(self._uri)
 
-        await self._socket.send(HELLO_MSG)
+        await self._sock.send(HELLO_MSG)
         logger.info("Sent hello message to server")
 
         tasks = [
@@ -103,7 +103,7 @@ class ZeroMQClient:
         """
         while self._running:
             # Wait for a message with a timeout, specified in milliseconds
-            poll_result = await self._socket.poll(SERVER_TIMEOUT_SECS * 1000)
+            poll_result = await self._sock.poll(SERVER_TIMEOUT_SECS * 1000)
             if (poll_result & zmq.POLLIN) == 0:
                 if self._connected.is_set():
                     logger.info("Disconnected from server")
@@ -111,15 +111,15 @@ class ZeroMQClient:
                 else:
                     # Resend heartbeat in case it was lost
                     logger.info("Still disconnected; reconnecting and resending heartbeat")
-                    self._socket.close(0)
-                    self._socket = context.socket(zmq.DEALER)
-                    self._socket.connect(self._uri)
+                    self._sock.close(0)
+                    self._sock = context.socket(zmq.DEALER)
+                    self._sock.connect(self._uri)
 
                     # Send heartbeat even though we are disconnected
                     await self._send_heartbeat(True)
                 continue
 
-            raw_input = await self._socket.recv()
+            raw_input = await self._sock.recv()
 
             if not self._connected.is_set():
                 logger.info("Reconnected to server")
@@ -249,7 +249,7 @@ class ZeroMQClient:
             from_client.input_frame.CopyFrom(input_frame)
 
             # Send input to server
-            await self._socket.send(from_client.SerializeToString())
+            await self._sock.send(from_client.SerializeToString())
 
             logger.debug('Semaphore for %s is %s', source_name,
                          "LOCKED" if source.is_locked() else "AVAILABLE")
@@ -272,7 +272,7 @@ class ZeroMQClient:
         logger.debug("Sending heartbeat to server")
         self._pending_heartbeat = True
         self._last_heartbeat_time = time.monotonic()
-        await self._socket.send(HEARTBEAT)
+        await self._sock.send(HEARTBEAT)
 
     async def _heartbeat_loop(self):
         """

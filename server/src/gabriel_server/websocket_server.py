@@ -38,7 +38,7 @@ class WebsocketServer(GabrielServer):
         self._start_event.set()
         event_loop.run_forever()
 
-    async def send_via_transport(self, address, payload):
+    async def _send_via_transport(self, address, payload):
         logger.debug('Sending to address: %s', address)
         try:
             await self._clients.get(address).websocket.send(payload)
