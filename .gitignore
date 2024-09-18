@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024 Carnegie Mellon University
+#
+# SPDX-License-Identifier: Apache-2.0
+
 *.pyc
 gabriel_client.egg-info/
 gabriel_protocol.egg-info/
@@ -13,3 +17,4 @@ local.properties
 /android-client/captures
 .externalNativeBuild
 .cxx
+*~

@@ -8,6 +8,7 @@ from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server import network_engine
 from gabriel_server.websocket_server import WebsocketServer
+from gabriel_server.zeromq_server import ZeroMQServer
 
 
 FIVE_SECONDS = 5
@@ -23,44 +24,44 @@ MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
 
 
 def run(websocket_port, zmq_address, num_tokens, input_queue_maxsize,
-        timeout=FIVE_SECONDS, message_max_size=None):
+        timeout=FIVE_SECONDS, message_max_size=None, use_zeromq=False):
     context = zmq.asyncio.Context()
     zmq_socket = context.socket(zmq.ROUTER)
     zmq_socket.bind(zmq_address)
     logger.info('Waiting for engines to connect')
 
-    server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize)
+    server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq)
     server.launch(websocket_port, message_max_size)
 
-
-class _Server(WebsocketServer):
-    def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues):
-        super().__init__(num_tokens)
-
+class _Server:
+    def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
         self._source_infos = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
+        self._server = (
+            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens, self._send_to_engine)
 
-    def launch(self, websocket_port, message_max_size):
+    def launch(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
-            await self.wait_for_start()
-            while self.is_running():
+            await self._server.wait_for_start()
+            while self._server.is_running():
                 await self._receive_from_engine_worker_helper()
 
         async def heartbeat_loop():
-            await self.wait_for_start()
-            while self.is_running():
+            await self._server.wait_for_start()
+            while self._server.is_running():
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
         asyncio.ensure_future(receive_from_engine_worker_loop())
         asyncio.ensure_future(heartbeat_loop())
 
-        super().launch(websocket_port, message_max_size)
+        self._server.launch(client_port, message_max_size)
 
     async def _receive_from_engine_worker_helper(self):
+        '''Consume from ZeroMQ queue for cognitive engines messages'''
         address, _, payload = await self._zmq_socket.recv_multipart()
 
         engine_worker = self._engine_workers.get(address)
@@ -88,7 +89,7 @@ class _Server(WebsocketServer):
         if (latest_input is not None and
             latest_input.metadata == engine_worker_metadata):
             # Send response to client
-            await self.send_result_wrapper(
+            await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address, source_info.get_name(),
                 engine_worker_metadata.frame_id, result_wrapper,
                 return_token=True)
@@ -96,7 +97,7 @@ class _Server(WebsocketServer):
             return
 
         if engine_worker.get_all_responses_required():
-            await self.send_result_wrapper(
+            await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address, source_info.get_name(),
                 engine_worker_metadata.frame_id, result_wrapper,
                 return_token=False)
@@ -126,8 +127,8 @@ class _Server(WebsocketServer):
             source_info = _SourceInfo(source_name, self._size_for_queues)
             self._source_infos[source_name] = source_info
 
-            # Tell super() to accept inputs from source_name
-            self.add_source_consumed(source_name)
+            # Tell server to accept inputs from source_name
+            self._server.add_source_consumed(source_name)
 
         all_responses_required = welcome.all_responses_required
         engine_worker = _EngineWorker(
@@ -159,7 +160,7 @@ class _Server(WebsocketServer):
                 # Return token for frame engine was in the middle of processing
                 status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
                 result_wrapper = cognitive_engine.create_result_wrapper(status)
-                await self.send_result_wrapper(
+                await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
                     source_info.get_name(), current_input_metadata.frame_id,
                     result_wrapper, return_token=True)
@@ -172,7 +173,7 @@ class _Server(WebsocketServer):
                 logger.info('No remaining engines consume input from source: '
                             '%s', source_name)
                 del self._source_infos[source_name]
-                self.remove_source_consumed(source_name)
+                self._server.remove_source_consumed(source_name)
 
     async def _send_to_engine(self, from_client, client_address):
         source_info = self._source_infos[from_client.source_name]
@@ -220,6 +221,7 @@ class _EngineWorker:
         self._awaiting_heartbeat_response = True
 
     async def _send_helper(self, payload):
+        '''Send the payload to the cognitive engine'''
         await self._zmq_socket.send_multipart([self._address, b'', payload])
         self._last_sent = time.time()
 

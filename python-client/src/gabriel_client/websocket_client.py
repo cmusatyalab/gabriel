@@ -3,8 +3,10 @@ import logging
 import socket
 import websockets
 import websockets.client
+
 from gabriel_protocol import gabriel_pb2
 from collections import namedtuple
+from gabriel_client.source import _Source
 
 
 URI_FORMAT = 'ws://{host}:{port}'
@@ -151,39 +153,11 @@ class WebsocketClient:
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
 
-            logger.debug('num_tokens for %s is now %d', source_name,
-                         source.get_num_tokens())
+            logger.debug('Semaphore for %s is %s', source_name,
+                         "LOCKED" if source.is_locked() else "AVAILABLE")
             source.next_frame()
 
     async def _send_from_client(self, from_client):
         # Removing this method will break measurement_client
 
         await self._websocket.send(from_client.SerializeToString())
-
-
-class _Source:
-    def __init__(self, num_tokens):
-        self._num_tokens = num_tokens
-        self._event = asyncio.Event()
-        self._frame_id = 0
-
-    def return_token(self):
-        self._num_tokens += 1
-        self._event.set()
-
-    async def get_token(self):
-        while self._num_tokens < 1:
-            logger.debug('Waiting for token')
-            self._event.clear()  # Clear because we definitely want to wait
-            await self._event.wait()
-
-        self._num_tokens -= 1
-
-    def get_num_tokens(self):
-        return self._num_tokens
-
-    def get_frame_id(self):
-        return self._frame_id
-
-    def next_frame(self):
-        self._frame_id += 1

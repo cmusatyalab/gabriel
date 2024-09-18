@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2024 2024 Carnegie Mellon University
+#
+# SPDX-License-Identifier: Apache-2.0
+
+version = 1
+SPDX-PackageName = "Gabriel"
+SPDX-PackageSupplier = "CMU Satyalab"
+
+[[annotations]]
+path = "server/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "protocol/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "android-client/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "python-client/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "examples/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["README.md", "design/README.md", "design/architecture.png"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
+SPDX-License-Identifier = "CC0-1.0"

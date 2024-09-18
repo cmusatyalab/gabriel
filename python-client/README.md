@@ -2,7 +2,7 @@
 
 ## Installation
 
-Requires Python 3.6 or later.
+Requires Python 3.8 or later.
 
 Run `pip install gabriel-client`
 

@@ -2,7 +2,7 @@
 
 ## Installation
 
-Requires Python 3.6 or newer.
+Requires Python 3.8 or newer.
 
 Run `pip install gabriel-server`
 
