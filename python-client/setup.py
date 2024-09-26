@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-client",
-    version="3.0",
+    version="3.0.1",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     maintainer="CMU Satyalab",
