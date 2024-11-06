@@ -26,7 +26,7 @@ message InputFrame {
 
 message FromClient {
     int64 frame_id = 1;
-    string source_name = 2;
+    repeated string source_name = 2;
     InputFrame input_frame = 3;
 }
 

@@ -155,21 +155,24 @@ class GabrielServer(ABC):
             address: The identifier of the client
             from_client: A FromClient protobuf message containing the input
         """
-        source_name = from_client.source_name
-        if source_name not in self._sources_consumed:
-            logger.error('No engines consume frames from %s', source_name)
-            return ResultWrapper.Status.NO_ENGINE_FOR_SOURCE
+        statuses = {}
+        for source_name in from_client.source_name:
+            if source_name not in self._sources_consumed:
+                logger.error('No engines consume frames from %s', source_name)
+                statuses[source_name] = ResultWrapper.Status.NO_ENGINE_FOR_SOURCE
 
-        if client.tokens_for_source[source_name] < 1:
-            logger.error(
-                'Client %s sending from source %s without tokens', address,
-                source_name)
-            return ResultWrapper.Status.NO_TOKENS
+            if client.tokens_for_source[source_name] < 1:
+                logger.error(
+                    'Client %s sending from source %s without tokens', address,
+                    source_name)
+                statuses[source_name] = ResultWrapper.Status.NO_TOKENS
 
-        logger.debug(f"Sending input from client {address} to engine")
-        send_success = await self._engine_cb(from_client, address)
-        if send_success:
-            return ResultWrapper.Status.SUCCESS
-        else:
-            logger.error('Server dropped frame from: %s', source_name)
-            return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME
+            logger.debug(f"Sending input from client {address} to engine")
+            send_success = await self._engine_cb(from_client, address)
+            if send_success:
+                statuses[source_name] = ResultWrapper.Status.SUCCESS
+            else:
+                logger.error('Server dropped frame from: %s', source_name)
+                statuses[source_name] = gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME
+
+        return statuses

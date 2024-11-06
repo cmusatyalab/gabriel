@@ -154,19 +154,19 @@ class ZeroMQServer(GabrielServer):
             # Consume input
             status = await self._consumer_helper(client, address, from_client)
 
-            if status == ResultWrapper.Status.SUCCESS:
-                logger.debug("Consumed input from %s successfully", address)
-                client.tokens_for_source[from_client.source_name] -= 1
-                continue
-
-            # Send error message
-            logger.error(f"Sending error message to client {address}")
-            to_client = gabriel_pb2.ToClient()
-            to_client.response.source_name = from_client.source_name
-            to_client.response.frame_id = from_client.frame_id
-            to_client.response.return_token = True
-            to_client.response.result_wrapper.status = status
-            await self._sock.send_multipart([
-                address,
-                to_client.SerializeToString()
-            ])
+            for s in status:
+                if status[s] == ResultWrapper.Status.SUCCESS:
+                    logger.debug("Consumed input from %s successfully", address)
+                    client.tokens_for_source[s] -= 1
+                else:
+                    # Send error message
+                    logger.error(f"Sending error message to client {address}")
+                    to_client = gabriel_pb2.ToClient()
+                    to_client.response.source_name = s
+                    to_client.response.frame_id = from_client.frame_id
+                    to_client.response.return_token = True
+                    to_client.response.result_wrapper.status = status[s]
+                    await self._sock.send_multipart([
+                        address,
+                        to_client.SerializeToString()
+                    ])
