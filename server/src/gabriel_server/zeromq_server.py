@@ -65,7 +65,7 @@ class ZeroMQServer(GabrielServer):
         When a new client is connected it is registered and a welcome message
         is sent to the client, indicating that the server is ready to start
         receiving inputs from the client. For each client, keeps track of the
-        number of tokens available for each source.
+        number of tokens available for each computation type.
         """
         while self._is_running:
             # Listen for client messages
@@ -82,8 +82,7 @@ class ZeroMQServer(GabrielServer):
             if client is None:
                 logger.info('New client connected: %s', address)
                 client = self._Client(
-                    tokens_for_source={source_name: self._num_tokens_per_source
-                        for source_name in self._sources_consumed},
+                    tokens_for_source={},
                     inputs=asyncio.Queue(),
                     task=asyncio.create_task(self._consumer(address)),
                     websocket=None)
@@ -91,9 +90,8 @@ class ZeroMQServer(GabrielServer):
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
-                logger.debug(f"{len(self._sources_consumed)} source(s) available for consumption")
-                for source_name in self._sources_consumed:
-                    to_client.welcome.sources_consumed.append(source_name)
+                logger.debug(f"{len(self._computation_types)} types of computation can be performed: {self._computation_types}")
+                to_client.welcome.computations_supported[:] = self._computation_types
                 to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
                 await self._sock.send_multipart([
                     address,
@@ -156,13 +154,16 @@ class ZeroMQServer(GabrielServer):
 
             if status == ResultWrapper.Status.SUCCESS:
                 logger.debug("Consumed input from %s successfully", address)
-                client.tokens_for_source[from_client.source_name] -= 1
+                if from_client.source_name in client.tokens_for_source:
+                    client.tokens_for_source[from_client.source_name] -= 1
+                else:
+                    client.tokens_for_source[from_client.source_name] = self._num_tokens_per_source - 1
                 continue
 
             # Send error message
             logger.error(f"Sending error message to client {address}")
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_name = from_client.source_name
+            to_client.target_computation_types[:] = from_client.target_computation_types
             to_client.response.frame_id = from_client.frame_id
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status

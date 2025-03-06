@@ -10,11 +10,11 @@ from gabriel_server.zeromq_server import ZeroMQServer
 logger = logging.getLogger(__name__)
 
 
-def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
+def run(engine_factory, computation_type, input_queue_maxsize, port, num_tokens,
         message_max_size=None, use_zeromq=False):
     engine_conn, server_conn = multiprocessing.Pipe()
 
-    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq)
+    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, computation_type, use_zeromq)
 
     engine_process = multiprocessing.Process(
         target=_run_engine, args=(engine_factory, engine_conn))
@@ -24,13 +24,13 @@ def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
     raise Exception('Server stopped')
 
 class _LocalServer:
-    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn, source_name, use_zeromq):
+    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn, computation_type, use_zeromq):
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
         self._server = (
             ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens_per_source, self._send_to_engine)
-        self._server.add_source_consumed(source_name)
+        self._server.add_computation_type(computation_type)
 
     async def _send_to_engine(self, from_client, address):
         if self._input_queue.full():
@@ -58,8 +58,8 @@ class _LocalServer:
 
             result_wrapper.ParseFromString(self._conn.recv_bytes())
             await self._server.send_result_wrapper(
-                address, from_client.source_name, from_client.frame_id,
-                result_wrapper, return_token=True)
+                address, from_client.target_computation_types[0],
+                from_client.frame_id, result_wrapper, return_token=True)
 
 
 def _run_engine(engine_factory, conn):

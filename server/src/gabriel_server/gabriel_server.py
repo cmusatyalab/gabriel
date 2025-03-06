@@ -25,14 +25,14 @@ class GabrielServer(ABC):
 
         # Metadata for each client. 'tokens_for_source' is a dictionary that
         # stores the tokens available for each source. 'task' is an async task
-        # that consumes inputs from 'inputs' for each client. 'websocket' is
+        # that consumes inputs from 'inputs' for each client.  'websocket' is
         # the Websockets handler for this client if using Websockets.
         self._Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task', 'websocket'])
         self._num_tokens_per_source = num_tokens_per_source
         # The clients connected to the server
         self._clients = {}
-        # The sources consumed by the server
-        self._sources_consumed = set()
+        # The computations consumed by the server
+        self._computation_types = set()
         # Indicates that the server start up is finished
         self._start_event = asyncio.Event()
         self._is_running = False
@@ -46,13 +46,15 @@ class GabrielServer(ABC):
         await self._start_event.wait()
 
     async def send_result_wrapper(
-            self, address, source_name, frame_id, result_wrapper, return_token):
+        self, address, computation_type, source_name, frame_id,
+        result_wrapper, return_token):
         """
         Send result to client at address.
 
         Args:
             address: The identifier of the client to send the result to
-            source_name: The name of the source that the result corresponds to
+            computation_type: The type of computation that the result corresponds to
+            source_name: The source of the input that the result corresponds to
             frame_id: The frame id of the input that the result corresponds to
             result_wrapper: The result payload to send to the client
             return_token: Whether to return a token to the client
@@ -64,14 +66,11 @@ class GabrielServer(ABC):
             logger.warning('Send request to invalid address: %s', address)
             return False
 
-        if source_name not in client.tokens_for_source:
-            logger.warning('Send request with invalid source: %s', source_name)
-            # Still send so client gets back token
-        elif return_token:
+        if return_token:
             client.tokens_for_source[source_name] += 1
 
         to_client = gabriel_pb2.ToClient()
-        to_client.response.source_name = source_name
+        to_client.response.eomputation_type = computation_type
         to_client.response.frame_id = frame_id
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
@@ -89,44 +88,35 @@ class GabrielServer(ABC):
         """
         pass
 
-    def add_source_consumed(self, source_name):
+    def add_computation_type(self, computation_type):
         """
-        Indicate that at least one cognitive engine consumes frames from
-        source_name.
+        Indicate that at least one cognitive engine performs computation_type.
 
         Args:
-            source_name (str): The name of the source to add
+            computation_type (str): The computation type
 
         Must be called before self.launch() or run on the same event loop that
         self.launch() uses.
         """
-
-        if source_name in self._sources_consumed:
+        if computation_type in self._computation_types:
             return
 
-        self._sources_consumed.add(source_name)
-        for client in self._clients.values():
-            client.tokens_for_source[source_name] = self._num_tokens_per_source
-            # TODO inform client about new source
+        self._computation_types.add(computation_type)
 
-    def remove_source_consumed(self, source_name):
+    def remove_computation_type(self, computation_type):
         """
-        Indicate that all cognitive engines that consumed frames from source
-        have stopped.
+        Indicate that all cognitive engines that perform computation_type have stopped.
 
         Args:
-            source_name (str): The name of the source to remove
+            computation_type (str): The computation type
 
         Must be called before self.launch() or run on the same event loop that
         self.launch() uses.
         """
-        if source_name not in self._sources_consumed:
+        if computation_type not in self._computation_types:
             return
 
-        self._sources_consumed.remove(source_name)
-        for client in self._clients.values():
-            del client.tokens_for_source[source_name]
-            # TODO inform client source was removed
+        self._computation_types.remove(computation_type)
 
     @abstractmethod
     def is_running(self):
@@ -156,20 +146,28 @@ class GabrielServer(ABC):
             from_client: A FromClient protobuf message containing the input
         """
         source_name = from_client.source_name
-        if source_name not in self._sources_consumed:
-            logger.error('No engines consume frames from %s', source_name)
-            return ResultWrapper.Status.NO_ENGINE_FOR_SOURCE
-
         if client.tokens_for_source[source_name] < 1:
             logger.error(
-                'Client %s sending from source %s without tokens', address,
-                source_name)
+                f'Client {address} sending from source {source_name} without tokens')
             return ResultWrapper.Status.NO_TOKENS
 
-        logger.debug(f"Sending input from client {address} to engine")
-        send_success = await self._engine_cb(from_client, address)
-        if send_success:
-            return ResultWrapper.Status.SUCCESS
-        else:
-            logger.error('Server dropped frame from: %s', source_name)
+        input_accepted = False
+        dropped = True
+        for computation_type in from_client.target_computation_types:
+            if computation_type not in self._computation_types:
+                logger.error(f'No engines perform {computation_type}')
+            else:
+                input_accepted = True
+
+            logger.debug(f'Sending input from client {address} from source {source_name} for {computation_type}')
+            send_success = await self._engine_cb(from_client, address, computation_type)
+            if send_success:
+                dropped = False
+            else:
+                logger.error(f'Server dropped frame from client {address} for {computation_type}')
+
+        if not input_accepted:
+            return ResultWrapper.Status.NO_ENGINE_FOR_COMPUTATION
+        if dropped:
             return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME
+        return ResultWrapper.Status.SUCCESS

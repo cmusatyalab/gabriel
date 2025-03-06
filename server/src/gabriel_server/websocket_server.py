@@ -65,8 +65,7 @@ class WebsocketServer(GabrielServer):
         logger.info('New Client connected: %s', address)
 
         client = self._Client(
-            tokens_for_source={source_name: self._num_tokens_per_source
-                               for source_name in self._sources_consumed},
+            tokens_for_source={},
             inputs=None,
             task=None,
             websocket=websocket)
@@ -74,8 +73,7 @@ class WebsocketServer(GabrielServer):
 
         # Send client welcome message
         to_client = gabriel_pb2.ToClient()
-        for source_name in self._sources_consumed:
-            to_client.welcome.sources_consumed.append(source_name)
+        to_client.welcome.computations_supported[:] = self._computation_types
         to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
         await websocket.send(to_client.SerializeToString())
 
@@ -98,12 +96,14 @@ class WebsocketServer(GabrielServer):
             status = await self._consumer_helper(client, address, from_client)
             if status == ResultWrapper.Status.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                client.tokens_for_source[from_client.source_name] -= 1
-                continue
+                if from_client.source_name in client.tokens_for_source:
+                    client.tokens_for_source[from_client.source_name] -= 1
+                else:
+                    client.tokens_for_source[from_client.source_name] = self._num_tokens_per_source - 1
 
             # Send error message
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_name = from_client.source_name
+            to_client.target_computation_types[:] = from_client.target_computation_types
             to_client.response.frame_id = from_client.frame_id
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status

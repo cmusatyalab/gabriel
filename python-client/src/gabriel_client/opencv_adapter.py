@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class OpencvAdapter:
     def __init__(self, preprocess, produce_extras, consume_frame,
-                 video_capture, source_name):
+                 video_capture, token_bucket, target_computation_types):
         '''
         preprocess should take one frame parameter
         produce_engine_fields takes no parameters
@@ -22,7 +22,8 @@ class OpencvAdapter:
         self._produce_extras = produce_extras
         self._consume_frame = consume_frame
         self._video_capture = video_capture
-        self._source_name = source_name
+        self._token_bucket = token_bucket
+        self._target_computation_types = target_computation_types
 
     def get_producer_wrappers(self):
         async def producer():
@@ -44,7 +45,9 @@ class OpencvAdapter:
             return input_frame
 
         return [
-            ProducerWrapper(producer=producer, source_name=self._source_name)
+            ProducerWrapper(
+                producer=producer, token_bucket=self._token_bucket,
+                target_computation_types=self._target_computation_types)
         ]
 
     def consumer(self, result_wrapper):
