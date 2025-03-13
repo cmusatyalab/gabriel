@@ -11,8 +11,9 @@ REQUEST_RETRIES = 3
 logger = logging.getLogger(__name__)
 
 
-def run(engine, computation_type, server_address, all_responses_required=False,
-        timeout=TEN_SECONDS, request_retries=REQUEST_RETRIES):
+def run(engine, computation_type, server_address, engine_name,
+        all_responses_required=False, timeout=TEN_SECONDS,
+        request_retries=REQUEST_RETRIES):
     context = zmq.Context()
 
     while request_retries > 0:
@@ -22,6 +23,7 @@ def run(engine, computation_type, server_address, all_responses_required=False,
         from_standalone_engine.welcome.computation_type = computation_type
         from_standalone_engine.welcome.all_responses_required = (
             all_responses_required)
+        from_standalone_engine.welcome.engine_name = engine_name
         socket.send(from_standalone_engine.SerializeToString())
         logger.info('Sent welcome message to server')
 

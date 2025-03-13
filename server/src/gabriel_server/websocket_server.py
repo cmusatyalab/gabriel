@@ -21,22 +21,22 @@ class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
 
 
 class WebsocketServer(GabrielServer):
-    def __init__(self, num_tokens_per_source, engine_cb):
-        super().__init__(num_tokens_per_source, engine_cb)
+    def __init__(self, num_tokens_per_bucket, engine_cb):
+        super().__init__(num_tokens_per_bucket, engine_cb)
         self._server = None
 
-    def launch(self, port, message_max_size):
-        event_loop = asyncio.get_event_loop()
-        start_server = websockets.serve(
+    async def launch(self, port, message_max_size):
+        start_server = websockets.server.serve(
             self._handler, port=port, max_size=message_max_size,
             create_protocol=NoDelayProtocol)
-        self._server = event_loop.run_until_complete(start_server)
+        self._server = await start_server
+        self._start_event.set()
+
+        stop = asyncio.get_running_loop().create_future()
+        await stop
 
         # It isn't necessary to set TCP_NODELAY on self._server.sockets because
         # these are used for listening and not writing.
-
-        self._start_event.set()
-        event_loop.run_forever()
 
     async def _send_via_transport(self, address, payload):
         logger.debug('Sending to address: %s', address)
@@ -65,7 +65,7 @@ class WebsocketServer(GabrielServer):
         logger.info('New Client connected: %s', address)
 
         client = self._Client(
-            tokens_for_source={},
+            tokens_for_bucket={},
             inputs=None,
             task=None,
             websocket=websocket)
@@ -74,7 +74,7 @@ class WebsocketServer(GabrielServer):
         # Send client welcome message
         to_client = gabriel_pb2.ToClient()
         to_client.welcome.computations_supported[:] = self._computation_types
-        to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
+        to_client.welcome.num_tokens_per_bucket = self._num_tokens_per_bucket
         await websocket.send(to_client.SerializeToString())
 
         try:
@@ -96,16 +96,17 @@ class WebsocketServer(GabrielServer):
             status = await self._consumer_helper(client, address, from_client)
             if status == ResultWrapper.Status.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                if from_client.source_name in client.tokens_for_source:
-                    client.tokens_for_source[from_client.source_name] -= 1
+                if from_client.token_bucket in client.tokens_for_bucket:
+                    client.tokens_for_bucket[from_client.token_bucket] -= 1
                 else:
-                    client.tokens_for_source[from_client.source_name] = self._num_tokens_per_source - 1
+                    client.tokens_for_bucket[from_client.token_bucket] = self._num_tokens_per_bucket - 1
+                continue
 
             # Send error message
             to_client = gabriel_pb2.ToClient()
-            to_client.target_computation_types[:] = from_client.target_computation_types
             to_client.response.frame_id = from_client.frame_id
             to_client.response.return_token = True
+            to_client.response.token_bucket = from_client.token_bucket
             to_client.response.result_wrapper.status = status
             await websocket.send(to_client.SerializeToString())
 

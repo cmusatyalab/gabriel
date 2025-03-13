@@ -3,6 +3,7 @@ import asyncio
 from collections import namedtuple
 from gabriel_client.token_bucket import _TokenBucket
 import logging
+from gabriel_protocol import gabriel_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,9 @@ class GabrielClient(ABC):
         logger.info(f"The server can perform {len(welcome.computations_supported)} computations")
         for producer_wrapper in self.producer_wrappers:
             token_bucket = producer_wrapper.token_bucket
-            logger.info(f"Tokens available for {token_bucket}={welcome.num_tokens_per_source}")
+            logger.info(f"Tokens available for {token_bucket}={welcome.num_tokens_per_bucket}")
             token_bucket = producer_wrapper.token_bucket
-            self._token_buckets[token_bucket] = _Source(welcome.num_tokens_per_source)
+            self._token_buckets[token_bucket] = _TokenBucket(welcome.num_tokens_per_bucket)
         self._computations = welcome.computations_supported
         self._welcome_event.set()
 

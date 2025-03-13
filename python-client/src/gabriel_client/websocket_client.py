@@ -41,8 +41,9 @@ class WebsocketClient(GabrielClient):
 
         try:
             self._websocket = event_loop.run_until_complete(
-                websockets.connect(self._uri, create_protocol=NoDelayProtocol,
-                                   max_size=message_max_size))
+                websockets.client.connect(
+                    self._uri, create_protocol=NoDelayProtocol,
+                    max_size=message_max_size))
         except ConnectionRefusedError:
             logger.error('Could not connect to server')
             return
@@ -56,7 +57,8 @@ class WebsocketClient(GabrielClient):
         tasks = [
             asyncio.ensure_future(self._producer_handler(
                 producer_wrapper.producer,
-                producer_wrapper.token_bucket))
+                producer_wrapper.token_bucket,
+                producer_wrapper.target_computation_types))
             for producer_wrapper in self.producer_wrappers
         ]
         tasks.append(consumer_task)
@@ -73,7 +75,7 @@ class WebsocketClient(GabrielClient):
                 raw_input = await self._websocket.recv()
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
-            logger.debug('Recieved input from server')
+            logger.info('Received input from server')
 
             to_client = gabriel_pb2.ToClient()
             to_client.ParseFromString(raw_input)
@@ -81,33 +83,35 @@ class WebsocketClient(GabrielClient):
             if to_client.HasField('welcome'):
                 self._process_welcome(to_client.welcome)
             elif to_client.HasField('response'):
+                logger.info(f"{to_client.response.token_bucket}")
+                logger.info(f"{to_client.response.computation_type}")
                 self._process_response(to_client.response)
             else:
                 raise Exception('Empty to_client message')
 
-    async def _producer_handler(self, producer, token_bucket):
+    async def _producer_handler(self, producer, token_bucket, target_computation_types):
         '''
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
         '''
 
         await self._welcome_event.wait()
-        source = self._sources.get(token_bucket)
-        assert source is not None, (
-            "No engines consume frames from source: {}".format(token_bucket))
+        bucket = self._token_buckets.get(token_bucket)
+        assert bucket is not None, (f"{token_bucket=} does not exist")
 
         while self._running:
-            await source.get_token()
+            await bucket.get_token()
 
             input_frame = await producer()
             if input_frame is None:
-                source.return_token()
+                bucket.return_token()
                 logger.info('Received None from producer')
                 continue
 
             from_client = gabriel_pb2.FromClient()
-            from_client.frame_id = source.get_frame_id()
+            from_client.frame_id = bucket.get_frame_id()
             from_client.token_bucket = token_bucket
+            from_client.target_computation_types[:] = target_computation_types
             from_client.input_frame.CopyFrom(input_frame)
 
             try:
@@ -116,8 +120,8 @@ class WebsocketClient(GabrielClient):
                 return  # stop the handler
 
             logger.debug('Semaphore for %s is %s', token_bucket,
-                         "LOCKED" if source.is_locked() else "AVAILABLE")
-            source.next_frame()
+                         "LOCKED" if bucket.is_locked() else "AVAILABLE")
+            bucket.next_frame()
 
     async def _send_from_client(self, from_client):
         # Removing this method will break measurement_client

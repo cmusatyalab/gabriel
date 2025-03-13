@@ -17,21 +17,21 @@ FIVE_SECONDS = 5
 logger = logging.getLogger(__name__)
 
 
-Metadata = namedtuple('Metadata', ['frame_id', 'client_address', 'source_name'])
+Metadata = namedtuple('Metadata', ['frame_id', 'client_address', 'token_bucket'])
 
 
 MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
 
 
-def run(websocket_port, zmq_address, num_tokens, input_queue_maxsize,
-        timeout=FIVE_SECONDS, message_max_size=None, use_zeromq=False):
+async def run(websocket_port, zmq_address, num_tokens, input_queue_maxsize,
+              timeout=FIVE_SECONDS, message_max_size=None, use_zeromq=False):
     context = zmq.asyncio.Context()
     zmq_socket = context.socket(zmq.ROUTER)
     zmq_socket.bind(zmq_address)
     logger.info('Waiting for engines to connect')
 
     server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq)
-    server.launch(websocket_port, message_max_size)
+    await server.launch(websocket_port, message_max_size)
 
 class _Server:
     def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq):
@@ -43,7 +43,7 @@ class _Server:
         self._server = (
             ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens, self._send_to_engine)
 
-    def launch(self, client_port, message_max_size):
+    async def launch(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
             await self._server.wait_for_start()
             while self._server.is_running():
@@ -55,10 +55,10 @@ class _Server:
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
-        asyncio.ensure_future(receive_from_engine_worker_loop())
-        asyncio.ensure_future(heartbeat_loop())
+        asyncio.create_task(receive_from_engine_worker_loop())
+        asyncio.create_task(heartbeat_loop())
 
-        self._server.launch(client_port, message_max_size)
+        await self._server.launch(client_port, message_max_size)
 
     async def _receive_from_engine_worker_helper(self):
         '''Consume from ZeroMQ queue for cognitive engines messages'''
@@ -86,13 +86,16 @@ class _Server:
         engine_worker_metadata = engine_worker.get_current_input_metadata()
         engine_group = engine_worker.get_engine_group()
         latest_input = engine_group.get_latest_input()
+
+        logger.info(f"Got result from engine {engine_worker.get_name()}")
         if (latest_input is not None and
             latest_input.metadata == engine_worker_metadata):
             # Send response to client
             await self._server.send_result_wrapper(
+                engine_worker.get_name(),
                 engine_worker_metadata.client_address,
                 engine_group.computation_type(),
-                engine_worker_metadata.source_name,
+                engine_worker_metadata.token_bucket,
                 engine_worker_metadata.frame_id, result_wrapper,
                 return_token=True)
             await engine_worker.send_message_from_queue()
@@ -102,7 +105,7 @@ class _Server:
             await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address,
                 engine_group.computation_type(),
-                engine_worker_metadata.source_name,
+                engine_worker_metadata.token_bucket,
                 engine_worker_metadata.frame_id, result_wrapper,
                 return_token=False)
 
@@ -135,7 +138,7 @@ class _Server:
 
         all_responses_required = welcome.all_responses_required
         engine_worker = _EngineWorker(
-            self._zmq_socket, engine_group, address, name, all_responses_required)
+            self._zmq_socket, engine_group, address, engine_name, all_responses_required)
         self._engine_workers[address] = engine_worker
 
         engine_group.add_engine_worker(engine_worker)
@@ -164,8 +167,10 @@ class _Server:
                 result_wrapper = cognitive_engine.create_result_wrapper(status)
                 await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
-                    engine_group.computation_type(), current_input_metadata.frame_id,
-                    result_wrapper, return_token=True)
+                    engine_group.computation_type(),
+                    current_input_metadata.token_bucket,
+                    current_input_metadata.frame_id, result_wrapper,
+                    return_token=True)
 
             engine_group.remove_engine_worker(engine_worker)
             del self._engine_workers[address]
@@ -263,7 +268,7 @@ class _EngineGroup:
         self._engine_workers = set()
 
     def computation_type(self):
-        return self._engine_type
+        return self._computation_type
 
     def add_engine_worker(self, engine_worker):
         self._engine_workers.add(engine_worker)
@@ -281,7 +286,7 @@ class _EngineGroup:
         sent_to_engine = False
         metadata = Metadata(
             frame_id=from_client.frame_id, client_address=client_address,
-            source_name=from_client.source_name)
+            token_bucket=from_client.token_bucket)
         payload = from_client.input_frame.SerializeToString()
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
         for engine_worker in self._engine_workers:

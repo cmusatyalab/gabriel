@@ -79,16 +79,17 @@ message ResultWrapper {
 message ToClient {
     message Welcome {
         repeated string computations_supported = 1;
-        int32 num_tokens_per_source = 2;
+        int32 num_tokens_per_bucket = 2;
     }
 
     message Response {
-        // The computation type that the response corresponds to; allows the
+        // The token bucket that the response corresponds to; allows the
         // client to return the tokens correctly.
-        string computation_type = 1;
+        string token_bucket = 1;
         int64 frame_id = 2;
         bool return_token = 3;
         ResultWrapper result_wrapper = 4;
+        string computation_type = 5;
     }
 
     oneof welcome_or_response {

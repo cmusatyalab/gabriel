@@ -24,12 +24,12 @@ def run(engine_factory, computation_type, input_queue_maxsize, port, num_tokens,
     raise Exception('Server stopped')
 
 class _LocalServer:
-    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn, computation_type, use_zeromq):
+    def __init__(self, num_tokens_per_bucket, input_queue_maxsize, conn, computation_type, use_zeromq):
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
         self._server = (
-            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens_per_source, self._send_to_engine)
+            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens_per_bucket, self._send_to_engine)
         self._server.add_computation_type(computation_type)
 
     async def _send_to_engine(self, from_client, address):

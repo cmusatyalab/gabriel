@@ -7,7 +7,6 @@ import zmq.asyncio
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
 from gabriel_client.gabriel_client import GabrielClient
-from gabriel_client.source import _Source
 
 URI_FORMAT = 'tcp://{host}:{port}'
 
@@ -155,9 +154,10 @@ class ZeroMQClient(GabrielClient):
         """
         await self._welcome_event.wait()
 
-        source = self._token_buckets.get(token_bucket)
-        assert source is not None, (
-            "No engines consume frames from source: {}".format(token_bucket))
+        logger.info(f"Producing inputs using {token_bucket=} for {target_computation_types=}")
+
+        bucket = self._token_buckets.get(token_bucket)
+        assert bucket is not None, (f"{token_bucket=} does not exist")
 
         # Async task used to producer an input
         producer_task = None
@@ -165,7 +165,7 @@ class ZeroMQClient(GabrielClient):
         while self._running:
             try:
                 # Wait for a token. Time out to send a heartbeat to the server.
-                await asyncio.wait_for(source.get_token(), timeout=HEARTBEAT_INTERVAL)
+                await asyncio.wait_for(bucket.get_token(), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
                 self._schedule_heartbeat.set()
                 continue
@@ -188,7 +188,7 @@ class ZeroMQClient(GabrielClient):
                 input_frame = await asyncio.wait_for(
                     asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
-                source.return_token()
+                bucket.return_token()
                 self._schedule_heartbeat.set()
                 await asyncio.sleep(0)
                 continue
@@ -197,12 +197,13 @@ class ZeroMQClient(GabrielClient):
             producer_task = None
 
             if input_frame is None:
-                source.return_token()
+                bucket.return_token()
                 logger.info('Received None from producer')
                 continue
 
             from_client = gabriel_pb2.FromClient()
-            from_client.frame_id = source.get_frame_id()
+            from_client.frame_id = bucket.get_frame_id()
+            from_client.token_bucket = token_bucket
             from_client.target_computation_types[:] = target_computation_types
             from_client.input_frame.CopyFrom(input_frame)
 
@@ -210,8 +211,8 @@ class ZeroMQClient(GabrielClient):
             await self._sock.send(from_client.SerializeToString())
 
             logger.debug('Semaphore for %s is %s', token_bucket,
-                         "LOCKED" if source.is_locked() else "AVAILABLE")
-            source.next_frame()
+                         "LOCKED" if bucket.is_locked() else "AVAILABLE")
+            bucket.next_frame()
 
     async def _send_heartbeat(self, force=False):
         """
