@@ -43,6 +43,29 @@ class _Server:
         self._server = (
             ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens, self._send_to_engine)
 
+    async def cleanup(self):
+        '''Cleanup background asyncio tasks'''
+        if not self._engine_worker_task.done():
+            self._engine_worker_task.cancel()
+            try:
+                await self._engine_worker_task
+            except asyncio.CancelledError:
+                pass
+
+        if not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        if not self._server_task.done():
+            self._server_task.cancel()
+            try:
+                await self._server_task
+            except asyncio.CancelledError:
+                pass
+
     async def launch(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
             await self._server.wait_for_start()
@@ -55,10 +78,16 @@ class _Server:
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
-        asyncio.create_task(receive_from_engine_worker_loop())
-        asyncio.create_task(heartbeat_loop())
+        self._engine_worker_task = asyncio.create_task(receive_from_engine_worker_loop())
+        self._heartbeat_task = asyncio.create_task(heartbeat_loop())
+        self._server_task = asyncio.create_task(self._server.launch(client_port, message_max_size))
 
-        await self._server.launch(client_port, message_max_size)
+        try:
+            await asyncio.gather(self._server_task, self._engine_worker_task,
+                                 self._heartbeat_task)
+        except asyncio.CancelledError:
+            await self.cleanup()
+            raise
 
     async def _receive_from_engine_worker_helper(self):
         '''Consume from ZeroMQ queue for cognitive engines messages'''
@@ -103,6 +132,7 @@ class _Server:
 
         if engine_worker.get_all_responses_required():
             await self._server.send_result_wrapper(
+                engine_worker.get_name(),
                 engine_worker_metadata.client_address,
                 engine_group.computation_type(),
                 engine_worker_metadata.token_bucket,
@@ -166,6 +196,7 @@ class _Server:
                 status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
                 result_wrapper = cognitive_engine.create_result_wrapper(status)
                 await self._server.send_result_wrapper(
+                    engine_worker.get_name(),
                     current_input_metadata.client_address,
                     engine_group.computation_type(),
                     current_input_metadata.token_bucket,
@@ -187,8 +218,22 @@ class _Server:
             from_client, client_address)
 
 class _EngineWorker:
+    """
+    Represents a single Gabriel cognitive engine.
+    """
     def __init__(
             self, zmq_socket, engine_group, address, name, all_responses_required):
+        """
+        Args:
+            zmq_socket: the ZeroMQ socket to communicate with the engine
+            engine_group: the engine group that this engine corresponds to
+            address: the address of this engine
+            name: the name of this engine
+            all_responses_required:
+                send the client results from this engine even if it is not
+                the first engine to finish computing results on a new input
+
+        """
         self._zmq_socket = zmq_socket
         self._engine_group = engine_group
         self._address = address

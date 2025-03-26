@@ -26,14 +26,12 @@ class WebsocketServer(GabrielServer):
         self._server = None
 
     async def launch(self, port, message_max_size):
-        start_server = websockets.server.serve(
+        async with websockets.server.serve(
             self._handler, port=port, max_size=message_max_size,
-            create_protocol=NoDelayProtocol)
-        self._server = await start_server
-        self._start_event.set()
-
-        stop = asyncio.get_running_loop().create_future()
-        await stop
+            create_protocol=NoDelayProtocol) as server:
+            self._server = server
+            self._start_event.set()
+            await server.serve_forever()
 
         # It isn't necessary to set TCP_NODELAY on self._server.sockets because
         # these are used for listening and not writing.

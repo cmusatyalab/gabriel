@@ -66,6 +66,8 @@ class GabrielClient(ABC):
         if (result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS):
             try:
                 self.consumer(result_wrapper)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.error(f"Error processing response from server: {e}")
         elif (result_wrapper.status ==

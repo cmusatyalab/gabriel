@@ -28,8 +28,6 @@ class ZeroMQServer(GabrielServer):
         # The socket used for communicating with all clients
         self._sock = self._ctx.socket(zmq.ROUTER)
 
-        self._bg_tasks = []
-
     async def launch(self, port, message_max_size):
         await asyncio.create_task(self._launch_helper(port))
 
@@ -45,7 +43,18 @@ class ZeroMQServer(GabrielServer):
         self._handler_task = asyncio.create_task(self._handler())
         self._start_event.set()
         logger.info(f"Listening on {URI_FORMAT.format(port)}")
-        await self._handler_task
+        try:
+            await self._handler_task
+        except asyncio.CancelledError:
+            for client in self._clients.values():
+                if client.task.done():
+                    continue
+                client.task.cancel()
+                try:
+                    await client.task
+                except asyncio.CancelledError:
+                    pass
+            raise
 
     async def _send_via_transport(self, address, payload):
         logger.debug('Sending result to client %s', address)
@@ -70,9 +79,10 @@ class ZeroMQServer(GabrielServer):
         """
         while self._is_running:
 
-            for client_task in self._bg_tasks:
-                if client_task.done() and client_task.exception() is not None:
-                    client_task.result()
+            for client in self._clients.values():
+                if client.task.done() and client.task.exception() is not None:
+                    logger.error("Client task raised exception")
+                    client.task.result()
 
             # Listen for client messages
             try:
@@ -93,8 +103,6 @@ class ZeroMQServer(GabrielServer):
                     task=asyncio.create_task(self._consumer(address)),
                     websocket=None)
                 self._clients[address] = client
-
-                self._bg_tasks.append(client.task)
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
@@ -135,7 +143,9 @@ class ZeroMQServer(GabrielServer):
         # Consume inputs for this client as long as it is registered
         while address in self._clients:
             try:
+                logger.info("Waiting for input from client queue")
                 raw_input = await asyncio.wait_for(client.inputs.get(), CLIENT_TIMEOUT_SECS)
+                logger.info("Done waiting for input from client queue")
             except (TimeoutError, asyncio.TimeoutError):
                 logger.info(f"Client disconnected: {address}")
                 del self._clients[address]

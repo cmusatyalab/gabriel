@@ -69,13 +69,53 @@ class WebsocketClient(GabrielClient):
             task.cancel()
         logger.info('Disconnected From Server')
 
+    async def launch_async(self, message_max_size=None):
+        logger.info("Hello from websocket client")
+        try:
+            self._websocket = await websockets.client.connect(
+                    self._uri, create_protocol=NoDelayProtocol,
+                    max_size=message_max_size)
+        except ConnectionRefusedError:
+            logger.error('Could not connect to server')
+            return
+
+        # We don't waste time checking TCP_NODELAY in production.
+        # Note that websocket.transport is an undocumented property.
+        # sock = self._websocket.transport.get_extra_info('socket')
+        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
+
+        consumer_task = asyncio.create_task(self._consumer_handler())
+        tasks = [
+            asyncio.create_task(self._producer_handler(
+                producer_wrapper.producer,
+                producer_wrapper.token_bucket,
+                producer_wrapper.target_computation_types))
+            for producer_wrapper in self.producer_wrappers
+        ]
+        tasks.append(consumer_task)
+
+        try:
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            logger.info("Cancelling tasks")
+            for task in tasks:
+                if task.done():
+                    continue
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            logger.info("Tasks cancelled")
+            raise
+        logger.info('Disconnected From Server')
+
     async def _consumer_handler(self):
         while self._running:
             try:
                 raw_input = await self._websocket.recv()
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
-            logger.info('Received input from server')
 
             to_client = gabriel_pb2.ToClient()
             to_client.ParseFromString(raw_input)

@@ -192,6 +192,10 @@ class ZeroMQClient(GabrielClient):
                 self._schedule_heartbeat.set()
                 await asyncio.sleep(0)
                 continue
+            except asyncio.CancelledError:
+                producer_task.cancel()
+                await producer_task
+                raise
 
             logger.debug("Got input from producer")
             producer_task = None
