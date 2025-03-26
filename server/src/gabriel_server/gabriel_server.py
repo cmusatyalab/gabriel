@@ -35,6 +35,7 @@ class GabrielServer(ABC):
         self._computation_types = set()
         # Indicates that the server start up is finished
         self._start_event = asyncio.Event()
+        # Whether the server is running
         self._is_running = False
         self._engine_cb = engine_cb
 
@@ -162,7 +163,7 @@ class GabrielServer(ABC):
             return ResultWrapper.Status.NO_TOKENS
 
         dropped = True
-        logger.info(f"Targetting {from_client.target_computation_types}")
+        logger.debug(f"Targetting {from_client.target_computation_types}")
         for computation_type in from_client.target_computation_types:
             if computation_type not in self._computation_types:
                 logger.error(f'No engines perform {computation_type}')

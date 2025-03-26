@@ -14,7 +14,15 @@ logger = logging.getLogger(__name__)
 ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'token_bucket', 'target_computation_types'])
 
 class GabrielClient(ABC):
+    """
+    Connects to a Gabriel server. Generates inputs using the provided producer
+    wrapper and sends them to the server using an adaptive rate limiting scheme
+    based on a token bucket implementation. Results from the server are
+    passed to the specified consumer callback.
 
+    Tokens are replenished as results are obtained from the server, enforcing
+    an upper limit on the number of pending server requests.
+    """
     def __init__(self, host, port, producer_wrappers, consumer, uri_format):
         # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
@@ -22,16 +30,33 @@ class GabrielClient(ABC):
         self._token_buckets = {}
         # The computation types supported by the server
         self._computations = []
+        # Whether the client is running
         self._running = True
+        # The uri for the server
         self._uri = uri_format.format(host=host, port=port)
+        # Used for generating inputs to send to the server
         self.producer_wrappers = producer_wrappers
+        # Callback to pass server results to
         self.consumer = consumer
 
     @abstractmethod
     def launch(self, message_max_size=None):
+        """
+        Launch the client, and start sending inputs to the server.
+        """
+        pass
+
+    @abstractmethod
+    def launch_async(self, message_max_size=None):
+        """
+        Launch the client asynchronously.
+        """
         pass
 
     def stop(self):
+        """
+        Stop the client.
+        """
         self._running = False
         logger.info('stopping server')
 

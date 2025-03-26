@@ -41,7 +41,7 @@ class _Server:
         self._timeout = timeout
         self._size_for_queues = size_for_queues
         self._server = (
-            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens, self._send_to_engine)
+            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens, self._send_to_engine_group)
 
     async def cleanup(self):
         '''Cleanup background asyncio tasks'''
@@ -212,7 +212,7 @@ class _Server:
                 del self._engine_groups[computation_type]
                 self._server.remove_computation_type(computation_type)
 
-    async def _send_to_engine(self, from_client, client_address, computation_type):
+    async def _send_to_engine_group(self, from_client, client_address, computation_type):
         engine_group = self._engine_groups[computation_type]
         return await engine_group.process_input_from_client(
             from_client, client_address)

@@ -70,7 +70,6 @@ class WebsocketClient(GabrielClient):
         logger.info('Disconnected From Server')
 
     async def launch_async(self, message_max_size=None):
-        logger.info("Hello from websocket client")
         try:
             self._websocket = await websockets.client.connect(
                     self._uri, create_protocol=NoDelayProtocol,
@@ -97,7 +96,6 @@ class WebsocketClient(GabrielClient):
         try:
             _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         except asyncio.CancelledError:
-            logger.info("Cancelling tasks")
             for task in tasks:
                 if task.done():
                     continue
@@ -106,7 +104,6 @@ class WebsocketClient(GabrielClient):
                     await task
                 except asyncio.CancelledError:
                     pass
-            logger.info("Tasks cancelled")
             raise
         logger.info('Disconnected From Server')
 

@@ -55,13 +55,10 @@ class ZeroMQClient(GabrielClient):
 
         self._connected.set()
 
-    async def launch_async(self):
+    async def launch_async(self, message_max_size=None):
         await self._launch_helper()
 
     def launch(self, message_max_size=None):
-        """
-        Launch the client.
-        """
         asyncio.ensure_future(self._launch_helper())
         asyncio.get_event_loop().run_forever()
 
@@ -103,12 +100,11 @@ class ZeroMQClient(GabrielClient):
                 else:
                     logger.info("Still disconnected; reconnecting and resending heartbeat")
 
-                # Resend heartbeat in case it was lost
+                # Attempt to reconnect
                 self._sock.close(0)
                 self._sock = context.socket(zmq.DEALER)
                 self._sock.connect(self._uri)
 
-                # Send heartbeat even though we are disconnected
                 await self._send_heartbeat(True)
                 continue
 

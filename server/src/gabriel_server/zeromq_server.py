@@ -143,9 +143,7 @@ class ZeroMQServer(GabrielServer):
         # Consume inputs for this client as long as it is registered
         while address in self._clients:
             try:
-                logger.info("Waiting for input from client queue")
                 raw_input = await asyncio.wait_for(client.inputs.get(), CLIENT_TIMEOUT_SECS)
-                logger.info("Done waiting for input from client queue")
             except (TimeoutError, asyncio.TimeoutError):
                 logger.info(f"Client disconnected: {address}")
                 del self._clients[address]
