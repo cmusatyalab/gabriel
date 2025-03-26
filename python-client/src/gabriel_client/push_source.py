@@ -9,12 +9,13 @@ def consumer(_):
 
 
 class Source:
-    def __init__(self, source_name):
-        self._source_name = source_name
+    def __init__(self, token_bucket, target_computation_types):
+        self._token_bucket = token_bucket
         self._frame_available = asyncio.Semaphore(0)
         self._latest_input_frame = None
         self._read, self._write = multiprocessing.Pipe(duplex=False)
         self._added_callback = False
+        self._target_computation_types = target_computation_types
 
     def get_producer_wrapper(self):
         def reader_callback():
@@ -33,7 +34,9 @@ class Source:
             await self._frame_available.acquire()
             return self._latest_input_frame
 
-        return ProducerWrapper(producer=producer, source_name=self._source_name)
+        return ProducerWrapper(
+            producer=producer, token_bucket=self._token_bucket,
+            target_computation_types=self._target_computation_types)
 
     def send(self, input_frame):
         self._write.send_bytes(input_frame.SerializeToString())

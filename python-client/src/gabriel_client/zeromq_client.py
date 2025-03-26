@@ -6,16 +6,11 @@ import zmq.asyncio
 
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
-from collections import namedtuple
-from gabriel_client.source import _Source
+from gabriel_client.gabriel_client import GabrielClient
 
 URI_FORMAT = 'tcp://{host}:{port}'
 
 logger = logging.getLogger(__name__)
-
-# Represents an input that this client produces. 'producer' is the method
-# that produces inputs and 'source_name' is the source that the inputs are for.
-ProducerWrapper = namedtuple('ProducerWrapper', ['producer', 'source_name'])
 
 # The duration of time in seconds after which the server is considered to be
 # disconnected.
@@ -30,7 +25,7 @@ HELLO_MSG = b'Hello message'
 
 context = zmq.asyncio.Context()
 
-class ZeroMQClient:
+class ZeroMQClient(GabrielClient):
     """
     A Gabriel client that talks to the server over ZeroMQ.
     """
@@ -44,16 +39,10 @@ class ZeroMQClient:
                 client
             consumer: callback for results from server
         """
+
+        super().__init__(host, port, producer_wrappers, consumer, URI_FORMAT)
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
-        # Whether a welcome message has been received from the server
-        self._welcome_event = asyncio.Event()
-        # The input sources accepted by the server
-        self._sources = {}
-        self._running = True
-        self._uri = URI_FORMAT.format(host=host, port=port)
-        self.producer_wrappers = producer_wrappers
-        self.consumer = consumer
         # Whether the client is connected to the server
         self._connected = asyncio.Event()
         # Indicates that a heartbeat was sent to the server but a heartbeat
@@ -66,13 +55,10 @@ class ZeroMQClient:
 
         self._connected.set()
 
-    async def launch_async(self):
+    async def launch_async(self, message_max_size=None):
         await self._launch_helper()
 
     def launch(self, message_max_size=None):
-        """
-        Launch the client.
-        """
         asyncio.ensure_future(self._launch_helper())
         asyncio.get_event_loop().run_forever()
 
@@ -89,8 +75,11 @@ class ZeroMQClient:
         logger.info("Sent hello message to server")
 
         tasks = [
-            self._producer_handler(producer_wrapper.producer, producer_wrapper.source_name)
-            for producer_wrapper in self.producer_wrappers
+            self._producer_handler(
+                producer_wrapper.producer,
+                producer_wrapper.token_bucket,
+                producer_wrapper.target_computation_types
+            ) for producer_wrapper in self.producer_wrappers
         ]
         tasks.append(self._consumer_handler())
         tasks.append(self._heartbeat_loop())
@@ -111,12 +100,11 @@ class ZeroMQClient:
                 else:
                     logger.info("Still disconnected; reconnecting and resending heartbeat")
 
-                # Resend heartbeat in case it was lost
+                # Attempt to reconnect
                 self._sock.close(0)
                 self._sock = context.socket(zmq.DEALER)
                 self._sock.connect(self._uri)
 
-                # Send heartbeat even though we are disconnected
                 await self._send_heartbeat(True)
                 continue
 
@@ -148,61 +136,24 @@ class ZeroMQClient:
                 logger.critical("Fatal error: empty to_client message received from server")
                 raise Exception('Empty to_client message')
 
-    def _process_welcome(self, welcome):
-        """
-        Process a welcome message received from the server.
-
-        Args:
-            welcome:
-                The gabriel_pb2.ToClient.Welcome message received from the
-                server
-        """
-        logger.info(f"{len(welcome.sources_consumed)} sources accepted by the server")
-        for source_name in welcome.sources_consumed:
-            logger.info(f"Tokens available for source {source_name}={welcome.num_tokens_per_source}")
-            self._sources[source_name] = _Source(welcome.num_tokens_per_source)
-        self._welcome_event.set()
-
-    def _process_response(self, response):
-        """
-        Process a response received from the server.
-
-        Args:
-            response:
-                The gabriel_pb2.ToClient.Response message received from
-                the server
-        """
-        result_wrapper = response.result_wrapper
-        if (result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS):
-            try:
-                self.consumer(result_wrapper)
-            except Exception as e:
-                logger.error(f"Error processing response from server: {e}")
-        elif (result_wrapper.status ==
-              gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE):
-            logger.critical("Fatal error: no engine for source")
-            raise Exception('No engine for source')
-        else:
-            status = result_wrapper.Status.Name(result_wrapper.status)
-            logger.error('Output status was: %s', status)
-
-        if response.return_token:
-            self._sources[response.source_name].return_token()
-
-    async def _producer_handler(self, producer, source_name):
+    async def _producer_handler(
+        self, producer, token_bucket, target_computation_types):
         """
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
 
         Args:
             producer: The method used to produce inputs for the server
-            source_name (str): The name of the source to produce inputs for
+            token_bucket (str):
+                The name of the token bucket corresponding to the input
+            target_computation_types: the computations to be performed
         """
         await self._welcome_event.wait()
 
-        source = self._sources.get(source_name)
-        assert source is not None, (
-            "No engines consume frames from source: {}".format(source_name))
+        logger.info(f"Producing inputs using {token_bucket=} for {target_computation_types=}")
+
+        bucket = self._token_buckets.get(token_bucket)
+        assert bucket is not None, (f"{token_bucket=} does not exist")
 
         # Async task used to producer an input
         producer_task = None
@@ -210,7 +161,7 @@ class ZeroMQClient:
         while self._running:
             try:
                 # Wait for a token. Time out to send a heartbeat to the server.
-                await asyncio.wait_for(source.get_token(), timeout=HEARTBEAT_INTERVAL)
+                await asyncio.wait_for(bucket.get_token(), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
                 self._schedule_heartbeat.set()
                 continue
@@ -233,30 +184,35 @@ class ZeroMQClient:
                 input_frame = await asyncio.wait_for(
                     asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
-                source.return_token()
+                bucket.return_token()
                 self._schedule_heartbeat.set()
                 await asyncio.sleep(0)
                 continue
+            except asyncio.CancelledError:
+                producer_task.cancel()
+                await producer_task
+                raise
 
             logger.debug("Got input from producer")
             producer_task = None
 
             if input_frame is None:
-                source.return_token()
+                bucket.return_token()
                 logger.info('Received None from producer')
                 continue
 
             from_client = gabriel_pb2.FromClient()
-            from_client.frame_id = source.get_frame_id()
-            from_client.source_name = source_name
+            from_client.frame_id = bucket.get_frame_id()
+            from_client.token_bucket = token_bucket
+            from_client.target_computation_types[:] = target_computation_types
             from_client.input_frame.CopyFrom(input_frame)
 
             # Send input to server
             await self._sock.send(from_client.SerializeToString())
 
-            logger.debug('Semaphore for %s is %s', source_name,
-                         "LOCKED" if source.is_locked() else "AVAILABLE")
-            source.next_frame()
+            logger.debug('Semaphore for %s is %s', token_bucket,
+                         "LOCKED" if bucket.is_locked() else "AVAILABLE")
+            bucket.next_frame()
 
     async def _send_heartbeat(self, force=False):
         """

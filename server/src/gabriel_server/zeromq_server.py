@@ -21,16 +21,15 @@ HELLO_MSG = b'Hello message'
 logger = logging.getLogger(__name__)
 
 class ZeroMQServer(GabrielServer):
-    def __init__(self, num_tokens_per_source, engine_cb):
-        super().__init__(num_tokens_per_source, engine_cb)
+    def __init__(self, num_tokens_per_bucket, engine_cb):
+        super().__init__(num_tokens_per_bucket, engine_cb)
         self._is_running = False
         self._ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
         self._sock = self._ctx.socket(zmq.ROUTER)
 
-    def launch(self, port, message_max_size):
-        asyncio.ensure_future(self._launch_helper(port))
-        asyncio.get_event_loop().run_forever()
+    async def launch(self, port, message_max_size):
+        await asyncio.create_task(self._launch_helper(port))
 
     async def _launch_helper(self, port):
         """
@@ -44,7 +43,18 @@ class ZeroMQServer(GabrielServer):
         self._handler_task = asyncio.create_task(self._handler())
         self._start_event.set()
         logger.info(f"Listening on {URI_FORMAT.format(port)}")
-        await self._handler_task
+        try:
+            await self._handler_task
+        except asyncio.CancelledError:
+            for client in self._clients.values():
+                if client.task.done():
+                    continue
+                client.task.cancel()
+                try:
+                    await client.task
+                except asyncio.CancelledError:
+                    pass
+            raise
 
     async def _send_via_transport(self, address, payload):
         logger.debug('Sending result to client %s', address)
@@ -65,9 +75,15 @@ class ZeroMQServer(GabrielServer):
         When a new client is connected it is registered and a welcome message
         is sent to the client, indicating that the server is ready to start
         receiving inputs from the client. For each client, keeps track of the
-        number of tokens available for each source.
+        number of tokens available for each computation type.
         """
         while self._is_running:
+
+            for client in self._clients.values():
+                if client.task.done() and client.task.exception() is not None:
+                    logger.error("Client task raised exception")
+                    client.task.result()
+
             # Listen for client messages
             try:
                 address, raw_input = await self._sock.recv_multipart()
@@ -82,8 +98,7 @@ class ZeroMQServer(GabrielServer):
             if client is None:
                 logger.info('New client connected: %s', address)
                 client = self._Client(
-                    tokens_for_source={source_name: self._num_tokens_per_source
-                        for source_name in self._sources_consumed},
+                    tokens_for_bucket={},
                     inputs=asyncio.Queue(),
                     task=asyncio.create_task(self._consumer(address)),
                     websocket=None)
@@ -91,10 +106,9 @@ class ZeroMQServer(GabrielServer):
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
-                logger.debug(f"{len(self._sources_consumed)} source(s) available for consumption")
-                for source_name in self._sources_consumed:
-                    to_client.welcome.sources_consumed.append(source_name)
-                to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
+                logger.debug(f"{len(self._computation_types)} types of computation can be performed: {self._computation_types}")
+                to_client.welcome.computations_supported[:] = self._computation_types
+                to_client.welcome.num_tokens_per_bucket = self._num_tokens_per_bucket
                 await self._sock.send_multipart([
                     address,
                     to_client.SerializeToString()
@@ -152,18 +166,22 @@ class ZeroMQServer(GabrielServer):
                 continue
 
             # Consume input
+            logger.debug(f"Consuming input from client {address}, token_bucket={from_client.token_bucket}, target_computation_types={from_client.target_computation_types}")
             status = await self._consumer_helper(client, address, from_client)
 
             if status == ResultWrapper.Status.SUCCESS:
                 logger.debug("Consumed input from %s successfully", address)
-                client.tokens_for_source[from_client.source_name] -= 1
+                if from_client.token_bucket in client.tokens_for_bucket:
+                    client.tokens_for_bucket[from_client.token_bucket] -= 1
+                else:
+                    client.tokens_for_bucket[from_client.token_bucket] = self._num_tokens_per_source - 1
                 continue
 
             # Send error message
             logger.error(f"Sending error message to client {address}")
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_name = from_client.source_name
             to_client.response.frame_id = from_client.frame_id
+            to_client.response.token_bucket = from_client.token_bucket
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status
             await self._sock.send_multipart([
