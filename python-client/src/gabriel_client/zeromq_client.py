@@ -34,7 +34,7 @@ class ZeroMQClient:
     """
     A Gabriel client that talks to the server over ZeroMQ.
     """
-    def __init__(self, host, port, producer_wrappers, consumer):
+    def __init__(self, host, port, producer_wrappers, consumer, ipc=False):
         """
         Args:
             host (str): the host of the server to connect to
@@ -43,6 +43,9 @@ class ZeroMQClient:
                 instances of ProducerWrapper for the inputs produced by this
                 client
             consumer: callback for results from server
+            ipc (bool): determines whether the ZeroMQ connection should be
+                made over Inter-Process Communication (IPC), which will ignore
+                the port argument and connect using the host argument only
         """
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
@@ -51,7 +54,11 @@ class ZeroMQClient:
         # The input sources accepted by the server
         self._sources = {}
         self._running = True
-        self._uri = URI_FORMAT.format(host=host, port=port)
+        # Check whether IPC mode is enabled, and only use the host if so
+        if not ipc:
+            self._uri = URI_FORMAT.format(host=host, port=port)
+        else:
+            self._uri = host
         self.producer_wrappers = producer_wrappers
         self.consumer = consumer
         # Whether the client is connected to the server
