@@ -5,19 +5,9 @@ from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 from gabriel_server.gabriel_server import GabrielServer
 import websockets
-import websockets.server
+from websockets.asyncio.server import serve, unix_serve
 
 logger = logging.getLogger(__name__)
-
-# It isn't necessary to do this as of Python 3.6 because
-# "The socket option TCP_NODELAY is set by default for all TCP connections"
-# per https://docs.python.org/3/library/asyncio-eventloop.html
-# However, this seems worth keeping in case the default behavior changes.
-class NoDelayProtocol(websockets.server.WebSocketServerProtocol):
-    def connection_made(self, transport: asyncio.BaseTransport) -> None:
-        super().connection_made(transport)
-        sock = transport.get_extra_info('socket')
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
 class WebsocketServer(GabrielServer):
@@ -25,18 +15,27 @@ class WebsocketServer(GabrielServer):
         super().__init__(num_tokens_per_source, engine_cb)
         self._server = None
 
-    def launch(self, port, message_max_size):
-        event_loop = asyncio.get_event_loop()
-        start_server = websockets.serve(
-            self._handler, port=port, max_size=message_max_size,
-            create_protocol=NoDelayProtocol)
-        self._server = event_loop.run_until_complete(start_server)
+    def launch(self, port_or_path, message_max_size, use_ipc=False):
+        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
-        # It isn't necessary to set TCP_NODELAY on self._server.sockets because
-        # these are used for listening and not writing.
+    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+        async with self.get_server(self._handler, port_or_path, message_max_size, use_ipc) as server:
 
-        self._start_event.set()
-        event_loop.run_forever()
+            if not use_ipc:
+                # Set TCP NO DELAY on all sockets if using TCP
+                for sock in server.sockets:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+            self._start_event.set()
+            
+            logger.info(f"Listening on {port_or_path}")
+            await server.serve_forever()
+
+    def get_server(self, handler, port_or_path, max_size, use_ipc):
+        if not use_ipc:
+            return serve(handler, port=port_or_path, max_size=max_size)
+        else:
+            return unix_serve(handler, path=port_or_path)
 
     async def _send_via_transport(self, address, payload):
         logger.debug('Sending to address: %s', address)
@@ -54,13 +53,7 @@ class WebsocketServer(GabrielServer):
 
         return self._server.is_serving()
 
-    async def _handler(self, websocket, _):
-
-        # We don't waste time checking TCP_NODELAY in production.
-        # Note that websocket.transport is an undocumented property.
-        # sock = websocket.transport.get_extra_info('socket')
-        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
-
+    async def _handler(self, websocket):
         address = websocket.remote_address
         logger.info('New Client connected: %s', address)
 
@@ -108,4 +101,3 @@ class WebsocketServer(GabrielServer):
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status
             await websocket.send(to_client.SerializeToString())
-

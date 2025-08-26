@@ -7,7 +7,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-server",
-    version="3.0.1",
+    version="3.0.2",
     author="Roger Iyengar",
     author_email="ri@rogeriyengar.com",
     maintainer="CMU Satyalab",
@@ -31,7 +31,7 @@ setuptools.setup(
     python_requires=">=3.8",
     install_requires=[
         "gabriel-protocol==3.0",
-        "websockets>=9.1",
+        "websockets>=13.0",
         "pyzmq>=18.1",
     ],
 )

@@ -10,8 +10,8 @@ from gabriel_server.zeromq_server import ZeroMQServer
 logger = logging.getLogger(__name__)
 
 
-def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
-        message_max_size=None, use_zeromq=False):
+async def run_async(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
+        message_max_size=None, use_zeromq=False, ipc_path=None):
     engine_conn, server_conn = multiprocessing.Pipe()
 
     local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq)
@@ -19,7 +19,21 @@ def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
     engine_process = multiprocessing.Process(
         target=_run_engine, args=(engine_factory, engine_conn))
     engine_process.start()
-    local_server.launch(port, message_max_size)
+    try:
+        await local_server.launch_async(port if not ipc_path else ipc_path, message_max_size, use_ipc=(ipc_path != None))
+    except asyncio.exceptions.CancelledError:
+        raise Exception('Server stopped')
+
+def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
+        message_max_size=None, use_zeromq=False, ipc_path=None):
+    engine_conn, server_conn = multiprocessing.Pipe()
+
+    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq)
+
+    engine_process = multiprocessing.Process(
+        target=_run_engine, args=(engine_factory, engine_conn))
+    engine_process.start()
+    local_server.launch(port if not ipc_path else ipc_path, message_max_size, use_ipc=(ipc_path != None))
 
     raise Exception('Server stopped')
 
@@ -39,11 +53,14 @@ class _LocalServer:
         self._input_queue.put_nowait((from_client, address))
         return True
 
-    def launch(self, port, message_max_size):
+    def launch(self, port_or_path, message_max_size, use_ipc=False):
         asyncio.get_event_loop().add_reader(
             self._conn.fileno(), self._result_ready.set)
         asyncio.ensure_future(self._engine_comm())
-        self._server.launch(port, message_max_size)
+        self._server.launch(port_or_path, message_max_size, use_ipc=use_ipc)
+
+    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+        await self._server.launch_async(port_or_path, message_max_size, use_ipc=use_ipc)
 
     async def _engine_comm(self):
         await self._server.wait_for_start()

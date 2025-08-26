@@ -60,6 +60,23 @@ class _Server:
 
         self._server.launch(client_port, message_max_size)
 
+    async def launch_async(self, client_port, message_max_size):
+        async def receive_from_engine_worker_loop():
+            await self._server.wait_for_start()
+            while self._server.is_running():
+                await self._receive_from_engine_worker_helper()
+
+        async def heartbeat_loop():
+            await self._server.wait_for_start()
+            while self._server.is_running():
+                await asyncio.sleep(self._timeout)
+                await self._heartbeat_helper()
+        
+        asyncio.create_task(receive_from_engine_worker_loop())
+        asyncio.create_task(heartbeat_loop())
+
+        await self._server.launch_async(client_port, message_max_size)
+
     async def _receive_from_engine_worker_helper(self):
         '''Consume from ZeroMQ queue for cognitive engines messages'''
         address, _, payload = await self._zmq_socket.recv_multipart()

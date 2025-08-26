@@ -39,10 +39,37 @@ class GabrielServer(ABC):
         self._engine_cb = engine_cb
 
     @abstractmethod
-    def launch(self, port, message_max_size):
+    def launch(self, port_or_path, message_max_size, use_ipc=False):
+        """
+        Launch the Gabriel server synchronously. This method will block execution
+        until the server is stopped.
+
+        Args:
+            port_or_path: Represents the bind port or the bind unix socket path,
+                depending on the value of use_ipc
+            message_max_size: The maximum message size accepted over the socket
+            use_ipc: Toggles whether the connection is over TCP or IPC
+        """
+        pass
+
+    @abstractmethod
+    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+        """
+        Launch the Gabriel server asynchronously. This method is a coroutine that
+        can be awaited, spawned as a task, or cancelled.
+
+        Args:
+            port_or_path: Represents the bind port or the bind unix socket path,
+                depending on the value of use_ipc
+            message_max_size: The maximum message size accepted over the socket
+            use_ipc: Toggles whether the connection is over TCP or IPC
+        """
         pass
 
     async def wait_for_start(self):
+        """
+        Waits for the Gabriel server to start.
+        """
         await self._start_event.wait()
 
     async def send_result_wrapper(
@@ -130,10 +157,16 @@ class GabrielServer(ABC):
 
     @abstractmethod
     def is_running(self):
+        """
+        Checks whether the Gabriel server is running.
+        """
         pass
 
     @abstractmethod
     async def _handler(self):
+        """
+        Handles client connections.
+        """
         pass
 
     @abstractmethod

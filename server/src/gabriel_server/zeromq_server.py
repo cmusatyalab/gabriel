@@ -8,6 +8,7 @@ import zmq.asyncio
 from google.protobuf.message import DecodeError
 
 URI_FORMAT = 'tcp://*:{}'
+IPC_FORMAT = 'ipc://{}'
 
 # The duration of time after which a client is considered disconnected
 CLIENT_TIMEOUT_SECS = 10
@@ -28,23 +29,22 @@ class ZeroMQServer(GabrielServer):
         # The socket used for communicating with all clients
         self._sock = self._ctx.socket(zmq.ROUTER)
 
-    def launch(self, port, message_max_size):
-        asyncio.ensure_future(self._launch_helper(port))
-        asyncio.get_event_loop().run_forever()
+    def launch(self, port_or_path, message_max_size, use_ipc=False):
+        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
-    async def _launch_helper(self, port):
-        """
-        Bind to the specified port and launch the client handler.
-
-        Args:
-            port (int): the port to bind to
-        """
-        self._sock.bind(URI_FORMAT.format(port))
+    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+        if not use_ipc:
+            self._sock.bind(URI_FORMAT.format(port_or_path))
+        else:
+            self._sock.bind(IPC_FORMAT.format(port_or_path))
+        
+        handler_task = asyncio.create_task(self._handler())
         self._is_running = True
-        self._handler_task = asyncio.create_task(self._handler())
+        
         self._start_event.set()
-        logger.info(f"Listening on {URI_FORMAT.format(port)}")
-        await self._handler_task
+        
+        logger.info(f"Listening on {port_or_path}")
+        await handler_task
 
     async def _send_via_transport(self, address, payload):
         logger.debug('Sending result to client %s', address)
@@ -55,18 +55,9 @@ class ZeroMQServer(GabrielServer):
         return True
 
     def is_running(self):
-        """Returns true if the server is still running."""
         return self._is_running
 
     async def _handler(self):
-        """
-        Handles incoming client messages.
-
-        When a new client is connected it is registered and a welcome message
-        is sent to the client, indicating that the server is ready to start
-        receiving inputs from the client. For each client, keeps track of the
-        number of tokens available for each source.
-        """
         while self._is_running:
             # Listen for client messages
             try:
@@ -113,12 +104,6 @@ class ZeroMQServer(GabrielServer):
             client.inputs.put_nowait(raw_input)
 
     async def _consumer(self, address):
-        """
-        Consumes client inputs. Sends an error message to the client on failure.
-
-        Args:
-            address: the identifier of the client to consume inputs for
-        """
         try:
             client = self._clients[address]
         except KeyError:
