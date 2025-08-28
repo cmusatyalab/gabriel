@@ -18,7 +18,7 @@ def unpack_extras(extras_class, input_frame):
 class Engine(ABC):
     @abstractmethod
     def handle(self, input_frame):
-        '''Process a single gabriel_pb2.InputFrame().
+        """Process a single gabriel_pb2.InputFrame().
 
-        Return an instance of gabriel_pb2.ResultWrapper().'''
+        Return an instance of gabriel_pb2.ResultWrapper()."""
         pass

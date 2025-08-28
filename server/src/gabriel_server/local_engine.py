@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import multiprocessing
-import os
 from gabriel_protocol import gabriel_pb2
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
@@ -10,40 +9,75 @@ from gabriel_server.zeromq_server import ZeroMQServer
 logger = logging.getLogger(__name__)
 
 
-async def run_async(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
-        message_max_size=None, use_zeromq=False, ipc_path=None):
+async def run_async(
+    engine_factory,
+    source_name,
+    input_queue_maxsize,
+    port,
+    num_tokens,
+    message_max_size=None,
+    use_zeromq=False,
+    ipc_path=None,
+):
     engine_conn, server_conn = multiprocessing.Pipe()
 
-    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq)
+    local_server = _LocalServer(
+        num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq
+    )
 
     engine_process = multiprocessing.Process(
-        target=_run_engine, args=(engine_factory, engine_conn))
+        target=_run_engine, args=(engine_factory, engine_conn)
+    )
     engine_process.start()
     try:
-        await local_server.launch_async(port if not ipc_path else ipc_path, message_max_size, use_ipc=(ipc_path != None))
+        await local_server.launch_async(
+            port if not ipc_path else ipc_path,
+            message_max_size,
+            use_ipc=(ipc_path is not None),
+        )
     except asyncio.exceptions.CancelledError:
-        raise Exception('Server stopped')
+        raise Exception("Server stopped")
 
-def run(engine_factory, source_name, input_queue_maxsize, port, num_tokens,
-        message_max_size=None, use_zeromq=False, ipc_path=None):
+
+def run(
+    engine_factory,
+    source_name,
+    input_queue_maxsize,
+    port,
+    num_tokens,
+    message_max_size=None,
+    use_zeromq=False,
+    ipc_path=None,
+):
     engine_conn, server_conn = multiprocessing.Pipe()
 
-    local_server = _LocalServer(num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq)
+    local_server = _LocalServer(
+        num_tokens, input_queue_maxsize, server_conn, source_name, use_zeromq
+    )
 
     engine_process = multiprocessing.Process(
-        target=_run_engine, args=(engine_factory, engine_conn))
+        target=_run_engine, args=(engine_factory, engine_conn)
+    )
     engine_process.start()
-    local_server.launch(port if not ipc_path else ipc_path, message_max_size, use_ipc=(ipc_path != None))
+    local_server.launch(
+        port if not ipc_path else ipc_path,
+        message_max_size,
+        use_ipc=(ipc_path is not None),
+    )
 
-    raise Exception('Server stopped')
+    raise Exception("Server stopped")
+
 
 class _LocalServer:
-    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn, source_name, use_zeromq):
+    def __init__(
+        self, num_tokens_per_source, input_queue_maxsize, conn, source_name, use_zeromq
+    ):
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
-        self._server = (
-            ZeroMQServer if use_zeromq else WebsocketServer)(num_tokens_per_source, self._send_to_engine)
+        self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
+            num_tokens_per_source, self._send_to_engine
+        )
         self._server.add_source_consumed(source_name)
 
     async def _send_to_engine(self, from_client, address):
@@ -54,8 +88,7 @@ class _LocalServer:
         return True
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
-        asyncio.get_event_loop().add_reader(
-            self._conn.fileno(), self._result_ready.set)
+        asyncio.get_event_loop().add_reader(self._conn.fileno(), self._result_ready.set)
         asyncio.ensure_future(self._engine_comm())
         self._server.launch(port_or_path, message_max_size, use_ipc=use_ipc)
 
@@ -75,13 +108,17 @@ class _LocalServer:
 
             result_wrapper.ParseFromString(self._conn.recv_bytes())
             await self._server.send_result_wrapper(
-                address, from_client.source_name, from_client.frame_id,
-                result_wrapper, return_token=True)
+                address,
+                from_client.source_name,
+                from_client.frame_id,
+                result_wrapper,
+                return_token=True,
+            )
 
 
 def _run_engine(engine_factory, conn):
     engine = engine_factory()
-    logger.info('Cognitive engine started')
+    logger.info("Cognitive engine started")
     while True:
         input_frame = gabriel_pb2.InputFrame()
         input_frame.ParseFromString(conn.recv_bytes())

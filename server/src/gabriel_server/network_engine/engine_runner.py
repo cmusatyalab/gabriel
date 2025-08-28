@@ -11,8 +11,14 @@ REQUEST_RETRIES = 3
 logger = logging.getLogger(__name__)
 
 
-def run(engine, engine_name, server_address, all_responses_required=False,
-        timeout=TEN_SECONDS, request_retries=REQUEST_RETRIES):
+def run(
+    engine,
+    engine_name,
+    server_address,
+    all_responses_required=False,
+    timeout=TEN_SECONDS,
+    request_retries=REQUEST_RETRIES,
+):
     context = zmq.Context()
 
     while request_retries > 0:
@@ -20,14 +26,13 @@ def run(engine, engine_name, server_address, all_responses_required=False,
         socket.connect(server_address)
         from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
         from_standalone_engine.welcome.engine_name = engine_name
-        from_standalone_engine.welcome.all_responses_required = (
-            all_responses_required)
+        from_standalone_engine.welcome.all_responses_required = all_responses_required
         socket.send(from_standalone_engine.SerializeToString())
-        logger.info('Sent welcome message to server')
+        logger.info("Sent welcome message to server")
 
         while True:
             if socket.poll(timeout) == 0:
-                logger.warning('No response from server')
+                logger.warning("No response from server")
                 socket.setsockopt(zmq.LINGER, 0)
                 socket.close()
                 request_retries -= 1
@@ -47,4 +52,4 @@ def run(engine, engine_name, server_address, all_responses_required=False,
             from_standalone_engine.result_wrapper.CopyFrom(result_wrapper)
             socket.send(from_standalone_engine.SerializeToString())
 
-    logger.warning('Ran out of retires. Abandoning server connection.')
+    logger.warning("Ran out of retires. Abandoning server connection.")

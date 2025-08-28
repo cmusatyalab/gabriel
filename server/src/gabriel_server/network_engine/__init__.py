@@ -1,1 +1,1 @@
-HEARTBEAT = b''
+HEARTBEAT = b""

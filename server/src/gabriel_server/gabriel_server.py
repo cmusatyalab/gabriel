@@ -8,12 +8,14 @@ from collections import namedtuple
 
 logger = logging.getLogger(__name__)
 
+
 class GabrielServer(ABC):
     """
     Connects to Gabriel clients. Consumes input from the clients
     and passes it to the specified callback function. Results are sent back to
     the client as they become available.
     """
+
     def __init__(self, num_tokens_per_source, engine_cb):
         """
         Args:
@@ -27,7 +29,9 @@ class GabrielServer(ABC):
         # stores the tokens available for each source. 'task' is an async task
         # that consumes inputs from 'inputs' for each client. 'websocket' is
         # the Websockets handler for this client if using Websockets.
-        self._Client = namedtuple('_Client', ['tokens_for_source', 'inputs', 'task', 'websocket'])
+        self._Client = namedtuple(
+            "_Client", ["tokens_for_source", "inputs", "task", "websocket"]
+        )
         self._num_tokens_per_source = num_tokens_per_source
         # The clients connected to the server
         self._clients = {}
@@ -73,7 +77,8 @@ class GabrielServer(ABC):
         await self._start_event.wait()
 
     async def send_result_wrapper(
-            self, address, source_id, frame_id, engine_name, result_wrapper, return_token):
+        self, address, source_id, frame_id, engine_name, result_wrapper, return_token
+    ):
         """
         Send result to client at address.
 
@@ -88,11 +93,11 @@ class GabrielServer(ABC):
         """
         client = self._clients.get(address)
         if client is None:
-            logger.warning('Send request to invalid address: %s', address)
+            logger.warning("Send request to invalid address: %s", address)
             return False
 
         if source_id not in client.tokens_for_source:
-            logger.warning('Send request with invalid source: %s', source_id)
+            logger.warning("Send request with invalid source: %s", source_id)
             # Still send so client gets back token
         elif return_token:
             client.tokens_for_source[source_id] += 1
@@ -157,8 +162,8 @@ class GabrielServer(ABC):
 
         if client.tokens_for_source[source_id] < 1:
             logger.error(
-                'Client %s sending from source %s without tokens', address,
-                source_id)
+                "Client %s sending from source %s without tokens", address, source_id
+            )
             return ResultWrapper.Status.NO_TOKENS
 
         logger.debug(f"Sending input from client {address} to engine")
@@ -166,5 +171,5 @@ class GabrielServer(ABC):
         if send_success:
             return ResultWrapper.Status.SUCCESS
         else:
-            logger.error('Server dropped frame from: %s', source_id)
+            logger.error("Server dropped frame from: %s", source_id)
             return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME
