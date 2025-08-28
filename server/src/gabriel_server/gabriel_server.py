@@ -73,13 +73,13 @@ class GabrielServer(ABC):
         await self._start_event.wait()
 
     async def send_result_wrapper(
-            self, address, source_name, frame_id, result_wrapper, return_token):
+            self, address, source_id, frame_id, engine_name, result_wrapper, return_token):
         """
         Send result to client at address.
 
         Args:
             address: The identifier of the client to send the result to
-            source_name: The name of the source that the result corresponds to
+            source_id: The id of the source that the result corresponds to
             frame_id: The frame id of the input that the result corresponds to
             result_wrapper: The result payload to send to the client
             return_token: Whether to return a token to the client
@@ -91,14 +91,15 @@ class GabrielServer(ABC):
             logger.warning('Send request to invalid address: %s', address)
             return False
 
-        if source_name not in client.tokens_for_source:
-            logger.warning('Send request with invalid source: %s', source_name)
+        if source_id not in client.tokens_for_source:
+            logger.warning('Send request with invalid source: %s', source_id)
             # Still send so client gets back token
         elif return_token:
-            client.tokens_for_source[source_name] += 1
+            client.tokens_for_source[source_id] += 1
 
         to_client = gabriel_pb2.ToClient()
-        to_client.response.source_name = source_name
+        to_client.response.source_id = source_id
+        to_client.response.target_engine_id = engine_name
         to_client.response.frame_id = frame_id
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
@@ -106,7 +107,7 @@ class GabrielServer(ABC):
         return await self._send_via_transport(address, to_client.SerializeToString())
 
     @abstractmethod
-    async def _send_via_transport(self, address, payload):
+    async def _send_via_transport(self, address, payload) -> bool:
         """
         Send a payload to the client at the specified address.
 
@@ -116,47 +117,8 @@ class GabrielServer(ABC):
         """
         pass
 
-    def add_source_consumed(self, source_name):
-        """
-        Indicate that at least one cognitive engine consumes frames from
-        source_name.
-
-        Args:
-            source_name (str): The name of the source to add
-
-        Must be called before self.launch() or run on the same event loop that
-        self.launch() uses.
-        """
-
-        if source_name in self._sources_consumed:
-            return
-
-        self._sources_consumed.add(source_name)
-        for client in self._clients.values():
-            client.tokens_for_source[source_name] = self._num_tokens_per_source
-            # TODO inform client about new source
-
-    def remove_source_consumed(self, source_name):
-        """
-        Indicate that all cognitive engines that consumed frames from source
-        have stopped.
-
-        Args:
-            source_name (str): The name of the source to remove
-
-        Must be called before self.launch() or run on the same event loop that
-        self.launch() uses.
-        """
-        if source_name not in self._sources_consumed:
-            return
-
-        self._sources_consumed.remove(source_name)
-        for client in self._clients.values():
-            del client.tokens_for_source[source_name]
-            # TODO inform client source was removed
-
     @abstractmethod
-    def is_running(self):
+    def is_running(self) -> bool:
         """
         Checks whether the Gabriel server is running.
         """
@@ -188,15 +150,15 @@ class GabrielServer(ABC):
             address: The identifier of the client
             from_client: A FromClient protobuf message containing the input
         """
-        source_name = from_client.source_name
-        if source_name not in self._sources_consumed:
-            logger.error('No engines consume frames from %s', source_name)
-            return ResultWrapper.Status.NO_ENGINE_FOR_SOURCE
+        source_id = from_client.source_id
 
-        if client.tokens_for_source[source_name] < 1:
+        if source_id not in client.tokens_for_source:
+            client.tokens_for_source[source_id] = self._num_tokens_per_source
+
+        if client.tokens_for_source[source_id] < 1:
             logger.error(
                 'Client %s sending from source %s without tokens', address,
-                source_name)
+                source_id)
             return ResultWrapper.Status.NO_TOKENS
 
         logger.debug(f"Sending input from client {address} to engine")
@@ -204,5 +166,5 @@ class GabrielServer(ABC):
         if send_success:
             return ResultWrapper.Status.SUCCESS
         else:
-            logger.error('Server dropped frame from: %s', source_name)
+            logger.error('Server dropped frame from: %s', source_id)
             return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME

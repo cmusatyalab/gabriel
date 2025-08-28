@@ -24,10 +24,23 @@ message InputFrame {
     google.protobuf.Any extras = 3;
 }
 
-message FromClient {
+message ClientInput {
     int64 frame_id = 1;
-    string source_name = 2;
-    InputFrame input_frame = 3;
+    string source_id = 2;
+    repeated string target_engine_ids = 3;
+    InputFrame input_frame = 4;
+}
+
+message EngineConfig {
+    string engine = 1;
+    google.protobuf.Any config = 2;
+}
+
+message FromClient {
+    oneof req_type {
+        ClientInput input = 1;
+        EngineConfig config = 2;
+    }
 }
 
 message ResultWrapper {
@@ -72,22 +85,24 @@ message ResultWrapper {
     google.protobuf.Any extras = 3;
 
     // Optionally specify the name of the module that produced the result
-    StringValue result_producer_name = 4;
+    google.protobuf.StringValue result_producer_name = 4;
+
+    google.protobuf.StringValue source_id = 5;
 }
 
 message ToClient {
     message Welcome {
-        repeated string sources_consumed = 1;
-        int32 num_tokens_per_source = 2;
+        int32 num_tokens_per_source = 1;
     }
 
     message Response {
         // The source of the original frame; allows the client to return the
         // token correctly.
-        string source_name = 1;
-        int64 frame_id = 2;
-        bool return_token = 3;
-        ResultWrapper result_wrapper = 4;
+        string source_id = 1;
+        string target_engine_id = 2;
+        int64 frame_id = 3;
+        bool return_token = 4;
+        ResultWrapper result_wrapper = 5;
     }
 
     oneof welcome_or_response {
@@ -98,7 +113,7 @@ message ToClient {
 
 message FromStandaloneEngine {
     message Welcome {
-        string source_name = 1;
+        string engine_name = 1;
         bool all_responses_required = 2;
     }
 

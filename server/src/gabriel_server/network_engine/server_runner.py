@@ -1,4 +1,5 @@
 import asyncio
+from collections import deque
 import time
 import logging
 import zmq
@@ -17,7 +18,7 @@ FIVE_SECONDS = 5
 logger = logging.getLogger(__name__)
 
 
-Metadata = namedtuple('Metadata', ['frame_id', 'client_address'])
+Metadata = namedtuple('Metadata', ['frame_id', 'source_id', 'client_address'])
 
 
 MetadataPayload = namedtuple('MetadataPayload', ['metadata', 'payload'])
@@ -37,7 +38,8 @@ class _Server:
     def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
-        self._source_infos = {}
+        # Mapping from source id to source info
+        self._source_infos: dict[str, _SourceInfo] = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
         self._server = (
@@ -101,22 +103,30 @@ class _Server:
 
         result_wrapper = from_standalone_engine.result_wrapper
         engine_worker_metadata = engine_worker.get_current_input_metadata()
-        source_info = engine_worker.get_source_info()
+        source_info = self._source_infos.get(engine_worker_metadata.source_id)
+        if source_info is None:
+            logger.error('Source info not found')
+            return
         latest_input = source_info.get_latest_input()
+
+        # Check if the result corresponds to the latest input for this source. If so,
+        # always send the result back
         if (latest_input is not None and
             latest_input.metadata == engine_worker_metadata):
             # Send response to client
             await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address, source_info.get_name(),
-                engine_worker_metadata.frame_id, result_wrapper,
+                engine_worker_metadata.frame_id, engine_worker.get_engine_name(), result_wrapper,
                 return_token=True)
+            
+            # Send the next input to the engine from the queue
             await engine_worker.send_message_from_queue()
             return
 
         if engine_worker.get_all_responses_required():
             await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address, source_info.get_name(),
-                engine_worker_metadata.frame_id, result_wrapper,
+                engine_worker_metadata.frame_id, engine_worker.get_engine_name(), result_wrapper,
                 return_token=False)
 
         if latest_input is None:
@@ -133,26 +143,13 @@ class _Server:
             return
 
         welcome = from_standalone_engine.welcome
-        source_name = welcome.source_name
-        logger.info('New engine connected that consumes frames from source: %s',
-                    source_name)
-
-        source_info = self._source_infos.get(source_name)
-        if source_info is None:
-            logger.info('First engine that consumes from source: %s',
-                        source_name)
-            source_info = _SourceInfo(source_name, self._size_for_queues)
-            self._source_infos[source_name] = source_info
-
-            # Tell server to accept inputs from source_name
-            self._server.add_source_consumed(source_name)
+        engine_name = welcome.engine_name
+        logger.info(f'New engine {engine_name} connected')
 
         all_responses_required = welcome.all_responses_required
         engine_worker = _EngineWorker(
-            self._zmq_socket, source_info, address, all_responses_required)
+            self._zmq_socket, address, engine_name, all_responses_required, self._size_for_queues)
         self._engine_workers[address] = engine_worker
-
-        source_info.add_engine_worker(engine_worker)
 
     async def _heartbeat_helper(self):
         current_time = time.time()
@@ -166,9 +163,19 @@ class _Server:
                 await engine_worker.send_heartbeat()
                 continue
 
-            source_info = engine_worker.get_source_info()
-            logger.info('Lost connection to engine worker that consumes items '
-                        'from source: %s', source_info.get_name())
+            logger.info(f'Lost connection to engine worker {engine_worker.get_engine_name()}')
+
+            current_input_metadata = engine_worker.get_current_input_metadata()
+
+            if current_input_metadata is None:
+                logger.info("Engine disconnected while it was idle")
+                del self._engine_workers[address]
+                return    
+
+            source_info = self._source_infos.get(engine_worker.current_input_metadata.source_id)
+            if source_info is None:
+                logger.error('Source info not found')
+                return
 
             latest_input = source_info.get_latest_input()
             current_input_metadata = engine_worker.get_current_input_metadata()
@@ -180,40 +187,41 @@ class _Server:
                 await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
                     source_info.get_name(), current_input_metadata.frame_id,
-                    result_wrapper, return_token=True)
+                    engine_worker.get_engine_name(), result_wrapper, return_token=True)
 
-            source_info.remove_engine_worker(engine_worker)
             del self._engine_workers[address]
 
-            if source_info.has_no_engine_workers():
-                source_name = source_info.get_name()
-                logger.info('No remaining engines consume input from source: '
-                            '%s', source_name)
-                del self._source_infos[source_name]
-                self._server.remove_source_consumed(source_name)
-
     async def _send_to_engine(self, from_client, client_address):
-        source_info = self._source_infos[from_client.source_name]
+        if from_client.source_id not in self._source_infos:
+            self._source_infos[from_client.source_id] = _SourceInfo(
+                from_client.source_id, self._engine_workers)
+        source_info = self._source_infos[from_client.source_id]
         return await source_info.process_input_from_client(
             from_client, client_address)
 
 
 class _EngineWorker:
     def __init__(
-            self, zmq_socket, source_info, address, all_responses_required):
+            self, zmq_socket, address, engine_name, all_responses_required, fresh_inputs_queue_size):
         self._zmq_socket = zmq_socket
-        self._source_info = source_info
         self._address = address
+        self._engine_name = engine_name
         self._all_responses_required = all_responses_required
         self._last_sent = 0
         self._awaiting_heartbeat_response = False
         self._current_input_metadata = None
+        # Mapping of source ids to their input queues
+        self._source_queues = dict()
+        # Maximum size for each source queue
+        self._size_for_queues = fresh_inputs_queue_size
+        # Iterator for iterating through source queues in a round-robin manner
+        self._source_queue_iterator = FairQueueIterator(self._source_queues)
 
     def get_address(self):
         return self._address
 
-    def get_source_info(self):
-        return self._source_info
+    def get_engine_name(self):
+        return self._engine_name
 
     def get_current_input_metadata(self):
         return self._current_input_metadata
@@ -243,6 +251,9 @@ class _EngineWorker:
         self._last_sent = time.time()
 
     async def send_payload(self, metadata_payload):
+        if self._current_input_metadata is not None:
+            await self.add_input_to_queue(metadata_payload)
+            return
         self._current_input_metadata = metadata_payload.metadata
         await self._send_helper(metadata_payload.payload)
 
@@ -250,66 +261,83 @@ class _EngineWorker:
         '''Send message from queue and update current input.
 
         Current input will be set as None if there is nothing on the queue.'''
-        metadata_payload = self._source_info.advance_unsent_queue()
 
-        if metadata_payload is None:
+        source_queue = next(self._source_queue_iterator, None)
+        if source_queue is None:
             self._current_input_metadata = None
-        else:
-            await self.send_payload(metadata_payload)
+            return
 
+        metadata_payload = await source_queue.get()
+        await self.send_payload(metadata_payload)
+
+    async def create_new_queue(self, source_id):
+        queue = asyncio.Queue(maxsize=self._size_for_queues)
+        self._source_queues[source_id] = queue
+        self._source_queue_iterator.add_new_queue(queue)
+
+    async def add_input_to_queue(self, metadata_payload):
+        source_id = metadata_payload.metadata.source_id
+        if source_id not in self._source_queues:
+            await self.create_new_queue(source_id)
+        self._source_queues[source_id].put_nowait(metadata_payload)
 
 class _SourceInfo:
-    def __init__(self, source_name, fresh_inputs_queue_size):
-        self._source_name = source_name
-        self._unsent_inputs = asyncio.Queue(maxsize=fresh_inputs_queue_size)
+    def __init__(self, source_id, engine_workers):
+        self._source_id = source_id
         self._latest_input = None
-        self._engine_workers = set()
+        self._engine_workers = engine_workers
 
     def get_name(self):
-        return self._source_name
-
-    def add_engine_worker(self, engine_worker):
-        self._engine_workers.add(engine_worker)
-
-    def remove_engine_worker(self, engine_worker):
-        self._engine_workers.remove(engine_worker)
-
-    def has_no_engine_workers(self):
-        return len(self._engine_workers) == 0
+        return self._source_id
 
     def get_latest_input(self):
         return self._latest_input
 
     async def process_input_from_client(self, from_client, client_address):
-        sent_to_engine = False
+        """
+        Process input received from a client. Send it to the targetted engine workers.
+        """
+        logger.debug(f"Processing input from client {client_address} with source ID {from_client.source_id} and frame id {from_client.frame_id}")
         metadata = Metadata(
-            frame_id=from_client.frame_id, client_address=client_address)
+            frame_id=from_client.frame_id, source_id=self._source_id, client_address=client_address)
         payload = from_client.input_frame.SerializeToString()
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
-        for engine_worker in self._engine_workers:
-            if engine_worker.get_current_input_metadata() is None:
-                await engine_worker.send_payload(metadata_payload)
-                sent_to_engine = True
 
-        if sent_to_engine:
-            self._latest_input = metadata_payload
-            return True
+        target_engines = []
+        for engine_worker in self._engine_workers.values():
+            if engine_worker.get_engine_name() in from_client.target_engine_ids:
+                target_engines.append(engine_worker)
 
-        if self._unsent_inputs.full():
+        if target_engines == []:
+            # TODO: better error handling
+            logger.error('No target engines found')
             return False
 
-        self._unsent_inputs.put_nowait(metadata_payload)
+        for engine_worker in target_engines:
+            await engine_worker.send_payload(metadata_payload)
+
+        self._latest_input = metadata_payload
         return True
 
-    def advance_unsent_queue(self):
-        '''
-        Remove an item from the queue of unsent input_frame messages, and store
-        this as the latest input.
+class FairQueueIterator:
+    """
+    Iterate over multiple queues in a fair manner.
+    """
+    def __init__(self, queues):
+        self.queues = deque(queues)
 
-        Return the latest item, or None if the queue was empty
-        '''
+    def add_new_queue(self, queue):
+        self.queues.append(queue)
 
-        self._latest_input = (None if self._unsent_inputs.empty() else
-                              self._unsent_inputs.get_nowait())
+    def __iter__(self):
+        return self
 
-        return self._latest_input
+    def __next__(self):
+        # Iterate through all the queues, stopping when we find a non-empty one
+        for _ in range(len(self.queues)):
+            queue = self.queues.popleft()
+            self.queues.append(queue)
+            if queue:
+                # If queue is not empty, return it
+                return queue
+        raise StopIteration

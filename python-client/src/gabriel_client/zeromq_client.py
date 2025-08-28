@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import uuid
 import zmq
 import zmq.asyncio
 
@@ -12,6 +13,65 @@ from gabriel_client.source import _Source
 URI_FORMAT = 'tcp://{host}:{port}'
 
 logger = logging.getLogger(__name__)
+
+class InputProducer:
+    def __init__(self, producer, target_engine_ids):
+        """
+        Args:
+            producer (callable): A callable that produces input data
+            target_engine_ids (list): A list of target engine IDs for the input
+        """
+        self._running = asyncio.Event()
+        self._running.set()
+        self._producer = producer
+        self._target_engine_ids = target_engine_ids
+        self._source_id = uuid.uuid4()
+
+    async def produce(self):
+        """
+        Invokes the producer to generate input
+        """
+        if not self._running:
+            raise Exception("Producer called when not running")
+        res = await self._producer()
+        return res
+
+    def start(self, computations):
+        """
+        Starts the producer
+
+        Args:
+            computations (list): A list of computation tasks to be performed
+        """
+        self._computations = computations
+        self._running.set()
+
+    def stop(self):
+        """
+        Stops the producer
+        """
+        self._running.clear()
+
+    def is_running(self):
+        """
+        Checks if the producer is running
+        """
+        return self._running
+
+    def target_engine_ids(self):
+        return self._target_engine_ids
+
+    async def _wait_for_running(self):
+        """
+        Wait until the producer is running
+        """
+        await self._running.wait()
+
+    def source_id(self):
+        """
+        Returns the source id of the producer
+        """
+        return self._source_id
 
 # Represents an input that this client produces. 'producer' is the method
 # that produces inputs and 'source_name' is the source that the inputs are for.
@@ -30,17 +90,33 @@ HELLO_MSG = b'Hello message'
 
 context = zmq.asyncio.Context()
 
+class TokenPool:
+    def __init__(self, num_tokens):
+        self._num_tokens = num_tokens
+        self._sem = asyncio.Semaphore(num_tokens)
+
+    def return_token(self):
+        self._sem.release()
+
+    async def get_token(self):
+        logger.debug('Waiting for token')
+        await self._sem.acquire()
+        logger.debug('Token acquired')
+
+    def is_locked(self):
+        return self._sem.locked()
+
 class ZeroMQClient:
     """
     A Gabriel client that talks to the server over ZeroMQ.
     """
-    def __init__(self, host, port, producer_wrappers, consumer, ipc=False):
+    def __init__(self, host, port, input_producers, consumer, use_ipc=False):
         """
         Args:
             host (str): the host of the server to connect to
             port (int): the port of the server
-            producer_wrappers (list):
-                instances of ProducerWrapper for the inputs produced by this
+            input_producers (list):
+                instances of InputProducer for the inputs produced by this
                 client
             consumer: callback for results from server
             ipc (bool): determines whether the ZeroMQ connection should be
@@ -51,15 +127,16 @@ class ZeroMQClient:
         self._sock = context.socket(zmq.DEALER)
         # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
-        # The input sources accepted by the server
-        self._sources = {}
+        self._producers = {}
+        # Mapping from source id to tokens
+        self._tokens = dict()
         self._running = True
         # Check whether IPC mode is enabled, and only use the host if so
-        if not ipc:
+        if not use_ipc:
             self._uri = URI_FORMAT.format(host=host, port=port)
         else:
             self._uri = host
-        self.producer_wrappers = producer_wrappers
+        self.input_producers = set(input_producers)
         self.consumer = consumer
         # Whether the client is connected to the server
         self._connected = asyncio.Event()
@@ -70,6 +147,7 @@ class ZeroMQClient:
         self._last_heartbeat_time = 0
         # Set by tasks to schedule a heartbeat to be sent to the server
         self._schedule_heartbeat = asyncio.Event()
+        self._num_tokens_per_source = None
 
         self._connected.set()
 
@@ -82,6 +160,12 @@ class ZeroMQClient:
         """
         asyncio.ensure_future(self._launch_helper())
         asyncio.get_event_loop().run_forever()
+
+    def register_input_producer(self, input_producer):
+        self.input_producers.add(input_producer)
+
+    def deregister_input_producer(self, input_producer):
+        self.input_producers.remove(input_producer)
 
     async def _launch_helper(self):
         """
@@ -96,8 +180,7 @@ class ZeroMQClient:
         logger.info("Sent hello message to server")
 
         tasks = [
-            self._producer_handler(producer_wrapper.producer, producer_wrapper.source_name)
-            for producer_wrapper in self.producer_wrappers
+            self._producer_handler(input_producer) for input_producer in self.input_producers
         ]
         tasks.append(self._consumer_handler())
         tasks.append(self._heartbeat_loop())
@@ -164,10 +247,7 @@ class ZeroMQClient:
                 The gabriel_pb2.ToClient.Welcome message received from the
                 server
         """
-        logger.info(f"{len(welcome.sources_consumed)} sources accepted by the server")
-        for source_name in welcome.sources_consumed:
-            logger.info(f"Tokens available for source {source_name}={welcome.num_tokens_per_source}")
-            self._sources[source_name] = _Source(welcome.num_tokens_per_source)
+        self._num_tokens_per_source = welcome.num_tokens_per_source
         self._welcome_event.set()
 
     def _process_response(self, response):
@@ -194,33 +274,39 @@ class ZeroMQClient:
             logger.error('Output status was: %s', status)
 
         if response.return_token:
-            self._sources[response.source_name].return_token()
+            source_id = uuid.UUID(response.source_id)
+            self._tokens[source_id].return_token()
 
-    async def _producer_handler(self, producer, source_name):
+    async def _producer_handler(self, producer):
         """
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
 
+        TODO: update
         Args:
             producer: The method used to produce inputs for the server
             source_name (str): The name of the source to produce inputs for
         """
         await self._welcome_event.wait()
 
-        source = self._sources.get(source_name)
-        assert source is not None, (
-            "No engines consume frames from source: {}".format(source_name))
-
         # Async task used to producer an input
         producer_task = None
+        frame_id = 1
+
+        token_pool = TokenPool(self._num_tokens_per_source)
+        self._tokens[producer.source_id()] = token_pool
 
         while self._running:
+            if not producer.is_running():
+                await producer.wait_for_running()
+
             try:
                 # Wait for a token. Time out to send a heartbeat to the server.
-                await asyncio.wait_for(source.get_token(), timeout=HEARTBEAT_INTERVAL)
+                await asyncio.wait_for(token_pool.get_token(), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
                 self._schedule_heartbeat.set()
                 continue
+
             # Stop producing inputs if disconnected from the server
             if not self._connected.is_set():
                 logger.debug("Stopping producer task")
@@ -232,7 +318,7 @@ class ZeroMQClient:
 
             if producer_task is None:
                 logger.debug("Created new producer task")
-                producer_task = asyncio.create_task(producer())
+                producer_task = asyncio.create_task(producer.produce())
             try:
                 # Wait for the producer to produce an input. Time out to send
                 # a heartbeat to the server. Use an asyncio.shield to prevent
@@ -240,7 +326,7 @@ class ZeroMQClient:
                 input_frame = await asyncio.wait_for(
                     asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL)
             except (TimeoutError, asyncio.TimeoutError):
-                source.return_token()
+                token_pool.return_token()
                 self._schedule_heartbeat.set()
                 await asyncio.sleep(0)
                 continue
@@ -249,21 +335,25 @@ class ZeroMQClient:
             producer_task = None
 
             if input_frame is None:
-                source.return_token()
+                token_pool.return_token()
                 logger.info('Received None from producer')
                 continue
 
+            input = gabriel_pb2.ClientInput()
+            input.frame_id = frame_id
+            frame_id += 1
+            input.source_id = str(producer.source_id())
+            input.target_engine_ids.extend(producer.target_engine_ids())
+            input.input_frame.CopyFrom(input_frame)
+            
             from_client = gabriel_pb2.FromClient()
-            from_client.frame_id = source.get_frame_id()
-            from_client.source_name = source_name
-            from_client.input_frame.CopyFrom(input_frame)
+            from_client.input.CopyFrom(input)
 
             # Send input to server
             await self._sock.send(from_client.SerializeToString())
 
-            logger.debug('Semaphore for %s is %s', source_name,
-                         "LOCKED" if source.is_locked() else "AVAILABLE")
-            source.next_frame()
+            logger.debug('Semaphore for %s is %s', producer.source_id(),
+                         "LOCKED" if token_pool.is_locked() else "AVAILABLE")
 
     async def _send_heartbeat(self, force=False):
         """

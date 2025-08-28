@@ -11,7 +11,7 @@ REQUEST_RETRIES = 3
 logger = logging.getLogger(__name__)
 
 
-def run(engine, source_name, server_address, all_responses_required=False,
+def run(engine, engine_name, server_address, all_responses_required=False,
         timeout=TEN_SECONDS, request_retries=REQUEST_RETRIES):
     context = zmq.Context()
 
@@ -19,7 +19,7 @@ def run(engine, source_name, server_address, all_responses_required=False,
         socket = context.socket(zmq.REQ)
         socket.connect(server_address)
         from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
-        from_standalone_engine.welcome.source_name = source_name
+        from_standalone_engine.welcome.engine_name = engine_name
         from_standalone_engine.welcome.all_responses_required = (
             all_responses_required)
         socket.send(from_standalone_engine.SerializeToString())
@@ -41,6 +41,7 @@ def run(engine, source_name, server_address, all_responses_required=False,
             input_frame = gabriel_pb2.InputFrame()
             input_frame.ParseFromString(message_from_server)
             result_wrapper = engine.handle(input_frame)
+            result_wrapper.result_producer_name.value = engine_name
 
             from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
             from_standalone_engine.result_wrapper.CopyFrom(result_wrapper)
