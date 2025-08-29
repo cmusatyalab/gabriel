@@ -55,21 +55,7 @@ class _Server:
         )
 
     def launch(self, client_port, message_max_size):
-        async def receive_from_engine_worker_loop():
-            await self._server.wait_for_start()
-            while self._server.is_running():
-                await self._receive_from_engine_worker_helper()
-
-        async def heartbeat_loop():
-            await self._server.wait_for_start()
-            while self._server.is_running():
-                await asyncio.sleep(self._timeout)
-                await self._heartbeat_helper()
-
-        asyncio.ensure_future(receive_from_engine_worker_loop())
-        asyncio.ensure_future(heartbeat_loop())
-
-        self._server.launch(client_port, message_max_size)
+        asyncio.run(self.launch_async(client_port, message_max_size))
 
     async def launch_async(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
@@ -83,8 +69,11 @@ class _Server:
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
 
-        asyncio.create_task(receive_from_engine_worker_loop())
-        asyncio.create_task(heartbeat_loop())
+        engine_receiver_task = asyncio.create_task(receive_from_engine_worker_loop())
+        engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+        engine_receiver_task.add_done_callback(lambda t: t.result())
+        engine_heartbeat_task.add_done_callback(lambda t: t.result())
 
         await self._server.launch_async(client_port, message_max_size)
 
