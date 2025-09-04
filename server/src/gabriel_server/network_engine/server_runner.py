@@ -68,14 +68,16 @@ class _Server:
             while self._server.is_running():
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
-
+        
         engine_receiver_task = asyncio.create_task(receive_from_engine_worker_loop())
         engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
 
         engine_receiver_task.add_done_callback(lambda t: t.result())
         engine_heartbeat_task.add_done_callback(lambda t: t.result())
+        
+        server_task = self._server.launch_async(client_port, message_max_size)
 
-        await self._server.launch_async(client_port, message_max_size)
+        await asyncio.gather(engine_receiver_task, engine_heartbeat_task, server_task)
 
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages"""

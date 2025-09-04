@@ -55,12 +55,12 @@ class GabrielServer(ABC):
             use_ipc: Toggles whether the connection is over TCP or IPC
         """
         pass
-
+    
     @abstractmethod
-    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+    def launch_async(self, port_or_path, message_max_size, use_ipc=False):
         """
-        Launch the Gabriel server asynchronously. This method is a coroutine that
-        can be awaited, spawned as a task, or cancelled.
+        Launch the Gabriel server asynchronously. This method will block execution
+        until the server is stopped.
 
         Args:
             port_or_path: Represents the bind port or the bind unix socket path,
