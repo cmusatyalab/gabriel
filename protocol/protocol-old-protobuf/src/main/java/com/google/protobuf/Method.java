@@ -57,7 +57,7 @@ public  final class Method extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -68,7 +68,7 @@ public  final class Method extends
    * <code>optional string name = 1;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -84,7 +84,7 @@ public  final class Method extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -123,7 +123,7 @@ public  final class Method extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     requestTypeUrl_ = value;
   }
   /**
@@ -134,7 +134,7 @@ public  final class Method extends
    * <code>optional string request_type_url = 2;</code>
    */
   private void clearRequestTypeUrl() {
-    
+
     requestTypeUrl_ = getDefaultInstance().getRequestTypeUrl();
   }
   /**
@@ -150,7 +150,7 @@ public  final class Method extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     requestTypeUrl_ = value.toStringUtf8();
   }
 
@@ -174,7 +174,7 @@ public  final class Method extends
    * <code>optional bool request_streaming = 3;</code>
    */
   private void setRequestStreaming(boolean value) {
-    
+
     requestStreaming_ = value;
   }
   /**
@@ -185,7 +185,7 @@ public  final class Method extends
    * <code>optional bool request_streaming = 3;</code>
    */
   private void clearRequestStreaming() {
-    
+
     requestStreaming_ = false;
   }
 
@@ -224,7 +224,7 @@ public  final class Method extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     responseTypeUrl_ = value;
   }
   /**
@@ -235,7 +235,7 @@ public  final class Method extends
    * <code>optional string response_type_url = 4;</code>
    */
   private void clearResponseTypeUrl() {
-    
+
     responseTypeUrl_ = getDefaultInstance().getResponseTypeUrl();
   }
   /**
@@ -251,7 +251,7 @@ public  final class Method extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     responseTypeUrl_ = value.toStringUtf8();
   }
 
@@ -275,7 +275,7 @@ public  final class Method extends
    * <code>optional bool response_streaming = 5;</code>
    */
   private void setResponseStreaming(boolean value) {
-    
+
     responseStreaming_ = value;
   }
   /**
@@ -286,7 +286,7 @@ public  final class Method extends
    * <code>optional bool response_streaming = 5;</code>
    */
   private void clearResponseStreaming() {
-    
+
     responseStreaming_ = false;
   }
 
@@ -309,7 +309,7 @@ public  final class Method extends
    *
    * <code>repeated .google.protobuf.Option options = 6;</code>
    */
-  public java.util.List<? extends com.google.protobuf.OptionOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.OptionOrBuilder>
       getOptionsOrBuilderList() {
     return options_;
   }
@@ -510,7 +510,7 @@ public  final class Method extends
     if (value == null) {
       throw new NullPointerException();
     }
-    
+
     syntax_ = value.getNumber();
   }
   /**
@@ -521,7 +521,7 @@ public  final class Method extends
    * <code>optional .google.protobuf.Syntax syntax = 7;</code>
    */
   private void clearSyntax() {
-    
+
     syntax_ = 0;
   }
 
@@ -1272,4 +1272,3 @@ public  final class Method extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

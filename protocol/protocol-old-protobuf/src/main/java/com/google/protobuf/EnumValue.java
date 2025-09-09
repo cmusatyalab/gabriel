@@ -55,7 +55,7 @@ public  final class EnumValue extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -66,7 +66,7 @@ public  final class EnumValue extends
    * <code>optional string name = 1;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -82,7 +82,7 @@ public  final class EnumValue extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -106,7 +106,7 @@ public  final class EnumValue extends
    * <code>optional int32 number = 2;</code>
    */
   private void setNumber(int value) {
-    
+
     number_ = value;
   }
   /**
@@ -117,7 +117,7 @@ public  final class EnumValue extends
    * <code>optional int32 number = 2;</code>
    */
   private void clearNumber() {
-    
+
     number_ = 0;
   }
 
@@ -140,7 +140,7 @@ public  final class EnumValue extends
    *
    * <code>repeated .google.protobuf.Option options = 3;</code>
    */
-  public java.util.List<? extends com.google.protobuf.OptionOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.OptionOrBuilder>
       getOptionsOrBuilderList() {
     return options_;
   }
@@ -774,4 +774,3 @@ public  final class EnumValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

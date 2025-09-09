@@ -89,4 +89,3 @@ public enum Syntax
 
   // @@protoc_insertion_point(enum_scope:google.protobuf.Syntax)
 }
-

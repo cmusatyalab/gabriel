@@ -32,7 +32,7 @@ public interface EnumOrBuilder extends
    *
    * <code>repeated .google.protobuf.EnumValue enumvalue = 2;</code>
    */
-  java.util.List<com.google.protobuf.EnumValue> 
+  java.util.List<com.google.protobuf.EnumValue>
       getEnumvalueList();
   /**
    * <pre>
@@ -58,7 +58,7 @@ public interface EnumOrBuilder extends
    *
    * <code>repeated .google.protobuf.Option options = 3;</code>
    */
-  java.util.List<com.google.protobuf.Option> 
+  java.util.List<com.google.protobuf.Option>
       getOptionsList();
   /**
    * <pre>

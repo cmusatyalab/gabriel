@@ -74,4 +74,3 @@ public enum NullValue
 
   // @@protoc_insertion_point(enum_scope:google.protobuf.NullValue)
 }
-

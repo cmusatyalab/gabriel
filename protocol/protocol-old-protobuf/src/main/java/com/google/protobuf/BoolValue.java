@@ -38,7 +38,7 @@ public  final class BoolValue extends
    * <code>optional bool value = 1;</code>
    */
   private void setValue(boolean value) {
-    
+
     value_ = value;
   }
   /**
@@ -49,7 +49,7 @@ public  final class BoolValue extends
    * <code>optional bool value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = false;
   }
 
@@ -292,4 +292,3 @@ public  final class BoolValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

@@ -38,7 +38,7 @@ public  final class UInt32Value extends
    * <code>optional uint32 value = 1;</code>
    */
   private void setValue(int value) {
-    
+
     value_ = value;
   }
   /**
@@ -49,7 +49,7 @@ public  final class UInt32Value extends
    * <code>optional uint32 value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = 0;
   }
 
@@ -292,4 +292,3 @@ public  final class UInt32Value extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

@@ -55,7 +55,7 @@ class GabrielServer(ABC):
             use_ipc: Toggles whether the connection is over TCP or IPC
         """
         pass
-    
+
     @abstractmethod
     def launch_async(self, port_or_path, message_max_size, use_ipc=False):
         """

@@ -11,7 +11,7 @@ def send_frames(source):
     capture = cv2.VideoCapture(0)
     while True:
         _, frame = capture.read()
-        _, jpeg_frame=cv2.imencode('.jpg', frame)
+        _, jpeg_frame = cv2.imencode(".jpg", frame)
         input_frame = gabriel_pb2.InputFrame()
         input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
         input_frame.payloads.append(jpeg_frame.tobytes())
@@ -27,11 +27,12 @@ def main():
     p = multiprocessing.Process(target=send_frames, args=(source,))
     p.start()
     producer_wrappers = [source.get_producer_wrapper()]
-    client = WebsocketClient(args.server_host, common.WEBSOCKET_PORT,
-                             producer_wrappers, push_source.consumer)
+    client = WebsocketClient(
+        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, push_source.consumer
+    )
     client.launch()
     p.terminate()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

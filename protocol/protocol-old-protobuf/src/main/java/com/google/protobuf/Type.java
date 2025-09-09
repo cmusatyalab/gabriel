@@ -57,7 +57,7 @@ public  final class Type extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -68,7 +68,7 @@ public  final class Type extends
    * <code>optional string name = 1;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -84,7 +84,7 @@ public  final class Type extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -107,7 +107,7 @@ public  final class Type extends
    *
    * <code>repeated .google.protobuf.Field fields = 2;</code>
    */
-  public java.util.List<? extends com.google.protobuf.FieldOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.FieldOrBuilder>
       getFieldsOrBuilderList() {
     return fields_;
   }
@@ -403,7 +403,7 @@ public  final class Type extends
    *
    * <code>repeated .google.protobuf.Option options = 4;</code>
    */
-  public java.util.List<? extends com.google.protobuf.OptionOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.OptionOrBuilder>
       getOptionsOrBuilderList() {
     return options_;
   }
@@ -594,7 +594,7 @@ public  final class Type extends
       throw new NullPointerException();
     }
     sourceContext_ = value;
-    
+
     }
   /**
    * <pre>
@@ -606,7 +606,7 @@ public  final class Type extends
   private void setSourceContext(
       com.google.protobuf.SourceContext.Builder builderForValue) {
     sourceContext_ = builderForValue.build();
-    
+
   }
   /**
    * <pre>
@@ -623,7 +623,7 @@ public  final class Type extends
     } else {
       sourceContext_ = value;
     }
-    
+
   }
   /**
    * <pre>
@@ -633,7 +633,7 @@ public  final class Type extends
    * <code>optional .google.protobuf.SourceContext source_context = 5;</code>
    */
   private void clearSourceContext() {  sourceContext_ = null;
-    
+
   }
 
   public static final int SYNTAX_FIELD_NUMBER = 6;
@@ -680,7 +680,7 @@ public  final class Type extends
     if (value == null) {
       throw new NullPointerException();
     }
-    
+
     syntax_ = value.getNumber();
   }
   /**
@@ -691,7 +691,7 @@ public  final class Type extends
    * <code>optional .google.protobuf.Syntax syntax = 6;</code>
    */
   private void clearSyntax() {
-    
+
     syntax_ = 0;
   }
 
@@ -1578,4 +1578,3 @@ public  final class Type extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

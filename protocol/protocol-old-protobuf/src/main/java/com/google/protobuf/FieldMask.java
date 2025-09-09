@@ -758,4 +758,3 @@ public  final class FieldMask extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

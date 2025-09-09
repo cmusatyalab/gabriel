@@ -63,7 +63,7 @@ public  final class Option extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -77,7 +77,7 @@ public  final class Option extends
    * <code>optional string name = 1;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -96,7 +96,7 @@ public  final class Option extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -143,7 +143,7 @@ public  final class Option extends
       throw new NullPointerException();
     }
     value_ = value;
-    
+
     }
   /**
    * <pre>
@@ -158,7 +158,7 @@ public  final class Option extends
   private void setValue(
       com.google.protobuf.Any.Builder builderForValue) {
     value_ = builderForValue.build();
-    
+
   }
   /**
    * <pre>
@@ -178,7 +178,7 @@ public  final class Option extends
     } else {
       value_ = value;
     }
-    
+
   }
   /**
    * <pre>
@@ -191,7 +191,7 @@ public  final class Option extends
    * <code>optional .google.protobuf.Any value = 2;</code>
    */
   private void clearValue() {  value_ = null;
-    
+
   }
 
   public void writeTo(com.google.protobuf.CodedOutputStream output)
@@ -582,4 +582,3 @@ public  final class Option extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

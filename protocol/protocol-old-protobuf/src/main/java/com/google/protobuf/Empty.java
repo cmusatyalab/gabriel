@@ -218,4 +218,3 @@ public  final class Empty extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

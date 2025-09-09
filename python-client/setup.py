@@ -33,8 +33,8 @@ setuptools.setup(
         "opencv-python>=3, <5",
     ],
     extras_require={
-        'zmq': [
+        "zmq": [
             "pyzmq>=18.1",
         ],
-    }
+    },
 )

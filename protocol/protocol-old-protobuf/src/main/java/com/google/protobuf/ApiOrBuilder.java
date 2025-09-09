@@ -34,7 +34,7 @@ public interface ApiOrBuilder extends
    *
    * <code>repeated .google.protobuf.Method methods = 2;</code>
    */
-  java.util.List<com.google.protobuf.Method> 
+  java.util.List<com.google.protobuf.Method>
       getMethodsList();
   /**
    * <pre>
@@ -60,7 +60,7 @@ public interface ApiOrBuilder extends
    *
    * <code>repeated .google.protobuf.Option options = 3;</code>
    */
-  java.util.List<com.google.protobuf.Option> 
+  java.util.List<com.google.protobuf.Option>
       getOptionsList();
   /**
    * <pre>
@@ -155,7 +155,7 @@ public interface ApiOrBuilder extends
    *
    * <code>repeated .google.protobuf.Mixin mixins = 6;</code>
    */
-  java.util.List<com.google.protobuf.Mixin> 
+  java.util.List<com.google.protobuf.Mixin>
       getMixinsList();
   /**
    * <pre>

@@ -34,6 +34,7 @@ class ZeroMQServer(GabrielServer):
         asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+        logger.info(f"Launching ZeroMQ server on {port_or_path} {use_ipc=}")
         if not use_ipc:
             self._sock.bind(URI_FORMAT.format(port_or_path))
         else:
@@ -45,7 +46,16 @@ class ZeroMQServer(GabrielServer):
         self._start_event.set()
 
         logger.info(f"Listening on {port_or_path}")
-        await handler_task
+        try:
+            await handler_task
+        except asyncio.CancelledError:
+            for client in self._clients.values():
+                client.task.cancel()
+                try:
+                    await client.task
+                except asyncio.CancelledError:
+                    pass
+            raise
 
     async def _send_via_transport(self, address, payload):
         logger.debug("Sending result to client %s", address)
@@ -70,7 +80,7 @@ class ZeroMQServer(GabrielServer):
             if client is None:
                 logger.info("New client connected: %s", address)
                 task = asyncio.create_task(self._consumer(address))
-                task.add_done_callback(lambda t: t.result())
+                task.add_done_callback(handle_task_result)
                 client = self._Client(
                     tokens_for_source={},
                     inputs=asyncio.Queue(),
@@ -154,3 +164,10 @@ class ZeroMQServer(GabrielServer):
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status
             await self._sock.send_multipart([address, to_client.SerializeToString()])
+
+
+def handle_task_result(t: asyncio.Task):
+    try:
+        t.result()
+    except asyncio.CancelledError:
+        pass

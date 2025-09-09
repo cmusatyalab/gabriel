@@ -203,14 +203,14 @@ public final class Protos {
       if (value == null) {
         throw new NullPointerException();
       }
-      
+
       payloadType_ = value.getNumber();
     }
     /**
      * <code>optional .gabriel.PayloadType payload_type = 1;</code>
      */
     private void clearPayloadType() {
-      
+
       payloadType_ = 0;
     }
 
@@ -312,7 +312,7 @@ public final class Protos {
         throw new NullPointerException();
       }
       extras_ = value;
-      
+
       }
     /**
      * <pre>
@@ -324,7 +324,7 @@ public final class Protos {
     private void setExtras(
         com.google.protobuf.Any.Builder builderForValue) {
       extras_ = builderForValue.build();
-      
+
     }
     /**
      * <pre>
@@ -341,7 +341,7 @@ public final class Protos {
       } else {
         extras_ = value;
       }
-      
+
     }
     /**
      * <pre>
@@ -351,7 +351,7 @@ public final class Protos {
      * <code>optional .google.protobuf.Any extras = 3;</code>
      */
     private void clearExtras() {  extras_ = null;
-      
+
     }
 
     public void writeTo(com.google.protobuf.CodedOutputStream output)
@@ -810,14 +810,14 @@ public final class Protos {
      * <code>optional int64 frame_id = 1;</code>
      */
     private void setFrameId(long value) {
-      
+
       frameId_ = value;
     }
     /**
      * <code>optional int64 frame_id = 1;</code>
      */
     private void clearFrameId() {
-      
+
       frameId_ = 0L;
     }
 
@@ -844,14 +844,14 @@ public final class Protos {
       if (value == null) {
     throw new NullPointerException();
   }
-  
+
       sourceName_ = value;
     }
     /**
      * <code>optional string source_name = 2;</code>
      */
     private void clearSourceName() {
-      
+
       sourceName_ = getDefaultInstance().getSourceName();
     }
     /**
@@ -863,7 +863,7 @@ public final class Protos {
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-      
+
       sourceName_ = value.toStringUtf8();
     }
 
@@ -889,7 +889,7 @@ public final class Protos {
         throw new NullPointerException();
       }
       inputFrame_ = value;
-      
+
       }
     /**
      * <code>optional .gabriel.InputFrame input_frame = 3;</code>
@@ -897,7 +897,7 @@ public final class Protos {
     private void setInputFrame(
         edu.cmu.cs.gabriel.protocol.Protos.InputFrame.Builder builderForValue) {
       inputFrame_ = builderForValue.build();
-      
+
     }
     /**
      * <code>optional .gabriel.InputFrame input_frame = 3;</code>
@@ -910,13 +910,13 @@ public final class Protos {
       } else {
         inputFrame_ = value;
       }
-      
+
     }
     /**
      * <code>optional .gabriel.InputFrame input_frame = 3;</code>
      */
     private void clearInputFrame() {  inputFrame_ = null;
-      
+
     }
 
     public void writeTo(com.google.protobuf.CodedOutputStream output)
@@ -1279,7 +1279,7 @@ public final class Protos {
     /**
      * <code>repeated .gabriel.ResultWrapper.Result results = 2;</code>
      */
-    java.util.List<edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.Result> 
+    java.util.List<edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.Result>
         getResultsList();
     /**
      * <code>repeated .gabriel.ResultWrapper.Result results = 2;</code>
@@ -1546,14 +1546,14 @@ public final class Protos {
         if (value == null) {
           throw new NullPointerException();
         }
-        
+
         payloadType_ = value.getNumber();
       }
       /**
        * <code>optional .gabriel.PayloadType payload_type = 1;</code>
        */
       private void clearPayloadType() {
-        
+
         payloadType_ = 0;
       }
 
@@ -1572,14 +1572,14 @@ public final class Protos {
         if (value == null) {
     throw new NullPointerException();
   }
-  
+
         payload_ = value;
       }
       /**
        * <code>optional bytes payload = 2;</code>
        */
       private void clearPayload() {
-        
+
         payload_ = getDefaultInstance().getPayload();
       }
 
@@ -1931,7 +1931,7 @@ public final class Protos {
         if (value == null) {
     throw new NullPointerException();
   }
-  
+
         value_ = value;
       }
       /**
@@ -1942,7 +1942,7 @@ public final class Protos {
        * <code>optional string value = 1;</code>
        */
       private void clearValue() {
-        
+
         value_ = getDefaultInstance().getValue();
       }
       /**
@@ -1958,7 +1958,7 @@ public final class Protos {
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-        
+
         value_ = value.toStringUtf8();
       }
 
@@ -2258,14 +2258,14 @@ public final class Protos {
       if (value == null) {
         throw new NullPointerException();
       }
-      
+
       status_ = value.getNumber();
     }
     /**
      * <code>optional .gabriel.ResultWrapper.Status status = 1;</code>
      */
     private void clearStatus() {
-      
+
       status_ = 0;
     }
 
@@ -2280,7 +2280,7 @@ public final class Protos {
     /**
      * <code>repeated .gabriel.ResultWrapper.Result results = 2;</code>
      */
-    public java.util.List<? extends edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.ResultOrBuilder> 
+    public java.util.List<? extends edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.ResultOrBuilder>
         getResultsOrBuilderList() {
       return results_;
     }
@@ -2423,7 +2423,7 @@ public final class Protos {
         throw new NullPointerException();
       }
       extras_ = value;
-      
+
       }
     /**
      * <pre>
@@ -2435,7 +2435,7 @@ public final class Protos {
     private void setExtras(
         com.google.protobuf.Any.Builder builderForValue) {
       extras_ = builderForValue.build();
-      
+
     }
     /**
      * <pre>
@@ -2452,7 +2452,7 @@ public final class Protos {
       } else {
         extras_ = value;
       }
-      
+
     }
     /**
      * <pre>
@@ -2462,7 +2462,7 @@ public final class Protos {
      * <code>optional .google.protobuf.Any extras = 3;</code>
      */
     private void clearExtras() {  extras_ = null;
-      
+
     }
 
     public static final int RESULT_PRODUCER_NAME_FIELD_NUMBER = 4;
@@ -2499,7 +2499,7 @@ public final class Protos {
         throw new NullPointerException();
       }
       resultProducerName_ = value;
-      
+
       }
     /**
      * <pre>
@@ -2511,7 +2511,7 @@ public final class Protos {
     private void setResultProducerName(
         edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.StringValue.Builder builderForValue) {
       resultProducerName_ = builderForValue.build();
-      
+
     }
     /**
      * <pre>
@@ -2528,7 +2528,7 @@ public final class Protos {
       } else {
         resultProducerName_ = value;
       }
-      
+
     }
     /**
      * <pre>
@@ -2538,7 +2538,7 @@ public final class Protos {
      * <code>optional .gabriel.ResultWrapper.StringValue result_producer_name = 4;</code>
      */
     private void clearResultProducerName() {  resultProducerName_ = null;
-      
+
     }
 
     public void writeTo(com.google.protobuf.CodedOutputStream output)
@@ -3236,14 +3236,14 @@ public final class Protos {
        * <code>optional int32 num_tokens_per_source = 2;</code>
        */
       private void setNumTokensPerSource(int value) {
-        
+
         numTokensPerSource_ = value;
       }
       /**
        * <code>optional int32 num_tokens_per_source = 2;</code>
        */
       private void clearNumTokensPerSource() {
-        
+
         numTokensPerSource_ = 0;
       }
 
@@ -3658,7 +3658,7 @@ public final class Protos {
         if (value == null) {
     throw new NullPointerException();
   }
-  
+
         sourceName_ = value;
       }
       /**
@@ -3670,7 +3670,7 @@ public final class Protos {
        * <code>optional string source_name = 1;</code>
        */
       private void clearSourceName() {
-        
+
         sourceName_ = getDefaultInstance().getSourceName();
       }
       /**
@@ -3687,7 +3687,7 @@ public final class Protos {
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-        
+
         sourceName_ = value.toStringUtf8();
       }
 
@@ -3703,14 +3703,14 @@ public final class Protos {
        * <code>optional int64 frame_id = 2;</code>
        */
       private void setFrameId(long value) {
-        
+
         frameId_ = value;
       }
       /**
        * <code>optional int64 frame_id = 2;</code>
        */
       private void clearFrameId() {
-        
+
         frameId_ = 0L;
       }
 
@@ -3726,14 +3726,14 @@ public final class Protos {
        * <code>optional bool return_token = 3;</code>
        */
       private void setReturnToken(boolean value) {
-        
+
         returnToken_ = value;
       }
       /**
        * <code>optional bool return_token = 3;</code>
        */
       private void clearReturnToken() {
-        
+
         returnToken_ = false;
       }
 
@@ -3759,7 +3759,7 @@ public final class Protos {
           throw new NullPointerException();
         }
         resultWrapper_ = value;
-        
+
         }
       /**
        * <code>optional .gabriel.ResultWrapper result_wrapper = 4;</code>
@@ -3767,7 +3767,7 @@ public final class Protos {
       private void setResultWrapper(
           edu.cmu.cs.gabriel.protocol.Protos.ResultWrapper.Builder builderForValue) {
         resultWrapper_ = builderForValue.build();
-        
+
       }
       /**
        * <code>optional .gabriel.ResultWrapper result_wrapper = 4;</code>
@@ -3780,13 +3780,13 @@ public final class Protos {
         } else {
           resultWrapper_ = value;
         }
-        
+
       }
       /**
        * <code>optional .gabriel.ResultWrapper result_wrapper = 4;</code>
        */
       private void clearResultWrapper() {  resultWrapper_ = null;
-        
+
       }
 
       public void writeTo(com.google.protobuf.CodedOutputStream output)
@@ -4761,14 +4761,14 @@ public final class Protos {
         if (value == null) {
     throw new NullPointerException();
   }
-  
+
         sourceName_ = value;
       }
       /**
        * <code>optional string source_name = 1;</code>
        */
       private void clearSourceName() {
-        
+
         sourceName_ = getDefaultInstance().getSourceName();
       }
       /**
@@ -4780,7 +4780,7 @@ public final class Protos {
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-        
+
         sourceName_ = value.toStringUtf8();
       }
 
@@ -4796,14 +4796,14 @@ public final class Protos {
        * <code>optional bool all_responses_required = 2;</code>
        */
       private void setAllResponsesRequired(boolean value) {
-        
+
         allResponsesRequired_ = value;
       }
       /**
        * <code>optional bool all_responses_required = 2;</code>
        */
       private void clearAllResponsesRequired() {
-        
+
         allResponsesRequired_ = false;
       }
 

@@ -9,7 +9,7 @@ from gabriel_client.websocket_client import ProducerWrapper
 from gabriel_client import push_source
 
 
-DEFAULT_SERVER_HOST = 'localhost'
+DEFAULT_SERVER_HOST = "localhost"
 ROTATION = 0
 
 
@@ -43,12 +43,12 @@ class YuvConverter:
 
         return yuv
 
+
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'source_name', nargs='?', default=common.DEFAULT_SOURCE_NAME)
-    parser.add_argument('server_host', nargs='?', default=DEFAULT_SERVER_HOST)
+    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
 
     capture = cv2.VideoCapture(0)
@@ -80,10 +80,10 @@ def main():
     ]
 
     client = WebsocketClient(
-        args.server_host, common.WEBSOCKET_PORT, producer_wrappers,
-        push_source.consumer)
+        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, push_source.consumer
+    )
     client.launch()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

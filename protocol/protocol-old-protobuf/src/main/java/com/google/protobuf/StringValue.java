@@ -54,7 +54,7 @@ public  final class StringValue extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     value_ = value;
   }
   /**
@@ -65,7 +65,7 @@ public  final class StringValue extends
    * <code>optional string value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = getDefaultInstance().getValue();
   }
   /**
@@ -81,7 +81,7 @@ public  final class StringValue extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     value_ = value.toStringUtf8();
   }
 
@@ -350,4 +350,3 @@ public  final class StringValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

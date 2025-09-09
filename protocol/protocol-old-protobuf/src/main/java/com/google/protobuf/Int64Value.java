@@ -38,7 +38,7 @@ public  final class Int64Value extends
    * <code>optional int64 value = 1;</code>
    */
   private void setValue(long value) {
-    
+
     value_ = value;
   }
   /**
@@ -49,7 +49,7 @@ public  final class Int64Value extends
    * <code>optional int64 value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = 0L;
   }
 
@@ -292,4 +292,3 @@ public  final class Int64Value extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

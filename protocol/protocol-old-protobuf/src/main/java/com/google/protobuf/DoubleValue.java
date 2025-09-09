@@ -38,7 +38,7 @@ public  final class DoubleValue extends
    * <code>optional double value = 1;</code>
    */
   private void setValue(double value) {
-    
+
     value_ = value;
   }
   /**
@@ -49,7 +49,7 @@ public  final class DoubleValue extends
    * <code>optional double value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = 0D;
   }
 
@@ -292,4 +292,3 @@ public  final class DoubleValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

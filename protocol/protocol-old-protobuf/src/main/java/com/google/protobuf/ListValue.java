@@ -38,7 +38,7 @@ public  final class ListValue extends
    *
    * <code>repeated .google.protobuf.Value values = 1;</code>
    */
-  public java.util.List<? extends com.google.protobuf.ValueOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.ValueOrBuilder>
       getValuesOrBuilderList() {
     return values_;
   }
@@ -548,4 +548,3 @@ public  final class ListValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

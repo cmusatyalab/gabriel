@@ -760,7 +760,7 @@ public final class PluginProtos {
      *
      * <code>repeated .google.protobuf.FileDescriptorProto proto_file = 15;</code>
      */
-    java.util.List<com.google.protobuf.DescriptorProtos.FileDescriptorProto> 
+    java.util.List<com.google.protobuf.DescriptorProtos.FileDescriptorProto>
         getProtoFileList();
     /**
      * <pre>
@@ -1089,7 +1089,7 @@ public final class PluginProtos {
      *
      * <code>repeated .google.protobuf.FileDescriptorProto proto_file = 15;</code>
      */
-    public java.util.List<? extends com.google.protobuf.DescriptorProtos.FileDescriptorProtoOrBuilder> 
+    public java.util.List<? extends com.google.protobuf.DescriptorProtos.FileDescriptorProtoOrBuilder>
         getProtoFileOrBuilderList() {
       return protoFile_;
     }
@@ -2334,7 +2334,7 @@ public final class PluginProtos {
     /**
      * <code>repeated .google.protobuf.compiler.CodeGeneratorResponse.File file = 15;</code>
      */
-    java.util.List<com.google.protobuf.compiler.PluginProtos.CodeGeneratorResponse.File> 
+    java.util.List<com.google.protobuf.compiler.PluginProtos.CodeGeneratorResponse.File>
         getFileList();
     /**
      * <code>repeated .google.protobuf.compiler.CodeGeneratorResponse.File file = 15;</code>
@@ -3875,7 +3875,7 @@ public final class PluginProtos {
     /**
      * <code>repeated .google.protobuf.compiler.CodeGeneratorResponse.File file = 15;</code>
      */
-    public java.util.List<? extends com.google.protobuf.compiler.PluginProtos.CodeGeneratorResponse.FileOrBuilder> 
+    public java.util.List<? extends com.google.protobuf.compiler.PluginProtos.CodeGeneratorResponse.FileOrBuilder>
         getFileOrBuilderList() {
       return file_;
     }

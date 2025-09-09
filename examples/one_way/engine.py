@@ -6,7 +6,7 @@ from gabriel_server import cognitive_engine
 import numpy as np
 
 
-SERVER_ADDRESS_FORMAT = 'tcp://{}:{}'
+SERVER_ADDRESS_FORMAT = "tcp://{}:{}"
 
 
 class DisplayEngine(cognitive_engine.Engine):
@@ -29,10 +29,9 @@ def main():
     args = common.parse_source_name_server_host()
     engine = DisplayEngine(args.source_name)
 
-    server_address = SERVER_ADDRESS_FORMAT.format(
-        args.server_host, common.ZMQ_PORT)
+    server_address = SERVER_ADDRESS_FORMAT.format(args.server_host, common.ZMQ_PORT)
     engine_runner.run(engine, args.source_name, server_address)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

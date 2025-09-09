@@ -86,7 +86,7 @@ public interface MethodOrBuilder extends
    *
    * <code>repeated .google.protobuf.Option options = 6;</code>
    */
-  java.util.List<com.google.protobuf.Option> 
+  java.util.List<com.google.protobuf.Option>
       getOptionsList();
   /**
    * <pre>

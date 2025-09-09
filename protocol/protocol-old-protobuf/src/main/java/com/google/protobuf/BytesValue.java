@@ -42,7 +42,7 @@ public  final class BytesValue extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     value_ = value;
   }
   /**
@@ -53,7 +53,7 @@ public  final class BytesValue extends
    * <code>optional bytes value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = getDefaultInstance().getValue();
   }
 
@@ -296,4 +296,3 @@ public  final class BytesValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

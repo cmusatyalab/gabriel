@@ -564,7 +564,7 @@ public  final class Field extends
     if (value == null) {
       throw new NullPointerException();
     }
-    
+
     kind_ = value.getNumber();
   }
   /**
@@ -575,7 +575,7 @@ public  final class Field extends
    * <code>optional .google.protobuf.Field.Kind kind = 1;</code>
    */
   private void clearKind() {
-    
+
     kind_ = 0;
   }
 
@@ -623,7 +623,7 @@ public  final class Field extends
     if (value == null) {
       throw new NullPointerException();
     }
-    
+
     cardinality_ = value.getNumber();
   }
   /**
@@ -634,7 +634,7 @@ public  final class Field extends
    * <code>optional .google.protobuf.Field.Cardinality cardinality = 2;</code>
    */
   private void clearCardinality() {
-    
+
     cardinality_ = 0;
   }
 
@@ -658,7 +658,7 @@ public  final class Field extends
    * <code>optional int32 number = 3;</code>
    */
   private void setNumber(int value) {
-    
+
     number_ = value;
   }
   /**
@@ -669,7 +669,7 @@ public  final class Field extends
    * <code>optional int32 number = 3;</code>
    */
   private void clearNumber() {
-    
+
     number_ = 0;
   }
 
@@ -708,7 +708,7 @@ public  final class Field extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -719,7 +719,7 @@ public  final class Field extends
    * <code>optional string name = 4;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -735,7 +735,7 @@ public  final class Field extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -777,7 +777,7 @@ public  final class Field extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     typeUrl_ = value;
   }
   /**
@@ -789,7 +789,7 @@ public  final class Field extends
    * <code>optional string type_url = 6;</code>
    */
   private void clearTypeUrl() {
-    
+
     typeUrl_ = getDefaultInstance().getTypeUrl();
   }
   /**
@@ -806,7 +806,7 @@ public  final class Field extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     typeUrl_ = value.toStringUtf8();
   }
 
@@ -832,7 +832,7 @@ public  final class Field extends
    * <code>optional int32 oneof_index = 7;</code>
    */
   private void setOneofIndex(int value) {
-    
+
     oneofIndex_ = value;
   }
   /**
@@ -844,7 +844,7 @@ public  final class Field extends
    * <code>optional int32 oneof_index = 7;</code>
    */
   private void clearOneofIndex() {
-    
+
     oneofIndex_ = 0;
   }
 
@@ -868,7 +868,7 @@ public  final class Field extends
    * <code>optional bool packed = 8;</code>
    */
   private void setPacked(boolean value) {
-    
+
     packed_ = value;
   }
   /**
@@ -879,7 +879,7 @@ public  final class Field extends
    * <code>optional bool packed = 8;</code>
    */
   private void clearPacked() {
-    
+
     packed_ = false;
   }
 
@@ -902,7 +902,7 @@ public  final class Field extends
    *
    * <code>repeated .google.protobuf.Option options = 9;</code>
    */
-  public java.util.List<? extends com.google.protobuf.OptionOrBuilder> 
+  public java.util.List<? extends com.google.protobuf.OptionOrBuilder>
       getOptionsOrBuilderList() {
     return options_;
   }
@@ -1094,7 +1094,7 @@ public  final class Field extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     jsonName_ = value;
   }
   /**
@@ -1105,7 +1105,7 @@ public  final class Field extends
    * <code>optional string json_name = 10;</code>
    */
   private void clearJsonName() {
-    
+
     jsonName_ = getDefaultInstance().getJsonName();
   }
   /**
@@ -1121,7 +1121,7 @@ public  final class Field extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     jsonName_ = value.toStringUtf8();
   }
 
@@ -1160,7 +1160,7 @@ public  final class Field extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     defaultValue_ = value;
   }
   /**
@@ -1171,7 +1171,7 @@ public  final class Field extends
    * <code>optional string default_value = 11;</code>
    */
   private void clearDefaultValue() {
-    
+
     defaultValue_ = getDefaultInstance().getDefaultValue();
   }
   /**
@@ -1187,7 +1187,7 @@ public  final class Field extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     defaultValue_ = value.toStringUtf8();
   }
 
@@ -2141,4 +2141,3 @@ public  final class Field extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

@@ -32,7 +32,7 @@ public interface TypeOrBuilder extends
    *
    * <code>repeated .google.protobuf.Field fields = 2;</code>
    */
-  java.util.List<com.google.protobuf.Field> 
+  java.util.List<com.google.protobuf.Field>
       getFieldsList();
   /**
    * <pre>
@@ -93,7 +93,7 @@ public interface TypeOrBuilder extends
    *
    * <code>repeated .google.protobuf.Option options = 4;</code>
    */
-  java.util.List<com.google.protobuf.Option> 
+  java.util.List<com.google.protobuf.Option>
       getOptionsList();
   /**
    * <pre>

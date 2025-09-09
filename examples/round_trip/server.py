@@ -21,16 +21,20 @@ class DisplayEngine(cognitive_engine.Engine):
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'source_name', nargs='?', default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
     args = parser.parse_args()
 
     def engine_factory():
         return DisplayEngine()
 
-    local_engine.run(engine_factory, args.source_name, input_queue_maxsize=60,
-                     port=common.WEBSOCKET_PORT, num_tokens=2)
+    local_engine.run(
+        engine_factory,
+        args.source_name,
+        input_queue_maxsize=60,
+        port=common.WEBSOCKET_PORT,
+        num_tokens=2,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

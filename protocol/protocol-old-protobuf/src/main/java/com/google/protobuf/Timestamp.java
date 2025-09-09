@@ -99,7 +99,7 @@ public  final class Timestamp extends
    * <code>optional int64 seconds = 1;</code>
    */
   private void setSeconds(long value) {
-    
+
     seconds_ = value;
   }
   /**
@@ -112,7 +112,7 @@ public  final class Timestamp extends
    * <code>optional int64 seconds = 1;</code>
    */
   private void clearSeconds() {
-    
+
     seconds_ = 0L;
   }
 
@@ -142,7 +142,7 @@ public  final class Timestamp extends
    * <code>optional int32 nanos = 2;</code>
    */
   private void setNanos(int value) {
-    
+
     nanos_ = value;
   }
   /**
@@ -156,7 +156,7 @@ public  final class Timestamp extends
    * <code>optional int32 nanos = 2;</code>
    */
   private void clearNanos() {
-    
+
     nanos_ = 0;
   }
 
@@ -520,4 +520,3 @@ public  final class Timestamp extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

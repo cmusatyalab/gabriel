@@ -115,7 +115,7 @@ public  final class Mixin extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     name_ = value;
   }
   /**
@@ -126,7 +126,7 @@ public  final class Mixin extends
    * <code>optional string name = 1;</code>
    */
   private void clearName() {
-    
+
     name_ = getDefaultInstance().getName();
   }
   /**
@@ -142,7 +142,7 @@ public  final class Mixin extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     name_ = value.toStringUtf8();
   }
 
@@ -184,7 +184,7 @@ public  final class Mixin extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     root_ = value;
   }
   /**
@@ -196,7 +196,7 @@ public  final class Mixin extends
    * <code>optional string root = 2;</code>
    */
   private void clearRoot() {
-    
+
     root_ = getDefaultInstance().getRoot();
   }
   /**
@@ -213,7 +213,7 @@ public  final class Mixin extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     root_ = value.toStringUtf8();
   }
 
@@ -622,4 +622,3 @@ public  final class Mixin extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

@@ -464,4 +464,3 @@ public  final class Struct extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

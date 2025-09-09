@@ -41,7 +41,7 @@ public interface EnumValueOrBuilder extends
    *
    * <code>repeated .google.protobuf.Option options = 3;</code>
    */
-  java.util.List<com.google.protobuf.Option> 
+  java.util.List<com.google.protobuf.Option>
       getOptionsList();
   /**
    * <pre>

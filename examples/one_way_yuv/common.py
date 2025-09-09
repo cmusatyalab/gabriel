@@ -2,7 +2,7 @@ import logging
 
 
 WEBSOCKET_PORT = 9099
-DEFAULT_SOURCE_NAME = 'camera_yuv'
+DEFAULT_SOURCE_NAME = "camera_yuv"
 
 
 def configure_logging():

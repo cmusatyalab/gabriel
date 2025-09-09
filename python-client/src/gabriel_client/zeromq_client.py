@@ -303,70 +303,75 @@ class ZeroMQClient:
         token_pool = TokenPool(self._num_tokens_per_source)
         self._tokens[producer.source_id()] = token_pool
 
-        while self._running:
-            if not producer.is_running():
-                await producer.wait_for_running()
+        try:
+            while self._running:
+                if not producer.is_running():
+                    await producer.wait_for_running()
 
-            try:
-                # Wait for a token. Time out to send a heartbeat to the server.
-                await asyncio.wait_for(
-                    token_pool.get_token(), timeout=HEARTBEAT_INTERVAL
+                try:
+                    # Wait for a token. Time out to send a heartbeat to the server.
+                    await asyncio.wait_for(
+                        token_pool.get_token(), timeout=HEARTBEAT_INTERVAL
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    self._schedule_heartbeat.set()
+                    continue
+
+                # Stop producing inputs if disconnected from the server
+                if not self._connected.is_set():
+                    logger.debug("Stopping producer task")
+                    if producer_task is not None:
+                        producer_task.cancel()
+                        producer_task = None
+                    await self._connected.wait()
+                    logger.debug("Resuming producer task")
+
+                if producer_task is None:
+                    logger.debug("Created new producer task")
+                    producer_task = asyncio.create_task(producer.produce())
+                try:
+                    # Wait for the producer to produce an input. Time out to send
+                    # a heartbeat to the server. Use an asyncio.shield to prevent
+                    # task cancellation.
+                    input_frame = await asyncio.wait_for(
+                        asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    token_pool.return_token()
+                    self._schedule_heartbeat.set()
+                    await asyncio.sleep(0)
+                    continue
+
+                logger.debug("Got input from producer")
+                producer_task = None
+
+                if input_frame is None:
+                    token_pool.return_token()
+                    logger.info("Received None from producer")
+                    continue
+
+                input = gabriel_pb2.ClientInput()
+                input.frame_id = frame_id
+                frame_id += 1
+                input.source_id = str(producer.source_id())
+                input.target_engine_ids.extend(producer.target_engine_ids())
+                input.input_frame.CopyFrom(input_frame)
+
+                from_client = gabriel_pb2.FromClient()
+                from_client.input.CopyFrom(input)
+
+                # Send input to server
+                await self._sock.send(from_client.SerializeToString())
+
+                logger.debug(
+                    "Semaphore for %s is %s",
+                    producer.source_id(),
+                    "LOCKED" if token_pool.is_locked() else "AVAILABLE",
                 )
-            except (TimeoutError, asyncio.TimeoutError):
-                self._schedule_heartbeat.set()
-                continue
-
-            # Stop producing inputs if disconnected from the server
-            if not self._connected.is_set():
-                logger.debug("Stopping producer task")
-                if producer_task is not None:
-                    producer_task.cancel()
-                    producer_task = None
-                await self._connected.wait()
-                logger.debug("Resuming producer task")
-
-            if producer_task is None:
-                logger.debug("Created new producer task")
-                producer_task = asyncio.create_task(producer.produce())
-            try:
-                # Wait for the producer to produce an input. Time out to send
-                # a heartbeat to the server. Use an asyncio.shield to prevent
-                # task cancellation.
-                input_frame = await asyncio.wait_for(
-                    asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL
-                )
-            except (TimeoutError, asyncio.TimeoutError):
-                token_pool.return_token()
-                self._schedule_heartbeat.set()
-                await asyncio.sleep(0)
-                continue
-
-            logger.debug("Got input from producer")
-            producer_task = None
-
-            if input_frame is None:
-                token_pool.return_token()
-                logger.info("Received None from producer")
-                continue
-
-            input = gabriel_pb2.ClientInput()
-            input.frame_id = frame_id
-            frame_id += 1
-            input.source_id = str(producer.source_id())
-            input.target_engine_ids.extend(producer.target_engine_ids())
-            input.input_frame.CopyFrom(input_frame)
-
-            from_client = gabriel_pb2.FromClient()
-            from_client.input.CopyFrom(input)
-
-            # Send input to server
-            await self._sock.send(from_client.SerializeToString())
-
-            logger.debug(
-                "Semaphore for %s is %s",
-                producer.source_id(),
-                "LOCKED" if token_pool.is_locked() else "AVAILABLE",
-            )
+        except asyncio.CancelledError:
+            if producer_task is not None:
+                producer_task.cancel()
+            raise
 
     async def _send_heartbeat(self, force=False):
         """

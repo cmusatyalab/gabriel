@@ -38,7 +38,7 @@ public  final class FloatValue extends
    * <code>optional float value = 1;</code>
    */
   private void setValue(float value) {
-    
+
     value_ = value;
   }
   /**
@@ -49,7 +49,7 @@ public  final class FloatValue extends
    * <code>optional float value = 1;</code>
    */
   private void clearValue() {
-    
+
     value_ = 0F;
   }
 
@@ -292,4 +292,3 @@ public  final class FloatValue extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

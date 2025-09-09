@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class _Source:
     def __init__(self, num_tokens):
         self._num_tokens = num_tokens
@@ -13,9 +14,9 @@ class _Source:
         self._sem.release()
 
     async def get_token(self):
-        logger.debug('Waiting for token')
+        logger.debug("Waiting for token")
         await self._sem.acquire()
-        logger.debug('Token acquired')
+        logger.debug("Token acquired")
 
     def is_locked(self):
         return self._sem.locked()

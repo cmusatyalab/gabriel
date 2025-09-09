@@ -11,9 +11,14 @@ class EmptyEngine(cognitive_engine.Engine):
 
 
 def main():
-    local_engine.run(engine_factory=lambda: EmptyEngine(), source_name='empty',
-                     input_queue_maxsize=60, port=9099, num_tokens=2)
+    local_engine.run(
+        engine_factory=lambda: EmptyEngine(),
+        source_name="empty",
+        input_queue_maxsize=60,
+        port=9099,
+        num_tokens=2,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

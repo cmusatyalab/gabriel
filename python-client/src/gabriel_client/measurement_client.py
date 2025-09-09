@@ -1,5 +1,4 @@
 from gabriel_client.websocket_client import WebsocketClient
-from gabriel_client.websocket_client import ProducerWrapper
 import time
 import logging
 
@@ -18,8 +17,7 @@ class MeasurementClient(WebsocketClient):
         super()._process_welcome(welcome)
         start_time = time.time()
         for source_name in welcome.sources_consumed:
-            source_measurement = _SourceMeasurement(
-                start_time, self._output_freq)
+            source_measurement = _SourceMeasurement(start_time, self._output_freq)
             self._source_measurements[source_name] = source_measurement
 
     def _process_response(self, response):
@@ -28,13 +26,15 @@ class MeasurementClient(WebsocketClient):
         if response.return_token:
             source_measurement = self._source_measurements[response.source_name]
             source_measurement.process_response(
-                response.frame_id, response.source_name, response_time)
+                response.frame_id, response.source_name, response_time
+            )
 
     async def _send_from_client(self, from_client):
         await super()._send_from_client(from_client)
         send_time = time.time()
         source_measurement = self._source_measurements[from_client.source_name]
         source_measurement.log_send(from_client.frame_id, send_time)
+
 
 class _SourceMeasurement:
     def __init__(self, start_time, output_freq):
@@ -54,20 +54,21 @@ class _SourceMeasurement:
             self._interval_start_time = time.time()
 
     def _compute_and_print(self, source_name, response_time):
-        print('Measurements for source:', source_name)
+        print("Measurements for source:", source_name)
         overall_fps = _compute_fps(self._count, response_time, self._start_time)
-        print('Overall FPS:', overall_fps)
+        print("Overall FPS:", overall_fps)
         interval_fps = _compute_fps(
-            self._output_freq, response_time, self._interval_start_time)
-        print('Interval FPS:', interval_fps)
+            self._output_freq, response_time, self._interval_start_time
+        )
+        print("Interval FPS:", interval_fps)
 
         total_rtt = 0
         for frame_id, received in self._recv_timestamps.items():
             sent = self._send_timestamps[frame_id]
-            total_rtt += (received - sent)
+            total_rtt += received - sent
             del self._send_timestamps[frame_id]
 
-        print('Average RTT for interval:', total_rtt / self._output_freq)
+        print("Average RTT for interval:", total_rtt / self._output_freq)
         self._recv_timestamps.clear()
 
     def log_send(self, frame_id, send_time):

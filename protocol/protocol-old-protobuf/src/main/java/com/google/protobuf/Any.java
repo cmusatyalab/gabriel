@@ -182,7 +182,7 @@ public  final class Any extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     typeUrl_ = value;
   }
   /**
@@ -215,7 +215,7 @@ public  final class Any extends
    * <code>optional string type_url = 1;</code>
    */
   private void clearTypeUrl() {
-    
+
     typeUrl_ = getDefaultInstance().getTypeUrl();
   }
   /**
@@ -253,7 +253,7 @@ public  final class Any extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     typeUrl_ = value.toStringUtf8();
   }
 
@@ -280,7 +280,7 @@ public  final class Any extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     value_ = value;
   }
   /**
@@ -291,7 +291,7 @@ public  final class Any extends
    * <code>optional bytes value = 2;</code>
    */
   private void clearValue() {
-    
+
     value_ = getDefaultInstance().getValue();
   }
 
@@ -780,4 +780,3 @@ public  final class Any extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-

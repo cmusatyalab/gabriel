@@ -13,13 +13,12 @@ class DisplayEngine(cognitive_engine.Engine):
     def handle(self, input_frame):
         yuv = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
 
-        to_server = cognitive_engine.unpack_extras(yuv_pb2.ToServer,
-                                                   input_frame)
+        to_server = cognitive_engine.unpack_extras(yuv_pb2.ToServer, input_frame)
         width = to_server.width
         height = to_server.height
         rotation = to_server.rotation
 
-        yuv = np.reshape(yuv, ((height + (height//2)), width))
+        yuv = np.reshape(yuv, ((height + (height // 2)), width))
         img = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_NV21)
 
         if rotation != 0:
@@ -28,7 +27,7 @@ class DisplayEngine(cognitive_engine.Engine):
             times_to_rotate = (360 - rotation) / 90
             img = np.rot90(img, times_to_rotate)
 
-        cv2.imshow('Image from client', img)
+        cv2.imshow("Image from client", img)
         cv2.waitKey(1)
 
         status = gabriel_pb2.ResultWrapper.Status.SUCCESS
@@ -39,16 +38,20 @@ class DisplayEngine(cognitive_engine.Engine):
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'source_name', nargs='?', default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
     args = parser.parse_args()
 
     def engine_factory():
         return DisplayEngine()
 
-    local_engine.run(engine_factory, args.source_name, input_queue_maxsize=60,
-                     port=common.WEBSOCKET_PORT, num_tokens=2)
+    local_engine.run(
+        engine_factory,
+        args.source_name,
+        input_queue_maxsize=60,
+        port=common.WEBSOCKET_PORT,
+        num_tokens=2,
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

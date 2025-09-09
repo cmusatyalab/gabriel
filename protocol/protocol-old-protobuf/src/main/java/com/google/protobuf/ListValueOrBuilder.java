@@ -14,7 +14,7 @@ public interface ListValueOrBuilder extends
    *
    * <code>repeated .google.protobuf.Value values = 1;</code>
    */
-  java.util.List<com.google.protobuf.Value> 
+  java.util.List<com.google.protobuf.Value>
       getValuesList();
   /**
    * <pre>

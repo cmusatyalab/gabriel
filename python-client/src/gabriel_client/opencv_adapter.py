@@ -9,14 +9,15 @@ logger = logging.getLogger(__name__)
 
 
 class OpencvAdapter:
-    def __init__(self, preprocess, produce_extras, consume_frame,
-                 video_capture, source_name):
-        '''
+    def __init__(
+        self, preprocess, produce_extras, consume_frame, video_capture, source_name
+    ):
+        """
         preprocess should take one frame parameter
         produce_engine_fields takes no parameters
         consume_frame should take one frame parameter and one engine_fields
         parameter
-        '''
+        """
 
         self._preprocess = preprocess
         self._produce_extras = produce_extras
@@ -31,7 +32,7 @@ class OpencvAdapter:
                 return None
 
             frame = self._preprocess(frame)
-            _, jpeg_frame = cv2.imencode('.jpg', frame)
+            _, jpeg_frame = cv2.imencode(".jpg", frame)
 
             input_frame = gabriel_pb2.InputFrame()
             input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
@@ -43,20 +44,17 @@ class OpencvAdapter:
 
             return input_frame
 
-        return [
-            ProducerWrapper(producer=producer, source_name=self._source_name)
-        ]
+        return [ProducerWrapper(producer=producer, source_name=self._source_name)]
 
     def consumer(self, result_wrapper):
         if len(result_wrapper.results) != 1:
-            logger.error('Got %d results from server',
-                         len(result_wrapper.results))
+            logger.error("Got %d results from server", len(result_wrapper.results))
             return
 
         result = result_wrapper.results[0]
         if result.payload_type != gabriel_pb2.PayloadType.IMAGE:
             type_name = gabriel_pb2.PayloadType.Name(result.payload_type)
-            logger.error('Got result of type %s', type_name)
+            logger.error("Got result of type %s", type_name)
             return
 
         np_data = np.frombuffer(result.payload, dtype=np.uint8)

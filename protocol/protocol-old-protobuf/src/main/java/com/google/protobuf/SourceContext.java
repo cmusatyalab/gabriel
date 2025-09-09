@@ -57,7 +57,7 @@ public  final class SourceContext extends
     if (value == null) {
     throw new NullPointerException();
   }
-  
+
     fileName_ = value;
   }
   /**
@@ -69,7 +69,7 @@ public  final class SourceContext extends
    * <code>optional string file_name = 1;</code>
    */
   private void clearFileName() {
-    
+
     fileName_ = getDefaultInstance().getFileName();
   }
   /**
@@ -86,7 +86,7 @@ public  final class SourceContext extends
     throw new NullPointerException();
   }
   checkByteStringIsUtf8(value);
-    
+
     fileName_ = value.toStringUtf8();
   }
 
@@ -360,4 +360,3 @@ public  final class SourceContext extends
     return DEFAULT_INSTANCE.getParserForType();
   }
 }
-
