@@ -28,6 +28,7 @@ jobs:
           pip install pytest
           pip install pytest-asyncio
           pip install pre-commit
+          pip install prometheus-client
 
       - name: Run pre-commit hooks
         run: |
