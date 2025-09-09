@@ -1,14 +1,13 @@
 import asyncio
-import concurrent.futures
 import itertools
 import logging
 import pytest
 import pytest_asyncio
 import threading
-import time
 
 from gabriel_client.zeromq_client import InputProducer
-#from gabriel_client.websocket_client import WebsocketClient
+
+# from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 from gabriel_server.network_engine import server_runner
@@ -17,14 +16,14 @@ from gabriel_server import cognitive_engine
 from gabriel_server.local_engine import LocalEngine
 
 DEFAULT_NUM_TOKENS = 2
-DEFAULT_SERVER_HOST = 'localhost'
+DEFAULT_SERVER_HOST = "localhost"
 INPUT_QUEUE_MAXSIZE = 60
 
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-#@pytest.fixture(scope="session")
-#def event_loop():
+# @pytest.fixture(scope="session")
+# def event_loop():
 #    try:
 #        loop = asyncio.get_running_loop()
 #    except RuntimeError:
@@ -32,15 +31,21 @@ logger = logging.getLogger(__name__)
 #    yield loop
 #    loop.close()
 
-class Engine(cognitive_engine.Engine, threading.Thread):
 
+class Engine(cognitive_engine.Engine, threading.Thread):
     def __init__(self, engine_id, zeromq_address):
         super().__init__()
         self.engine_id = engine_id
         self.engine_name = f"Engine-{engine_id}"
         self.zeromq_address = zeromq_address
         self.engine_runner = engine_runner.EngineRunner(
-            self, self.engine_name, self.zeromq_address, all_responses_required=True, timeout=1000, request_retries=3)
+            self,
+            self.engine_name,
+            self.zeromq_address,
+            all_responses_required=True,
+            timeout=1000,
+            request_retries=3,
+        )
 
         logger.info(f"Engine {engine_id} initialized")
 
@@ -66,45 +71,64 @@ class Engine(cognitive_engine.Engine, threading.Thread):
     async def stop(self):
         await self.engine_runner.stop()
 
+
 @pytest.fixture(scope="session")
 def server_frontend_port_generator():
     return itertools.count(9099)
+
 
 @pytest.fixture
 def server_frontend_port(server_frontend_port_generator):
     return next(server_frontend_port_generator)
 
+
 @pytest.fixture(scope="session")
 def server_backend_port_generator():
     return itertools.count(5555)
+
 
 @pytest.fixture
 def server_backend_port(server_backend_port_generator):
     return next(server_backend_port_generator)
 
+
 @pytest.fixture
 def use_zeromq():
     return True
+
 
 @pytest.fixture
 def num_engines():
     return 1
 
+
 @pytest.fixture(scope="session")
 def prometheus_port_generator():
     return itertools.count(8001)
+
 
 @pytest.fixture
 def prometheus_port(prometheus_port_generator):
     return next(prometheus_port_generator)
 
+
 @pytest_asyncio.fixture
-async def run_server(server_frontend_port, server_backend_port, use_zeromq, prometheus_port):
-    logger.info(f"Starting server: {use_zeromq=} {server_backend_port=} {server_frontend_port=}")
-    task = asyncio.create_task(server_runner.run_async(
-        websocket_port=server_frontend_port, zmq_address=f"tcp://*:{server_backend_port}",
-        num_tokens=DEFAULT_NUM_TOKENS, input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
-        use_zeromq=use_zeromq, prometheus_port=prometheus_port))
+async def run_server(
+    server_frontend_port, server_backend_port, use_zeromq, prometheus_port
+):
+    logger.info(
+        f"Starting server: {use_zeromq=} {server_backend_port=} {server_frontend_port=}"
+    )
+    task = asyncio.create_task(
+        server_runner.run_async(
+            websocket_port=server_frontend_port,
+            zmq_address=f"tcp://*:{server_backend_port}",
+            num_tokens=DEFAULT_NUM_TOKENS,
+            input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
+            use_zeromq=use_zeromq,
+            prometheus_port=prometheus_port,
+        )
+    )
     await asyncio.sleep(1)
     yield task
     logger.info("Tearing down server")
@@ -112,13 +136,14 @@ async def run_server(server_frontend_port, server_backend_port, use_zeromq, prom
     await asyncio.gather(task, return_exceptions=True)
     logger.info("Done tearing down server")
 
+
 @pytest_asyncio.fixture
 async def run_engines(run_server, server_backend_port, num_engines):
     engines = []
     logger.info(f"Running engines, connecting to {server_backend_port=}!")
 
     for engine_id in range(num_engines):
-        zeromq_address = f'tcp://localhost:{server_backend_port}'
+        zeromq_address = f"tcp://localhost:{server_backend_port}"
         engine = Engine(engine_id, zeromq_address)
         engines.append(asyncio.create_task(engine.run_async()))
 
@@ -129,18 +154,21 @@ async def run_engines(run_server, server_backend_port, num_engines):
     await asyncio.gather(*engines, return_exceptions=True)
     logger.info("Done tearing down engines")
 
+
 @pytest.fixture
 def target_engines():
     return ["Engine-0"]
 
+
 @pytest.fixture
 def input_producer(target_engines):
     logger.info(f"Target engines: {target_engines}")
+
     async def producer():
         logger.info("Producing input")
         frame = gabriel_pb2.InputFrame()
         frame.payload_type = gabriel_pb2.PayloadType.TEXT
-        frame.payloads.append(b'Hello from client')
+        frame.payloads.append(b"Hello from client")
         await asyncio.sleep(0.1)
         return frame
 
@@ -148,24 +176,35 @@ def input_producer(target_engines):
     yield [producer]
     producer.stop()
 
+
 @pytest.fixture
 def response_state():
     return {"received": False}
+
 
 def get_consumer(response_state):
     def consumer(result_wrapper):
         logger.info(f"Status is {result_wrapper.status}")
         logger.info(f"Produced by {result_wrapper.result_producer_name.value}")
         response_state["received"] = True
+
     return consumer
 
+
 @pytest.mark.asyncio
-async def test_zeromq_client(run_engines, input_producer, server_frontend_port, response_state):
+async def test_zeromq_client(
+    run_engines, input_producer, server_frontend_port, response_state
+):
     response_state["received"] = False
 
     logger.info("Starting test_zeromq_client")
 
-    client = ZeroMQClient(DEFAULT_SERVER_HOST, server_frontend_port, input_producer, get_consumer(response_state))
+    client = ZeroMQClient(
+        DEFAULT_SERVER_HOST,
+        server_frontend_port,
+        input_producer,
+        get_consumer(response_state),
+    )
     task = asyncio.create_task(client.launch_async())
 
     for i in range(10):
@@ -183,7 +222,9 @@ async def test_zeromq_client(run_engines, input_producer, server_frontend_port, 
 
     assert response_state["received"]
 
+
 responses = dict()
+
 
 def multiple_engine_consumer(result_wrapper):
     logger.info(f"Status is {result_wrapper.status}")
@@ -192,10 +233,16 @@ def multiple_engine_consumer(result_wrapper):
     key = result_wrapper.result_producer_name.value
     responses[key] = responses.get(key, 0) + 1
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize('target_engines', [["Engine-0"], ["Engine-0", "Engine-1"], ["Engine-0", "Engine-1", "Engine-2"]])
-@pytest.mark.parametrize('num_engines', [3])
-async def test_send_multiple_engines(input_producer, server_frontend_port, target_engines, run_engines):
+@pytest.mark.parametrize(
+    "target_engines",
+    [["Engine-0"], ["Engine-0", "Engine-1"], ["Engine-0", "Engine-1", "Engine-2"]],
+)
+@pytest.mark.parametrize("num_engines", [3])
+async def test_send_multiple_engines(
+    input_producer, server_frontend_port, target_engines, run_engines
+):
     """
     Test that we receive a response from each engine we target.
     """
@@ -204,7 +251,12 @@ async def test_send_multiple_engines(input_producer, server_frontend_port, targe
 
     logger.info(f"{server_frontend_port=}")
 
-    client = ZeroMQClient(DEFAULT_SERVER_HOST, server_frontend_port, input_producer, multiple_engine_consumer)
+    client = ZeroMQClient(
+        DEFAULT_SERVER_HOST,
+        server_frontend_port,
+        input_producer,
+        multiple_engine_consumer,
+    )
     task = asyncio.create_task(client.launch_async())
 
     try:
@@ -214,15 +266,27 @@ async def test_send_multiple_engines(input_producer, server_frontend_port, targe
 
     assert len(responses) == len(target_engines)
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize('target_engines', [["local_engine"]])
+@pytest.mark.parametrize("target_engines", [["local_engine"]])
 async def test_local_server(input_producer, server_frontend_port, response_state):
     response_state["received"] = False
 
-    engine = LocalEngine(lambda: Engine(0, None), port=server_frontend_port, num_tokens=DEFAULT_NUM_TOKENS, input_queue_maxsize=INPUT_QUEUE_MAXSIZE, use_zeromq=True)
+    engine = LocalEngine(
+        lambda: Engine(0, None),
+        port=server_frontend_port,
+        num_tokens=DEFAULT_NUM_TOKENS,
+        input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
+        use_zeromq=True,
+    )
     engine_task = asyncio.create_task(engine.run_async())
 
-    client = ZeroMQClient(DEFAULT_SERVER_HOST, server_frontend_port, input_producer, get_consumer(response_state))
+    client = ZeroMQClient(
+        DEFAULT_SERVER_HOST,
+        server_frontend_port,
+        input_producer,
+        get_consumer(response_state),
+    )
     client_task = asyncio.create_task(client.launch_async())
 
     for i in range(10):
