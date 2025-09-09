@@ -27,6 +27,7 @@ jobs:
           pip install -e server
           pip install pytest
           pip install pytest-asyncio
+          pip install pre-commit
 
       - name: Run pre-commit hooks
         run: |
