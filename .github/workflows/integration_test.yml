@@ -35,4 +35,4 @@ jobs:
           pre-commit run --all-files
 
       - name: Run pytest
-        run: pytest test/integration --maxfail=5 --disable-warnings -q
+        run: pytest tests/integration --maxfail=5 --disable-warnings -q
