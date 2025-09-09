@@ -28,6 +28,7 @@ jobs:
           pip install -e protocol/python
           pip install pytest
           pip install pytest-asyncio
+          pip install pytest-timeout
           pip install pre-commit
           pip install prometheus-client
 
@@ -37,4 +38,5 @@ jobs:
           pre-commit run --all-files
 
       - name: Run pytest
-        run: pytest tests/integration --log-cli-level=INFO
+        run: pytest tests/integration --timeout=30 --log-cli-level=INFO
+        timeout-minutes: 10
