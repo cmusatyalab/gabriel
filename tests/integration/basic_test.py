@@ -19,7 +19,11 @@ DEFAULT_NUM_TOKENS = 2
 DEFAULT_SERVER_HOST = "localhost"
 INPUT_QUEUE_MAXSIZE = 60
 
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - %(message)s",
+    level=logging.INFO,
+)
+
 logger = logging.getLogger(__name__)
 
 # @pytest.fixture(scope="session")
@@ -72,9 +76,16 @@ class Engine(cognitive_engine.Engine, threading.Thread):
         await self.engine_runner.stop()
 
 
+@pytest.fixture(autouse=True)
+def enable_asyncio_debug():
+    loop = asyncio.get_event_loop()
+    loop.set_debug(True)
+    loop.slow_callback_duration = 0.5  # seconds
+
+
 @pytest.fixture(scope="session")
 def server_frontend_port_generator():
-    return itertools.count(9099)
+    return itertools.count(90999)
 
 
 @pytest.fixture
@@ -84,7 +95,7 @@ def server_frontend_port(server_frontend_port_generator):
 
 @pytest.fixture(scope="session")
 def server_backend_port_generator():
-    return itertools.count(5555)
+    return itertools.count(55555)
 
 
 @pytest.fixture
@@ -280,6 +291,7 @@ async def test_local_server(input_producer, server_frontend_port, response_state
         use_zeromq=True,
     )
     engine_task = asyncio.create_task(engine.run_async())
+    await asyncio.sleep(1)
 
     client = ZeroMQClient(
         DEFAULT_SERVER_HOST,
@@ -289,10 +301,18 @@ async def test_local_server(input_producer, server_frontend_port, response_state
     )
     client_task = asyncio.create_task(client.launch_async())
 
+    logger.info("Waiting for response from local engine")
+
+    received = False
     for i in range(10):
         await asyncio.sleep(0.1)
         if response_state["received"]:
+            received = True
+            logger.info("Received response from local engine")
             break
+    if not received:
+        logger.error("Did not receive response from local engine")
+
     engine_task.cancel()
     client_task.cancel()
     try:

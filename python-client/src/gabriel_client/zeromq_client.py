@@ -36,14 +36,14 @@ class InputProducer:
         res = await self._producer()
         return res
 
-    def start(self, computations):
+    def start(self, target_engine_ids):
         """
         Starts the producer
 
         Args:
-            computations (list): A list of computation tasks to be performed
+            target_engine_ids (list): A list of target engine IDs for the input
         """
-        self._computations = computations
+        self._target_engine_ids = target_engine_ids
         self._running.set()
 
     def stop(self):
@@ -61,7 +61,7 @@ class InputProducer:
     def target_engine_ids(self):
         return self._target_engine_ids
 
-    async def _wait_for_running(self):
+    async def wait_for_running(self):
         """
         Wait until the producer is running
         """
@@ -183,13 +183,21 @@ class ZeroMQClient:
         logger.info("Sent hello message to server")
 
         tasks = [
-            self._producer_handler(input_producer)
+            asyncio.create_task(self._producer_handler(input_producer))
             for input_producer in self.input_producers
         ]
-        tasks.append(self._consumer_handler())
-        tasks.append(self._heartbeat_loop())
+        tasks.append(asyncio.create_task(self._consumer_handler()))
+        tasks.append(asyncio.create_task(self._heartbeat_loop()))
 
-        await asyncio.gather(*tasks)
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._sock.close(0)
+            # await asyncio.get_running_loop().run_in_executor(None, context.destroy, 0)
+            raise
 
     async def _consumer_handler(self):
         """
@@ -294,7 +302,9 @@ class ZeroMQClient:
             producer: The method used to produce inputs for the server
             source_name (str): The name of the source to produce inputs for
         """
+        # logger.debug(f"Producer handler for {producer.source_id()} starting")
         await self._welcome_event.wait()
+        logger.debug("Received welcome from server")
 
         # Async task used to producer an input
         producer_task = None
@@ -305,6 +315,7 @@ class ZeroMQClient:
 
         try:
             while self._running:
+                logger.debug(f"Producer for {producer.source_id()} running")
                 if not producer.is_running():
                     await producer.wait_for_running()
 
@@ -361,6 +372,7 @@ class ZeroMQClient:
                 from_client.input.CopyFrom(input)
 
                 # Send input to server
+                logger.debug(f"Sending input to server source id {input.source_id}")
                 await self._sock.send(from_client.SerializeToString())
 
                 logger.debug(
@@ -371,6 +383,7 @@ class ZeroMQClient:
         except asyncio.CancelledError:
             if producer_task is not None:
                 producer_task.cancel()
+                asyncio.gather(producer_task, return_exceptions=True)
             raise
 
     async def _send_heartbeat(self, force=False):

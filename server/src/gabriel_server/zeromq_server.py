@@ -51,10 +51,9 @@ class ZeroMQServer(GabrielServer):
         except asyncio.CancelledError:
             for client in self._clients.values():
                 client.task.cancel()
-                try:
-                    await client.task
-                except asyncio.CancelledError:
-                    pass
+                await asyncio.gather(client.task, return_exceptions=True)
+            self._sock.close(0)
+            # await asyncio.get_running_loop().run_in_executor(None, self._ctx.destroy, 0)
             raise
 
     async def _send_via_transport(self, address, payload):
@@ -69,10 +68,13 @@ class ZeroMQServer(GabrielServer):
         while self._is_running:
             # Listen for client messages
             try:
+                logger.debug("Waiting for message from client")
                 address, raw_input = await self._sock.recv_multipart()
             except (zmq.ZMQError, ValueError) as error:
                 logging.error(f"Error '{error.msg}' when receiving on ZeroMQ socket")
                 continue
+
+            logger.debug(f"Received message from client {address}")
 
             client = self._clients.get(address)
 

@@ -54,11 +54,11 @@ class EngineRunner:
                 self.all_responses_required
             )
             await socket.send(from_standalone_engine.SerializeToString())
-            logger.info("Sent welcome message to server")
+            logger.info(f"{self.engine_name} sent welcome message to server")
 
             while self.running:
                 if await socket.poll(self.timeout) == 0:
-                    logger.warning("No response from server")
+                    logger.warning(f"{self.engine_name}: no response from server")
                     socket.setsockopt(zmq.LINGER, 0)
                     socket.close()
                     self.request_retries -= 1
@@ -66,7 +66,7 @@ class EngineRunner:
 
                 message_from_server = await socket.recv()
                 if message_from_server == network_engine.HEARTBEAT:
-                    logger.debug("Received heartbeat from server")
+                    logger.debug(f"{self.engine_name} received heartbeat from server")
                     await socket.send(network_engine.HEARTBEAT)
                     continue
 
@@ -80,7 +80,9 @@ class EngineRunner:
                 await socket.send(from_standalone_engine.SerializeToString())
         self.done_event.set()
 
-        logger.warning("Ran out of retires. Abandoning server connection.")
+        logger.warning(
+            f"{self.engine_name} ran out of retries. Abandoning server connection."
+        )
 
     async def stop(self):
         """

@@ -8,7 +8,7 @@ on:
     branches: [ master ]
 
 jobs:
-  test:
+  integration-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,5 +38,5 @@ jobs:
           pre-commit run --all-files
 
       - name: Run pytest
-        run: pytest tests/integration --timeout=30 --log-cli-level=INFO
+        run: pytest tests/integration --timeout=30
         timeout-minutes: 10
