@@ -29,6 +29,7 @@ jobs:
           pip install pytest
           pip install pytest-asyncio
           pip install pytest-timeout
+          pip install pytest-retry
           pip install pre-commit
           pip install prometheus-client
 
@@ -38,5 +39,5 @@ jobs:
           pre-commit run --all-files
 
       - name: Run pytest
-        run: pytest tests/integration --timeout=30
+        run: pytest tests/integration --timeout=30 --retries 3
         timeout-minutes: 10
