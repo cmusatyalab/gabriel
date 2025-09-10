@@ -49,11 +49,12 @@ class ZeroMQServer(GabrielServer):
         try:
             await handler_task
         except asyncio.CancelledError:
+            self._sock.close(0)
             for client in self._clients.values():
                 client.task.cancel()
                 await asyncio.gather(client.task, return_exceptions=True)
-            self._sock.close(0)
-            # await asyncio.get_running_loop().run_in_executor(None, self._ctx.destroy, 0)
+            logger.info("Destroying ZeroMQ context")
+            # self._ctx.destroy(0)
             raise
 
     async def _send_via_transport(self, address, payload):

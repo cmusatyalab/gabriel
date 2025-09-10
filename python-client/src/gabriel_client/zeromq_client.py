@@ -192,11 +192,12 @@ class ZeroMQClient:
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
+            self._sock.close(0)
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            self._sock.close(0)
-            # await asyncio.get_running_loop().run_in_executor(None, context.destroy, 0)
+            logger.info("Destroying ZeroMQ context")
+            # context.destroy(0)
             raise
 
     async def _consumer_handler(self):

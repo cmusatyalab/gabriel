@@ -119,7 +119,17 @@ class _Server:
 
         server_task = self._server.launch_async(client_port, message_max_size)
 
-        await asyncio.gather(engine_receiver_task, engine_heartbeat_task, server_task)
+        tasks = [engine_receiver_task, engine_heartbeat_task, server_task]
+
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            self._zmq_socket.close(0)
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            # self._ctx.destroy(0)
+            raise
 
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages"""
