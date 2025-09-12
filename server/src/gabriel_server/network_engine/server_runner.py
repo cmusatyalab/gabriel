@@ -56,15 +56,21 @@ def run(
     message_max_size=None,
     use_zeromq=False,
     prometheus_port=8000,
+    use_ipc=False,
 ):
-    start_http_server(prometheus_port)
-    context = zmq.asyncio.Context()
-    zmq_socket = context.socket(zmq.ROUTER)
-    zmq_socket.bind(zmq_address)
-    logger.info("Waiting for engines to connect")
-
-    server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq)
-    server.launch(websocket_port, message_max_size)
+    asyncio.run(
+        run_async(
+            websocket_port,
+            zmq_address,
+            num_tokens,
+            input_queue_maxsize,
+            timeout,
+            message_max_size,
+            use_zeromq,
+            prometheus_port,
+            use_ipc,
+        )
+    )
 
 
 async def run_async(
@@ -76,6 +82,7 @@ async def run_async(
     message_max_size=None,
     use_zeromq=False,
     prometheus_port=8000,
+    use_ipc=False,
 ):
     start_http_server(prometheus_port)
     context = zmq.asyncio.Context()
@@ -83,12 +90,16 @@ async def run_async(
     zmq_socket.bind(zmq_address)
     logger.info("Waiting for engines to connect")
 
-    server = _Server(num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq)
+    server = _Server(
+        num_tokens, zmq_socket, timeout, input_queue_maxsize, use_zeromq, use_ipc
+    )
     await server.launch_async(websocket_port, message_max_size)
 
 
 class _Server:
-    def __init__(self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq):
+    def __init__(
+        self, num_tokens, zmq_socket, timeout, size_for_queues, use_zeromq, use_ipc
+    ):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
         # Mapping from source id to source info
@@ -98,6 +109,7 @@ class _Server:
         self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
             num_tokens, self._send_to_engine
         )
+        self.use_ipc = use_ipc
 
     def launch(self, client_port, message_max_size):
         asyncio.run(self.launch_async(client_port, message_max_size))
@@ -117,7 +129,9 @@ class _Server:
         engine_receiver_task = asyncio.create_task(receive_from_engine_worker_loop())
         engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
 
-        server_task = self._server.launch_async(client_port, message_max_size)
+        server_task = self._server.launch_async(
+            client_port, message_max_size, self.use_ipc
+        )
 
         tasks = [engine_receiver_task, engine_heartbeat_task, server_task]
 
