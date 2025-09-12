@@ -332,6 +332,7 @@ async def test_local_server(input_producer, server_frontend_port, response_state
 
     assert response_state["received"]
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [["local_engine"]])
 async def test_ipc_local_engine(input_producer, server_frontend_port, response_state):
