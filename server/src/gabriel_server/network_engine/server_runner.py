@@ -128,7 +128,7 @@ class _Server:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            # self._ctx.destroy(0)
+            # self._ctx.destroy()
             raise
 
     async def _receive_from_engine_worker_helper(self):

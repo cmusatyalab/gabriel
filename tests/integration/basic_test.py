@@ -331,3 +331,59 @@ async def test_local_server(input_producer, server_frontend_port, response_state
     logger.info("Client and engine tasks are cancelled")
 
     assert response_state["received"]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_engines", [["local_engine"]])
+async def test_ipc_local_engine(input_producer, server_frontend_port, response_state):
+    response_state["received"] = False
+
+    engine = LocalEngine(
+        lambda: Engine(0, None),
+        port=server_frontend_port,
+        num_tokens=DEFAULT_NUM_TOKENS,
+        input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
+        use_zeromq=True,
+        ipc_path=f"/tmp/gabriel_server_{server_frontend_port}.ipc",
+    )
+    engine_task = asyncio.create_task(engine.run_async())
+    await asyncio.sleep(1)
+
+    client = ZeroMQClient(
+        f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
+        server_frontend_port,
+        input_producer,
+        get_consumer(response_state),
+        use_ipc=True,
+    )
+    client_task = asyncio.create_task(client.launch_async())
+
+    logger.info("Waiting for response from local engine")
+
+    received = False
+    for i in range(10):
+        await asyncio.sleep(0.1)
+        if response_state["received"]:
+            received = True
+            logger.info("Received response from local engine")
+            break
+    if not received:
+        logger.error("Did not receive response from local engine")
+
+    engine_task.cancel()
+    client_task.cancel()
+    try:
+        logger.info("Waiting for client task to cancel")
+        await client_task
+    except asyncio.CancelledError:
+        if asyncio.current_task().cancelled():
+            raise
+    try:
+        logger.info("Waiting for engine task to cancel")
+        await engine_task
+    except asyncio.CancelledError:
+        if asyncio.current_task().cancelled():
+            raise
+
+    logger.info("Client and engine tasks are cancelled")
+
+    assert response_state["received"]

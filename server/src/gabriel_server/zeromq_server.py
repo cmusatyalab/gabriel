@@ -54,7 +54,7 @@ class ZeroMQServer(GabrielServer):
                 client.task.cancel()
                 await asyncio.gather(client.task, return_exceptions=True)
             logger.info("Destroying ZeroMQ context")
-            # self._ctx.destroy(0)
+            # self._ctx.destroy()
             raise
 
     async def _send_via_transport(self, address, payload):
