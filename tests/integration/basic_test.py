@@ -150,7 +150,7 @@ async def run_server(
             use_ipc=use_ipc,
         )
     )
-    await asyncio.sleep(1)
+    await asyncio.sleep(0)
     yield task
     logger.info("Tearing down server")
     task.cancel()
@@ -301,7 +301,7 @@ async def test_local_server(input_producer, server_frontend_port, response_state
         use_zeromq=True,
     )
     engine_task = asyncio.create_task(engine.run_async())
-    await asyncio.sleep(1)
+    await asyncio.sleep(0)
 
     client = ZeroMQClient(
         DEFAULT_SERVER_HOST,
@@ -358,7 +358,7 @@ async def test_ipc_local_engine(input_producer, server_frontend_port, response_s
         ipc_path=f"/tmp/gabriel_server_{server_frontend_port}.ipc",
     )
     engine_task = asyncio.create_task(engine.run_async())
-    await asyncio.sleep(1)
+    await asyncio.sleep(0)
 
     client = ZeroMQClient(
         f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
