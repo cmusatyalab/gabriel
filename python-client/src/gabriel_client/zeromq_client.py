@@ -45,11 +45,13 @@ class InputProducer:
         """
         self._target_engine_ids = target_engine_ids
         self._running.set()
+        logger.info(f"Starting producer and targeting engines {target_engine_ids}")
 
     def stop(self):
         """
         Stops the producer
         """
+        logger.info("Stopping producer")
         self._running.clear()
 
     def is_running(self):
@@ -196,7 +198,6 @@ class ZeroMQClient:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info("Destroying ZeroMQ context")
             # context.destroy()
             raise
 
@@ -318,6 +319,7 @@ class ZeroMQClient:
             while self._running:
                 logger.debug(f"Producer for {producer.source_id()} running")
                 if not producer.is_running():
+                    logger.info("Producer is not running; waiting")
                     await producer.wait_for_running()
 
                 try:

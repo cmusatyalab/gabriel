@@ -1,3 +1,7 @@
+"""
+Run the Gabriel server that connects clients to cognitive engines.
+"""
+
 import asyncio
 from collections import deque
 import time
@@ -314,6 +318,10 @@ class _Server:
 
 
 class _EngineWorker:
+    """
+    Information about a cognitive engine worker, which processes inputs from clients.
+    """
+
     def __init__(
         self,
         zmq_socket,
@@ -422,6 +430,11 @@ class _EngineWorker:
 
 
 class _SourceInfo:
+    """
+    Information about a client input producer, which is a source of input
+    for a set of cognitive engines.
+    """
+
     def __init__(self, source_id, engine_workers):
         self._source_id = source_id
         self._latest_input = None

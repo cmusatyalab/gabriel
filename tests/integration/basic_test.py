@@ -430,3 +430,37 @@ async def test_send_multiple_engines_ipc(
     except (TimeoutError, asyncio.TimeoutError):
         pass
     assert len(response_state) == len(target_engines)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_engines", [3])
+async def test_change_target_engines(
+    input_producer, server_frontend_port, target_engines, run_engines, response_state
+):
+    response_state.clear()
+    logger.info(f"{server_frontend_port=}")
+
+    client = ZeroMQClient(
+        DEFAULT_SERVER_HOST,
+        server_frontend_port,
+        input_producer,
+        get_multiple_engine_consumer(response_state),
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=1)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+
+    assert len(response_state) == 1
+
+    input_producer[0].stop()
+    input_producer[0].start(target_engine_ids=["Engine-0", "Engine-1"])
+
+    try:
+        await asyncio.wait_for(task, timeout=1)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+
+    assert len(response_state) == 2
