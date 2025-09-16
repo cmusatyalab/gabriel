@@ -15,8 +15,6 @@ from urllib.parse import urlparse
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
 
-URI_FORMAT = "tcp://{host}:{port}"
-
 logger = logging.getLogger(__name__)
 
 
@@ -93,7 +91,7 @@ class InputProducer:
         """
         return self._running
 
-    def target_engine_ids(self):
+    def get_target_engine_ids(self):
         return self._target_engine_ids
 
     async def wait_for_running(self):
@@ -383,7 +381,9 @@ class ZeroMQClient:
                 input.frame_id = frame_id
                 frame_id += 1
                 input.source_id = producer.source_id()
-                input.target_engine_ids.extend(producer.target_engine_ids())
+                input.target_engine_ids.extend(
+                    producer.get_target_engine_ids()
+                )
                 input.input_frame.CopyFrom(input_frame)
 
                 from_client = gabriel_pb2.FromClient()
