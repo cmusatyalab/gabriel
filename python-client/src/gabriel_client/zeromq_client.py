@@ -13,11 +13,24 @@ import zmq.asyncio
 
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
-from collections import namedtuple
 
 URI_FORMAT = "tcp://{host}:{port}"
 
 logger = logging.getLogger(__name__)
+
+
+# The duration of time in seconds after which the server is considered to be
+# disconnected.
+SERVER_TIMEOUT_SECS = 10
+
+HEARTBEAT = b""
+# The interval in seconds at which a heartbeat is sent to the server
+HEARTBEAT_INTERVAL = 1
+
+# Message sent to the server to register this client
+HELLO_MSG = b"Hello message"
+
+context = zmq.asyncio.Context()
 
 
 class InputProducer:
@@ -86,64 +99,6 @@ class InputProducer:
         Returns the source id of the producer
         """
         return self._source_id
-
-
-# Represents an input that this client produces. 'producer' is the method
-# that produces inputs and 'source_name' is the source that the inputs are for.
-ProducerWrapper = namedtuple("ProducerWrapper", ["producer", "source_name"])
-
-# The duration of time in seconds after which the server is considered to be
-# disconnected.
-SERVER_TIMEOUT_SECS = 10
-
-HEARTBEAT = b""
-# The interval in seconds at which a heartbeat is sent to the server
-HEARTBEAT_INTERVAL = 1
-
-# Message sent to the server to register this client
-HELLO_MSG = b"Hello message"
-
-context = zmq.asyncio.Context()
-
-
-class TokenPool:
-    """
-    A pool of tokens used to limit the number of in-flight requests for
-    a particular input source.
-    """
-
-    def __init__(self, num_tokens):
-        self._max_tokens = num_tokens
-        self._num_tokens = num_tokens
-        self._sem = asyncio.Semaphore(num_tokens)
-
-    def return_token(self):
-        """
-        Returns a token to the pool.
-        """
-        self._sem.release()
-
-    async def get_token(self):
-        """
-        Acquires a token from the pool, waiting if necessary until a
-        token is available.
-        """
-        logger.debug("Waiting for token")
-        await self._sem.acquire()
-        logger.debug("Token acquired")
-
-    def is_locked(self):
-        """
-        Checks if the semaphore is locked.
-        """
-        return self._sem.locked()
-
-    def reset_tokens(self):
-        """
-        Resets the number of tokens in the pool to the maximum number of tokens.
-        """
-        self._sem = asyncio.Semaphore(self._max_tokens)
-        self._num_tokens = self._max_tokens
 
 
 class ZeroMQClient:
@@ -344,17 +299,16 @@ class ZeroMQClient:
             source_id = uuid.UUID(response.source_id)
             self._tokens[source_id].return_token()
 
-    async def _producer_handler(self, producer):
+    async def _producer_handler(self, producer: InputProducer):
         """
         Loop waiting until there is a token available. Then calls
         producer to get the gabriel_pb2.InputFrame to send.
 
-        TODO: update
         Args:
-            producer: The method used to produce inputs for the server
-            source_name (str): The name of the source to produce inputs for
+            producer (InputProducer):
+                The InputProducer instance that produces inputs for
+                this client
         """
-        # logger.debug(f"Producer handler for {producer.source_id()} starting")
         await self._welcome_event.wait()
         logger.debug("Received welcome from server")
 
@@ -481,3 +435,43 @@ class ZeroMQClient:
             ):
                 continue
             await self._send_heartbeat()
+
+
+class TokenPool:
+    """
+    A pool of tokens used to limit the number of in-flight requests for
+    a particular input source.
+    """
+
+    def __init__(self, num_tokens):
+        self._max_tokens = num_tokens
+        self._num_tokens = num_tokens
+        self._sem = asyncio.Semaphore(num_tokens)
+
+    def return_token(self):
+        """
+        Returns a token to the pool.
+        """
+        self._sem.release()
+
+    async def get_token(self):
+        """
+        Acquires a token from the pool, waiting if necessary until a
+        token is available.
+        """
+        logger.debug("Waiting for token")
+        await self._sem.acquire()
+        logger.debug("Token acquired")
+
+    def is_locked(self):
+        """
+        Checks if the semaphore is locked.
+        """
+        return self._sem.locked()
+
+    def reset_tokens(self):
+        """
+        Resets the number of tokens in the pool to the maximum number of tokens.
+        """
+        self._sem = asyncio.Semaphore(self._max_tokens)
+        self._num_tokens = self._max_tokens
