@@ -226,8 +226,7 @@ async def test_zeromq_client(
     logger.info("Starting test_zeromq_client")
 
     client = ZeroMQClient(
-        DEFAULT_SERVER_HOST,
-        server_frontend_port,
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
     )
@@ -284,8 +283,7 @@ async def test_send_multiple_engines(
     logger.info(f"{server_frontend_port=}")
 
     client = ZeroMQClient(
-        DEFAULT_SERVER_HOST,
-        server_frontend_port,
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
     )
@@ -318,8 +316,7 @@ async def test_local_server(
     await asyncio.sleep(0)
 
     client = ZeroMQClient(
-        DEFAULT_SERVER_HOST,
-        server_frontend_port,
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
     )
@@ -378,10 +375,8 @@ async def test_ipc_local_engine(
 
     client = ZeroMQClient(
         f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
-        server_frontend_port,
         input_producer,
         get_consumer(response_state),
-        use_ipc=True,
     )
     client_task = asyncio.create_task(client.launch_async())
 
@@ -442,10 +437,8 @@ async def test_send_multiple_engines_ipc(
 
     client = ZeroMQClient(
         f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
-        server_frontend_port,
         input_producer,
         get_multiple_engine_consumer(response_state),
-        use_ipc=True,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -469,8 +462,7 @@ async def test_change_target_engines(
     logger.info(f"{server_frontend_port=}")
 
     client = ZeroMQClient(
-        DEFAULT_SERVER_HOST,
-        server_frontend_port,
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
     )
@@ -506,8 +498,7 @@ async def test_disconnection(
     response_state.clear()
 
     client = ZeroMQClient(
-        DEFAULT_SERVER_HOST,
-        server_frontend_port,
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
     )

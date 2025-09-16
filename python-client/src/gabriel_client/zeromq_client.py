@@ -10,6 +10,7 @@ from typing import Callable
 import uuid
 import zmq
 import zmq.asyncio
+from urllib.parse import urlparse
 
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
@@ -108,25 +109,20 @@ class ZeroMQClient:
 
     def __init__(
         self,
-        host: str,
-        port: int,
+        server_endpoint: str,
         input_producers: list[InputProducer],
         consumer: Callable[[gabriel_pb2.ResultWrapper], None],
-        use_ipc: bool = False,
     ):
         """
         Args:
-            host (str): the host of the server to connect to
-            port (int): the port of the server
-            input_producers (listp[InputProducer]): a list of instances
+            server_endpoint (str):
+                The server endpoint to connect to. Must have the form
+                'protocol://interface:port'. Protocols supported include
+                tcp, ipc, and ws (websockets).
+            input_producers (list[InputProducer]): a list of instances
                 of InputProducer for the inputs produced by this client
             consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
                 callback for results from server
-            use_ipc (bool):
-                determines whether the ZeroMQ connection should be made
-                over Inter-Process Communication (IPC), which will
-                ignore the port argument and connect using the host
-                argument only
         """
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
@@ -137,10 +133,14 @@ class ZeroMQClient:
         self._tokens = dict()
         self._running = True
         # Check whether IPC mode is enabled, and only use the host if so
-        if not use_ipc:
-            self._uri = URI_FORMAT.format(host=host, port=port)
-        else:
-            self._uri = host
+
+        parsed_server_endpoint = urlparse(server_endpoint.lower())
+        if parsed_server_endpoint.scheme not in ("tcp", "ipc", "ws"):
+            raise ValueError(
+                f"Unsupported protocol {parsed_server_endpoint.scheme}"
+            )
+        self._server_endpoint = server_endpoint
+
         self.input_producers = set(input_producers)
         self.consumer = consumer
         # Whether the client is connected to the server
@@ -152,6 +152,8 @@ class ZeroMQClient:
         self._last_heartbeat_time = 0
         # Set by tasks to schedule a heartbeat to be sent to the server
         self._schedule_heartbeat = asyncio.Event()
+        # The number of tokens per input source, as specified by the \
+        # server
         self._num_tokens_per_source = None
 
         self._connected.set()
@@ -177,8 +179,8 @@ class ZeroMQClient:
         and sending heartbeats to the server. Also sends a hello message
         to the server to register this client with the server.
         """
-        logger.info(f"Connecting to server at {self._uri}")
-        self._sock.connect(self._uri)
+        logger.info(f"Connecting to server at {self._server_endpoint}")
+        self._sock.connect(self._server_endpoint)
 
         await self._sock.send(HELLO_MSG)
         logger.info("Sent hello message to server")
@@ -219,7 +221,7 @@ class ZeroMQClient:
                 # Resend heartbeat in case it was lost
                 self._sock.close(0)
                 self._sock = context.socket(zmq.DEALER)
-                self._sock.connect(self._uri)
+                self._sock.connect(self._server_endpoint)
 
                 # Send heartbeat even though we are disconnected
                 await self._send_heartbeat(True)
