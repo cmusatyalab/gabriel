@@ -39,17 +39,24 @@ class InputProducer:
     An input producer that produces inputs for the client to send to the server.
     """
 
-    def __init__(self, producer, target_engine_ids: list[str]):
+    def __init__(
+        self, producer, target_engine_ids: list[str], source_name: str = None
+    ):
         """
         Args:
             producer (callable): A callable that produces input data
             target_engine_ids (list[str]): A list of target engine IDs for the input
+            source_name (str, optional): The name of the source producing the input
         """
         self._running = asyncio.Event()
         self._running.set()
         self._producer = producer
         self._target_engine_ids = target_engine_ids
-        self._source_id = uuid.uuid4()
+        self._source_id = (
+            source_name + "-" + str(uuid.uuid4())
+            if source_name
+            else str(uuid.uuid4())
+        )
 
     async def produce(self):
         """
@@ -298,7 +305,7 @@ class ZeroMQClient:
             logger.error("Output status was: %s", status)
 
         if response.return_token:
-            source_id = uuid.UUID(response.source_id)
+            source_id = response.source_id
             self._tokens[source_id].return_token()
 
     async def _producer_handler(self, producer: InputProducer):
@@ -374,7 +381,7 @@ class ZeroMQClient:
                 input = gabriel_pb2.ClientInput()
                 input.frame_id = frame_id
                 frame_id += 1
-                input.source_id = str(producer.source_id())
+                input.source_id = producer.source_id()
                 input.target_engine_ids.extend(producer.target_engine_ids())
                 input.input_frame.CopyFrom(input_frame)
 
