@@ -49,8 +49,8 @@ class InputProducer:
         self._running = asyncio.Event()
         self._running.set()
         self._producer = producer
-        self._target_engine_ids = target_engine_ids
-        self._source_id = (
+        self.target_engine_ids = target_engine_ids
+        self.source_id = (
             source_name + "-" + str(uuid.uuid4())
             if source_name
             else str(uuid.uuid4())
@@ -72,7 +72,7 @@ class InputProducer:
         Args:
             target_engine_ids (list[str]): A list of target engine IDs for the input
         """
-        self._target_engine_ids = target_engine_ids
+        self.target_engine_ids = target_engine_ids
         self._running.set()
         logger.info(
             f"Starting producer and targeting engines {target_engine_ids}"
@@ -91,20 +91,11 @@ class InputProducer:
         """
         return self._running
 
-    def get_target_engine_ids(self):
-        return self._target_engine_ids
-
     async def wait_for_running(self):
         """
         Wait until the producer is running
         """
         await self._running.wait()
-
-    def source_id(self):
-        """
-        Returns the source id of the producer
-        """
-        return self._source_id
 
 
 class ZeroMQClient:
@@ -141,7 +132,7 @@ class ZeroMQClient:
         # Check whether IPC mode is enabled, and only use the host if so
 
         parsed_server_endpoint = urlparse(server_endpoint.lower())
-        if parsed_server_endpoint.scheme not in ("tcp", "ipc", "ws"):
+        if parsed_server_endpoint.scheme not in ("tcp", "ipc"):
             raise ValueError(
                 f"Unsupported protocol {parsed_server_endpoint.scheme}"
             )
@@ -325,11 +316,11 @@ class ZeroMQClient:
         frame_id = 1
 
         token_pool = TokenPool(self._num_tokens_per_source)
-        self._tokens[producer.source_id()] = token_pool
+        self._tokens[producer.source_id] = token_pool
 
         try:
             while self._running:
-                logger.debug(f"Producer for {producer.source_id()} running")
+                logger.debug(f"Producer for {producer.source_id} running")
                 if not producer.is_running():
                     logger.info("Producer is not running; waiting")
                     await producer.wait_for_running()
@@ -380,10 +371,8 @@ class ZeroMQClient:
                 input = gabriel_pb2.ClientInput()
                 input.frame_id = frame_id
                 frame_id += 1
-                input.source_id = producer.source_id()
-                input.target_engine_ids.extend(
-                    producer.get_target_engine_ids()
-                )
+                input.source_id = producer.source_id
+                input.target_engine_ids.extend(producer.target_engine_ids)
                 input.input_frame.CopyFrom(input_frame)
 
                 from_client = gabriel_pb2.FromClient()
@@ -397,7 +386,7 @@ class ZeroMQClient:
 
                 logger.debug(
                     "Semaphore for %s is %s",
-                    producer.source_id(),
+                    producer.source_id,
                     "LOCKED" if token_pool.is_locked() else "AVAILABLE",
                 )
         except asyncio.CancelledError:
