@@ -124,12 +124,13 @@ class ZeroMQClient:
         Args:
             server_endpoint (str):
                 The server endpoint to connect to. Must have the form
-                'protocol://interface:port'. Protocols supported include
-                tcp, ipc, and ws (websockets).
-            input_producers (list[InputProducer]): a list of instances
-                of InputProducer for the inputs produced by this client
+                'protocol://interface:port'. Protocols supported are
+                tcp and ipc
+            input_producers (list[InputProducer]):
+                A list of instances of InputProducer for the inputs
+                produced by this client
             consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
-                callback for results from server
+                Callback for results from server
         """
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
