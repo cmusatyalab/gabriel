@@ -24,7 +24,9 @@ def consume_frame(frame, _):
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument(
+        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+    )
     parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
 

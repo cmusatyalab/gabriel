@@ -121,7 +121,10 @@ class WebsocketClient:
         result_wrapper = response.result_wrapper
         if result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS:
             self.consumer(result_wrapper)
-        elif result_wrapper.status == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE:
+        elif (
+            result_wrapper.status
+            == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE
+        ):
             raise Exception("No engine for source")
         else:
             status = result_wrapper.Status.Name(result_wrapper.status)
@@ -138,8 +141,8 @@ class WebsocketClient:
 
         await self._welcome_event.wait()
         source = self._sources.get(source_name)
-        assert source is not None, "No engines consume frames from source: {}".format(
-            source_name
+        assert source is not None, (
+            "No engines consume frames from source: {}".format(source_name)
         )
 
         while self._running:

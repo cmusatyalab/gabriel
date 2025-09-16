@@ -47,7 +47,9 @@ class YuvConverter:
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument(
+        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+    )
     parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
 
@@ -80,7 +82,10 @@ def main():
     ]
 
     client = WebsocketClient(
-        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, push_source.consumer
+        args.server_host,
+        common.WEBSOCKET_PORT,
+        producer_wrappers,
+        push_source.consumer,
     )
     client.launch()
 

@@ -13,7 +13,9 @@ class DisplayEngine(cognitive_engine.Engine):
     def handle(self, input_frame):
         yuv = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
 
-        to_server = cognitive_engine.unpack_extras(yuv_pb2.ToServer, input_frame)
+        to_server = cognitive_engine.unpack_extras(
+            yuv_pb2.ToServer, input_frame
+        )
         width = to_server.width
         height = to_server.height
         rotation = to_server.rotation
@@ -38,7 +40,9 @@ class DisplayEngine(cognitive_engine.Engine):
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument(
+        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+    )
     args = parser.parse_args()
 
     def engine_factory():

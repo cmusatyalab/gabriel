@@ -29,7 +29,9 @@ def main():
     args = common.parse_source_name_server_host()
     engine = DisplayEngine(args.source_name)
 
-    server_address = SERVER_ADDRESS_FORMAT.format(args.server_host, common.ZMQ_PORT)
+    server_address = SERVER_ADDRESS_FORMAT.format(
+        args.server_host, common.ZMQ_PORT
+    )
     engine_runner.run(engine, args.source_name, server_address)
 
 

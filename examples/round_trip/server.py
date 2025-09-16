@@ -21,7 +21,9 @@ class DisplayEngine(cognitive_engine.Engine):
 def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
-    parser.add_argument("source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME)
+    parser.add_argument(
+        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+    )
     args = parser.parse_args()
 
     def engine_factory():

@@ -18,9 +18,11 @@ class WebsocketServer(GabrielServer):
     def launch(self, port_or_path, message_max_size, use_ipc=False):
         asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
-    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+    async def launch_async(
+        self, port_or_path, message_max_size, use_ipc=False
+    ):
         async with self.get_server(
-            self._handler, port_or_path, message_max_size, use_ipc
+            self._client_handler, port_or_path, message_max_size, use_ipc
         ) as server:
             if not use_ipc:
                 # Set TCP NO DELAY on all sockets if using TCP
@@ -54,7 +56,7 @@ class WebsocketServer(GabrielServer):
 
         return self._server.is_serving()
 
-    async def _handler(self, websocket):
+    async def _client_handler(self, websocket):
         address = websocket.remote_address
         logger.info("New Client connected: %s", address)
 

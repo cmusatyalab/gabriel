@@ -28,7 +28,10 @@ def main():
     p.start()
     producer_wrappers = [source.get_producer_wrapper()]
     client = WebsocketClient(
-        args.server_host, common.WEBSOCKET_PORT, producer_wrappers, push_source.consumer
+        args.server_host,
+        common.WEBSOCKET_PORT,
+        producer_wrappers,
+        push_source.consumer,
     )
     client.launch()
     p.terminate()

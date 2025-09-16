@@ -7,7 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 class MeasurementClient(WebsocketClient):
-    def __init__(self, host, port, producer_wrappers, consumer, output_freq=10):
+    def __init__(
+        self, host, port, producer_wrappers, consumer, output_freq=10
+    ):
         super().__init__(host, port, producer_wrappers, consumer)
 
         self._source_measurements = {}
@@ -17,14 +19,18 @@ class MeasurementClient(WebsocketClient):
         super()._process_welcome(welcome)
         start_time = time.time()
         for source_name in welcome.sources_consumed:
-            source_measurement = _SourceMeasurement(start_time, self._output_freq)
+            source_measurement = _SourceMeasurement(
+                start_time, self._output_freq
+            )
             self._source_measurements[source_name] = source_measurement
 
     def _process_response(self, response):
         response_time = time.time()
         super()._process_response(response)
         if response.return_token:
-            source_measurement = self._source_measurements[response.source_name]
+            source_measurement = self._source_measurements[
+                response.source_name
+            ]
             source_measurement.process_response(
                 response.frame_id, response.source_name, response_time
             )
@@ -55,7 +61,9 @@ class _SourceMeasurement:
 
     def _compute_and_print(self, source_name, response_time):
         print("Measurements for source:", source_name)
-        overall_fps = _compute_fps(self._count, response_time, self._start_time)
+        overall_fps = _compute_fps(
+            self._count, response_time, self._start_time
+        )
         print("Overall FPS:", overall_fps)
         interval_fps = _compute_fps(
             self._output_freq, response_time, self._interval_start_time

@@ -33,7 +33,9 @@ class Source:
             await self._frame_available.acquire()
             return self._latest_input_frame
 
-        return ProducerWrapper(producer=producer, source_name=self._source_name)
+        return ProducerWrapper(
+            producer=producer, source_name=self._source_name
+        )
 
     def send(self, input_frame):
         self._write.send_bytes(input_frame.SerializeToString())

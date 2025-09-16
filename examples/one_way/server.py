@@ -9,7 +9,10 @@ def main():
     common.configure_logging()
     zmq_address = ZMQ_ADDRESS_FORMAT.format(common.ZMQ_PORT)
     server_runner.run(
-        common.WEBSOCKET_PORT, zmq_address, num_tokens=2, input_queue_maxsize=60
+        common.WEBSOCKET_PORT,
+        zmq_address,
+        num_tokens=2,
+        input_queue_maxsize=60,
     )
 
 

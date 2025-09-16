@@ -9,7 +9,9 @@ ZMQ_PORT = 5555
 
 
 def configure_logging():
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s", level=logging.INFO
+    )
 
 
 def parse_source_name_server_host():

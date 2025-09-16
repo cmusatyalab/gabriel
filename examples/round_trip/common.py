@@ -6,4 +6,6 @@ DEFAULT_SOURCE_NAME = "roundtrip"
 
 
 def configure_logging():
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s", level=logging.INFO
+    )

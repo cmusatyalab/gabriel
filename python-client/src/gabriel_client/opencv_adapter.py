@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 
 class OpencvAdapter:
     def __init__(
-        self, preprocess, produce_extras, consume_frame, video_capture, source_name
+        self,
+        preprocess,
+        produce_extras,
+        consume_frame,
+        video_capture,
+        source_name,
     ):
         """
         preprocess should take one frame parameter
@@ -44,11 +49,15 @@ class OpencvAdapter:
 
             return input_frame
 
-        return [ProducerWrapper(producer=producer, source_name=self._source_name)]
+        return [
+            ProducerWrapper(producer=producer, source_name=self._source_name)
+        ]
 
     def consumer(self, result_wrapper):
         if len(result_wrapper.results) != 1:
-            logger.error("Got %d results from server", len(result_wrapper.results))
+            logger.error(
+                "Got %d results from server", len(result_wrapper.results)
+            )
             return
 
         result = result_wrapper.results[0]

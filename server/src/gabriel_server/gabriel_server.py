@@ -1,5 +1,10 @@
+"""
+Gabriel server abstract class. Connects Gabriel cognitive engines to clients.
+"""
+
 import asyncio
 import logging
+from typing import Union
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
 from abc import ABC
@@ -16,13 +21,13 @@ class GabrielServer(ABC):
     the client as they become available.
     """
 
-    def __init__(self, num_tokens_per_source, engine_cb):
+    def __init__(self, num_tokens_per_source: int, engine_cb):
         """
         Args:
             num_tokens_per_source (int):
                 The number of tokens available for each source
             engine_cb:
-                Callback invoked for each input received from a client
+                Callback invoked for each input received from a client.
         """
 
         # Metadata for each client. 'tokens_for_source' is a dictionary that
@@ -43,30 +48,40 @@ class GabrielServer(ABC):
         self._engine_cb = engine_cb
 
     @abstractmethod
-    def launch(self, port_or_path, message_max_size, use_ipc=False):
+    def launch(
+        self,
+        port_or_path: Union[int, str],
+        message_max_size: int,
+        use_ipc: bool = False,
+    ):
         """
         Launch the Gabriel server synchronously. This method will block execution
         until the server is stopped.
 
         Args:
-            port_or_path: Represents the bind port or the bind unix socket path,
+            port_or_path (int | str): Represents the bind port or the bind unix socket path,
                 depending on the value of use_ipc
-            message_max_size: The maximum message size accepted over the socket
-            use_ipc: Toggles whether the connection is over TCP or IPC
+            message_max_size (int): The maximum message size accepted over the socket in bytes
+            use_ipc (bool): Toggles whether the connection is over TCP or IPC
         """
         pass
 
     @abstractmethod
-    def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+    def launch_async(
+        self,
+        port_or_path: Union[int, str],
+        message_max_size: int,
+        use_ipc: bool = False,
+    ):
         """
         Launch the Gabriel server asynchronously. This method will block execution
         until the server is stopped.
 
         Args:
-            port_or_path: Represents the bind port or the bind unix socket path,
+            port_or_path (int | str): Represents the bind port or the bind unix socket path,
                 depending on the value of use_ipc
-            message_max_size: The maximum message size accepted over the socket
-            use_ipc: Toggles whether the connection is over TCP or IPC
+            message_max_size (int): The maximum message size accepted over the socket in bytes
+            use_ipc (bool): Toggles whether the connection is over TCP or IPC
         """
         pass
 
@@ -77,17 +92,23 @@ class GabrielServer(ABC):
         await self._start_event.wait()
 
     async def send_result_wrapper(
-        self, address, source_id, frame_id, engine_name, result_wrapper, return_token
-    ):
+        self,
+        address: str,
+        source_id: str,
+        frame_id: int,
+        engine_name: str,
+        result_wrapper: gabriel_pb2.ResultWrapper,
+        return_token: bool,
+    ) -> bool:
         """
         Send result to client at address.
 
         Args:
-            address: The identifier of the client to send the result to
-            source_id: The id of the source that the result corresponds to
-            frame_id: The frame id of the input that the result corresponds to
-            result_wrapper: The result payload to send to the client
-            return_token: Whether to return a token to the client
+            address (str): The identifier of the client to send the result to
+            source_id (str): The id of the source that the result corresponds to
+            frame_id (int): The frame id of the input that the result corresponds to
+            result_wrapper (gabriel_pb2.ResultWrapper): The result payload to send to the client
+            return_token (bool): Whether to return a token to the client
 
         Returns True if send succeeded.
         """
@@ -109,7 +130,9 @@ class GabrielServer(ABC):
         to_client.response.return_token = return_token
         to_client.response.result_wrapper.CopyFrom(result_wrapper)
 
-        return await self._send_via_transport(address, to_client.SerializeToString())
+        return await self._send_via_transport(
+            address, to_client.SerializeToString()
+        )
 
     @abstractmethod
     async def _send_via_transport(self, address, payload) -> bool:
@@ -130,7 +153,7 @@ class GabrielServer(ABC):
         pass
 
     @abstractmethod
-    async def _handler(self):
+    async def _client_handler(self):
         """
         Handles client connections.
         """
@@ -162,7 +185,9 @@ class GabrielServer(ABC):
 
         if client.tokens_for_source[source_id] < 1:
             logger.error(
-                "Client %s sending from source %s without tokens", address, source_id
+                "Client %s sending from source %s without tokens",
+                address,
+                source_id,
             )
             return ResultWrapper.Status.NO_TOKENS
 

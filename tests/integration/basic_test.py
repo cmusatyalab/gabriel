@@ -47,7 +47,6 @@ class Engine(cognitive_engine.Engine, threading.Thread):
             self.engine_name,
             self.zeromq_address,
             all_responses_required=True,
-            timeout=1000,
             request_retries=3,
         )
 
@@ -130,28 +129,31 @@ def prometheus_port(prometheus_port_generator):
 
 @pytest_asyncio.fixture
 async def run_server(
-    server_frontend_port, server_backend_port, use_zeromq, prometheus_port, use_ipc
+    server_frontend_port,
+    server_backend_port,
+    use_zeromq,
+    prometheus_port,
+    use_ipc,
 ):
     logger.info(
         f"Starting server: {use_zeromq=} {server_backend_port=} {server_frontend_port=} {use_ipc=}"
     )
     if use_ipc:
-        websocket_port = f"/tmp/gabriel_server_{server_frontend_port}.ipc"
+        client_endpoint = f"/tmp/gabriel_server_{server_frontend_port}.ipc"
     else:
-        websocket_port = server_frontend_port
-    task = asyncio.create_task(
-        server_runner.run_async(
-            websocket_port=websocket_port,
-            zmq_address=f"tcp://*:{server_backend_port}",
-            num_tokens=DEFAULT_NUM_TOKENS,
-            input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
-            use_zeromq=use_zeromq,
-            prometheus_port=prometheus_port,
-            use_ipc=use_ipc,
-        )
+        client_endpoint = server_frontend_port
+    server_run = server_runner.ServerRunner(
+        client_endpoint=client_endpoint,
+        engine_zmq_endpoint=f"tcp://*:{server_backend_port}",
+        num_tokens=DEFAULT_NUM_TOKENS,
+        input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
+        use_zeromq=use_zeromq,
+        prometheus_port=prometheus_port,
+        use_ipc=use_ipc,
     )
+    task = asyncio.create_task(server_run.run_async())
     await asyncio.sleep(0)
-    yield task
+    yield server_run
     logger.info("Tearing down server")
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
@@ -193,7 +195,9 @@ def input_producer(target_engines):
         await asyncio.sleep(0.1)
         return frame
 
-    producer = InputProducer(producer=producer, target_engine_ids=target_engines)
+    producer = InputProducer(
+        producer=producer, target_engine_ids=target_engines
+    )
     yield [producer]
     producer.stop()
 
@@ -258,11 +262,19 @@ def get_multiple_engine_consumer(response_state):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "target_engines",
-    [["Engine-0"], ["Engine-0", "Engine-1"], ["Engine-0", "Engine-1", "Engine-2"]],
+    [
+        ["Engine-0"],
+        ["Engine-0", "Engine-1"],
+        ["Engine-0", "Engine-1", "Engine-2"],
+    ],
 )
 @pytest.mark.parametrize("num_engines", [3])
 async def test_send_multiple_engines(
-    input_producer, server_frontend_port, target_engines, run_engines, response_state
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
 ):
     """
     Test that we receive a response from each engine we target.
@@ -289,7 +301,9 @@ async def test_send_multiple_engines(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [["local_engine"]])
-async def test_local_server(input_producer, server_frontend_port, response_state):
+async def test_local_server(
+    input_producer, server_frontend_port, response_state
+):
     response_state.clear()
     response_state["received"] = False
 
@@ -345,7 +359,9 @@ async def test_local_server(input_producer, server_frontend_port, response_state
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [["local_engine"]])
-async def test_ipc_local_engine(input_producer, server_frontend_port, response_state):
+async def test_ipc_local_engine(
+    input_producer, server_frontend_port, response_state
+):
     response_state.clear()
     response_state["received"] = False
 
@@ -404,12 +420,20 @@ async def test_ipc_local_engine(input_producer, server_frontend_port, response_s
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "target_engines",
-    [["Engine-0"], ["Engine-0", "Engine-1"], ["Engine-0", "Engine-1", "Engine-2"]],
+    [
+        ["Engine-0"],
+        ["Engine-0", "Engine-1"],
+        ["Engine-0", "Engine-1", "Engine-2"],
+    ],
 )
 @pytest.mark.parametrize("num_engines", [3])
 @pytest.mark.parametrize("use_ipc", [True])
 async def test_send_multiple_engines_ipc(
-    input_producer, server_frontend_port, target_engines, run_engines, response_state
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
 ):
     """
     Test that we receive a response from each engine we target, using ipc.
@@ -435,7 +459,11 @@ async def test_send_multiple_engines_ipc(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("num_engines", [3])
 async def test_change_target_engines(
-    input_producer, server_frontend_port, target_engines, run_engines, response_state
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
 ):
     response_state.clear()
     logger.info(f"{server_frontend_port=}")
@@ -464,3 +492,49 @@ async def test_change_target_engines(
         pass
 
     assert len(response_state) == 2
+
+
+@pytest.mark.asyncio
+async def test_disconnection(
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    run_server,
+):
+    response_state.clear()
+
+    client = ZeroMQClient(
+        DEFAULT_SERVER_HOST,
+        server_frontend_port,
+        input_producer,
+        get_multiple_engine_consumer(response_state),
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=1)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+
+    assert len(response_state) == 1
+
+    # Simulate server disconnection
+    logger.info(
+        "Stopping server client handler to simulate disconnection******************"
+    )
+    server = run_server.get_server()
+    await server._stop_client_handler()
+    await asyncio.sleep(15)
+    num_responses = response_state["Engine-0"]
+
+    # Restart server
+    server_task = asyncio.create_task(server._restart_client_handler())
+    await asyncio.sleep(1)
+    logger.info(f"{response_state=}")
+    assert response_state["Engine-0"] > num_responses
+
+    server_task.cancel()
+    task.cancel()
+    await asyncio.gather(server_task, task, return_exceptions=True)

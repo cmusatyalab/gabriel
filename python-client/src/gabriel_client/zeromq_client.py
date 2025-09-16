@@ -1,6 +1,12 @@
+"""
+Client used to communicate with a Gabriel server that is configured to use
+ZeroMQ for communication.
+"""
+
 import asyncio
 import logging
 import time
+from typing import Callable
 import uuid
 import zmq
 import zmq.asyncio
@@ -15,11 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 class InputProducer:
-    def __init__(self, producer, target_engine_ids):
+    """
+    An input producer that produces inputs for the client to send to the server.
+    """
+
+    def __init__(self, producer, target_engine_ids: list[str]):
         """
         Args:
             producer (callable): A callable that produces input data
-            target_engine_ids (list): A list of target engine IDs for the input
+            target_engine_ids (list[str]): A list of target engine IDs for the input
         """
         self._running = asyncio.Event()
         self._running.set()
@@ -36,16 +46,18 @@ class InputProducer:
         res = await self._producer()
         return res
 
-    def start(self, target_engine_ids):
+    def start(self, target_engine_ids: list[str]):
         """
         Starts the producer
 
         Args:
-            target_engine_ids (list): A list of target engine IDs for the input
+            target_engine_ids (list[str]): A list of target engine IDs for the input
         """
         self._target_engine_ids = target_engine_ids
         self._running.set()
-        logger.info(f"Starting producer and targeting engines {target_engine_ids}")
+        logger.info(
+            f"Starting producer and targeting engines {target_engine_ids}"
+        )
 
     def stop(self):
         """
@@ -95,20 +107,43 @@ context = zmq.asyncio.Context()
 
 
 class TokenPool:
+    """
+    A pool of tokens used to limit the number of in-flight requests for
+    a particular input source.
+    """
+
     def __init__(self, num_tokens):
+        self._max_tokens = num_tokens
         self._num_tokens = num_tokens
         self._sem = asyncio.Semaphore(num_tokens)
 
     def return_token(self):
+        """
+        Returns a token to the pool.
+        """
         self._sem.release()
 
     async def get_token(self):
+        """
+        Acquires a token from the pool, waiting if necessary until a
+        token is available.
+        """
         logger.debug("Waiting for token")
         await self._sem.acquire()
         logger.debug("Token acquired")
 
     def is_locked(self):
+        """
+        Checks if the semaphore is locked.
+        """
         return self._sem.locked()
+
+    def reset_tokens(self):
+        """
+        Resets the number of tokens in the pool to the maximum number of tokens.
+        """
+        self._sem = asyncio.Semaphore(self._max_tokens)
+        self._num_tokens = self._max_tokens
 
 
 class ZeroMQClient:
@@ -116,18 +151,27 @@ class ZeroMQClient:
     A Gabriel client that talks to the server over ZeroMQ.
     """
 
-    def __init__(self, host, port, input_producers, consumer, use_ipc=False):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        input_producers: list[InputProducer],
+        consumer: Callable[[gabriel_pb2.ResultWrapper], None],
+        use_ipc: bool = False,
+    ):
         """
         Args:
             host (str): the host of the server to connect to
             port (int): the port of the server
-            input_producers (list):
-                instances of InputProducer for the inputs produced by this
-                client
-            consumer: callback for results from server
-            ipc (bool): determines whether the ZeroMQ connection should be
-                made over Inter-Process Communication (IPC), which will ignore
-                the port argument and connect using the host argument only
+            input_producers (listp[InputProducer]): a list of instances
+                of InputProducer for the inputs produced by this client
+            consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
+                callback for results from server
+            use_ipc (bool):
+                determines whether the ZeroMQ connection should be made
+                over Inter-Process Communication (IPC), which will
+                ignore the port argument and connect using the host
+                argument only
         """
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
@@ -174,9 +218,9 @@ class ZeroMQClient:
 
     async def _launch_helper(self):
         """
-        Launches async tasks for producing inputs, consuming results, and
-        sending heartbeats to the server. Also sends a hello message to the
-        server to register this client with the server.
+        Launches async tasks for producing inputs, consuming results,
+        and sending heartbeats to the server. Also sends a hello message
+        to the server to register this client with the server.
         """
         logger.info(f"Connecting to server at {self._uri}")
         self._sock.connect(self._uri)
@@ -231,6 +275,9 @@ class ZeroMQClient:
             if not self._connected.is_set():
                 logger.info("Reconnected to server")
                 self._connected.set()
+                # Reset tokens for all sources
+                for token_pool in self._tokens.values():
+                    token_pool.reset_tokens()
 
             if raw_input == HEARTBEAT:
                 logger.debug("Received heartbeat from server")
@@ -262,8 +309,8 @@ class ZeroMQClient:
 
         Args:
             welcome:
-                The gabriel_pb2.ToClient.Welcome message received from the
-                server
+                The gabriel_pb2.ToClient.Welcome message received from
+                the server
         """
         self._num_tokens_per_source = welcome.num_tokens_per_source
         self._welcome_event.set()
@@ -283,7 +330,10 @@ class ZeroMQClient:
                 self.consumer(result_wrapper)
             except Exception as e:
                 logger.error(f"Error processing response from server: {e}")
-        elif result_wrapper.status == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE:
+        elif (
+            result_wrapper.status
+            == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE
+        ):
             logger.critical("Fatal error: no engine for source")
             raise Exception("No engine for source")
         else:
@@ -296,8 +346,8 @@ class ZeroMQClient:
 
     async def _producer_handler(self, producer):
         """
-        Loop waiting until there is a token available. Then calls producer to
-        get the gabriel_pb2.InputFrame to send.
+        Loop waiting until there is a token available. Then calls
+        producer to get the gabriel_pb2.InputFrame to send.
 
         TODO: update
         Args:
@@ -348,7 +398,8 @@ class ZeroMQClient:
                     # a heartbeat to the server. Use an asyncio.shield to prevent
                     # task cancellation.
                     input_frame = await asyncio.wait_for(
-                        asyncio.shield(producer_task), timeout=HEARTBEAT_INTERVAL
+                        asyncio.shield(producer_task),
+                        timeout=HEARTBEAT_INTERVAL,
                     )
                 except (TimeoutError, asyncio.TimeoutError):
                     token_pool.return_token()
@@ -375,7 +426,9 @@ class ZeroMQClient:
                 from_client.input.CopyFrom(input)
 
                 # Send input to server
-                logger.debug(f"Sending input to server source id {input.source_id}")
+                logger.debug(
+                    f"Sending input to server source id {input.source_id}"
+                )
                 await self._sock.send(from_client.SerializeToString())
 
                 logger.debug(
@@ -395,13 +448,15 @@ class ZeroMQClient:
 
         Args:
             force:
-                Send a heartbeat even if disconnected from the server or if
-                sufficient time has not passed since the last heartbeat was
-                sent
+                Send a heartbeat even if disconnected from the server or
+                if sufficient time has not passed since the last
+                heartbeat was sent
         """
         # Do not send a heartbeat if disconnected from server or a heartbeat
         # is pending, unless force is True
-        if not force and (not self._connected.is_set() or self._pending_heartbeat):
+        if not force and (
+            not self._connected.is_set() or self._pending_heartbeat
+        ):
             return
         logger.debug("Sending heartbeat to server")
         self._pending_heartbeat = True
@@ -410,8 +465,8 @@ class ZeroMQClient:
 
     async def _heartbeat_loop(self):
         """
-        Send a heartbeat when one is scheduled by another task and sufficient
-        time has passed since the last heartbeat was sent.
+        Send a heartbeat when one is scheduled by another task and
+        sufficient time has passed since the last heartbeat was sent.
         """
         while self._running:
             if not self._schedule_heartbeat.is_set():
@@ -420,6 +475,9 @@ class ZeroMQClient:
             self._schedule_heartbeat.clear()
 
             # Heartbeat was sent recently
-            if time.monotonic() - self._last_heartbeat_time < HEARTBEAT_INTERVAL:
+            if (
+                time.monotonic() - self._last_heartbeat_time
+                < HEARTBEAT_INTERVAL
+            ):
                 continue
             await self._send_heartbeat()

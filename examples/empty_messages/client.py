@@ -12,7 +12,9 @@ def main():
 
         return gabriel_pb2.InputFrame()
 
-    producer_wrappers = [ProducerWrapper(producer=producer, source_name="empty")]
+    producer_wrappers = [
+        ProducerWrapper(producer=producer, source_name="empty")
+    ]
     client = WebsocketClient(
         host="localhost",
         port=9099,

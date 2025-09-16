@@ -89,7 +89,9 @@ class LocalEngine:
 
 
 class _LocalServer:
-    def __init__(self, num_tokens_per_source, input_queue_maxsize, conn, use_zeromq):
+    def __init__(
+        self, num_tokens_per_source, input_queue_maxsize, conn, use_zeromq
+    ):
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
@@ -106,14 +108,22 @@ class _LocalServer:
         return True
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
-        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc=use_ipc))
+        asyncio.run(
+            self.launch_async(port_or_path, message_max_size, use_ipc=use_ipc)
+        )
 
-    async def launch_async(self, port_or_path, message_max_size, use_ipc=False):
+    async def launch_async(
+        self, port_or_path, message_max_size, use_ipc=False
+    ):
         logger.info(f"Starting local server on port {port_or_path}")
-        asyncio.get_event_loop().add_reader(self._conn.fileno(), self._result_ready.set)
+        asyncio.get_event_loop().add_reader(
+            self._conn.fileno(), self._result_ready.set
+        )
         comm_task = asyncio.create_task(self._engine_comm())
         server_task = asyncio.create_task(
-            self._server.launch_async(port_or_path, message_max_size, use_ipc=use_ipc)
+            self._server.launch_async(
+                port_or_path, message_max_size, use_ipc=use_ipc
+            )
         )
         await asyncio.gather(comm_task, server_task)
 
@@ -124,7 +134,9 @@ class _LocalServer:
             logger.info("Waiting for input from client")
             from_client, address = await self._input_queue.get()
             await loop.run_in_executor(
-                None, self._conn.send_bytes, from_client.input_frame.SerializeToString()
+                None,
+                self._conn.send_bytes,
+                from_client.input_frame.SerializeToString(),
             )
             logger.info("Sent input frame to engine")
             result_wrapper = gabriel_pb2.ResultWrapper()
