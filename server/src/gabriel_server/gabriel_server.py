@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class GabrielServer(ABC):
     """
     Connects to Gabriel clients. Consumes input from the clients
-    and passes it to the specified callback function. Results are sent back to
-    the client as they become available.
+    and passes it to the specified callback function. Results are sent
+    back to the client as they become available.
     """
 
     def __init__(self, num_tokens_per_source: int, engine_cb):
@@ -59,10 +59,14 @@ class GabrielServer(ABC):
         until the server is stopped.
 
         Args:
-            port_or_path (int | str): Represents the bind port or the bind unix socket path,
+            port_or_path (int | str):
+                Represents the bind port or the bind unix socket path,
                 depending on the value of use_ipc
-            message_max_size (int): The maximum message size accepted over the socket in bytes
-            use_ipc (bool): Toggles whether the connection is over TCP or IPC
+            message_max_size (int):
+                The maximum message size accepted over the socket in
+                bytes
+            use_ipc (bool):
+                Toggles whether the connection is over TCP or IPC
         """
         pass
 
@@ -78,10 +82,13 @@ class GabrielServer(ABC):
         until the server is stopped.
 
         Args:
-            port_or_path (int | str): Represents the bind port or the bind unix socket path,
+            port_or_path (int | str):
+                Represents the bind port or the bind unix socket path,
                 depending on the value of use_ipc
-            message_max_size (int): The maximum message size accepted over the socket in bytes
-            use_ipc (bool): Toggles whether the connection is over TCP or IPC
+            message_max_size (int):
+                The maximum message size accepted over the socket in bytes
+            use_ipc (bool):
+                Toggles whether the connection is over TCP or IPC
         """
         pass
 

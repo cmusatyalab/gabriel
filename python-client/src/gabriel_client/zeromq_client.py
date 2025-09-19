@@ -297,6 +297,9 @@ class ZeroMQClient:
         if response.return_token:
             source_id = response.source_id
             self._tokens[source_id].return_token()
+            logger.info(
+                f"Returning token for source {source_id}, total tokens {self._tokens[source_id].get_remaining_tokens()}"
+            )
 
     async def _producer_handler(self, producer: InputProducer):
         """
@@ -445,7 +448,7 @@ class TokenPool:
     def __init__(self, num_tokens):
         self._max_tokens = num_tokens
         self._num_tokens = num_tokens
-        self._sem = asyncio.Semaphore(num_tokens)
+        self._sem = asyncio.BoundedSemaphore(num_tokens)
 
     def return_token(self):
         """
@@ -474,3 +477,9 @@ class TokenPool:
         """
         self._sem = asyncio.Semaphore(self._max_tokens)
         self._num_tokens = self._max_tokens
+
+    def get_remaining_tokens(self):
+        """
+        Returns the number of remaining tokens in the pool.
+        """
+        return self._sem._value
