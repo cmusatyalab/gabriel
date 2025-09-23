@@ -7,13 +7,15 @@ import asyncio
 import logging
 import time
 from typing import Callable
-import uuid
 import zmq
 import zmq.asyncio
 from urllib.parse import urlparse
 
 from google.protobuf.message import DecodeError
 from gabriel_protocol import gabriel_pb2
+from gabriel_client.gabriel_client import GabrielClient
+from gabriel_client.gabriel_client import InputProducer
+from gabriel_client.gabriel_client import TokenPool
 
 logger = logging.getLogger(__name__)
 
@@ -32,73 +34,7 @@ HELLO_MSG = b"Hello message"
 context = zmq.asyncio.Context()
 
 
-class InputProducer:
-    """
-    An input producer that produces inputs for the client to send to the server.
-    """
-
-    def __init__(
-        self, producer, target_engine_ids: list[str], source_name: str = None
-    ):
-        """
-        Args:
-            producer (callable): A callable that produces input data
-            target_engine_ids (list[str]): A list of target engine IDs for the input
-            source_name (str, optional): The name of the source producing the input
-        """
-        self._running = asyncio.Event()
-        self._running.set()
-        self._producer = producer
-        self.target_engine_ids = target_engine_ids
-        self.source_id = (
-            source_name + "-" + str(uuid.uuid4())
-            if source_name
-            else str(uuid.uuid4())
-        )
-
-    async def produce(self):
-        """
-        Invokes the producer to generate input
-        """
-        if not self._running:
-            raise Exception("Producer called when not running")
-        res = await self._producer()
-        return res
-
-    def start(self, target_engine_ids: list[str]):
-        """
-        Starts the producer
-
-        Args:
-            target_engine_ids (list[str]): A list of target engine IDs for the input
-        """
-        self.target_engine_ids = target_engine_ids
-        self._running.set()
-        logger.info(
-            f"Starting producer and targeting engines {target_engine_ids}"
-        )
-
-    def stop(self):
-        """
-        Stops the producer
-        """
-        logger.info("Stopping producer")
-        self._running.clear()
-
-    def is_running(self):
-        """
-        Checks if the producer is running
-        """
-        return self._running
-
-    async def wait_for_running(self):
-        """
-        Wait until the producer is running
-        """
-        await self._running.wait()
-
-
-class ZeroMQClient:
+class ZeroMQClient(GabrielClient):
     """
     A Gabriel client that talks to the server over ZeroMQ.
     """
@@ -121,14 +57,9 @@ class ZeroMQClient:
             consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
                 Callback for results from server
         """
+        super().__init__()
         # Socket used for communicating with the server
         self._sock = context.socket(zmq.DEALER)
-        # Whether a welcome message has been received from the server
-        self._welcome_event = asyncio.Event()
-        self._producers = {}
-        # Mapping from source id to tokens
-        self._tokens = dict()
-        self._running = True
         # Check whether IPC mode is enabled, and only use the host if so
 
         parsed_server_endpoint = urlparse(server_endpoint.lower())
@@ -149,9 +80,6 @@ class ZeroMQClient:
         self._last_heartbeat_time = 0
         # Set by tasks to schedule a heartbeat to be sent to the server
         self._schedule_heartbeat = asyncio.Event()
-        # The number of tokens per input source, as specified by the \
-        # server
-        self._num_tokens_per_source = None
 
         self._connected.set()
 
@@ -163,12 +91,6 @@ class ZeroMQClient:
         Launch the client.
         """
         asyncio.run(self._launch_helper())
-
-    def register_input_producer(self, input_producer):
-        self.input_producers.add(input_producer)
-
-    def deregister_input_producer(self, input_producer):
-        self.input_producers.remove(input_producer)
 
     async def _launch_helper(self):
         """
@@ -437,49 +359,3 @@ class ZeroMQClient:
             ):
                 continue
             await self._send_heartbeat()
-
-
-class TokenPool:
-    """
-    A pool of tokens used to limit the number of in-flight requests for
-    a particular input source.
-    """
-
-    def __init__(self, num_tokens):
-        self._max_tokens = num_tokens
-        self._num_tokens = num_tokens
-        self._sem = asyncio.BoundedSemaphore(num_tokens)
-
-    def return_token(self):
-        """
-        Returns a token to the pool.
-        """
-        self._sem.release()
-
-    async def get_token(self):
-        """
-        Acquires a token from the pool, waiting if necessary until a
-        token is available.
-        """
-        logger.debug("Waiting for token")
-        await self._sem.acquire()
-        logger.debug("Token acquired")
-
-    def is_locked(self):
-        """
-        Checks if the semaphore is locked.
-        """
-        return self._sem.locked()
-
-    def reset_tokens(self):
-        """
-        Resets the number of tokens in the pool to the maximum number of tokens.
-        """
-        self._sem = asyncio.Semaphore(self._max_tokens)
-        self._num_tokens = self._max_tokens
-
-    def get_remaining_tokens(self):
-        """
-        Returns the number of remaining tokens in the pool.
-        """
-        return self._sem._value

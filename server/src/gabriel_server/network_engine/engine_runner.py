@@ -75,7 +75,9 @@ class EngineRunner:
                 self.all_responses_required
             )
             await socket.send(from_standalone_engine.SerializeToString())
-            logger.info(f"{self.engine_name} sent welcome message to server")
+            logger.info(
+                f"{self.engine_name} sent welcome message to server {self.server_address}"
+            )
 
             while self.running:
                 if await socket.poll(self.timeout) == 0:

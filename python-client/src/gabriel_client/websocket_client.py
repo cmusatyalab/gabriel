@@ -1,13 +1,15 @@
 import asyncio
 import logging
 import socket
+from urllib.parse import urlparse
 import websockets
 import websockets.client
 
 from gabriel_protocol import gabriel_pb2
 from collections import namedtuple
-from gabriel_client.source import _Source
-
+from gabriel_client.gabriel_client import GabrielClient
+from gabriel_client.gabriel_client import InputProducer
+from gabriel_client.gabriel_client import TokenPool
 
 URI_FORMAT = "ws://{host}:{port}"
 
@@ -33,21 +35,24 @@ class NoDelayProtocol(websockets.client.WebSocketClientProtocol):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
-class WebsocketClient:
-    def __init__(self, host, port, producer_wrappers, consumer):
+class WebsocketClient(GabrielClient):
+    def __init__(self, server_endpoint, input_producers, consumer):
         """
         producer should take no arguments and return an instance of
         gabriel_pb2.InputFrame.
         consumer should take one gabriel_pb2.ResultWrapper and does not need to
         return anything.
         """
-
-        self._welcome_event = asyncio.Event()
-        self._sources = {}
-        self._running = True
-        self._uri = URI_FORMAT.format(host=host, port=port)
-        self.producer_wrappers = producer_wrappers
+        super().__init__()
         self.consumer = consumer
+        self.input_producers = set(input_producers)
+
+        self.server_endpoint = server_endpoint
+        parsed_server_endpoint = urlparse(server_endpoint.lower())
+        if parsed_server_endpoint.scheme != "ws":
+            raise ValueError(
+                f"Unsupported protocol {parsed_server_endpoint.scheme}"
+            )
 
     def launch(self, message_max_size=None):
         event_loop = asyncio.get_event_loop()
@@ -55,7 +60,7 @@ class WebsocketClient:
         try:
             self._websocket = event_loop.run_until_complete(
                 websockets.connect(
-                    self._uri,
+                    self.server_endpoint,
                     create_protocol=NoDelayProtocol,
                     max_size=message_max_size,
                 )
@@ -87,12 +92,25 @@ class WebsocketClient:
             task.cancel()
         logger.info("Disconnected From Server")
 
-    def get_source_names(self):
-        return self._sources.keys()
+    async def launch_async(self):
+        async with websockets.connect(
+            self.server_endpoint,
+            max_size=None,
+        ) as websocket:
+            self._websocket = websocket
+            consumer_task = asyncio.create_task(self._consumer_handler())
+            tasks = [
+                asyncio.create_task(self._producer_handler(input_producer))
+                for input_producer in self.input_producers
+            ]
+            tasks.append(consumer_task)
 
-    def stop(self):
-        self._running = False
-        logger.info("stopping server")
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            logger.info("Disconnected From Server")
 
     async def _consumer_handler(self):
         while self._running:
@@ -113,8 +131,7 @@ class WebsocketClient:
                 raise Exception("Empty to_client message")
 
     def _process_welcome(self, welcome):
-        for source_name in welcome.sources_consumed:
-            self._sources[source_name] = _Source(welcome.num_tokens_per_source)
+        self._num_tokens_per_source = welcome.num_tokens_per_source
         self._welcome_event.set()
 
     def _process_response(self, response):
@@ -131,47 +148,43 @@ class WebsocketClient:
             logger.error("Output status was: %s", status)
 
         if response.return_token:
-            self._sources[response.source_name].return_token()
+            self._tokens[response.source_id].return_token()
 
-    async def _producer_handler(self, producer, source_name):
+    async def _producer_handler(self, producer: InputProducer):
         """
         Loop waiting until there is a token available. Then calls producer to
         get the gabriel_pb2.InputFrame to send.
         """
 
         await self._welcome_event.wait()
-        source = self._sources.get(source_name)
-        assert source is not None, (
-            "No engines consume frames from source: {}".format(source_name)
-        )
+        token_pool = TokenPool(self._num_tokens_per_source)
+        self._tokens[producer.source_id] = token_pool
+        frame_id = 1
 
         while self._running:
-            await source.get_token()
+            await token_pool.get_token()
 
-            input_frame = await producer()
+            input_frame = await producer.produce()
             if input_frame is None:
-                source.return_token()
+                token_pool.return_token()
                 logger.info("Received None from producer")
                 continue
 
+            input = gabriel_pb2.ClientInput()
+            input.frame_id = frame_id
+            frame_id += 1
+            input.source_id = producer.source_id
+            input.target_engine_ids.extend(producer.target_engine_ids)
+            input.input_frame.CopyFrom(input_frame)
+
             from_client = gabriel_pb2.FromClient()
-            from_client.frame_id = source.get_frame_id()
-            from_client.source_name = source_name
-            from_client.input_frame.CopyFrom(input_frame)
+            from_client.input.CopyFrom(input)
 
             try:
                 await self._send_from_client(from_client)
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
 
-            logger.debug(
-                "Semaphore for %s is %s",
-                source_name,
-                "LOCKED" if source.is_locked() else "AVAILABLE",
-            )
-            source.next_frame()
-
     async def _send_from_client(self, from_client):
         # Removing this method will break measurement_client
-
         await self._websocket.send(from_client.SerializeToString())

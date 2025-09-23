@@ -94,16 +94,22 @@ class WebsocketServer(GabrielServer):
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(raw_input)
 
-            status = await self._consumer_helper(client, address, from_client)
+            if from_client.WhichOneof("req_type") == "input":
+                input = from_client.input
+            else:
+                logger.error(f"Unexpected request type from client {address}")
+                continue
+            status = await self._consumer_helper(client, address, input)
             if status == ResultWrapper.Status.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                client.tokens_for_source[from_client.source_name] -= 1
+                client.tokens_for_source[from_client.source_id] -= 1
                 continue
 
             # Send error message
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_name = from_client.source_name
-            to_client.response.frame_id = from_client.frame_id
+            to_client.response.source_id = input.source_id
+            to_client.response.frame_id = input.frame_id
             to_client.response.return_token = True
             to_client.response.result_wrapper.status = status
+
             await websocket.send(to_client.SerializeToString())

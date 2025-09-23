@@ -64,7 +64,7 @@ class ServerRunner:
         input_queue_maxsize: int,
         timeout: int = FIVE_SECONDS,
         message_max_size: Optional[int] = None,
-        use_zeromq: bool = False,
+        use_zeromq: bool = True,
         prometheus_port: int = 8000,
         use_ipc: bool = False,
     ):
@@ -106,7 +106,9 @@ class ServerRunner:
         context = zmq.asyncio.Context()
         zmq_socket = context.socket(zmq.ROUTER)
         zmq_socket.bind(self.engine_zmq_endpoint)
-        logger.info("Waiting for engines to connect")
+        logger.info(
+            f"Waiting for engines to connect on {self.engine_zmq_endpoint}"
+        )
 
         server = _Server(
             self.num_tokens,
@@ -149,6 +151,7 @@ class _Server:
 
     async def launch_async(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
+            logger.info("Starting engine receiver loop")
             await self._server.wait_for_start()
             while self._server.is_running():
                 await self._receive_from_engine_worker_helper()
@@ -523,6 +526,7 @@ class _SourceInfo:
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
 
         target_engines = set()
+        logger.info(f"{self._engine_workers.values()}")
         for engine_worker in self._engine_workers.values():
             if (
                 engine_worker.get_engine_name()

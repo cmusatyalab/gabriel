@@ -9,7 +9,6 @@ import copy
 
 from gabriel_client.zeromq_client import InputProducer
 
-# from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 from gabriel_server.network_engine import server_runner
@@ -27,15 +26,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-# @pytest.fixture(scope="session")
-# def event_loop():
-#    try:
-#        loop = asyncio.get_running_loop()
-#    except RuntimeError:
-#        loop = asyncio.new_event_loop()
-#    yield loop
-#    loop.close()
 
 
 class Engine(cognitive_engine.Engine, threading.Thread):
@@ -655,3 +645,37 @@ async def test_prometheus_metrics(
                         sample.value - init_val == 4
                     )  # at least 4 intervals for 5 inputs
             assert found
+
+
+# @pytest.mark.asyncio
+# @pytest.mark.parametrize("use_zeromq", [False])
+# @pytest.mark.parametrize("server_frontend_port", [65535])
+# async def test_websocket_client(
+#     run_engines, input_producer, response_state
+# ):
+#     response_state.clear()
+#     response_state["received"] = False
+
+#     logger.info("Starting test_websocket_client")
+
+#     client = WebsocketClient(
+#         f"ws://{DEFAULT_SERVER_HOST}:65535",
+#         input_producer,
+#         get_consumer(response_state),
+#     )
+#     task = asyncio.create_task(client.launch_async())
+
+#     for i in range(10):
+#         await asyncio.sleep(0.1)
+#         if response_state["received"]:
+#             break
+#     task.cancel()
+#     try:
+#         logger.info("Waiting for client task to cancel")
+#         await task
+#     except asyncio.CancelledError:
+#         if asyncio.current_task().cancelled():
+#             raise
+#     logger.info("Client task is cancelled")
+
+#     assert response_state["received"]
