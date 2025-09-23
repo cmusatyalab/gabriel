@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import socket
 from urllib.parse import urlparse
 import websockets
 import websockets.client
@@ -24,17 +23,6 @@ websockets_logger.setLevel(logging.INFO)
 ProducerWrapper = namedtuple("ProducerWrapper", ["producer", "source_name"])
 
 
-# It isn't necessary to do this as of Python 3.6 because
-# "The socket option TCP_NODELAY is set by default for all TCP connections"
-# per https://docs.python.org/3/library/asyncio-eventloop.html
-# However, this seems worth keeping in case the default behavior changes.
-class NoDelayProtocol(websockets.client.WebSocketClientProtocol):
-    def connection_made(self, transport: asyncio.BaseTransport) -> None:
-        super().connection_made(transport)
-        sock = transport.get_extra_info("socket")
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-
 class WebsocketClient(GabrielClient):
     def __init__(self, server_endpoint, input_producers, consumer):
         """
@@ -55,42 +43,7 @@ class WebsocketClient(GabrielClient):
             )
 
     def launch(self, message_max_size=None):
-        event_loop = asyncio.get_event_loop()
-
-        try:
-            self._websocket = event_loop.run_until_complete(
-                websockets.connect(
-                    self.server_endpoint,
-                    create_protocol=NoDelayProtocol,
-                    max_size=message_max_size,
-                )
-            )
-        except ConnectionRefusedError:
-            logger.error("Could not connect to server")
-            return
-
-        # We don't waste time checking TCP_NODELAY in production.
-        # Note that websocket.transport is an undocumented property.
-        # sock = self._websocket.transport.get_extra_info('socket')
-        # assert(sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY) == 1)
-
-        consumer_task = asyncio.ensure_future(self._consumer_handler())
-        tasks = [
-            asyncio.ensure_future(
-                self._producer_handler(
-                    producer_wrapper.producer, producer_wrapper.source_name
-                )
-            )
-            for producer_wrapper in self.producer_wrappers
-        ]
-        tasks.append(consumer_task)
-
-        _, pending = event_loop.run_until_complete(
-            asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        )
-        for task in pending:
-            task.cancel()
-        logger.info("Disconnected From Server")
+        asyncio.run(self.launch_async())
 
     async def launch_async(self):
         async with websockets.connect(
@@ -118,7 +71,7 @@ class WebsocketClient(GabrielClient):
                 raw_input = await self._websocket.recv()
             except websockets.exceptions.ConnectionClosed:
                 return  # stop the handler
-            logger.debug("Recieved input from server")
+            logger.debug("Received input from server")
 
             to_client = gabriel_pb2.ToClient()
             to_client.ParseFromString(raw_input)
