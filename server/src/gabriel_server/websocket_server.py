@@ -24,6 +24,7 @@ class WebsocketServer(GabrielServer):
         async with self.get_server(
             self._client_handler, port_or_path, message_max_size, use_ipc
         ) as server:
+            self._server = server
             if not use_ipc:
                 # Set TCP NO DELAY on all sockets if using TCP
                 for sock in server.sockets:
@@ -36,7 +37,7 @@ class WebsocketServer(GabrielServer):
 
     def get_server(self, handler, port_or_path, max_size, use_ipc):
         if not use_ipc:
-            return serve(handler, port=port_or_path, max_size=max_size)
+            return serve(handler, "localhost", port_or_path, max_size=max_size)
         else:
             return unix_serve(handler, path=port_or_path)
 
@@ -61,11 +62,8 @@ class WebsocketServer(GabrielServer):
         logger.info("New Client connected: %s", address)
 
         client = self._Client(
-            tokens_for_source={
-                source_name: self._num_tokens_per_source
-                for source_name in self._sources_consumed
-            },
-            inputs=None,
+            tokens_for_source={},
+            inputs=asyncio.Queue(),
             task=None,
             websocket=websocket,
         )
@@ -73,8 +71,6 @@ class WebsocketServer(GabrielServer):
 
         # Send client welcome message
         to_client = gabriel_pb2.ToClient()
-        for source_name in self._sources_consumed:
-            to_client.welcome.sources_consumed.append(source_name)
         to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
         await websocket.send(to_client.SerializeToString())
 
@@ -84,12 +80,12 @@ class WebsocketServer(GabrielServer):
             pass
         finally:
             del self._clients[address]
-            logger.info("Client disconnected: %s", address)
+            logger.info(f"Client disconnected: {address}")
 
     async def _consumer(self, websocket, client):
         address = websocket.remote_address
         async for raw_input in websocket:
-            logger.debug("Received input from %s", address)
+            logger.debug(f"Received input from {address}")
 
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(raw_input)
@@ -102,7 +98,7 @@ class WebsocketServer(GabrielServer):
             status = await self._consumer_helper(client, address, input)
             if status == ResultWrapper.Status.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                client.tokens_for_source[from_client.source_id] -= 1
+                client.tokens_for_source[input.source_id] -= 1
                 continue
 
             # Send error message

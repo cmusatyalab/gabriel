@@ -155,6 +155,7 @@ class _Server:
             await self._server.wait_for_start()
             while self._server.is_running():
                 await self._receive_from_engine_worker_helper()
+            logger.info("Engine receiver loop shut down")
 
         async def heartbeat_loop():
             await self._server.wait_for_start()
@@ -201,7 +202,13 @@ class _Server:
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages"""
         logger.info("Waiting for message from engine")
-        address, _, payload = await self._zmq_socket.recv_multipart()
+        try:
+            address, _, payload = await asyncio.wait_for(
+                self._zmq_socket.recv_multipart(), timeout=1
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            logger.info("No message from engine within timeout")
+            return
         logger.info(f"Received message from engine at address {address}")
 
         engine_worker = self._engine_workers.get(address)

@@ -10,6 +10,7 @@ import copy
 from gabriel_client.zeromq_client import InputProducer
 
 from gabriel_client.zeromq_client import ZeroMQClient
+from gabriel_client.websocket_client import WebsocketClient
 from gabriel_protocol import gabriel_pb2
 from gabriel_server.network_engine import server_runner
 from gabriel_server.network_engine import engine_runner
@@ -647,35 +648,34 @@ async def test_prometheus_metrics(
             assert found
 
 
-# @pytest.mark.asyncio
-# @pytest.mark.parametrize("use_zeromq", [False])
-# @pytest.mark.parametrize("server_frontend_port", [65535])
-# async def test_websocket_client(
-#     run_engines, input_producer, response_state
-# ):
-#     response_state.clear()
-#     response_state["received"] = False
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_zeromq", [False])
+@pytest.mark.parametrize("server_frontend_port", [65535])
+async def test_websocket_client(run_engines, input_producer, response_state):
+    response_state.clear()
+    response_state["received"] = False
 
-#     logger.info("Starting test_websocket_client")
+    logger.info("Starting test_websocket_client")
 
-#     client = WebsocketClient(
-#         f"ws://{DEFAULT_SERVER_HOST}:65535",
-#         input_producer,
-#         get_consumer(response_state),
-#     )
-#     task = asyncio.create_task(client.launch_async())
+    await asyncio.sleep(0)
+    client = WebsocketClient(
+        f"ws://{DEFAULT_SERVER_HOST}:65535",
+        input_producer,
+        get_consumer(response_state),
+    )
+    task = asyncio.create_task(client.launch_async())
 
-#     for i in range(10):
-#         await asyncio.sleep(0.1)
-#         if response_state["received"]:
-#             break
-#     task.cancel()
-#     try:
-#         logger.info("Waiting for client task to cancel")
-#         await task
-#     except asyncio.CancelledError:
-#         if asyncio.current_task().cancelled():
-#             raise
-#     logger.info("Client task is cancelled")
+    for i in range(10):
+        await asyncio.sleep(0.1)
+        if response_state["received"]:
+            break
+    task.cancel()
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        if asyncio.current_task().cancelled():
+            raise
+    logger.info("Client task is cancelled")
 
-#     assert response_state["received"]
+    assert response_state["received"]

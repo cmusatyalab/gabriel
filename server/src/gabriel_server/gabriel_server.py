@@ -40,8 +40,6 @@ class GabrielServer(ABC):
         self._num_tokens_per_source = num_tokens_per_source
         # The clients connected to the server
         self._clients = {}
-        # The sources consumed by the server
-        self._sources_consumed = set()
         # Indicates that the server start up is finished
         self._start_event = asyncio.Event()
         self._is_running = False
