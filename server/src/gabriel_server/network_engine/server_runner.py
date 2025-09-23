@@ -15,7 +15,7 @@ from gabriel_server import cognitive_engine
 from gabriel_server import network_engine
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
-from prometheus_client import start_http_server, Gauge, Histogram, Counter
+from prometheus_client import start_http_server, Gauge, Histogram
 
 
 FIVE_SECONDS = 5
@@ -52,12 +52,6 @@ INPUT_INTER_ARRIVAL_TIME = Histogram(
     "input_inter_arrival_time_seconds",
     "Time between arrivals of inputs from the same source",
     ["source_id"],
-)
-
-ENGINE_COMPLETED_REQUESTS = Counter(
-    "engine_completed_requests",
-    "Number of requests processed by each cognitive engine",
-    ["engine"],
 )
 
 
@@ -200,9 +194,6 @@ class _Server:
         ENGINE_LATENCY.labels(engine=engine_worker.get_engine_name()).observe(
             processing_latency
         )
-        ENGINE_COMPLETED_REQUESTS.labels(
-            engine=engine_worker.get_engine_name()
-        ).inc()
 
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages"""

@@ -4,6 +4,8 @@ import logging
 import pytest
 import pytest_asyncio
 import threading
+from prometheus_client import REGISTRY
+import copy
 
 from gabriel_client.zeromq_client import InputProducer
 
@@ -184,8 +186,15 @@ def target_engines():
 
 
 @pytest.fixture
-def input_producer(target_engines):
+def num_inputs_to_send():
+    return -1  # send indefinitely until test ends
+
+
+@pytest.fixture
+def input_producer(target_engines, num_inputs_to_send):
     logger.info(f"Target engines: {target_engines}")
+
+    inputs_sent = 0
 
     async def producer():
         logger.info("Producing input")
@@ -193,6 +202,14 @@ def input_producer(target_engines):
         frame.payload_type = gabriel_pb2.PayloadType.TEXT
         frame.payloads.append(b"Hello from client")
         await asyncio.sleep(0.1)
+
+        nonlocal inputs_sent
+        nonlocal num_inputs_to_send
+        inputs_sent += 1
+        if num_inputs_to_send > 0 and inputs_sent > num_inputs_to_send:
+            return None
+        logger.info(f"Inputs sent: {inputs_sent}")
+
         return frame
 
     producer = InputProducer(
@@ -529,3 +546,112 @@ async def test_disconnection(
     server_task.cancel()
     task.cancel()
     await asyncio.gather(server_task, task, return_exceptions=True)
+
+
+@pytest.fixture
+def metrics_before():
+    yield copy.deepcopy(list(REGISTRY.collect()))
+
+
+def find_value(metrics, metric_name, label_name=None, label_value=None):
+    return next(
+        (
+            sample.value
+            for metric in metrics
+            for sample in metric.samples
+            if sample.name == metric_name
+            and (
+                label_name is None
+                or sample.labels.get(label_name) == label_value
+            )
+        ),
+        None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_inputs_to_send", [5])
+async def test_prometheus_metrics(
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    prometheus_port,
+    metrics_before,
+):
+    response_state.clear()
+    response_state["received"] = False
+
+    # Check that Prometheus metrics are being collected
+    metric_names = [metric.name for metric in metrics_before]
+    assert len(metric_names) > 0, "No metrics found in Prometheus registry"
+    expected_metrics = [
+        "engine_processing_latency_seconds",
+        "source_queue_length",
+        "input_inter_arrival_time_seconds",
+    ]
+    for expected_metric in expected_metrics:
+        assert expected_metric in metric_names, (
+            f"{expected_metric} not found in metrics"
+        )
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    try:
+        await asyncio.wait_for(task, timeout=1)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+
+    assert response_state["received"]
+
+    final_metrics = [metric for metric in REGISTRY.collect()]
+
+    for metric in final_metrics:
+        if metric.name == "engine_processing_latency_seconds":
+            for sample in metric.samples:
+                if (
+                    sample.name == "engine_processing_latency_seconds_count"
+                    and sample.labels.get("engine_id") == "Engine-0"
+                ):
+                    init_val = (
+                        find_value(
+                            metrics_before,
+                            "engine_processing_latency_seconds_count",
+                            "engine_id",
+                            "Engine-0",
+                        )
+                        or 0
+                    )
+                    assert sample.value - init_val == 5
+        elif metric.name == "source_queue_length":
+            for sample in metric.samples:
+                if sample.name == "source_queue_length":
+                    assert sample.value == 0
+        elif metric.name == "input_inter_arrival_time_seconds":
+            found = False
+            for sample in metric.samples:
+                if (
+                    sample.name == "input_inter_arrival_time_seconds_count"
+                    and sample.labels.get("source_id")
+                    == input_producer[0].source_id
+                ):
+                    found = True
+                    init_val = (
+                        find_value(
+                            metrics_before,
+                            "input_inter_arrival_time_seconds_count",
+                            "source_id",
+                            input_producer[0].source_id,
+                        )
+                        or 0
+                    )
+                    assert (
+                        sample.value - init_val == 4
+                    )  # at least 4 intervals for 5 inputs
+            assert found
