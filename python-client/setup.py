@@ -5,9 +5,9 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="gabriel-client",
-    version="3.0.2",
-    author="Roger Iyengar",
-    author_email="ri@rogeriyengar.com",
+    version="4.0.0",
+    author="Aditya Chanana",
+    author_email="achanana@cs.cmu.edu",
     maintainer="CMU Satyalab",
     maintainer_email="gabriel@cmusatyalab.org",
     description="Networking components for Gabriel Python clients",
@@ -28,7 +28,7 @@ setuptools.setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "gabriel-protocol==3.0",
+        "gabriel-protocol==4.0",
         "websockets>=9.1",
         "opencv-python>=3, <5",
     ],

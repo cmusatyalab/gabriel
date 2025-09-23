@@ -5,9 +5,9 @@ DESCRIPTION = "Protocol for the Gabriel framework"
 
 setuptools.setup(
     name="gabriel-protocol",
-    version="3.0",
-    author="Roger Iyengar",
-    author_email="ri@rogeriyengar.com",
+    version="4.0",
+    author="Aditya Chanana",
+    author_email="achanana@cs.cmu.edu",
     maintainer="CMU Satyalab",
     maintainer_email="gabriel@cmusatyalab.org",
     description=DESCRIPTION,
