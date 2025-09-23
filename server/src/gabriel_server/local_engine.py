@@ -2,6 +2,7 @@
 Run a single cognitive engine. Starts a local server and connects the engine to it.
 """
 
+from typing import Optional
 import asyncio
 import logging
 import multiprocessing
@@ -17,22 +18,24 @@ class LocalEngine:
     def __init__(
         self,
         engine_factory,
-        input_queue_maxsize,
-        port,
-        num_tokens,
-        message_max_size=None,
-        use_zeromq=False,
-        ipc_path=None,
+        input_queue_maxsize: int,
+        port: int,
+        num_tokens: int,
+        engine_name: str = "local_engine",
+        message_max_size: int = None,
+        use_zeromq: bool = False,
+        ipc_path: Optional[str] = None,
     ):
         """
         Args:
             engine_factory: A callable that returns a cognitive engine instance.
-            input_queue_maxsize: The maximum size of the input queue.
-            port: The port to run the server on.
-            num_tokens: The number of tokens to allocate to the source.
-            message_max_size: The maximum size of a message in bytes.
-            use_zeromq: Whether to use ZeroMQ or WebSocket for communication.
-            ipc_path: If provided, use IPC with the given path instead of TCP.
+            input_queue_maxsize (int): The maximum size of the input queue.
+            port (int): The port to run the server on.
+            num_tokens (int): The number of tokens to allocate to the source.
+            engine_name (str): The name of the engine.
+            message_max_size (int): The maximum size of a message in bytes.
+            use_zeromq (bool): Whether to use ZeroMQ or WebSocket for communication.
+            ipc_path (str, optional): If provided, use IPC with the given path instead of TCP.
         """
         self.engine_factory = engine_factory
         self.input_queue_maxsize = input_queue_maxsize
@@ -41,6 +44,7 @@ class LocalEngine:
         self.message_max_size = message_max_size
         self.use_zeromq = use_zeromq
         self.ipc_path = ipc_path
+        self.engine_name = engine_name
 
     def run(self):
         asyncio.run(self.run_async())

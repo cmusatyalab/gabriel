@@ -46,6 +46,8 @@ class InputProducer:
         Args:
             target_engine_ids (list[str]): A list of target engine IDs for the input
         """
+        if self._running.is_set():
+            raise Exception("Producer already started")
         self.target_engine_ids = target_engine_ids
         self._running.set()
         logger.info(
