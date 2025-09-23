@@ -6,7 +6,7 @@ ZeroMQ for communication.
 import asyncio
 import logging
 import time
-from typing import Callable
+from typing import Callable, List
 import zmq
 import zmq.asyncio
 from urllib.parse import urlparse
@@ -42,7 +42,7 @@ class ZeroMQClient(GabrielClient):
     def __init__(
         self,
         server_endpoint: str,
-        input_producers: list[InputProducer],
+        input_producers: List[InputProducer],
         consumer: Callable[[gabriel_pb2.ResultWrapper], None],
     ):
         """
@@ -51,7 +51,7 @@ class ZeroMQClient(GabrielClient):
                 The server endpoint to connect to. Must have the form
                 'protocol://interface:port'. Protocols supported are
                 tcp and ipc
-            input_producers (list[InputProducer]):
+            input_producers (List[InputProducer]):
                 A list of instances of InputProducer for the inputs
                 produced by this client
             consumer (Callable[[gabriel_pb2.ResultWrapper], None]):

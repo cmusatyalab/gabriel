@@ -1,3 +1,4 @@
+from typing import List
 from abc import ABC, abstractmethod
 import asyncio
 import uuid
@@ -12,12 +13,12 @@ class InputProducer:
     """
 
     def __init__(
-        self, producer, target_engine_ids: list[str], source_name: str = None
+        self, producer, target_engine_ids: List[str], source_name: str = None
     ):
         """
         Args:
             producer (callable): A callable that produces input data
-            target_engine_ids (list[str]): A list of target engine IDs for the input
+            target_engine_ids (List[str]): A list of target engine IDs for the input
             source_name (str, optional): The name of the source producing the input
         """
         self._running = asyncio.Event()
@@ -39,12 +40,12 @@ class InputProducer:
         res = await self._producer()
         return res
 
-    def start(self, target_engine_ids: list[str]):
+    def start(self, target_engine_ids: List[str]):
         """
         Starts the producer
 
         Args:
-            target_engine_ids (list[str]): A list of target engine IDs for the input
+            target_engine_ids (List[str]): A list of target engine IDs for the input
         """
         if self._running.is_set():
             raise Exception("Producer already started")

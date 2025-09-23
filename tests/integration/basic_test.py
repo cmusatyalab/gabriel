@@ -68,13 +68,6 @@ class Engine(cognitive_engine.Engine, threading.Thread):
         await self.engine_runner.stop()
 
 
-@pytest.fixture(autouse=True)
-def enable_asyncio_debug():
-    loop = asyncio.get_event_loop()
-    loop.set_debug(True)
-    loop.slow_callback_duration = 0.5  # seconds
-
-
 @pytest.fixture(scope="session")
 def server_frontend_port_generator():
     return itertools.count(90999)

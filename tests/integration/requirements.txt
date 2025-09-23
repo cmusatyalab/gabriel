@@ -1,0 +1,8 @@
+-e ../../protocol/python
+-e ../../python-client
+-e ../../server
+pytest
+pytest-asyncio
+pytest-timeout
+pre-commit
+prometheus-client
