@@ -1,16 +1,20 @@
-"""
-Gabriel server that uses ZeroMQ for communication with clients. Compatible
-with either TCP or IPC transports.
+"""Gabriel server that uses ZeroMQ for communication with clients.
+
+Compatible with either TCP or IPC transports.
 """
 
 import asyncio
-from gabriel_protocol import gabriel_pb2
-from gabriel_protocol.gabriel_pb2 import ResultWrapper
-from gabriel_server.gabriel_server import GabrielServer
+import contextlib
 import logging
+from collections.abc import Callable
+
 import zmq
 import zmq.asyncio
+from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.gabriel_pb2 import ResultWrapper
 from google.protobuf.message import DecodeError
+
+from gabriel_server.gabriel_server import GabrielServer
 
 URI_FORMAT = "tcp://*:{}"
 IPC_FORMAT = "ipc://{}"
@@ -28,7 +32,24 @@ logger = logging.getLogger(__name__)
 
 
 class ZeroMQServer(GabrielServer):
-    def __init__(self, num_tokens_per_source, engine_cb):
+    """A Gabriel server that uses ZeroMQ for communication with clients."""
+
+    def __init__(
+        self,
+        num_tokens_per_source: int,
+        engine_cb: Callable[
+            [gabriel_pb2.InputFrame], gabriel_pb2.ResultWrapper
+        ],
+    ):
+        """Initialize the ZeroMQ server.
+
+        Args:
+            num_tokens_per_source (int):
+                Number of tokens allocated to each input source
+            engine_cb:
+                A callback function that processes an InputFrame and returns a
+                ResultWrapper
+        """
         super().__init__(num_tokens_per_source, engine_cb)
         self._is_running = False
         self._ctx = zmq.asyncio.Context()
@@ -38,18 +59,16 @@ class ZeroMQServer(GabrielServer):
         self._simulate_disconnection = False
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
-        """
-        Launch the ZeroMQ server synchronously. This method will block execution
-        until the server is stopped.
+        """Launch the ZeroMQ server synchronously.
+
+        This method will block execution until the server is stopped.
         """
         asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
     ):
-        """
-        Launch the ZeroMQ server asynchronously.
-        """
+        """Launch the ZeroMQ server asynchronously."""
         self.port_or_path = port_or_path
         self.message_max_size = message_max_size
         self.use_ipc = use_ipc
@@ -85,6 +104,7 @@ class ZeroMQServer(GabrielServer):
         return True
 
     def is_running(self):
+        """Check if the server is running."""
         return self._is_running
 
     async def _stop_client_handler(self):
@@ -187,7 +207,8 @@ class ZeroMQServer(GabrielServer):
             # Received heartbeat, send back heartbeat
             if raw_input == HEARTBEAT:
                 logger.debug(
-                    f"Received heartbeat from client {address}; sending back heartbeat"
+                    f"Received heartbeat from client {address}; "
+                    f"sending back heartbeat"
                 )
                 await self._sock.send_multipart([address, HEARTBEAT])
                 continue
@@ -228,7 +249,6 @@ class ZeroMQServer(GabrielServer):
 
 
 def handle_task_result(t: asyncio.Task):
-    try:
+    """Log exceptions from tasks."""
+    with contextlib.suppress(asyncio.CancelledError):
         t.result()
-    except asyncio.CancelledError:
-        pass

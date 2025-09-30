@@ -1,35 +1,43 @@
-"""
-Gabriel server abstract class. Connects Gabriel cognitive engines to clients.
+"""Gabriel server abstract class.
+
+Connects Gabriel cognitive engines to clients.
 """
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
+from collections import namedtuple
+from collections.abc import Callable
 from typing import Union
+
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
-from abc import ABC
-from abc import abstractmethod
-from collections import namedtuple
 
 logger = logging.getLogger(__name__)
 
 
 class GabrielServer(ABC):
-    """
-    Connects to Gabriel clients. Consumes input from the clients
-    and passes it to the specified callback function. Results are sent
-    back to the client as they become available.
+    """Connects to Gabriel clients.
+
+    Consumes input from the clients and passes it to the specified callback
+    function. Results are sent back to the client as they become available.
     """
 
-    def __init__(self, num_tokens_per_source: int, engine_cb):
-        """
+    def __init__(
+        self,
+        num_tokens_per_source: int,
+        engine_cb: Callable[
+            [gabriel_pb2.FromClient], gabriel_pb2.ResultWrapper
+        ],
+    ):
+        """Initialize the Gabriel server.
+
         Args:
             num_tokens_per_source (int):
                 The number of tokens available for each source
             engine_cb:
                 Callback invoked for each input received from a client.
         """
-
         # Metadata for each client. 'tokens_for_source' is a dictionary that
         # stores the tokens available for each source. 'task' is an async task
         # that consumes inputs from 'inputs' for each client. 'websocket' is
@@ -52,9 +60,9 @@ class GabrielServer(ABC):
         message_max_size: int,
         use_ipc: bool = False,
     ):
-        """
-        Launch the Gabriel server synchronously. This method will block execution
-        until the server is stopped.
+        """Launch the Gabriel server synchronously.
+
+        This method will block execution until the server is stopped.
 
         Args:
             port_or_path (int | str):
@@ -75,9 +83,9 @@ class GabrielServer(ABC):
         message_max_size: int,
         use_ipc: bool = False,
     ):
-        """
-        Launch the Gabriel server asynchronously. This method will block execution
-        until the server is stopped.
+        """Launch the Gabriel server asynchronously.
+
+        This method will block execution until the server is stopped.
 
         Args:
             port_or_path (int | str):
@@ -91,9 +99,7 @@ class GabrielServer(ABC):
         pass
 
     async def wait_for_start(self):
-        """
-        Waits for the Gabriel server to start.
-        """
+        """Waits for the Gabriel server to start."""
         await self._start_event.wait()
 
     async def send_result_wrapper(
@@ -105,14 +111,17 @@ class GabrielServer(ABC):
         result_wrapper: gabriel_pb2.ResultWrapper,
         return_token: bool,
     ) -> bool:
-        """
-        Send result to client at address.
+        """Send result to client at address.
 
         Args:
             address (str): The identifier of the client to send the result to
-            source_id (str): The id of the source that the result corresponds to
-            frame_id (int): The frame id of the input that the result corresponds to
-            result_wrapper (gabriel_pb2.ResultWrapper): The result payload to send to the client
+            source_id (str):
+                The id of the source that the result corresponds to
+            frame_id (int):
+                The frame id of the input that the result corresponds to
+            engine_name (str): The name of the engine that generated the result
+            result_wrapper (gabriel_pb2.ResultWrapper):
+                The result payload to send to the client
             return_token (bool): Whether to return a token to the client
 
         Returns True if send succeeded.
@@ -141,8 +150,7 @@ class GabrielServer(ABC):
 
     @abstractmethod
     async def _send_via_transport(self, address, payload) -> bool:
-        """
-        Send a payload to the client at the specified address.
+        """Send a payload to the client at the specified address.
 
         Args:
             address: the identifier of the client to send the payload to
@@ -152,22 +160,19 @@ class GabrielServer(ABC):
 
     @abstractmethod
     def is_running(self) -> bool:
-        """
-        Checks whether the Gabriel server is running.
-        """
+        """Checks whether the Gabriel server is running."""
         pass
 
     @abstractmethod
     async def _client_handler(self):
-        """
-        Handles client connections.
-        """
+        """Handles client connections."""
         pass
 
     @abstractmethod
     async def _consumer(self, address):
-        """
-        Consumes client inputs. Sends an error message to the client on failure.
+        """Consumes client inputs.
+
+        Sends an error message to the client on failure.
 
         Args:
             address: the identifier of the client to consume inputs for
@@ -175,8 +180,7 @@ class GabrielServer(ABC):
         pass
 
     async def _consumer_helper(self, client, address, from_client):
-        """
-        Send the input to the engine callback.
+        """Send the input to the engine callback.
 
         Args:
             client: The client that the input is from
@@ -190,9 +194,8 @@ class GabrielServer(ABC):
 
         if client.tokens_for_source[source_id] < 1:
             logger.error(
-                "Client %s sending from source %s without tokens",
-                address,
-                source_id,
+                f"Client {address} sending from source {source_id} without "
+                f"tokens"
             )
             return ResultWrapper.Status.NO_TOKENS
 
@@ -201,5 +204,5 @@ class GabrielServer(ABC):
         if send_success:
             return ResultWrapper.Status.SUCCESS
         else:
-            logger.error("Server dropped frame from: %s", source_id)
+            logger.error(f"Server dropped frame from: {source_id}")
             return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME

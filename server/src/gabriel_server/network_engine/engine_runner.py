@@ -1,21 +1,23 @@
-"""
-Engine runner that connects to the server and handles communication
-between the cognitive engine and the server.
+"""Engine runner that connects to the server.
+
+Handles communication between the cognitive engine and the server.
 """
 
 import asyncio
 import logging
+
 import zmq
 import zmq.asyncio
 from gabriel_protocol import gabriel_pb2
-from gabriel_server import network_engine
 
+from gabriel_server import network_engine
 
 TEN_SECONDS = 10000
 REQUEST_RETRIES = 3
 
 logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - %(message)s",
+    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - "
+    "%(message)s",
     level=logging.INFO,
 )
 
@@ -23,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 
 class EngineRunner:
+    """Connects a cognitive engine to the server."""
+
     def __init__(
         self,
         engine,
@@ -32,8 +36,7 @@ class EngineRunner:
         timeout: int = TEN_SECONDS,
         request_retries: int = REQUEST_RETRIES,
     ):
-        """
-        Initializes the engine runner.
+        """Initializes the engine runner.
 
         Args:
             engine:
@@ -41,9 +44,13 @@ class EngineRunner:
                 method.
             engine_name (str): The name of the engine.
             server_address (str): The address of the server to connect to.
-            all_responses_required (bool): Whether all responses are required from the engine.
-            timeout (int): The timeout in milliseconds to wait for a response from the server.
-            request_retries (int): The number of times to retry connecting to the server.
+            all_responses_required (bool):
+                Whether all responses are required from the engine.
+            timeout (int):
+                The timeout in milliseconds to wait for a response from the
+                server.
+            request_retries (int):
+                The number of times to retry connecting to the server.
         """
         self.engine = engine
         self.engine_name = engine_name
@@ -55,15 +62,11 @@ class EngineRunner:
         self.done_event = asyncio.Event()
 
     def run(self):
-        """
-        Connects to the server and starts listening to messages.
-        """
+        """Connects to the server and starts listening to messages."""
         asyncio.run(self.run_async())
 
     async def run_async(self):
-        """
-        Connects to the server and starts listening to messages.
-        """
+        """Connects to the server and starts listening to messages."""
         context = zmq.asyncio.Context()
 
         while self.running and self.request_retries > 0:
@@ -76,7 +79,8 @@ class EngineRunner:
             )
             await socket.send(from_standalone_engine.SerializeToString())
             logger.info(
-                f"{self.engine_name} sent welcome message to server {self.server_address}"
+                f"{self.engine_name} sent welcome message to server "
+                f"{self.server_address}"
             )
 
             while self.running:
@@ -111,12 +115,11 @@ class EngineRunner:
         self.done_event.set()
 
         logger.warning(
-            f"{self.engine_name} ran out of retries. Abandoning server connection."
+            f"{self.engine_name} ran out of retries. Abandoning server "
+            f"connection."
         )
 
     async def stop(self):
-        """
-        Stops the engine runner.
-        """
+        """Stops the engine runner."""
         self.running = False
         await self.done_event.wait()

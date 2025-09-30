@@ -1,11 +1,12 @@
+"""A Gabriel client that captures video from the webcam."""
+
 import argparse
+
 import common
 import cv2
-from gabriel_protocol import gabriel_pb2
-from gabriel_client.websocket_client import WebsocketClient
-from gabriel_client.websocket_client import ProducerWrapper
 from gabriel_client import push_source
-
+from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_protocol import gabriel_pb2
 
 DEFAULT_NUM_SOURCES = 1
 ORG = (0, 120)
@@ -15,6 +16,7 @@ COLOR = (255, 0, 0)
 
 
 def main():
+    """Starts the Gabriel client."""
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -28,7 +30,7 @@ def main():
     capture = cv2.VideoCapture(0)
 
     def gen_producer(n):
-        text = "client {}".format(n)
+        text = f"client {n}"
 
         async def producer():
             _, frame = capture.read()

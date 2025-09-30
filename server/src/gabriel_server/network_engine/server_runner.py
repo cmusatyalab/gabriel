@@ -1,27 +1,25 @@
-"""
-Run the Gabriel server that connects clients to cognitive engines.
-"""
+"""Run the Gabriel server that connects clients to cognitive engines."""
 
 import asyncio
-from collections import deque
-from typing import Optional, Union
-import time
 import logging
+import time
+from collections import deque, namedtuple
+from typing import Optional, Union
+
 import zmq
 import zmq.asyncio
-from collections import namedtuple
 from gabriel_protocol import gabriel_pb2
-from gabriel_server import cognitive_engine
-from gabriel_server import network_engine
+from prometheus_client import Gauge, Histogram, start_http_server
+
+from gabriel_server import cognitive_engine, network_engine
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
-from prometheus_client import start_http_server, Gauge, Histogram
-
 
 FIVE_SECONDS = 5
 
 logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - %(message)s",
+    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - "
+    "%(message)s",
     level=logging.INFO,
 )
 
@@ -56,6 +54,8 @@ INPUT_INTER_ARRIVAL_TIME = Histogram(
 
 
 class ServerRunner:
+    """Runs the Gabriel server that connects clients to engines."""
+
     def __init__(
         self,
         client_endpoint: Union[int, str],
@@ -68,17 +68,31 @@ class ServerRunner:
         prometheus_port: int = 8000,
         use_ipc: bool = False,
     ):
-        """
+        """Initialize the server runner.
+
         Args:
-            client_endpoint (int | str): Port for client connections, or pathname for IPC socket if use_ipc is True.
-            engine_zmq_endpoint (str): Address for cognitive engine connections.
-            num_tokens (int): Number of tokens for flow control.
-            input_queue_maxsize (int): Maximum size of input queue for each cognitive engine.
-            timeout (int): Timeout in seconds for cognitive engine heartbeats.
-            message_max_size (int, optional): Maximum size of messages from clients in bytes. Only applies to websocket connections.
-            use_zeromq (bool): Whether to use ZeroMQ for client connections instead of websockets.
-            prometheus_port (int): Port for Prometheus metrics.
-            use_ipc (bool): Whether to use IPC for client connections instead of TCP. If this is True, use_zeromq must also be True.
+            client_endpoint (int | str):
+                Port for client connections, or pathname for IPC socket if
+                use_ipc is True.
+            engine_zmq_endpoint (str):
+                Address for cognitive engine connections.
+            num_tokens (int):
+                Number of tokens for flow control.
+            input_queue_maxsize (int):
+                Maximum size of input queue for each cognitive engine.
+            timeout (int):
+                Timeout in seconds for cognitive engine heartbeats.
+            message_max_size (int, optional):
+                Maximum size of messages from clients in bytes. Only applies to
+                websocket connections.
+            use_zeromq (bool):
+                Whether to use ZeroMQ for client connections instead of
+                websockets.
+            prometheus_port (int):
+                Port for Prometheus metrics.
+            use_ipc (bool):
+                Whether to use IPC for client connections instead of TCP. If
+                this is True, use_zeromq must also be True.
         """
         self.client_endpoint = client_endpoint
         self.engine_zmq_endpoint = engine_zmq_endpoint
@@ -91,15 +105,11 @@ class ServerRunner:
         self.use_ipc = use_ipc
 
     def run(self):
-        """
-        Run the Gabriel server.
-        """
+        """Run the Gabriel server."""
         asyncio.run(self.run_async())
 
     async def run_async(self):
-        """
-        Run the Gabriel server.
-        """
+        """Run the Gabriel server."""
         if self.use_ipc and not self.use_zeromq:
             raise ValueError("IPC can only be used with ZeroMQ")
         start_http_server(self.prometheus_port)
@@ -122,6 +132,7 @@ class ServerRunner:
         await server.launch_async(self.client_endpoint, self.message_max_size)
 
     def get_server(self):
+        """Return the server instance."""
         return self.server
 
 
@@ -151,17 +162,17 @@ class _Server:
 
     async def launch_async(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
-            logger.info("Starting engine receiver loop")
             await self._server.wait_for_start()
             while self._server.is_running():
                 await self._receive_from_engine_worker_helper()
-            logger.info("Engine receiver loop shut down")
+            logger.debug("Engine receiver loop shut down")
 
         async def heartbeat_loop():
             await self._server.wait_for_start()
             while self._server.is_running():
                 await asyncio.sleep(self._timeout)
                 await self._heartbeat_helper()
+            logger.debug("Heartbeat loop shut down")
 
         engine_receiver_task = asyncio.create_task(
             receive_from_engine_worker_loop()
@@ -186,6 +197,7 @@ class _Server:
         logger.info("Server shut down")
 
     def get_server(self):
+        """Return the server instance."""
         return self._server
 
     async def _calculate_engine_metrics(self, engine_worker):
@@ -193,23 +205,24 @@ class _Server:
             time.perf_counter() - engine_worker.get_last_payload_send_time()
         )
         logger.info(
-            f"Engine {engine_worker.get_engine_name()} processing latency: {processing_latency:.2f} seconds"
+            f"Engine {engine_worker.get_engine_name()} processing latency: "
+            f"{processing_latency:.2f} seconds"
         )
         ENGINE_LATENCY.labels(engine=engine_worker.get_engine_name()).observe(
             processing_latency
         )
 
     async def _receive_from_engine_worker_helper(self):
-        """Consume from ZeroMQ queue for cognitive engines messages"""
-        logger.info("Waiting for message from engine")
+        """Consume from ZeroMQ queue for cognitive engines messages."""
+        logger.debug("Waiting for message from engine")
         try:
             address, _, payload = await asyncio.wait_for(
                 self._zmq_socket.recv_multipart(), timeout=1
             )
         except (asyncio.TimeoutError, TimeoutError):
-            logger.info("No message from engine within timeout")
+            logger.debug("No message from engine within timeout")
             return
-        logger.info(f"Received message from engine at address {address}")
+        logger.debug(f"Received message from engine at address {address}")
 
         engine_worker = self._engine_workers.get(address)
         if payload == network_engine.HEARTBEAT:
@@ -230,7 +243,7 @@ class _Server:
             return
 
         await self._calculate_engine_metrics(engine_worker)
-        logger.info(
+        logger.debug(
             f"Received result from engine {engine_worker.get_engine_name()}"
         )
         engine_worker.set_last_received(time.time())
@@ -242,8 +255,8 @@ class _Server:
             logger.error("Source info not found")
             return
 
-        # Check if the result corresponds to the latest input that was available
-        # for this engine from this source
+        # Check if the result corresponds to the latest input that was
+        # available for this engine from this source
         latest_input = source_info.latest_input
         # Check if this engine is the first to finish processing this input
         if (
@@ -252,7 +265,8 @@ class _Server:
         ):
             # Send response to client
             logger.debug(
-                f"Sending result from engine {engine_worker.get_engine_name()} to client {engine_worker_metadata.client_address}"
+                f"Sending result from engine {engine_worker.get_engine_name()}"
+                f" to client {engine_worker_metadata.client_address}"
             )
             await self._server.send_result_wrapper(
                 engine_worker_metadata.client_address,
@@ -279,21 +293,23 @@ class _Server:
 
         if latest_input is None:
             # There is no new input to give the worker
-            logger.info(
+            logger.debug(
                 f"No new input for engine {engine_worker.get_engine_name()}"
             )
             engine_worker.clear_current_input_metadata()
         else:
             # Give the worker the latest input
-            logger.info(
-                f"Sending latest input to engine {engine_worker.get_engine_name()}"
+            logger.debug(
+                f"Sending latest input to engine "
+                f"{engine_worker.get_engine_name()}"
             )
             await engine_worker.send_payload(latest_input)
 
     async def _add_engine_worker(self, address, from_standalone_engine):
         if not from_standalone_engine.HasField("welcome"):
             logger.warning(
-                "Non-welcome message from unknown engine. Consider increasing timeout."
+                "Non-welcome message from unknown engine. Consider increasing "
+                "timeout."
             )
             return
 
@@ -324,19 +340,22 @@ class _Server:
             if (
                 not engine_worker.get_awaiting_heartbeat_response()
             ) and engine_worker.get_current_input_metadata() is None:
-                # Send a heartbeat since the engine is idle and we aren't waiting
-                # for a heartbeat from this engine
+                # Send a heartbeat since the engine is idle and we aren't
+                # waiting for a heartbeat from this engine
                 await engine_worker.send_heartbeat()
-                # Update the last received time so we reset the timeout countdown
+                # Update the last received time so we reset the timeout
+                # countdown
                 engine_worker.set_last_received(time.time())
                 continue
 
             logger.info(
-                f"Engine {engine_worker.get_engine_name()} offline for {time_since_last_received:.2f} seconds"
+                f"Engine {engine_worker.get_engine_name()} offline for "
+                f"{time_since_last_received:.2f} seconds"
             )
 
             logger.info(
-                f"Lost connection to engine worker {engine_worker.get_engine_name()}"
+                f"Lost connection to engine worker "
+                f"{engine_worker.get_engine_name()}"
             )
 
             current_input_metadata = engine_worker.get_current_input_metadata()
@@ -374,8 +393,10 @@ class _Server:
             del self._engine_workers[address]
 
     async def _send_to_engine(self, from_client, client_address):
-        logger.info(
-            f"Received input from client {client_address} with source ID {from_client.source_id} and frame id {from_client.frame_id}; target engines: {from_client.target_engine_ids}"
+        logger.debug(
+            f"Received input from client {client_address} with source ID "
+            f"{from_client.source_id} and frame id {from_client.frame_id}; "
+            f"target engines: {from_client.target_engine_ids}"
         )
         if from_client.source_id not in self._source_infos:
             self._source_infos[from_client.source_id] = _SourceInfo(
@@ -390,8 +411,9 @@ class _Server:
 
 
 class _EngineWorker:
-    """
-    Information about a cognitive engine worker, which processes inputs from clients.
+    """Information about a cognitive engine worker.
+
+    A cognitive enginer worker processes inputs from clients.
     """
 
     def __init__(
@@ -452,13 +474,13 @@ class _EngineWorker:
         self._awaiting_heartbeat_response = True
 
     async def _send_helper(self, payload, heartbeat=False):
-        """Send the payload to the cognitive engine"""
+        """Send the payload to the cognitive engine."""
         await self._zmq_socket.send_multipart([self._address, b"", payload])
         if not heartbeat:
             self._last_payload_send_time = time.perf_counter()
-            logger.info(f"Sent payload to engine {self._engine_name}")
+            logger.debug(f"Sent payload to engine {self._engine_name}")
         else:
-            logger.info(f"Sent heartbeat to engine {self._engine_name}")
+            logger.debug(f"Sent heartbeat to engine {self._engine_name}")
 
     async def send_payload(self, metadata_payload):
         self._current_input_metadata = metadata_payload.metadata
@@ -488,9 +510,10 @@ class _EngineWorker:
 
 
 class _SourceInfo:
-    """
-    Information about a client input producer, which is a source of input
-    for a set of cognitive engines.
+    """Information about a client input producer.
+
+    A client input producer is a source of input for a set of cognitive
+    engines.
     """
 
     def __init__(self, source_id, engine_workers, size_for_queues):
@@ -505,12 +528,21 @@ class _SourceInfo:
     def get_name(self):
         return self._source_id
 
-    async def process_input_from_client(self, from_client, client_address):
-        """
-        Process input received from a client. Send it to the targetted engine workers.
+    async def process_input_from_client(
+        self, from_client: gabriel_pb2.FromClient, client_address: str
+    ):
+        """Process input received from a client.
+
+        Send it to the targetted engine workers.
+
+        Args:
+            from_client: The client input to process.
+            client_address: The address of the client.
         """
         logger.info(
-            f"Processing input from client {client_address} with source ID {from_client.source_id} and frame id {from_client.frame_id}; target engines: {from_client.target_engine_ids}"
+            f"Processing input from client {client_address} with source ID "
+            f"{from_client.source_id} and frame id {from_client.frame_id}; "
+            f"target engines: {from_client.target_engine_ids}"
         )
 
         if self._last_input_arrival_time is None:
@@ -533,7 +565,6 @@ class _SourceInfo:
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
 
         target_engines = set()
-        logger.info(f"{self._engine_workers.values()}")
         for engine_worker in self._engine_workers.values():
             if (
                 engine_worker.get_engine_name()
@@ -559,8 +590,9 @@ class _SourceInfo:
                     engine_worker.remove_source(self)
             self.target_engines = target_engines
 
-        logger.info(
-            f"Targetting engines {[e.get_engine_name() for e in target_engines]}"
+        logger.debug(
+            f"Targetting engines "
+            f"{[e.get_engine_name() for e in target_engines]}"
         )
 
         all_engines_busy = True
@@ -579,15 +611,17 @@ class _SourceInfo:
         return True
 
     async def add_input_to_queue(self, metadata_payload):
+        # Add input to the queue, dropping the oldest input if the queue is
+        # full
         self._input_queue.append(metadata_payload)
         SOURCE_QUEUE_LENGTH.labels(source_id=self._source_id).set(
             len(self._input_queue)
         )
 
     async def get_input_from_queue(self, engine_name):
-        logger.info(f"Getting input from queue for engine {engine_name}")
+        logger.debug(f"Getting input from queue for engine {engine_name}")
         if not self._input_queue:
-            logger.info("Input queue is empty")
+            logger.debug("Input queue is empty")
             self.latest_input = None
             return None
         metadata_payload = self._input_queue[0]

@@ -1,3 +1,9 @@
 line-length = 79
+target-version = "py38"
 [lint.pycodestyle]
 max-doc-length = 72
+[lint]
+select = ["E", "F", "B", "I", "UP", "N", "C4", "SIM", "D"]
+ignore = []
+[lint.pydocstyle]
+convention = "google"

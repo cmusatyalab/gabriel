@@ -1,5 +1,6 @@
-import setuptools
+"""Setup script for the Gabriel protocol package."""
 
+import setuptools
 
 DESCRIPTION = "Protocol for the Gabriel framework"
 

@@ -1,11 +1,15 @@
-from gabriel_protocol import gabriel_pb2
-from gabriel_client.websocket_client import WebsocketClient
-from gabriel_client.websocket_client import ProducerWrapper
-from gabriel_client import push_source
+"""A Gabriel client that sends empty messages."""
+
 import asyncio
+
+from gabriel_client import push_source
+from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_protocol import gabriel_pb2
 
 
 def main():
+    """Starts a Gabriel client that sends empty messages."""
+
     async def producer():
         # Do not use time.sleep. This would stop the event loop.
         await asyncio.sleep(1)

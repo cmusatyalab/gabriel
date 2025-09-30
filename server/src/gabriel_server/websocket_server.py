@@ -1,26 +1,35 @@
+"""A Gabriel server that uses Websockets for communication with clients."""
+
 import asyncio
 import logging
 import socket
+
+import websockets
 from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import ResultWrapper
-from gabriel_server.gabriel_server import GabrielServer
-import websockets
 from websockets.asyncio.server import serve, unix_serve
+
+from gabriel_server.gabriel_server import GabrielServer
 
 logger = logging.getLogger(__name__)
 
 
 class WebsocketServer(GabrielServer):
+    """A Gabriel server that uses Websockets for communication with clients."""
+
     def __init__(self, num_tokens_per_source, engine_cb):
+        """Initialize the Websocket server."""
         super().__init__(num_tokens_per_source, engine_cb)
         self._server = None
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
+        """Launch the Websocket server synchronously."""
         asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
     ):
+        """Launch the Websocket server asynchronously."""
         async with self.get_server(
             self._client_handler, port_or_path, message_max_size, use_ipc
         ) as server:
@@ -36,6 +45,7 @@ class WebsocketServer(GabrielServer):
             await server.serve_forever()
 
     def get_server(self, handler, port_or_path, max_size, use_ipc):
+        """Get the Websocket server."""
         if not use_ipc:
             return serve(handler, "localhost", port_or_path, max_size=max_size)
         else:
@@ -52,12 +62,14 @@ class WebsocketServer(GabrielServer):
         return True
 
     def is_running(self):
+        """Check if the server is running."""
         if self._server is None:
             return False
 
         return self._server.is_serving()
 
     async def _client_handler(self, websocket):
+        """Handle a new client connection."""
         address = websocket.remote_address
         logger.info("New Client connected: %s", address)
 

@@ -1,20 +1,24 @@
-"""
-Run a single cognitive engine. Starts a local server and connects the engine to it.
+"""Run a single cognitive engine.
+
+Starts a local server and connects the engine to it.
 """
 
-from typing import Optional
 import asyncio
 import logging
 import multiprocessing
+from typing import Optional
+
 from gabriel_protocol import gabriel_pb2
+
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
-
 
 logger = logging.getLogger(__name__)
 
 
 class LocalEngine:
+    """Runs a single cognitive engine with a local server."""
+
     def __init__(
         self,
         engine_factory,
@@ -26,16 +30,20 @@ class LocalEngine:
         use_zeromq: bool = False,
         ipc_path: Optional[str] = None,
     ):
-        """
+        """Initialize the local engine.
+
         Args:
-            engine_factory: A callable that returns a cognitive engine instance.
+            engine_factory:
+                A callable that returns a cognitive engine instance.
             input_queue_maxsize (int): The maximum size of the input queue.
             port (int): The port to run the server on.
             num_tokens (int): The number of tokens to allocate to the source.
             engine_name (str): The name of the engine.
             message_max_size (int): The maximum size of a message in bytes.
-            use_zeromq (bool): Whether to use ZeroMQ or WebSocket for communication.
-            ipc_path (str, optional): If provided, use IPC with the given path instead of TCP.
+            use_zeromq (bool):
+                Whether to use ZeroMQ or WebSocket for communication.
+            ipc_path (str, optional):
+                If provided, use IPC with the given path instead of TCP.
         """
         self.engine_factory = engine_factory
         self.input_queue_maxsize = input_queue_maxsize
@@ -47,12 +55,11 @@ class LocalEngine:
         self.engine_name = engine_name
 
     def run(self):
+        """Starts the local server and the cognitive engine synchronously."""
         asyncio.run(self.run_async())
 
     async def run_async(self):
-        """
-        Starts the local server and the cognitive engine.
-        """
+        """Starts the local server and the cognitive engine."""
         self.engine_conn, server_conn = multiprocessing.Pipe()
 
         local_server = _LocalServer(

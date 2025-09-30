@@ -1,15 +1,23 @@
+"""Push-based source that can be used to send frames to Gabriel server."""
+
 import asyncio
 import multiprocessing
+
 from gabriel_protocol import gabriel_pb2
+
 from gabriel_client.websocket_client import ProducerWrapper
 
 
 def consumer(_):
+    """A consumer that does nothing."""
     pass
 
 
 class Source:
+    """A push-based source used to send frames to Gabriel server."""
+
     def __init__(self, source_name):
+        """Initialize the push-based source."""
         self._source_name = source_name
         self._frame_available = asyncio.Semaphore(0)
         self._latest_input_frame = None
@@ -17,6 +25,8 @@ class Source:
         self._added_callback = False
 
     def get_producer_wrapper(self):
+        """Returns a producer wrapper for the source."""
+
         def reader_callback():
             input_frame = gabriel_pb2.InputFrame()
             input_frame.ParseFromString(self._read.recv_bytes())
@@ -38,4 +48,5 @@ class Source:
         )
 
     def send(self, input_frame):
+        """Sends an input frame to the Gabriel server."""
         self._write.send_bytes(input_frame.SerializeToString())

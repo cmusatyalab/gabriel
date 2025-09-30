@@ -1,11 +1,13 @@
+"""A Gabriel server that receives YUV frames and displays them."""
+
 import common
 from gabriel_server.network_engine import server_runner
-
 
 ZMQ_ADDRESS_FORMAT = "tcp://*:{}"
 
 
 def main():
+    """Starts the Gabriel server."""
     common.configure_logging()
     zmq_address = ZMQ_ADDRESS_FORMAT.format(common.ZMQ_PORT)
     server_runner.run(

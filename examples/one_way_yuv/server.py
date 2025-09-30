@@ -1,16 +1,20 @@
+"""A Gabriel server that receives YUV frames and displays them."""
+
 import argparse
-import cv2
-import numpy as np
 
 import common
+import cv2
+import numpy as np
 import yuv_pb2
 from gabriel_protocol import gabriel_pb2
-from gabriel_server import local_engine
-from gabriel_server import cognitive_engine
+from gabriel_server import cognitive_engine, local_engine
 
 
 class DisplayEngine(cognitive_engine.Engine):
+    """A simple cognitive engine that displays the input frame."""
+
     def handle(self, input_frame):
+        """Handles an input frame."""
         yuv = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
 
         to_server = cognitive_engine.unpack_extras(
@@ -38,6 +42,7 @@ class DisplayEngine(cognitive_engine.Engine):
 
 
 def main():
+    """Starts the Gabriel server."""
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(

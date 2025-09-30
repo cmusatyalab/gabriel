@@ -1,12 +1,17 @@
+"""A simple Gabriel server that displays the input frame."""
+
 import argparse
+
 import common
 from gabriel_protocol import gabriel_pb2
-from gabriel_server import local_engine
-from gabriel_server import cognitive_engine
+from gabriel_server import cognitive_engine, local_engine
 
 
 class DisplayEngine(cognitive_engine.Engine):
+    """A simple cognitive engine that displays the input frame."""
+
     def handle(self, input_frame):
+        """Handles an input frame."""
         status = gabriel_pb2.ResultWrapper.Status.SUCCESS
         result_wrapper = cognitive_engine.create_result_wrapper(status)
 
@@ -19,6 +24,7 @@ class DisplayEngine(cognitive_engine.Engine):
 
 
 def main():
+    """Starts the Gabriel server."""
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(

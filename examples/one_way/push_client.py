@@ -1,13 +1,17 @@
-import common
-import cv2
+"""A Gabriel client that captures video from the webcam."""
+
 import multiprocessing
 import time
-from gabriel_client.websocket_client import WebsocketClient
+
+import common
+import cv2
 from gabriel_client import push_source
+from gabriel_client.websocket_client import WebsocketClient
 from gabriel_protocol import gabriel_pb2
 
 
 def send_frames(source):
+    """Sends frames captured from the webcam to the Gabriel server."""
     capture = cv2.VideoCapture(0)
     while True:
         _, frame = capture.read()
@@ -21,6 +25,7 @@ def send_frames(source):
 
 
 def main():
+    """Starts the Gabriel client."""
     common.configure_logging()
     args = common.parse_source_name_server_host()
     source = push_source.Source(args.source_name)

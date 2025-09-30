@@ -1,23 +1,27 @@
+"""A Gabriel client that captures video from the webcam."""
+
 import argparse
+
 import common
 import cv2
-
 import yuv_pb2
-from gabriel_protocol import gabriel_pb2
-from gabriel_client.websocket_client import WebsocketClient
-from gabriel_client.websocket_client import ProducerWrapper
 from gabriel_client import push_source
-
+from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_protocol import gabriel_pb2
 
 DEFAULT_SERVER_HOST = "localhost"
 ROTATION = 0
 
 
 class YuvConverter:
+    """Converts a BGR image to YUV NV21 format."""
+
     def __init__(self, frame):
+        """Initialize the converter with a BGR frame."""
         self._frame = frame
 
     def convert_to_nv21(self):
+        """Converts the BGR frame to YUV NV21 format."""
         # As of version 4.5.0, OpenCV has no COLOR_BGR2YUV_NV21 converter.
         # I made this converter, which uses COLOR_BGR2YUV_I420 as a starting
         # point.
@@ -45,6 +49,7 @@ class YuvConverter:
 
 
 def main():
+    """Starts the Gabriel client."""
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(

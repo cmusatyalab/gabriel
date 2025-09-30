@@ -1,14 +1,19 @@
+"""WebSocket Gabriel client used to communicate with a Gabriel server."""
+
 import asyncio
 import logging
+from collections import namedtuple
 from urllib.parse import urlparse
+
 import websockets
 import websockets.client
-
 from gabriel_protocol import gabriel_pb2
-from collections import namedtuple
-from gabriel_client.gabriel_client import GabrielClient
-from gabriel_client.gabriel_client import InputProducer
-from gabriel_client.gabriel_client import TokenPool
+
+from gabriel_client.gabriel_client import (
+    GabrielClient,
+    InputProducer,
+    TokenPool,
+)
 
 URI_FORMAT = "ws://{host}:{port}"
 
@@ -24,12 +29,21 @@ ProducerWrapper = namedtuple("ProducerWrapper", ["producer", "source_name"])
 
 
 class WebsocketClient(GabrielClient):
+    """A Gabriel client that talks to the server over WebSockets."""
+
     def __init__(self, server_endpoint, input_producers, consumer):
-        """
-        producer should take no arguments and return an instance of
-        gabriel_pb2.InputFrame.
-        consumer should take one gabriel_pb2.ResultWrapper and does not need to
-        return anything.
+        """Initialize the client.
+
+        Args:
+        server_endpoint (str):
+            The server endpoint to connect to. Must have the form
+            'ws://interface:port'.
+        input_producers (List[InputProducer]):
+            A list of instances of InputProducer for the inputs
+            produced by this client
+        consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
+            Callback for results from server
+
         """
         super().__init__()
         self.consumer = consumer
@@ -43,9 +57,11 @@ class WebsocketClient(GabrielClient):
             )
 
     def launch(self, message_max_size=None):
+        """Launch the client synchronously."""
         asyncio.run(self.launch_async())
 
     async def launch_async(self):
+        """Launch the client asynchronously."""
         async with websockets.connect(
             self.server_endpoint,
             max_size=None,
@@ -110,11 +126,17 @@ class WebsocketClient(GabrielClient):
             self._tokens[response.source_id].return_token()
 
     async def _producer_handler(self, producer: InputProducer):
-        """
-        Loop waiting until there is a token available. Then calls producer to
-        get the gabriel_pb2.InputFrame to send.
-        """
+        """Generate inputs and sends them to the server.
 
+        Loop waiting until there is a token available. Then call
+        producer to get the gabriel_pb2.InputFrame to send.
+
+        Args:
+            producer (InputProducer):
+                The InputProducer instance that produces inputs for
+                this client
+
+        """
         await self._welcome_event.wait()
         token_pool = TokenPool(self._num_tokens_per_source)
         self._tokens[producer.source_id] = token_pool
@@ -133,7 +155,7 @@ class WebsocketClient(GabrielClient):
             input.frame_id = frame_id
             frame_id += 1
             input.source_id = producer.source_id
-            input.target_engine_ids.extend(producer.target_engine_ids)
+            input.target_engine_ids.extend(producer.get_target_engines())
             input.input_frame.CopyFrom(input_frame)
 
             from_client = gabriel_pb2.FromClient()

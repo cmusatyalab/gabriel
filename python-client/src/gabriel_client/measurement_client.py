@@ -1,15 +1,20 @@
-from gabriel_client.websocket_client import WebsocketClient
-import time
-import logging
+"""A Websocket client that measures performance metrics."""
 
+import logging
+import time
+
+from gabriel_client.websocket_client import WebsocketClient
 
 logger = logging.getLogger(__name__)
 
 
 class MeasurementClient(WebsocketClient):
+    """A Websocket client that measures performance metrics."""
+
     def __init__(
         self, host, port, producer_wrappers, consumer, output_freq=10
     ):
+        """Initialize the measurement client."""
         super().__init__(host, port, producer_wrappers, consumer)
 
         self._source_measurements = {}
