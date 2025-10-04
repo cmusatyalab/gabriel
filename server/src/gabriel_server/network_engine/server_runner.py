@@ -129,7 +129,14 @@ class ServerRunner:
             self.use_ipc,
         )
         self.server = server.get_server()
-        await server.launch_async(self.client_endpoint, self.message_max_size)
+        try:
+            await server.launch_async(
+                self.client_endpoint, self.message_max_size
+            )
+        except:
+            zmq_socket.close(0)
+            context.destroy()
+            raise
 
     def get_server(self):
         """Return the server instance."""
@@ -192,7 +199,7 @@ class _Server:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            # self._ctx.destroy()
+            self._ctx.destroy()
             raise
         logger.info("Server shut down")
 

@@ -32,8 +32,6 @@ HEARTBEAT_INTERVAL = 1
 # Message sent to the server to register this client
 HELLO_MSG = b"Hello message"
 
-context = zmq.asyncio.Context()
-
 
 class ZeroMQClient(GabrielClient):
     """A Gabriel client that talks to the server over ZeroMQ."""
@@ -60,7 +58,8 @@ class ZeroMQClient(GabrielClient):
         """
         super().__init__()
         # Socket used for communicating with the server
-        self._sock = context.socket(zmq.DEALER)
+        self._ctx = zmq.asyncio.Context()
+        self._sock = self._ctx.socket(zmq.DEALER)
         # Check whether IPC mode is enabled, and only use the host if so
 
         parsed_server_endpoint = urlparse(server_endpoint.lower())
@@ -115,26 +114,22 @@ class ZeroMQClient(GabrielClient):
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
-            self._sock.close(0)
             for task in tasks:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-            # context.destroy()
             raise
         except Exception as e:
             logger.error(f"Client encountered exception: {e}")
-            self._sock.close(0)
             for task in tasks:
                 if not task.done():
                     task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError):
                         await task
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception as e2:
-                        logger.error(f"Task {task} raised exception: {e2}")
             raise
+        finally:
+            self._sock.close(0)
+            self._ctx.destroy()
 
     async def _consumer_handler(self):
         """Handle messages from the server."""
@@ -153,7 +148,7 @@ class ZeroMQClient(GabrielClient):
 
                 # Resend heartbeat in case it was lost
                 self._sock.close(0)
-                self._sock = context.socket(zmq.DEALER)
+                self._sock = self._ctx.socket(zmq.DEALER)
                 self._sock.connect(self._server_endpoint)
 
                 # Send heartbeat even though we are disconnected

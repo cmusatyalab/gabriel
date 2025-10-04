@@ -727,22 +727,22 @@ async def test_stop_producer(
     await asyncio.gather(task, return_exceptions=True)
 
 
-# @pytest.mark.parametrize("target_engines", [["invalid_engine"]])
-# @pytest.mark.asyncio
-# async def test_invalid_engine(
-#     run_engines, input_producer, server_frontend_port
-# ):
-#     """Test that an invalid engine ID raises an error."""
-#     client = ZeroMQClient(
-#         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
-#         input_producer,
-#         lambda x: x,
-#     )
-#     task = asyncio.create_task(client.launch_async())
+@pytest.mark.parametrize("target_engines", [["invalid_engine"]])
+@pytest.mark.asyncio
+async def test_invalid_engine(
+    run_engines, input_producer, server_frontend_port
+):
+    """Test that an invalid engine ID raises an error."""
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        lambda x: x,
+    )
+    task = asyncio.create_task(client.launch_async())
+    await asyncio.sleep(1)
+    exceptions = await asyncio.gather(task, return_exceptions=True)
 
-#     with pytest.raises(Exception, match="Server dropped frame"):
-#         await asyncio.sleep(1)
-#         await task
-
-#     task.cancel()
-#     await asyncio.gather(task, return_exceptions=True)
+    assert len(exceptions) == 1
+    exception = exceptions[0]
+    assert isinstance(exception, Exception)
+    assert "Server dropped frame" in str(exception)
