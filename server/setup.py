@@ -8,7 +8,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="gabriel-server",
-    version="4.0.1",
+    version="4.0.2",
     author="Aditya Chanana",
     author_email="achanana@cs.cmu.edu",
     maintainer="CMU Satyalab",
@@ -21,7 +21,6 @@ setuptools.setup(
     package_dir={"": "src"},
     license="Apache",
     classifiers=[
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
@@ -29,7 +28,7 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
         "gabriel-protocol==4.0",
         "websockets>=13.0",

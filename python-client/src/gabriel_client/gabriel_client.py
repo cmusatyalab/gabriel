@@ -6,7 +6,7 @@ import threading
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
-from typing import Any, List, Union
+from typing import Any, Union
 
 from gabriel_protocol.gabriel_pb2 import InputFrame
 
@@ -22,7 +22,7 @@ class InputProducer:
     def __init__(
         self,
         producer: Callable[[], Coroutine[Any, Any, InputFrame | None]],
-        target_engine_ids: List[str],
+        target_engine_ids: list[str],
         source_name: Union[str, None] = None,
     ):
         """Initialize the input producer.
@@ -30,7 +30,7 @@ class InputProducer:
         Args:
             producer (coroutine function):
                 A coroutine function that produces input data
-            target_engine_ids (List[str]):
+            target_engine_ids (list[str]):
                 A list of target engine IDs for the input
             source_name (str, optional):
                 The name of the source producing the input
@@ -55,11 +55,11 @@ class InputProducer:
         res = await self._producer()
         return res
 
-    def start(self, target_engine_ids: List[str]):
+    def start(self, target_engine_ids: list[str]):
         """Start the producer.
 
         Args:
-            target_engine_ids (List[str]):
+            target_engine_ids (list[str]):
                 A list of target engine IDs for the input
 
         """
@@ -77,11 +77,11 @@ class InputProducer:
         logger.info("Stopping producer")
         self._running.clear()
 
-    def change_target_engines(self, target_engine_ids: List[str]):
+    def change_target_engines(self, target_engine_ids: list[str]):
         """Change the target engines for the producer.
 
         Args:
-            target_engine_ids (List[str]):
+            target_engine_ids (list[str]):
                 A list of target engine IDs for the input
 
         """

@@ -1,5 +1,5 @@
 line-length = 79
-target-version = "py38"
+target-version = "py39"
 [lint.pycodestyle]
 max-doc-length = 72
 [lint]
