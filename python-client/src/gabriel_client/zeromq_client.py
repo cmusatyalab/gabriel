@@ -109,8 +109,8 @@ class ZeroMQClient(GabrielClient):
             asyncio.create_task(self._producer_handler(input_producer))
             for input_producer in self.input_producers
         ]
-        tasks.append(asyncio.create_task(self._heartbeat_loop()))
         tasks.append(asyncio.create_task(self._consumer_handler()))
+        tasks.append(asyncio.create_task(self._heartbeat_loop()))
 
         try:
             await asyncio.gather(*tasks)

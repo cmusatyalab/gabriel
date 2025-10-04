@@ -33,10 +33,7 @@ setuptools.setup(
         "gabriel-protocol==4.0",
         "websockets>=9.1",
         "opencv-python>=3, <5",
+        "pyzmq>=18.1",
+        "prometheus-client",
     ],
-    extras_require={
-        "zmq": [
-            "pyzmq>=18.1",
-        ],
-    },
 )
