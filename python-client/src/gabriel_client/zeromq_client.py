@@ -139,64 +139,59 @@ class ZeroMQClient(GabrielClient):
     async def _consumer_handler(self):
         """Handle messages from the server."""
         while self._running:
-            try:
-                # Wait for a message with a timeout, specified in milliseconds
-                poll_result = await self._sock.poll(SERVER_TIMEOUT_SECS * 1000)
-                if (poll_result & zmq.POLLIN) == 0:
-                    if self._connected.is_set():
-                        logger.info("Disconnected from server")
-                        self._connected.clear()
-                    else:
-                        logger.info(
-                            "Still disconnected; reconnecting and resending "
-                            "heartbeat"
-                        )
-
-                    # Resend heartbeat in case it was lost
-                    self._sock.close(0)
-                    self._sock = context.socket(zmq.DEALER)
-                    self._sock.connect(self._server_endpoint)
-
-                    # Send heartbeat even though we are disconnected
-                    await self._send_heartbeat(True)
-                    continue
-
-                raw_input = await self._sock.recv()
-
-                if not self._connected.is_set():
-                    logger.info("Reconnected to server")
-                    self._connected.set()
-                    # Reset tokens for all sources
-                    for token_pool in self._tokens.values():
-                        token_pool.reset_tokens()
-
-                if raw_input == HEARTBEAT:
-                    logger.debug("Received heartbeat from server")
-                    self._pending_heartbeat = False
-                    continue
-
-                to_client = gabriel_pb2.ToClient()
-                try:
-                    to_client.ParseFromString(raw_input)
-                except DecodeError as e:
-                    logger.error(f"Failed to decode message from server: {e}")
-                    continue
-
-                if to_client.HasField("welcome"):
-                    logger.info("Received welcome from server")
-                    self._process_welcome(to_client.welcome)
-                elif to_client.HasField("response"):
-                    logger.debug("Processing response from server")
-                    self._process_response(to_client.response)
+            # Wait for a message with a timeout, specified in milliseconds
+            poll_result = await self._sock.poll(SERVER_TIMEOUT_SECS * 1000)
+            if (poll_result & zmq.POLLIN) == 0:
+                if self._connected.is_set():
+                    logger.info("Disconnected from server")
+                    self._connected.clear()
                 else:
-                    logger.critical(
-                        "Fatal error: empty to_client message received from "
-                        "server"
+                    logger.info(
+                        "Still disconnected; reconnecting and resending "
+                        "heartbeat"
                     )
-                    raise Exception("Empty to_client message")
-            except asyncio.CancelledError:
-                logger.info("Consumer handler cancelled")
-                raise
+
+                # Resend heartbeat in case it was lost
+                self._sock.close(0)
+                self._sock = context.socket(zmq.DEALER)
+                self._sock.connect(self._server_endpoint)
+
+                # Send heartbeat even though we are disconnected
+                await self._send_heartbeat(True)
+                continue
+
+            raw_input = await self._sock.recv()
+
+            if not self._connected.is_set():
+                logger.info("Reconnected to server")
+                self._connected.set()
+                # Reset tokens for all sources
+                for token_pool in self._tokens.values():
+                    token_pool.reset_tokens()
+
+            if raw_input == HEARTBEAT:
+                logger.debug("Received heartbeat from server")
+                self._pending_heartbeat = False
+                continue
+
+            to_client = gabriel_pb2.ToClient()
+            try:
+                to_client.ParseFromString(raw_input)
+            except DecodeError as e:
+                logger.error(f"Failed to decode message from server: {e}")
+                continue
+
+            if to_client.HasField("welcome"):
+                logger.info("Received welcome from server")
+                self._process_welcome(to_client.welcome)
+            elif to_client.HasField("response"):
+                logger.debug("Processing response from server")
+                self._process_response(to_client.response)
+            else:
+                logger.critical(
+                    "Fatal error: empty to_client message received from server"
+                )
+                raise Exception("Empty to_client message")
 
     def _process_welcome(self, welcome):
         """Process a welcome message received from the server.
@@ -238,7 +233,7 @@ class ZeroMQClient(GabrielClient):
         if response.return_token:
             source_id = response.source_id
             self._tokens[source_id].return_token()
-            logger.info(
+            logger.debug(
                 f"Returning token for source {source_id}, total tokens "
                 f"{self._tokens[source_id].get_remaining_tokens()}"
             )
