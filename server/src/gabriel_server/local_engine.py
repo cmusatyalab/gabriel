@@ -90,13 +90,10 @@ class LocalEngine:
         logger.info("Cognitive engine started")
         while True:
             input_frame = gabriel_pb2.InputFrame()
-            logger.info("Engine waiting for input frame from server")
             input_frame.ParseFromString(self.engine_conn.recv_bytes())
-            logger.info("Engine received input frame from server")
 
             result_wrapper = engine.handle(input_frame)
             self.engine_conn.send_bytes(result_wrapper.SerializeToString())
-            logger.info("Sent result wrapper to server")
 
 
 class _LocalServer:
@@ -111,7 +108,7 @@ class _LocalServer:
         )
 
     async def _send_to_engine(self, from_client, address):
-        logger.info("Received input from client %s", address)
+        logger.debug("Received input from client %s", address)
         if self._input_queue.full():
             return False
 
@@ -142,22 +139,18 @@ class _LocalServer:
         await self._server.wait_for_start()
         loop = asyncio.get_running_loop()
         while self._server.is_running():
-            logger.info("Waiting for input from client")
             from_client, address = await self._input_queue.get()
             await loop.run_in_executor(
                 None,
                 self._conn.send_bytes,
                 from_client.input_frame.SerializeToString(),
             )
-            logger.info("Sent input frame to engine")
             result_wrapper = gabriel_pb2.ResultWrapper()
 
             await self._result_ready.wait()
             self._result_ready.clear()
 
-            logger.info("Receiving result from engine")
             data = await loop.run_in_executor(None, self._conn.recv_bytes)
-            logger.info("Received result from engine")
             result_wrapper.ParseFromString(data)
             await self._server.send_result_wrapper(
                 address,

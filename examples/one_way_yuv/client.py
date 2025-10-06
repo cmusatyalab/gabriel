@@ -6,7 +6,8 @@ import common
 import cv2
 import yuv_pb2
 from gabriel_client import push_source
-from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_client.gabriel_client import InputProducer
+from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 
 DEFAULT_SERVER_HOST = "localhost"
@@ -53,7 +54,7 @@ def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+        "source_name", nargs="?", default=common.DEFAULT_ENGINE_NAME
     )
     parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
@@ -82,14 +83,15 @@ def main():
 
         return input_frame
 
-    producer_wrappers = [
-        ProducerWrapper(producer=producer, source_name=args.source_name)
+    input_producers = [
+        InputProducer(
+            producer=producer, target_engine_ids=[common.DEFAULT_ENGINE_NAME]
+        )
     ]
 
-    client = WebsocketClient(
-        args.server_host,
-        common.WEBSOCKET_PORT,
-        producer_wrappers,
+    client = ZeroMQClient(
+        f"tcp://{args.server_host}:{common.ZEROMQ_PORT}",
+        input_producers,
         push_source.consumer,
     )
     client.launch()

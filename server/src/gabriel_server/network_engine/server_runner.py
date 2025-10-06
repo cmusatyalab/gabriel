@@ -199,7 +199,6 @@ class _Server:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            self._ctx.destroy()
             raise
         logger.info("Server shut down")
 
@@ -581,7 +580,9 @@ class _SourceInfo:
 
         if not target_engines:
             # TODO: better error handling
-            logger.error("No target engines found")
+            logger.error(
+                f"No target engines found for {self._engine_workers.values()}"
+            )
             return False
 
         # Remove this source from any engines that are no longer targetted
