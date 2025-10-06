@@ -2,9 +2,17 @@
 
 import asyncio
 
-from gabriel_client import push_source
-from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_client.gabriel_client import InputProducer
+from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
+
+
+def consumer(result_wrapper):
+    """Consumes a result wrapper."""
+    print(
+        "Received a result wrapper with status:",
+        gabriel_pb2.ResultWrapper.Status.Name(result_wrapper.status),
+    )
 
 
 def main():
@@ -16,14 +24,15 @@ def main():
 
         return gabriel_pb2.InputFrame()
 
-    producer_wrappers = [
-        ProducerWrapper(producer=producer, source_name="empty")
+    input_producers = [
+        InputProducer(
+            producer=producer, source_name="empty", target_engine_ids=["empty"]
+        )
     ]
-    client = WebsocketClient(
-        host="localhost",
-        port=9099,
-        producer_wrappers=producer_wrappers,
-        consumer=push_source.consumer,
+    client = ZeroMQClient(
+        server_endpoint="tcp://localhost:9099",
+        input_producers=input_producers,
+        consumer=consumer,
     )
     client.launch()
 

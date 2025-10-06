@@ -15,14 +15,16 @@ class EmptyEngine(cognitive_engine.Engine):
 
 
 def main():
-    """Starts the Gabriel server."""
-    local_engine.run(
+    """Starts a Gabriel server that handles empty messages."""
+    engine = local_engine.LocalEngine(
         engine_factory=lambda: EmptyEngine(),
-        source_name="empty",
         input_queue_maxsize=60,
         port=9099,
         num_tokens=2,
+        engine_name="empty",
+        use_zeromq=True,
     )
+    engine.run()
 
 
 if __name__ == "__main__":
