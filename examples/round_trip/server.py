@@ -28,20 +28,23 @@ def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "source_name", nargs="?", default=common.DEFAULT_SOURCE_NAME
+        "engine_name", nargs="?", default=common.DEFAULT_ENGINE_NAME
     )
     args = parser.parse_args()
 
     def engine_factory():
         return DisplayEngine()
 
-    local_engine.run(
+    engine = local_engine.LocalEngine(
         engine_factory,
-        args.source_name,
         input_queue_maxsize=60,
-        port=common.WEBSOCKET_PORT,
+        port=common.ZEROMQ_PORT,
         num_tokens=2,
+        engine_name=args.engine_name,
+        use_zeromq=True,
     )
+
+    engine.run()
 
 
 if __name__ == "__main__":

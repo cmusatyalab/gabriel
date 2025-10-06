@@ -42,7 +42,7 @@ def main():
     )
 
     client = ZeroMQClient(
-        f"tcp://{args.server_host}:{common.WEBSOCKET_PORT}",
+        f"tcp://{args.server_host}:{common.ZEROMQ_PORT}",
         opencv_adapter.get_producer_wrappers(),
         opencv_adapter.consumer,
     )

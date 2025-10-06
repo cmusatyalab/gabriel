@@ -2,7 +2,7 @@
 
 import logging
 
-WEBSOCKET_PORT = 9099
+ZEROMQ_PORT = 9099
 DEFAULT_ENGINE_NAME = "Engine-0"
 
 
