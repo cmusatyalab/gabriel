@@ -5,7 +5,8 @@ import argparse
 import common
 import cv2
 from gabriel_client import push_source
-from gabriel_client.websocket_client import ProducerWrapper, WebsocketClient
+from gabriel_client.gabriel_client import InputProducer
+from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 
 DEFAULT_NUM_SOURCES = 1
@@ -44,14 +45,16 @@ def main():
 
         return producer
 
-    producer_wrappers = [
-        ProducerWrapper(producer=gen_producer(i), source_name=str(i))
+    input_producers = [
+        InputProducer(
+            producer=gen_producer(i),
+            target_engine_ids=[common.DEFAULT_ENGINE_NAME],
+        )
         for i in range(args.num_sources)
     ]
-    client = WebsocketClient(
-        args.server_host,
-        common.WEBSOCKET_PORT,
-        producer_wrappers,
+    client = ZeroMQClient(
+        f"tcp://{args.server_host}:{common.SERVER_FRONTEND_PORT}",
+        input_producers,
         push_source.consumer,
     )
     client.launch()

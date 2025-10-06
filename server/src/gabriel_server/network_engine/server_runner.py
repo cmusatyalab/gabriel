@@ -546,7 +546,7 @@ class _SourceInfo:
             from_client: The client input to process.
             client_address: The address of the client.
         """
-        logger.info(
+        logger.debug(
             f"Processing input from client {client_address} with source ID "
             f"{from_client.source_id} and frame id {from_client.frame_id}; "
             f"target engines: {from_client.target_engine_ids}"

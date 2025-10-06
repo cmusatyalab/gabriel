@@ -6,7 +6,7 @@ import time
 import common
 import cv2
 from gabriel_client import push_source
-from gabriel_client.websocket_client import WebsocketClient
+from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 
 
@@ -27,15 +27,14 @@ def send_frames(source):
 def main():
     """Starts the Gabriel client."""
     common.configure_logging()
-    args = common.parse_source_name_server_host()
-    source = push_source.Source(args.source_name)
+    args = common.parse_engine_name_server_host()
+    source = push_source.Source(args.engine_name, [common.DEFAULT_ENGINE_NAME])
     p = multiprocessing.Process(target=send_frames, args=(source,))
     p.start()
-    producer_wrappers = [source.get_producer_wrapper()]
-    client = WebsocketClient(
-        args.server_host,
-        common.WEBSOCKET_PORT,
-        producer_wrappers,
+    input_producers = [source.get_input_producer()]
+    client = ZeroMQClient(
+        f"tcp://{args.server_host}:{common.SERVER_FRONTEND_PORT}",
+        input_producers,
         push_source.consumer,
     )
     client.launch()

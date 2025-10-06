@@ -13,15 +13,15 @@ SERVER_ADDRESS_FORMAT = "tcp://{}:{}"
 class DisplayEngine(cognitive_engine.Engine):
     """A simple cognitive engine that displays the input frame."""
 
-    def __init__(self, source_name):
+    def __init__(self, engine_name):
         """Initializes the display engine."""
-        self._source_name = source_name
+        self._engine_name = engine_name
 
     def handle(self, input_frame):
         """Handles an input frame."""
         np_data = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
-        cv2.imshow(f"Image from source: {self._source_name}", frame)
+        cv2.imshow(f"Image from engine: {self._engine_name}", frame)
         cv2.waitKey(1)
 
         status = gabriel_pb2.ResultWrapper.Status.SUCCESS
@@ -32,13 +32,16 @@ class DisplayEngine(cognitive_engine.Engine):
 def main():
     """Starts the Gabriel engine."""
     common.configure_logging()
-    args = common.parse_source_name_server_host()
-    engine = DisplayEngine(args.source_name)
+    args = common.parse_engine_name_server_host()
+    engine = DisplayEngine(args.engine_name)
 
     server_address = SERVER_ADDRESS_FORMAT.format(
-        args.server_host, common.ZMQ_PORT
+        args.server_host, common.SERVER_BACKEND_PORT
     )
-    engine_runner.run(engine, args.source_name, server_address)
+    runner = engine_runner.EngineRunner(
+        engine, args.engine_name, server_address
+    )
+    runner.run()
 
 
 if __name__ == "__main__":

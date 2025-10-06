@@ -101,12 +101,12 @@ class EngineRunner:
                     await socket.send(network_engine.HEARTBEAT)
                     continue
 
-                logger.info(f"{self.engine_name} received input from server")
+                logger.debug(f"{self.engine_name} received input from server")
                 input_frame = gabriel_pb2.InputFrame()
                 input_frame.ParseFromString(message_from_server)
                 result_wrapper = self.engine.handle(input_frame)
 
-                logger.info(f"{self.engine_name} sending result to server")
+                logger.debug(f"{self.engine_name} sending result to server")
 
                 result_wrapper.result_producer_name.value = self.engine_name
                 from_standalone_engine = gabriel_pb2.FromStandaloneEngine()

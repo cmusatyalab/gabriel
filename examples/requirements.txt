@@ -1,3 +1,4 @@
 gabriel-client
 gabriel-server
+gabriel-protocol
 opencv-python>=4.2

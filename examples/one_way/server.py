@@ -9,13 +9,13 @@ ZMQ_ADDRESS_FORMAT = "tcp://*:{}"
 def main():
     """Starts the Gabriel server."""
     common.configure_logging()
-    zmq_address = ZMQ_ADDRESS_FORMAT.format(common.ZMQ_PORT)
-    server_runner.run(
-        common.WEBSOCKET_PORT,
-        zmq_address,
+    runner = server_runner.ServerRunner(
+        common.SERVER_FRONTEND_PORT,
+        f"tcp://{common.DEFAULT_SERVER_HOST}:{common.SERVER_BACKEND_PORT}",
         num_tokens=2,
         input_queue_maxsize=60,
     )
+    runner.run()
 
 
 if __name__ == "__main__":

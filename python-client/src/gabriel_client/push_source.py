@@ -5,7 +5,7 @@ import multiprocessing
 
 from gabriel_protocol import gabriel_pb2
 
-from gabriel_client.websocket_client import ProducerWrapper
+from gabriel_client.gabriel_client import InputProducer
 
 
 def consumer(_):
@@ -16,16 +16,17 @@ def consumer(_):
 class Source:
     """A push-based source used to send frames to Gabriel server."""
 
-    def __init__(self, source_name):
+    def __init__(self, source_name, target_engine_ids):
         """Initialize the push-based source."""
         self._source_name = source_name
         self._frame_available = asyncio.Semaphore(0)
         self._latest_input_frame = None
         self._read, self._write = multiprocessing.Pipe(duplex=False)
         self._added_callback = False
+        self._target_engine_ids = target_engine_ids
 
-    def get_producer_wrapper(self):
-        """Returns a producer wrapper for the source."""
+    def get_input_producer(self):
+        """Returns an input producer for the source."""
 
         def reader_callback():
             input_frame = gabriel_pb2.InputFrame()
@@ -43,8 +44,10 @@ class Source:
             await self._frame_available.acquire()
             return self._latest_input_frame
 
-        return ProducerWrapper(
-            producer=producer, source_name=self._source_name
+        return InputProducer(
+            producer=producer,
+            target_engine_ids=self._target_engine_ids,
+            source_name=self._source_name,
         )
 
     def send(self, input_frame):
