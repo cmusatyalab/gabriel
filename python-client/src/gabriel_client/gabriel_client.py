@@ -55,22 +55,16 @@ class InputProducer:
         res = await self._producer()
         return res
 
-    def start(self, target_engine_ids: list[str]):
-        """Start the producer.
-
-        Args:
-            target_engine_ids (list[str]):
-                A list of target engine IDs for the input
-
-        """
+    def start(self):
+        """Start the producer."""
         if self._running.is_set():
             raise Exception("Producer already started")
-        with self._target_engine_lock:
-            self._target_engine_ids = target_engine_ids
         self._running.set()
-        logger.info(
-            f"Starting producer and targeting engines {target_engine_ids}"
-        )
+        with self._target_engine_lock:
+            logger.info(
+                f"Starting producer and targeting engines"
+                f"{self._target_engine_ids}"
+            )
 
     def stop(self):
         """Stop the producer."""

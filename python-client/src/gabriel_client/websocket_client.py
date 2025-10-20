@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections import namedtuple
+from typing import Callable
 from urllib.parse import urlparse
 
 import websockets
@@ -25,13 +25,15 @@ websockets_logger = logging.getLogger(websockets.__name__)
 websockets_logger.setLevel(logging.INFO)
 
 
-ProducerWrapper = namedtuple("ProducerWrapper", ["producer", "source_name"])
-
-
 class WebsocketClient(GabrielClient):
     """A Gabriel client that talks to the server over WebSockets."""
 
-    def __init__(self, server_endpoint, input_producers, consumer):
+    def __init__(
+        self,
+        server_endpoint: str,
+        input_producers: list[InputProducer],
+        consumer: Callable[[gabriel_pb2.ResultWrapper], None],
+    ):
         """Initialize the client.
 
         Args:

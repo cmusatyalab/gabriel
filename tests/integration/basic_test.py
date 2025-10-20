@@ -503,7 +503,10 @@ async def test_change_target_engines(
     assert len(response_state) == 1
 
     input_producer[0].stop()
-    input_producer[0].start(target_engine_ids=["Engine-0", "Engine-1"])
+    input_producer[0].change_target_engines(
+        target_engine_ids=["Engine-0", "Engine-1"]
+    )
+    input_producer[0].start()
 
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
         await asyncio.wait_for(task, timeout=1)
