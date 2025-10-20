@@ -187,24 +187,6 @@ class GabrielClient(ABC):
         """Launch the client asynchronously."""
         pass
 
-    def register_input_producer(self, producer: InputProducer):
-        """Register an input producer with the client.
-
-        Args:
-            producer (InputProducer): The input producer to register
-
-        """
-        self.input_producers.add(producer)
-
-    def deregister_input_producer(self, producer: InputProducer):
-        """Deregister an input producer with the client.
-
-        Args:
-            producer (InputProducer): The input producer to deregister.
-
-        """
-        self.input_producers.remove(producer)
-
     def stop(self):
         """Stop the client."""
         self._running = False
