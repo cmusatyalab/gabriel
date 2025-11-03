@@ -8,7 +8,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="gabriel-server",
-    version="4.0.4",
+    version="4.0.5",
     author="Aditya Chanana",
     author_email="achanana@cs.cmu.edu",
     maintainer="CMU Satyalab",
