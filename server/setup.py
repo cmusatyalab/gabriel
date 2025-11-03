@@ -8,7 +8,7 @@ with open("README.md") as fh:
 
 setuptools.setup(
     name="gabriel-server",
-    version="4.0.3",
+    version="4.0.4",
     author="Aditya Chanana",
     author_email="achanana@cs.cmu.edu",
     maintainer="CMU Satyalab",
@@ -21,7 +21,6 @@ setuptools.setup(
     package_dir={"": "src"},
     license="Apache",
     classifiers=[
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
