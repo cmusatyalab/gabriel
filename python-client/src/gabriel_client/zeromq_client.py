@@ -307,7 +307,7 @@ class ZeroMQClient(GabrielClient):
 
                 if input_frame is None:
                     token_pool.return_token()
-                    logger.info("Received None from producer")
+                    logger.debug("Received None from producer")
                     continue
 
                 input = gabriel_pb2.ClientInput()
