@@ -485,6 +485,7 @@ class _EngineWorker:
         await self._send_helper(metadata_payload.payload, heartbeat=False)
 
     async def send_next_input(self):
+        """Send next input from queue."""
         for _ in range(len(self._sources)):
             source_info = self._sources.popleft()
             self._sources.append(source_info)
@@ -493,9 +494,8 @@ class _EngineWorker:
             )
             if metadata_payload is not None:
                 await self.send_payload(metadata_payload)
-            else:
-                self.clear_current_input_metadata()
-        return None
+                return
+        self.clear_current_input_metadata()
 
     async def add_source(self, source_info):
         if source_info in self._sources:
