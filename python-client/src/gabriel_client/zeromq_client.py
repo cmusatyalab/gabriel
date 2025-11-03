@@ -34,7 +34,11 @@ HELLO_MSG = b"Hello message"
 
 
 class ZeroMQClient(GabrielClient):
-    """A Gabriel client that talks to the server over ZeroMQ."""
+    """A Gabriel client that talks to the server over ZeroMQ.
+
+    The Gabriel server must be configured to use ZeroMQ for client
+    communication.
+    """
 
     def __init__(
         self,

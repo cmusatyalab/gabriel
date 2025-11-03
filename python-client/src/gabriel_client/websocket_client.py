@@ -26,7 +26,11 @@ websockets_logger.setLevel(logging.INFO)
 
 
 class WebsocketClient(GabrielClient):
-    """A Gabriel client that talks to the server over WebSockets."""
+    """A Gabriel client that talks to the server over WebSockets.
+
+    The Gabriel server must be configured to use Websockets for client
+    communication.
+    """
 
     def __init__(
         self,

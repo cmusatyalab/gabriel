@@ -17,12 +17,6 @@ from gabriel_server.zeromq_server import ZeroMQServer
 
 FIVE_SECONDS = 5
 
-logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - "
-    "%(message)s",
-    level=logging.INFO,
-)
-
 logger = logging.getLogger(__name__)
 
 

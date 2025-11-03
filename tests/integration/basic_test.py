@@ -506,7 +506,7 @@ async def test_change_target_engines(
     input_producer[0].change_target_engines(
         target_engine_ids=["Engine-0", "Engine-1"]
     )
-    input_producer[0].start()
+    input_producer[0].resume()
 
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
         await asyncio.wait_for(task, timeout=1)

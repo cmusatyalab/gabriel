@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 class InputProducer:
     """An input producer that produces inputs to send to the server.
 
+    Stores a callback for producing input frames as well as the identifiers
+    of the cognitive engines to target.
+
+    The input producer can be stopped and resumed using :meth:`stop` and
+    :meth:`resume`. The current status (stopped/running) can be obtained using
+    :meth:`is_running`. By default, the input producer is running.
+
     The methods of this class are thread-safe.
     """
 
@@ -34,7 +41,6 @@ class InputProducer:
                 A list of target engine IDs for the input
             source_name (str, optional):
                 The name of the source producing the input
-
         """
         self._running = threading.Event()
         self._running.set()
@@ -48,15 +54,19 @@ class InputProducer:
         )
         self._loop = None
 
-    async def produce(self):
-        """Invoke the producer to generate input."""
+    async def produce(self) -> InputFrame | None:
+        """Invoke the producer to generate input.
+
+        Raises:
+            Exception: if the producer is not running
+        """
         if not self._running.is_set():
             raise Exception("Producer called when not running")
         res = await self._producer()
         return res
 
-    def start(self):
-        """Start the producer."""
+    def resume(self) -> None:
+        """Resume the producer."""
         if self._running.is_set():
             raise Exception("Producer already started")
         self._running.set()
@@ -66,12 +76,12 @@ class InputProducer:
                 f"{self._target_engine_ids}"
             )
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the producer."""
         logger.info("Stopping producer")
         self._running.clear()
 
-    def change_target_engines(self, target_engine_ids: list[str]):
+    def change_target_engines(self, target_engine_ids: list[str]) -> None:
         """Change the target engines for the producer.
 
         Args:
@@ -83,7 +93,7 @@ class InputProducer:
             self._target_engine_ids = target_engine_ids
         logger.info(f"Changing target engines to {target_engine_ids}")
 
-    def is_running(self):
+    def is_running(self) -> bool:
         """Check if the producer is running."""
         return self._running.is_set()
 
@@ -91,8 +101,8 @@ class InputProducer:
         while not shutdown_event.is_set():
             self._running.wait(0.1)
 
-    async def wait_for_running(self):
-        """Wait until the producer is running."""
+    async def wait_for_running(self) -> None:
+        """Block until the producer is running."""
         shutdown_event = threading.Event()
         try:
             await asyncio.get_running_loop().run_in_executor(
@@ -102,7 +112,7 @@ class InputProducer:
             shutdown_event.set()
             raise
 
-    def get_target_engines(self):
+    def get_target_engines(self) -> list[str]:
         """Return the target engines for the producer."""
         with self._target_engine_lock:
             return self._target_engine_ids
@@ -126,11 +136,11 @@ class TokenPool:
         self._num_tokens = num_tokens
         self._sem = asyncio.BoundedSemaphore(num_tokens)
 
-    def return_token(self):
+    def return_token(self) -> None:
         """Return a token to the pool."""
         self._sem.release()
 
-    async def get_token(self):
+    async def get_token(self) -> None:
         """Acquire a token from the pool.
 
         Wait if necessary until a token is available.
@@ -139,16 +149,16 @@ class TokenPool:
         await self._sem.acquire()
         logger.debug("Token acquired")
 
-    def is_locked(self):
+    def is_locked(self) -> bool:
         """Check if the semaphore is locked."""
         return self._sem.locked()
 
-    def reset_tokens(self):
+    def reset_tokens(self) -> None:
         """Reset the number of tokens in the pool to the max number."""
         self._sem = asyncio.Semaphore(self._max_tokens)
         self._num_tokens = self._max_tokens
 
-    def get_remaining_tokens(self):
+    def get_remaining_tokens(self) -> int:
         """Return the number of remaining tokens in the pool."""
         return self._sem._value
 
@@ -169,7 +179,7 @@ class GabrielClient(ABC):
         self._tokens = {}
 
     @abstractmethod
-    def launch(self):
+    def launch(self) -> None:
         """Launch the client synchronously.
 
         This method will block execution until the client is stopped.
@@ -177,10 +187,10 @@ class GabrielClient(ABC):
         pass
 
     @abstractmethod
-    def launch_async(self):
+    def launch_async(self) -> None:
         """Launch the client asynchronously."""
         pass
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the client."""
         self._running = False

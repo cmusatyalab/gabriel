@@ -15,17 +15,15 @@ from gabriel_server import network_engine
 TEN_SECONDS = 10000
 REQUEST_RETRIES = 3
 
-logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - "
-    "%(message)s",
-    level=logging.INFO,
-)
-
 logger = logging.getLogger(__name__)
 
 
 class EngineRunner:
-    """Connects a cognitive engine to the server."""
+    """Connects a cognitive engine to the server.
+
+    Client inputs are sent to the cognitive engine if they specify a target
+    engine id that matches the engine name specified in :meth:`__init__`.
+    """
 
     def __init__(
         self,
