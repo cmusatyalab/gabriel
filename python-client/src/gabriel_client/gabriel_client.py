@@ -47,6 +47,7 @@ class InputProducer:
         self._producer = producer
         self._target_engine_ids = target_engine_ids
         self._target_engine_lock = threading.Lock()
+        self.source_name = source_name
         self.source_id = (
             source_name + "-" + str(uuid.uuid4())
             if source_name
@@ -72,7 +73,7 @@ class InputProducer:
         self._running.set()
         with self._target_engine_lock:
             logger.info(
-                f"Starting producer and targeting engines"
+                f"Resuming producer and targeting engines"
                 f"{self._target_engine_ids}"
             )
 
@@ -99,7 +100,8 @@ class InputProducer:
 
     def _wait_for_running_internal(self, shutdown_event):
         while not shutdown_event.is_set():
-            self._running.wait(0.1)
+            if self._running.wait(0.1):
+                break
 
     async def wait_for_running(self) -> None:
         """Block until the producer is running."""

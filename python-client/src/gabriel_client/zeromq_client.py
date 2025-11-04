@@ -250,7 +250,6 @@ class ZeroMQClient(GabrielClient):
 
         """
         await self._welcome_event.wait()
-        logger.debug("Received welcome from server")
 
         # Async task used to producer an input
         producer_task = None
@@ -261,10 +260,13 @@ class ZeroMQClient(GabrielClient):
 
         try:
             while self._running:
-                logger.debug(f"Producer for {producer.source_id} running")
                 if not producer.is_running():
-                    logger.info("Producer is not running; waiting")
+                    logger.info(
+                        f"Producer {producer.source_name} is not running; "
+                        f"waiting"
+                    )
                     await producer.wait_for_running()
+                    logger.info(f"Producer {producer.source_name} resumed")
 
                 try:
                     # Wait for a token. Time out to send a heartbeat to the
@@ -303,11 +305,16 @@ class ZeroMQClient(GabrielClient):
                     continue
 
                 logger.debug("Got input from producer")
+
                 producer_task = None
 
                 if input_frame is None:
                     token_pool.return_token()
                     logger.debug("Received None from producer")
+                    continue
+                if not input_frame.SerializeToString():
+                    token_pool.return_token()
+                    logger.error("Input producer produced empty frame")
                     continue
 
                 input = gabriel_pb2.ClientInput()

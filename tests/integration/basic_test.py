@@ -58,7 +58,7 @@ class Engine(cognitive_engine.Engine, threading.Thread):
 
         result = gabriel_pb2.ResultWrapper.Result()
         result.payload_type = gabriel_pb2.PayloadType.IMAGE
-        result.payload = input_frame.payloads[0]
+        # result.payload = input_frame.payloads[0]
         result_wrapper.results.append(result)
 
         return result_wrapper
@@ -217,6 +217,24 @@ def input_producer(target_engines, num_inputs_to_send):
         if num_inputs_to_send > 0 and inputs_sent > num_inputs_to_send:
             return None
         logger.info(f"Inputs sent: {inputs_sent}")
+
+        return frame
+
+    input_producer = InputProducer(
+        producer=producer, target_engine_ids=target_engines
+    )
+    yield [input_producer]
+    input_producer.stop()
+
+
+@pytest.fixture
+def empty_frame_producer(target_engines, num_inputs_to_send):
+    """A producer that does not set fields in the frame it returns."""
+
+    async def producer():
+        logger.info("Producing bad input")
+        frame = gabriel_pb2.InputFrame()
+        await asyncio.sleep(0.1)
 
         return frame
 
@@ -502,11 +520,9 @@ async def test_change_target_engines(
 
     assert len(response_state) == 1
 
-    input_producer[0].stop()
     input_producer[0].change_target_engines(
         target_engine_ids=["Engine-0", "Engine-1"]
     )
-    input_producer[0].resume()
 
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
         await asyncio.wait_for(task, timeout=1)
@@ -722,9 +738,15 @@ async def test_stop_producer(
     assert len(response_state) == 1
     num_responses = response_state["Engine-0"]
 
+    logger.info("Stopping input producer")
     input_producer[0].stop()
     await asyncio.sleep(1)
     assert response_state["Engine-0"] - num_responses <= 1
+
+    logger.info("Resuming input producer")
+    input_producer[0].resume()
+    await asyncio.sleep(1)
+    assert response_state["Engine-0"] - num_responses > 1
 
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
@@ -749,3 +771,42 @@ async def test_invalid_engine(
     exception = exceptions[0]
     assert isinstance(exception, Exception)
     assert "Server dropped frame" in str(exception)
+
+
+@pytest.mark.asyncio
+async def test_empty_input_frame(
+    run_engines,
+    empty_frame_producer,
+    server_frontend_port,
+    response_state,
+    caplog,
+):
+    """Test that an error is raised when an empty frame is produced."""
+    response_state.clear()
+    response_state["received"] = False
+
+    logger.info("Starting test_zeromq_client")
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        empty_frame_producer,
+        get_consumer(response_state),
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    for _ in range(10):
+        await asyncio.sleep(0.1)
+        if response_state["received"]:
+            break
+    task.cancel()
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client task is cancelled")
+
+    assert "Input producer produced empty frame" in caplog.text
+    assert not response_state["received"]
