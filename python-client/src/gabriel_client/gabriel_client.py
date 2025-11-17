@@ -30,7 +30,7 @@ class InputProducer:
         self,
         producer: Callable[[], Coroutine[Any, Any, InputFrame | None]],
         target_engine_ids: list[str],
-        source_name: Union[str, None] = None,
+        producer_name: Union[str, None] = None,
     ):
         """Initialize the input producer.
 
@@ -39,18 +39,18 @@ class InputProducer:
                 A coroutine function that produces input data
             target_engine_ids (list[str]):
                 A list of target engine IDs for the input
-            source_name (str, optional):
-                The name of the source producing the input
+            producer_name (str, optional):
+                The name of the producer producing the input
         """
         self._running = threading.Event()
         self._running.set()
         self._producer = producer
         self._target_engine_ids = target_engine_ids
         self._target_engine_lock = threading.Lock()
-        self.source_name = source_name
-        self.source_id = (
-            source_name + "-" + str(uuid.uuid4())
-            if source_name
+        self.producer_name = producer_name
+        self.producer_id = (
+            producer_name + "-" + str(uuid.uuid4())
+            if producer_name
             else str(uuid.uuid4())
         )
         self._loop = None
@@ -176,7 +176,7 @@ class GabrielClient(ABC):
         self.input_producers = set()
         # The number of tokens per input source, as specified by the \
         # server
-        self._num_tokens_per_source = None
+        self._num_tokens_per_producer = None
         # Mapping from source id to tokens
         self._tokens = {}
 

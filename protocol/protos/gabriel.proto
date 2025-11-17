@@ -3,123 +3,113 @@ syntax = "proto3";
 package gabriel;
 
 import "google/protobuf/any.proto";
-import "google/protobuf/wrappers.proto";
 
 option java_package = "edu.cmu.cs.gabriel.protocol";
 option java_outer_classname = "Protos";
 
 enum PayloadType {
-    IMAGE = 0;
-    VIDEO = 1;
-    AUDIO = 2;
-    IMU = 3;
-    TEXT = 4;
-    ANIMATION = 5;
-    OTHER = 6;
+    PAYLOAD_TYPE_UNSPECIFIED = 0;
+    TEXT = 1;
+    IMAGE = 2;
+    AUDIO = 3;
+    VIDEO = 4;
+    CONTROL = 5;
+    OTHER = 100;
 }
 
 message InputFrame {
     PayloadType payload_type = 1;
-    repeated bytes payloads = 2;
-    // Optional additional fields
-    google.protobuf.Any extras = 3;
-}
-
-message ClientInput {
-    int64 frame_id = 1;
-    string source_id = 2;
-    repeated string target_engine_ids = 3;
-    InputFrame input_frame = 4;
-}
-
-message EngineConfig {
-    string engine = 1;
-    google.protobuf.Any config = 2;
+    oneof payload {
+        string string_payload = 2;
+        bytes byte_payload = 3;
+        google.protobuf.Any any_payload = 4;
+    }
 }
 
 message FromClient {
-    oneof req_type {
-        ClientInput input = 1;
-        EngineConfig config = 2;
-    }
+    // A monotonically increasing frame identifier.
+    int64 frame_id = 1;
+    // The identifier of the producer producing input.
+    string producer_id = 2;
+    // The targeted engines for this input.
+    repeated string target_engine_ids = 3;
+    // The data to be sent to the server.
+    InputFrame input_frame = 4;
 }
 
-message ResultWrapper {
-    enum Status {
-        SUCCESS = 0;
-        UNSPECIFIED_ERROR = 1;
+enum StatusCode {
+    // Success.
+    SUCCESS = 0;
+    // Errors whose cause is not known.
+    UNSPECIFIED_ERROR = 1;
+    // Errors that are not related to Gabriel but rather to the engine
+    // itself.
+    ENGINE_ERROR = 2;
+    // Cognitive engine expected different PayloadType from this producer.
+    WRONG_INPUT_FORMAT = 3;
+    // No cognitive engines found that match the targeted engines.
+    NO_ENGINE_FOR_INPUT = 4;
+    // This client has no tokens to send frames from this producer.
+    NO_TOKENS = 5;
+    // The server dropped the frame because it was backed up.
+    SERVER_DROPPED_FRAME = 6;
 
-        // Errors that are not related to Gabriel but rather to the engine
-        // itself.
-        ENGINE_ERROR = 2;
+}
 
-        // Cognitive engine expected different PayloadType from this source
-        WRONG_INPUT_FORMAT = 3;
+message Status {
+    StatusCode code = 1;
+    string message = 2;
+}
 
-        // No Cognitive engines accept frames from source_name
-        NO_ENGINE_FOR_SOURCE = 4;
-
-        // This client has no tokens to send frames from source_name
-        NO_TOKENS = 5;
-
-        // The server dropped the frame because it was backed up
-        SERVER_DROPPED_FRAME = 6;
-    }
-
-    message Result {
-        PayloadType payload_type = 1;
-        bytes payload = 2;
-    }
-
-    // From https://github.com/protocolbuffers/protobuf/blob/master/src/google/protobuf/wrappers.proto#L120
-    // TODO: Switch to google.protobuf.StringValue once MobilEdgeX supports
-    // protobuf-javalite
-    message StringValue {
-        // The string value.
-        string value = 1;
-    }
-
+message Result {
     Status status = 1;
-    repeated Result results = 2;
-
-    // Optional additional fields
-    google.protobuf.Any extras = 3;
-
-    // Optionally specify the name of the module that produced the result
-    google.protobuf.StringValue result_producer_name = 4;
-
-    google.protobuf.StringValue source_id = 5;
+    // Optional returned payload from the engine.
+    oneof payload {
+        string string_result = 2;
+        bytes bytes_result = 3;
+        google.protobuf.Any any_result = 4;
+    }
+    // The engine that produced this response.
+    string target_engine_id = 5;
+    // The frame id that this result corresponds to.
+    int64 frame_id = 6;
 }
 
 message ToClient {
     message Welcome {
-        int32 num_tokens_per_source = 1;
+        int32 num_tokens_per_producer = 1;
+        repeated string engine_ids = 2;
     }
 
-    message Response {
-        // The source of the original frame; allows the client to return the
+    message Control {
+        repeated string engine_ids = 1;
+    }
+
+    message ResultWrapper {
+        // The producer of the original frame; allows the client to return the
         // token correctly.
-        string source_id = 1;
-        string target_engine_id = 2;
-        int64 frame_id = 3;
-        bool return_token = 4;
-        ResultWrapper result_wrapper = 5;
+        string producer_id = 1;
+        // Whether to replenish a client token.
+        bool return_token = 2;
+        // The result sent from the engine.
+        Result result = 3;
     }
 
-    oneof welcome_or_response {
+    oneof message_type {
         Welcome welcome = 1;
-        Response response = 2;
+        ResultWrapper result_wrapper = 2;
+        Control control = 3;
     }
 }
 
 message FromStandaloneEngine {
     message Welcome {
-        string engine_name = 1;
+        string engine_id = 1;
         bool all_responses_required = 2;
     }
 
-    oneof welcome_or_result_wrapper {
+    oneof welcome_or_result {
         Welcome welcome = 1;
-        ResultWrapper result_wrapper = 2;
+        Result result = 2;
     }
 }

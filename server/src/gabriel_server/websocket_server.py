@@ -6,7 +6,6 @@ import socket
 
 import websockets
 from gabriel_protocol import gabriel_pb2
-from gabriel_protocol.gabriel_pb2 import ResultWrapper
 from websockets.asyncio.server import serve, unix_serve
 
 from gabriel_server.gabriel_server import GabrielServer
@@ -17,9 +16,9 @@ logger = logging.getLogger(__name__)
 class WebsocketServer(GabrielServer):
     """A Gabriel server that uses Websockets for communication with clients."""
 
-    def __init__(self, num_tokens_per_source, engine_cb):
+    def __init__(self, num_tokens_per_producer, engine_cb):
         """Initialize the Websocket server."""
-        super().__init__(num_tokens_per_source, engine_cb)
+        super().__init__(num_tokens_per_producer, engine_cb)
         self._server = None
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
@@ -74,7 +73,7 @@ class WebsocketServer(GabrielServer):
         logger.info("New Client connected: %s", address)
 
         client = self._Client(
-            tokens_for_source={},
+            tokens_for_producer={},
             inputs=asyncio.Queue(),
             task=None,
             websocket=websocket,
@@ -83,7 +82,9 @@ class WebsocketServer(GabrielServer):
 
         # Send client welcome message
         to_client = gabriel_pb2.ToClient()
-        to_client.welcome.num_tokens_per_source = self._num_tokens_per_source
+        to_client.welcome.num_tokens_per_producer = (
+            self._num_tokens_per_producer
+        )
         await websocket.send(to_client.SerializeToString())
 
         try:
@@ -102,22 +103,19 @@ class WebsocketServer(GabrielServer):
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(raw_input)
 
-            if from_client.WhichOneof("req_type") == "input":
-                input = from_client.input
-            else:
-                logger.error(f"Unexpected request type from client {address}")
-                continue
-            status = await self._consumer_helper(client, address, input)
-            if status == ResultWrapper.Status.SUCCESS:
+            status, status_msg = await self._consumer_helper(
+                client, address, from_client
+            )
+            if status == gabriel_pb2.StatusCode.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                client.tokens_for_source[input.source_id] -= 1
+                client.tokens_for_producer[from_client.producer_id] -= 1
                 continue
 
             # Send error message
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_id = input.source_id
-            to_client.response.frame_id = input.frame_id
-            to_client.response.return_token = True
-            to_client.response.result_wrapper.status = status
+            to_client.result_wrapper.producer_id = from_client.producer_id
+            to_client.result_wrapper.return_token = True
+            to_client.result_wrapper.result.frame_id = from_client.frame_id
+            to_client.result_wrapper.result.status = status
 
             await websocket.send(to_client.SerializeToString())

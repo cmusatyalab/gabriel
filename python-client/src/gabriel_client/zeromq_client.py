@@ -44,7 +44,7 @@ class ZeroMQClient(GabrielClient):
         self,
         server_endpoint: str,
         input_producers: list[InputProducer],
-        consumer: Callable[[gabriel_pb2.ResultWrapper], None],
+        consumer: Callable[[gabriel_pb2.Result], None],
     ):
         """Initialize the client.
 
@@ -56,7 +56,7 @@ class ZeroMQClient(GabrielClient):
         input_producers (list[InputProducer]):
             A list of instances of InputProducer for the inputs
             produced by this client
-        consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
+        consumer (Callable[[gabriel_pb2.Result], None]):
             Callback for results from server
 
         """
@@ -164,7 +164,7 @@ class ZeroMQClient(GabrielClient):
             if not self._connected.is_set():
                 logger.info("Reconnected to server")
                 self._connected.set()
-                # Reset tokens for all sources
+                # Reset tokens for all producers
                 for token_pool in self._tokens.values():
                     token_pool.reset_tokens()
 
@@ -172,6 +172,8 @@ class ZeroMQClient(GabrielClient):
                 logger.debug("Received heartbeat from server")
                 self._pending_heartbeat = False
                 continue
+
+            logger.debug("Received message from server")
 
             to_client = gabriel_pb2.ToClient()
             try:
@@ -183,9 +185,9 @@ class ZeroMQClient(GabrielClient):
             if to_client.HasField("welcome"):
                 logger.info("Received welcome from server")
                 self._process_welcome(to_client.welcome)
-            elif to_client.HasField("response"):
+            elif to_client.HasField("result_wrapper"):
                 logger.debug("Processing response from server")
-                self._process_response(to_client.response)
+                self._process_response(to_client.result_wrapper)
             else:
                 logger.critical(
                     "Fatal error: empty to_client message received from server"
@@ -201,40 +203,42 @@ class ZeroMQClient(GabrielClient):
                 the server
 
         """
-        self._num_tokens_per_source = welcome.num_tokens_per_source
+        self._num_tokens_per_producer = welcome.num_tokens_per_producer
         self._welcome_event.set()
 
-    def _process_response(self, response):
-        """Process a response received from the server.
+    def _process_response(self, result_wrapper):
+        """Process a result received from the server.
 
         Args:
-            response:
-                The gabriel_pb2.ToClient.Response message received from
+            result_wrapper:
+                The gabriel_pb2.ToClient.ResultWrapper message received from
                 the server
         """
-        result_wrapper = response.result_wrapper
-        status = result_wrapper.status
-        if status == gabriel_pb2.ResultWrapper.SUCCESS:
+        result = result_wrapper.result
+        result_status = result.status
+        code = result_status.code
+        msg = result_status.message
+        if code == gabriel_pb2.StatusCode.SUCCESS:
             try:
-                self.consumer(result_wrapper)
+                self.consumer(result)
             except Exception as e:
                 logger.error(f"Error processing response from server: {e}")
-        elif status == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE:
-            logger.critical("Fatal error: no engine for source")
-            raise Exception("No engine for source")
-        elif status == gabriel_pb2.ResultWrapper.SERVER_DROPPED_FRAME:
-            logger.error("Server dropped frame")
-            raise Exception("Server dropped frame")
+        elif code == gabriel_pb2.StatusCode.NO_ENGINE_FOR_INPUT:
+            logger.critical(f"Fatal error: no engine for input: {msg}")
+            raise Exception(f"No engine for input: {msg}")
+        elif code == gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME:
+            logger.error(f"Server dropped frame: {msg}")
+            raise Exception(f"Server dropped frame: {msg}")
         else:
-            status_name = result_wrapper.Status.Name(result_wrapper.status)
-            logger.error(f"Output status was: {status_name}")
+            status_name = gabriel_pb2.StatusCode.Name(code)
+            logger.error(f"Output status was: {status_name}; {msg}")
 
-        if response.return_token:
-            source_id = response.source_id
-            self._tokens[source_id].return_token()
+        if result_wrapper.return_token:
+            producer_id = result_wrapper.producer_id
+            self._tokens[producer_id].return_token()
             logger.debug(
-                f"Returning token for source {source_id}, total tokens "
-                f"{self._tokens[source_id].get_remaining_tokens()}"
+                f"Returning token for producer {producer_id}, total tokens "
+                f"{self._tokens[producer_id].get_remaining_tokens()}"
             )
 
     async def _producer_handler(self, producer: InputProducer):
@@ -255,18 +259,18 @@ class ZeroMQClient(GabrielClient):
         producer_task = None
         frame_id = 1
 
-        token_pool = TokenPool(self._num_tokens_per_source)
-        self._tokens[producer.source_id] = token_pool
+        token_pool = TokenPool(self._num_tokens_per_producer)
+        self._tokens[producer.producer_id] = token_pool
 
         try:
             while self._running:
                 if not producer.is_running():
                     logger.info(
-                        f"Producer {producer.source_name} is not running; "
+                        f"Producer {producer.producer_id} is not running; "
                         f"waiting"
                     )
                     await producer.wait_for_running()
-                    logger.info(f"Producer {producer.source_name} resumed")
+                    logger.info(f"Producer {producer.producer_id} resumed")
 
                 try:
                     # Wait for a token. Time out to send a heartbeat to the
@@ -317,25 +321,24 @@ class ZeroMQClient(GabrielClient):
                     logger.error("Input producer produced empty frame")
                     continue
 
-                input = gabriel_pb2.ClientInput()
-                input.frame_id = frame_id
-                frame_id += 1
-                input.source_id = producer.source_id
-                input.target_engine_ids.extend(producer.get_target_engines())
-                input.input_frame.CopyFrom(input_frame)
-
                 from_client = gabriel_pb2.FromClient()
-                from_client.input.CopyFrom(input)
+                from_client.frame_id = frame_id
+                frame_id += 1
+                from_client.producer_id = producer.producer_id
+                from_client.target_engine_ids.extend(
+                    producer.get_target_engines()
+                )
+                from_client.input_frame.CopyFrom(input_frame)
 
                 # Send input to server
                 logger.debug(
-                    f"Sending input to server source id {input.source_id}"
+                    f"Sending input to server; producer={producer.producer_id}"
                 )
                 await self._sock.send(from_client.SerializeToString())
 
                 logger.debug(
                     "Semaphore for %s is %s",
-                    producer.source_id,
+                    producer.producer_id,
                     "LOCKED" if token_pool.is_locked() else "AVAILABLE",
                 )
         except asyncio.CancelledError:

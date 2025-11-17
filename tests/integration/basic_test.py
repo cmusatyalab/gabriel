@@ -14,9 +14,10 @@ from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
+from gabriel_server.cognitive_engine import Result
 from gabriel_server.local_engine import LocalEngine
 from gabriel_server.network_engine import engine_runner, server_runner
-from prometheus_client import REGISTRY
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Summary
 
 DEFAULT_NUM_TOKENS = 2
 DEFAULT_SERVER_HOST = "localhost"
@@ -53,15 +54,10 @@ class Engine(cognitive_engine.Engine, threading.Thread):
     def handle(self, input_frame):
         """Process a single gabriel_pb2.InputFrame()."""
         logger.info(f"Engine {self.engine_id} received frame")
-        status = gabriel_pb2.ResultWrapper.Status.SUCCESS
-        result_wrapper = cognitive_engine.create_result_wrapper(status)
+        status = gabriel_pb2.Status()
+        status.code = gabriel_pb2.StatusCode.SUCCESS
 
-        result = gabriel_pb2.ResultWrapper.Result()
-        result.payload_type = gabriel_pb2.PayloadType.IMAGE
-        # result.payload = input_frame.payloads[0]
-        result_wrapper.results.append(result)
-
-        return result_wrapper
+        return Result(status, gabriel_pb2.PayloadType.TEXT, "hello")
 
     def run(self):
         """Run the engine runner."""
@@ -208,7 +204,7 @@ def input_producer(target_engines, num_inputs_to_send):
         logger.info("Producing input")
         frame = gabriel_pb2.InputFrame()
         frame.payload_type = gabriel_pb2.PayloadType.TEXT
-        frame.payloads.append(b"Hello from client")
+        frame.string_payload = "Hello from client"
         await asyncio.sleep(0.1)
 
         nonlocal inputs_sent
@@ -254,12 +250,31 @@ def response_state():
 def get_consumer(response_state):
     """Create a consumer that sets response_state['received'] to True."""
 
-    def consumer(result_wrapper):
-        logger.info(f"Status is {result_wrapper.status}")
-        logger.info(f"Produced by {result_wrapper.result_producer_name.value}")
+    def consumer(result):
+        logger.info("Received result")
+        logger.info(f"Status is {result.status.code}")
+        logger.info(f"Produced by {result.target_engine_id}")
         response_state["received"] = True
 
     return consumer
+
+
+@pytest.fixture(autouse=True)
+def reset_prometheus_metrics():
+    """Reset the state (samples) of all custom metrics between tests.
+
+    Does not unregister metrics.
+    """
+    yield  # Run the test first
+    for collector in list(REGISTRY._collector_to_names.keys()):
+        # Only touch application-defined metrics
+        if collector.__class__ in (Counter, Gauge, Summary, Histogram):
+            try:
+                collector._metrics.clear()  # Clear all labeled samples
+                if hasattr(collector, "_value"):
+                    collector._value.set(0)  # Reset non-labeled metric
+            except Exception:
+                pass  # Ignore system collectors like process_*, python_gc_*
 
 
 @pytest.mark.asyncio
@@ -299,10 +314,10 @@ async def test_zeromq_client(
 def get_multiple_engine_consumer(response_state):
     """Create a consumer that counts responses from multiple engines."""
 
-    def multiple_engine_consumer(result_wrapper):
-        logger.info(f"Status is {result_wrapper.status}")
-        logger.info(f"Produced by {result_wrapper.result_producer_name.value}")
-        key = result_wrapper.result_producer_name.value
+    def multiple_engine_consumer(result):
+        logger.info(f"Status is {result.status.code}")
+        logger.info(f"Produced by {result.target_engine_id}")
+        key = result.target_engine_id
         response_state[key] = response_state.get(key, 0) + 1
 
     return multiple_engine_consumer
@@ -558,12 +573,12 @@ async def test_disconnection(
     logger.info("Stopping server client handler to simulate disconnection")
     server = run_server.get_server()
     await server._stop_client_handler()
-    await asyncio.sleep(15)
+    await asyncio.sleep(12)
     num_responses = response_state["Engine-0"]
 
     # Restart server
     server_task = asyncio.create_task(server._restart_client_handler())
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     logger.info(f"{response_state=}")
     assert response_state["Engine-0"] > num_responses
 
@@ -610,19 +625,6 @@ async def test_prometheus_metrics(
     response_state.clear()
     response_state["received"] = False
 
-    # Check that Prometheus metrics are being collected
-    metric_names = [metric.name for metric in metrics_before]
-    assert len(metric_names) > 0, "No metrics found in Prometheus registry"
-    expected_metrics = [
-        "engine_processing_latency_seconds",
-        "source_queue_length",
-        "input_inter_arrival_time_seconds",
-    ]
-    for expected_metric in expected_metrics:
-        assert expected_metric in metric_names, (
-            f"{expected_metric} not found in metrics"
-        )
-
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
@@ -631,54 +633,75 @@ async def test_prometheus_metrics(
     task = asyncio.create_task(client.launch_async())
 
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-        await asyncio.wait_for(task, timeout=1)
+        await asyncio.wait_for(asyncio.shield(task), timeout=1)
 
     assert response_state["received"]
 
+    print(response_state)
+
+    # Check that Prometheus metrics are being collected
+    metric_names = [metric.name for metric in metrics_before]
+    assert len(metric_names) > 0, "No metrics found in Prometheus registry"
+    expected_metrics = [
+        "gabriel_engine_processing_latency_seconds",
+        "gabriel_producer_queue_length",
+        "gabriel_producer_inputs_received",
+        "gabriel_engine_inputs_received",
+        "gabriel_engine_inputs_processed",
+    ]
+    for expected_metric in expected_metrics:
+        assert expected_metric in metric_names, (
+            f"{expected_metric} not found in metrics"
+        )
+
+    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+        await asyncio.wait_for(task, timeout=5)
     final_metrics = list(REGISTRY.collect())
 
     for metric in final_metrics:
-        if metric.name == "engine_processing_latency_seconds":
+        if metric.name == "gabriel_engine_processing_latency_seconds":
+            found = False
             for sample in metric.samples:
                 if (
-                    sample.name == "engine_processing_latency_seconds_count"
+                    sample.name
+                    == "gabriel_engine_processing_latency_seconds_count"
                     and sample.labels.get("engine_id") == "Engine-0"
                 ):
+                    found = True
                     init_val = (
                         find_value(
                             metrics_before,
-                            "engine_processing_latency_seconds_count",
+                            "gabriel_engine_processing_latency_seconds_count",
                             "engine_id",
                             "Engine-0",
                         )
                         or 0
                     )
                     assert sample.value - init_val == 5
-        elif metric.name == "source_queue_length":
+            assert found
+        elif metric.name == "gabriel_producer_queue_length":
+            assert len(metric.samples) == 0
+        elif metric.name == "gabriel_producer_inputs_received":
+            found = False
+            logger.info(metric)
             for sample in metric.samples:
-                if sample.name == "source_queue_length":
-                    assert sample.value == 0
-        elif metric.name == "input_inter_arrival_time_seconds":
+                if sample.name == "gabriel_producer_inputs_received_total":
+                    found = True
+                    assert sample.value == 5
+            assert found
+        elif metric.name == "gabriel_engine_inputs_received":
             found = False
             for sample in metric.samples:
-                if (
-                    sample.name == "input_inter_arrival_time_seconds_count"
-                    and sample.labels.get("source_id")
-                    == input_producer[0].source_id
-                ):
+                if sample.name == "gabriel_engine_inputs_received_total":
                     found = True
-                    init_val = (
-                        find_value(
-                            metrics_before,
-                            "input_inter_arrival_time_seconds_count",
-                            "source_id",
-                            input_producer[0].source_id,
-                        )
-                        or 0
-                    )
-                    assert (
-                        sample.value - init_val == 4
-                    )  # at least 4 intervals for 5 inputs
+                    assert sample.value == 5
+            assert found
+        elif metric.name == "gabriel_engine_inputs_processed":
+            found = False
+            for sample in metric.samples:
+                if sample.name == "gabriel_engine_inputs_processed_total":
+                    found = True
+                    assert sample.value == 5
             assert found
 
 

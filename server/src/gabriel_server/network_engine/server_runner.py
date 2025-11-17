@@ -9,7 +9,7 @@ from typing import Optional, Union
 import zmq
 import zmq.asyncio
 from gabriel_protocol import gabriel_pb2
-from prometheus_client import Gauge, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gabriel_server import cognitive_engine, network_engine
 from gabriel_server.websocket_server import WebsocketServer
@@ -22,28 +22,41 @@ logger = logging.getLogger(__name__)
 
 Metadata = namedtuple(
     "Metadata",
-    ["frame_id", "source_id", "client_address", "target_engine_ids"],
+    ["frame_id", "producer_id", "client_address", "target_engine_ids"],
 )
 
 
 MetadataPayload = namedtuple("MetadataPayload", ["metadata", "payload"])
 
 ENGINE_LATENCY = Histogram(
-    "engine_processing_latency_seconds",
+    "gabriel_engine_processing_latency_seconds",
     "End-to-end engine processing latency",
-    ["engine"],
+    ["engine_id"],
 )
 
-SOURCE_QUEUE_LENGTH = Gauge(
-    "source_queue_length",
-    "Length of each source queue",
-    ["source_id"],
+PRODUCER_QUEUE_LENGTH = Gauge(
+    "gabriel_producer_queue_length",
+    "Length of each producer queue",
+    ["producer_id"],
 )
 
-INPUT_INTER_ARRIVAL_TIME = Histogram(
-    "input_inter_arrival_time_seconds",
-    "Time between arrivals of inputs from the same source",
-    ["source_id"],
+CLIENT_INPUTS_RECEIVED_TOTAL = Counter(
+    "gabriel_producer_inputs_received_total",
+    "Total number of client inputs received by the Gabriel server from a "
+    "producer",
+    ["producer_id"],
+)
+
+ENGINE_INPUTS_RECEIVED_TOTAL = Counter(
+    "gabriel_engine_inputs_received_total",
+    "Total number of client inputs received that target an engine",
+    ["engine_id"],
+)
+
+ENGINE_INPUTS_PROCESSED_TOTAL = Counter(
+    "gabriel_engine_inputs_processed_total",
+    "Total number of inputs processed by an engine",
+    ["engine_id"],
 )
 
 
@@ -149,8 +162,8 @@ class _Server:
     ):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
-        # Mapping from source id to source info
-        self._source_infos: dict[str, _SourceInfo] = {}
+        # Mapping from producer id to producer info
+        self._producer_infos: dict[str, _ProducerInfo] = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
         self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
@@ -205,10 +218,10 @@ class _Server:
             time.perf_counter() - engine_worker.get_last_payload_send_time()
         )
         logger.info(
-            f"Engine {engine_worker.get_engine_name()} processing latency: "
+            f"Engine {engine_worker.get_engine_id()} processing latency: "
             f"{processing_latency:.2f} seconds"
         )
-        ENGINE_LATENCY.labels(engine=engine_worker.get_engine_name()).observe(
+        ENGINE_LATENCY.labels(engine_id=engine_worker.get_engine_id()).observe(
             processing_latency
         )
 
@@ -220,7 +233,7 @@ class _Server:
             )
         except (asyncio.TimeoutError, TimeoutError):
             return
-        logger.debug(f"Received message from engine at address {address}")
+        logger.debug(f"Received message from engine {address}")
 
         engine_worker = self._engine_workers.get(address)
         if payload == network_engine.HEARTBEAT:
@@ -242,36 +255,43 @@ class _Server:
 
         await self._calculate_engine_metrics(engine_worker)
         logger.debug(
-            f"Received result from engine {engine_worker.get_engine_name()}"
+            f"Received result from engine {engine_worker.get_engine_id()}"
         )
         engine_worker.set_last_received(time.time())
 
-        result_wrapper = from_standalone_engine.result_wrapper
+        ENGINE_INPUTS_PROCESSED_TOTAL.labels(
+            engine_id=engine_worker.get_engine_id()
+        ).inc()
+
+        result = from_standalone_engine.result
         engine_worker_metadata = engine_worker.get_current_input_metadata()
-        source_info = self._source_infos.get(engine_worker_metadata.source_id)
-        if source_info is None:
-            logger.error("Source info not found")
+        producer_info = self._producer_infos.get(
+            engine_worker_metadata.producer_id
+        )
+        if producer_info is None:
+            logger.error("Producer info not found")
             return
 
         # Check if the result corresponds to the latest input that was
-        # available for this engine from this source
-        latest_input = source_info.latest_input
-        # Check if this engine is the first to finish processing this input
+        # available for this engine from this producer
+        latest_input = producer_info.latest_input_sent_to_engine
+        # Check if this engine is the first to finish processing the latest
+        # input. If so, it should get the next input from the queue.
         if (
             latest_input is not None
             and latest_input.metadata == engine_worker_metadata
         ):
             # Send response to client
             logger.debug(
-                f"Sending result from engine {engine_worker.get_engine_name()}"
+                f"Sending result from engine {engine_worker.get_engine_id()}"
                 f" to client {engine_worker_metadata.client_address}"
             )
-            await self._server.send_result_wrapper(
+            await self._server.send_result(
                 engine_worker_metadata.client_address,
-                source_info.get_name(),
+                producer_info.get_name(),
                 engine_worker_metadata.frame_id,
-                engine_worker.get_engine_name(),
-                result_wrapper,
+                engine_worker.get_engine_id(),
+                result,
                 return_token=True,
             )
 
@@ -280,26 +300,26 @@ class _Server:
             return
 
         if engine_worker.get_all_responses_required():
-            await self._server.send_result_wrapper(
+            await self._server.send_result(
                 engine_worker_metadata.client_address,
-                source_info.get_name(),
+                producer_info.get_name(),
                 engine_worker_metadata.frame_id,
-                engine_worker.get_engine_name(),
-                result_wrapper,
+                engine_worker.get_engine_id(),
+                result,
                 return_token=False,
             )
 
         if latest_input is None:
             # There is no new input to give the worker
             logger.debug(
-                f"No new input for engine {engine_worker.get_engine_name()}"
+                f"No new input for engine {engine_worker.get_engine_id()}"
             )
             engine_worker.clear_current_input_metadata()
         else:
             # Give the worker the latest input
             logger.debug(
                 f"Sending latest input to engine "
-                f"{engine_worker.get_engine_name()}"
+                f"{engine_worker.get_engine_id()}"
             )
             await engine_worker.send_payload(latest_input)
 
@@ -312,14 +332,14 @@ class _Server:
             return
 
         welcome = from_standalone_engine.welcome
-        engine_name = welcome.engine_name
-        logger.info(f"New engine {engine_name} connected")
+        engine_id = welcome.engine_id
+        logger.info(f"New engine {engine_id} connected")
 
         all_responses_required = welcome.all_responses_required
         engine_worker = _EngineWorker(
             self._zmq_socket,
             address,
-            engine_name,
+            engine_id,
             all_responses_required,
             self._size_for_queues,
         )
@@ -347,14 +367,17 @@ class _Server:
                 continue
 
             logger.info(
-                f"Engine {engine_worker.get_engine_name()} offline for "
+                f"Engine {engine_worker.get_engine_id()} offline for "
                 f"{time_since_last_received:.2f} seconds"
             )
 
             logger.info(
                 f"Lost connection to engine worker "
-                f"{engine_worker.get_engine_name()}"
+                f"{engine_worker.get_engine_id()}"
             )
+
+            ENGINE_INPUTS_RECEIVED_TOTAL.remove(engine_worker.get_engine_id())
+            ENGINE_INPUTS_PROCESSED_TOTAL.remove(engine_worker.get_engine_id())
 
             current_input_metadata = engine_worker.get_current_input_metadata()
 
@@ -363,14 +386,14 @@ class _Server:
                 del self._engine_workers[address]
                 return
 
-            source_info = self._source_infos.get(
-                current_input_metadata.source_id
+            producer_info = self._producer_infos.get(
+                current_input_metadata.producer_id
             )
-            if source_info is None:
+            if producer_info is None:
                 logger.error("Source info not found")
                 return
 
-            latest_input = source_info.latest_input
+            latest_input = producer_info.latest_input_sent_to_engine
             current_input_metadata = engine_worker.get_current_input_metadata()
             if (
                 latest_input is not None
@@ -381,9 +404,9 @@ class _Server:
                 result_wrapper = cognitive_engine.create_result_wrapper(status)
                 await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
-                    source_info.get_name(),
+                    producer_info.get_name(),
                     current_input_metadata.frame_id,
-                    engine_worker.get_engine_name(),
+                    engine_worker.get_engine_id(),
                     result_wrapper,
                     return_token=True,
                 )
@@ -393,17 +416,17 @@ class _Server:
     async def _send_to_engine(self, from_client, client_address):
         logger.debug(
             f"Received input from client {client_address} with source ID "
-            f"{from_client.source_id} and frame id {from_client.frame_id}; "
+            f"{from_client.producer_id} and frame id {from_client.frame_id}; "
             f"target engines: {from_client.target_engine_ids}"
         )
-        if from_client.source_id not in self._source_infos:
-            self._source_infos[from_client.source_id] = _SourceInfo(
-                from_client.source_id,
+        if from_client.producer_id not in self._producer_infos:
+            self._producer_infos[from_client.producer_id] = _ProducerInfo(
+                from_client.producer_id,
                 self._engine_workers,
                 self._size_for_queues,
             )
-        source_info = self._source_infos[from_client.source_id]
-        return await source_info.process_input_from_client(
+        producer_info = self._producer_infos[from_client.producer_id]
+        return await producer_info.process_input_from_client(
             from_client, client_address
         )
 
@@ -418,13 +441,13 @@ class _EngineWorker:
         self,
         zmq_socket,
         address,
-        engine_name,
+        engine_id,
         all_responses_required,
         fresh_inputs_queue_size,
     ):
         self._zmq_socket = zmq_socket
         self._address = address
-        self._engine_name = engine_name
+        self._engine_id = engine_id
         self._all_responses_required = all_responses_required
         # Last time a message was sent to the engine, including heartbeats
         self._last_received = 0
@@ -433,13 +456,13 @@ class _EngineWorker:
         self._current_input_metadata = None
         # Maximum size for each source queue
         self._size_for_queues = fresh_inputs_queue_size
-        self._sources = deque()
+        self._producers = deque()
 
     def get_address(self):
         return self._address
 
-    def get_engine_name(self):
-        return self._engine_name
+    def get_engine_id(self):
+        return self._engine_id
 
     def get_current_input_metadata(self):
         return self._current_input_metadata
@@ -451,7 +474,7 @@ class _EngineWorker:
         self._current_input_metadata = None
 
     def record_heatbeat(self):
-        logger.debug(f"Received heartbeat from engine {self._engine_name}")
+        logger.debug(f"Received heartbeat from engine {self._engine_id}")
         self._awaiting_heartbeat_response = False
         self._last_received = time.time()
 
@@ -476,9 +499,9 @@ class _EngineWorker:
         await self._zmq_socket.send_multipart([self._address, b"", payload])
         if not heartbeat:
             self._last_payload_send_time = time.perf_counter()
-            logger.debug(f"Sent payload to engine {self._engine_name}")
+            logger.debug(f"Sent payload to engine {self._engine_id}")
         else:
-            logger.debug(f"Sent heartbeat to engine {self._engine_name}")
+            logger.debug(f"Sent heartbeat to engine {self._engine_id}")
 
     async def send_payload(self, metadata_payload):
         self._current_input_metadata = metadata_payload.metadata
@@ -486,52 +509,53 @@ class _EngineWorker:
 
     async def send_next_input(self):
         """Send next input from queue."""
-        for _ in range(len(self._sources)):
-            source_info = self._sources.popleft()
-            self._sources.append(source_info)
-            metadata_payload = await source_info.get_input_from_queue(
-                self._engine_name
+        for _ in range(len(self._producers)):
+            producer_info = self._producers.popleft()
+            self._producers.append(producer_info)
+            metadata_payload = await producer_info.get_input_from_queue(
+                self._engine_id
             )
             if metadata_payload is not None:
                 await self.send_payload(metadata_payload)
                 return
         self.clear_current_input_metadata()
 
-    async def add_source(self, source_info):
-        if source_info in self._sources:
+    async def add_producer(self, producer_info):
+        if producer_info in self._producers:
             return
-        self._sources.append(source_info)
+        self._producers.append(producer_info)
 
-    async def remove_source(self, source_info):
-        if source_info in self._sources:
-            self._sources.remove(source_info)
+    async def remove_producer(self, producer_info):
+        if producer_info in self._producers:
+            self._producers.remove(producer_info)
 
 
-class _SourceInfo:
+class _ProducerInfo:
     """Information about a client input producer.
 
     A client input producer is a source of input for a set of cognitive
     engines.
     """
 
-    def __init__(self, source_id, engine_workers, size_for_queues):
-        self._source_id = source_id
+    def __init__(self, producer_id, engine_workers, size_for_queues):
+        self._producer_id = producer_id
         self._engine_workers = engine_workers
-        self._last_input_arrival_time = None
         self._input_queue = deque(maxlen=size_for_queues)
         self._size_for_queues = size_for_queues
-        self.latest_input = None
+        # The latest input from this source that was sent to at least one
+        # engine.
+        self.latest_input_sent_to_engine = None
         self.target_engines = None
 
     def get_name(self):
-        return self._source_id
+        return self._producer_id
 
     async def process_input_from_client(
         self, from_client: gabriel_pb2.FromClient, client_address: str
     ):
         """Process input received from a client.
 
-        Send it to the targetted engine workers.
+        Send it to the targeted engine workers.
 
         Args:
             from_client: The client input to process.
@@ -539,45 +563,51 @@ class _SourceInfo:
         """
         logger.debug(
             f"Processing input from client {client_address} with source ID "
-            f"{from_client.source_id} and frame id {from_client.frame_id}; "
+            f"{from_client.producer_id} and frame id {from_client.frame_id}; "
             f"target engines: {from_client.target_engine_ids}"
         )
 
-        if self._last_input_arrival_time is None:
-            self._last_input_arrival_time = time.perf_counter()
-        else:
-            current_time = time.perf_counter()
-            inter_arrival_time = current_time - self._last_input_arrival_time
-            INPUT_INTER_ARRIVAL_TIME.labels(source_id=self._source_id).observe(
-                inter_arrival_time
-            )
-            self._last_input_arrival_time = current_time
+        logger.info("Incremented counter")
+        CLIENT_INPUTS_RECEIVED_TOTAL.labels(
+            producer_id=self._producer_id
+        ).inc()
 
         metadata = Metadata(
             frame_id=from_client.frame_id,
-            source_id=self._source_id,
+            producer_id=self._producer_id,
             client_address=client_address,
             target_engine_ids=from_client.target_engine_ids,
         )
-        payload = from_client.input_frame.SerializeToString()
+        payload = from_client.SerializeToString()
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
 
         target_engines = set()
         for engine_worker in self._engine_workers.values():
-            if (
-                engine_worker.get_engine_name()
-                in from_client.target_engine_ids
-            ):
+            if engine_worker.get_engine_id() in from_client.target_engine_ids:
                 target_engines.add(engine_worker)
+                ENGINE_INPUTS_RECEIVED_TOTAL.labels(
+                    engine_id=engine_worker.get_engine_id()
+                ).inc()
 
         if not target_engines:
+            available_engine_ids = [
+                worker.get_engine_id()
+                for worker in self._engine_workers.values()
+            ]
+
             # TODO: better error handling
             logger.error(
-                f"No target engines found for {self._engine_workers.values()}"
+                f"No target engines found for {from_client.target_engine_ids};"
+                f" {available_engine_ids=}"
             )
-            return False
+            return (
+                False,
+                f"No target engines found. Specified target: "
+                f"{from_client.target_engine_ids}. Available engines: "
+                f"{available_engine_ids}",
+            )
 
-        # Remove this source from any engines that are no longer targetted
+        # Remove this source from any engines that are no longer targeted
         if self.target_engines != target_engines:
             removed_targets = (
                 self.target_engines - target_engines
@@ -587,17 +617,16 @@ class _SourceInfo:
             for engine in removed_targets:
                 engine_worker = self._engine_workers.get(engine)
                 if engine_worker:
-                    engine_worker.remove_source(self)
+                    engine_worker.remove_producer(self)
             self.target_engines = target_engines
 
         logger.debug(
-            f"Targetting engines "
-            f"{[e.get_engine_name() for e in target_engines]}"
+            f"Targeting engines {[e.get_engine_id() for e in target_engines]}"
         )
 
         all_engines_busy = True
         for engine_worker in set(target_engines):
-            await engine_worker.add_source(self)
+            await engine_worker.add_producer(self)
             # If the engine is idle, send the input immediately
             if engine_worker.get_current_input_metadata() is None:
                 all_engines_busy = False
@@ -605,25 +634,37 @@ class _SourceInfo:
 
         if all_engines_busy:
             await self.add_input_to_queue(metadata_payload)
-            return True
+            return (True, "")
 
-        self.latest_input = metadata_payload
-        return True
+        # Latest input is only set if the input was sent to at least one
+        # engine.
+        self.latest_input_sent_to_engine = metadata_payload
+        return (True, "")
 
     async def add_input_to_queue(self, metadata_payload):
         # Add input to the queue, dropping the oldest input if the queue is
         # full
+        if len(self._input_queue) == self._input_queue.maxlen:
+            logger.debug(
+                f"Input queue for {self._producer_id} is full, dropping "
+                f"oldest input"
+            )
         self._input_queue.append(metadata_payload)
-        SOURCE_QUEUE_LENGTH.labels(source_id=self._source_id).set(
+        PRODUCER_QUEUE_LENGTH.labels(producer_id=self._producer_id).set(
             len(self._input_queue)
         )
 
-    async def get_input_from_queue(self, engine_name):
-        logger.debug(f"Getting input from queue for engine {engine_name}")
+    async def get_input_from_queue(self, engine_id):
+        logger.debug(
+            f"Getting input from queue for engine {engine_id} and producer id "
+            f"{self._producer_id}"
+        )
         if not self._input_queue:
-            logger.debug("Input queue is empty")
-            self.latest_input = None
+            logger.debug(
+                f"Input queue is empty for producer id {self._producer_id}"
+            )
+            self.latest_input_sent_to_engine = None
             return None
         metadata_payload = self._input_queue[0]
-        self.latest_input = metadata_payload
+        self.latest_input_sent_to_engine = metadata_payload
         return self._input_queue.popleft()

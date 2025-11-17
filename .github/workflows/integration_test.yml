@@ -31,7 +31,6 @@ jobs:
           pip install pytest-timeout
           pip install pytest-retry
           pip install pre-commit
-          pip install prometheus-client
 
       - name: Run pre-commit hooks
         run: |

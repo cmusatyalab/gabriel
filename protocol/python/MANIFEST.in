@@ -1,1 +1,2 @@
 include LICENSE
+include src/gabriel_protocol/gabriel.proto

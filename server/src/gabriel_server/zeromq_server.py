@@ -11,7 +11,6 @@ from collections.abc import Callable
 import zmq
 import zmq.asyncio
 from gabriel_protocol import gabriel_pb2
-from gabriel_protocol.gabriel_pb2 import ResultWrapper
 from google.protobuf.message import DecodeError
 
 from gabriel_server.gabriel_server import GabrielServer
@@ -36,21 +35,19 @@ class ZeroMQServer(GabrielServer):
 
     def __init__(
         self,
-        num_tokens_per_source: int,
-        engine_cb: Callable[
-            [gabriel_pb2.InputFrame], gabriel_pb2.ResultWrapper
-        ],
+        num_tokens_per_producer: int,
+        engine_cb: Callable[[gabriel_pb2.InputFrame], gabriel_pb2.Result],
     ):
         """Initialize the ZeroMQ server.
 
         Args:
-            num_tokens_per_source (int):
-                Number of tokens allocated to each input source
+            num_tokens_per_producer (int):
+                Number of tokens allocated to each input producer
             engine_cb:
                 A callback function that processes an InputFrame and returns a
                 ResultWrapper
         """
-        super().__init__(num_tokens_per_source, engine_cb)
+        super().__init__(num_tokens_per_producer, engine_cb)
         self._is_running = False
         self._ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
@@ -137,7 +134,6 @@ class ZeroMQServer(GabrielServer):
         while self._is_running and not self._simulate_disconnection:
             # Listen for client messages
             try:
-                logger.debug("Waiting for message from client")
                 address, raw_input = await self._sock.recv_multipart()
             except (zmq.ZMQError, ValueError) as error:
                 logging.error(
@@ -155,7 +151,7 @@ class ZeroMQServer(GabrielServer):
                 task = asyncio.create_task(self._consumer(address))
                 task.add_done_callback(handle_task_result)
                 client = self._Client(
-                    tokens_for_source={},
+                    tokens_for_producer={},
                     inputs=asyncio.Queue(),
                     task=task,
                     websocket=None,
@@ -164,8 +160,8 @@ class ZeroMQServer(GabrielServer):
 
                 # Send client welcome message
                 to_client = gabriel_pb2.ToClient()
-                to_client.welcome.num_tokens_per_source = (
-                    self._num_tokens_per_source
+                to_client.welcome.num_tokens_per_producer = (
+                    self._num_tokens_per_producer
                 )
                 await self._sock.send_multipart(
                     [address, to_client.SerializeToString()]
@@ -220,27 +216,30 @@ class ZeroMQServer(GabrielServer):
                 )
                 continue
 
-            if from_client.WhichOneof("req_type") == "input":
-                input = from_client.input
-            else:
-                logger.error(f"Unexpected request type from client {address}")
-                continue
-
             # Consume input
-            status = await self._consumer_helper(client, address, input)
+            status, status_msg = await self._consumer_helper(
+                client, address, from_client
+            )
 
-            if status == ResultWrapper.Status.SUCCESS:
-                logger.debug("Consumed input from %s successfully", address)
-                client.tokens_for_source[input.source_id] -= 1
+            if status == gabriel_pb2.StatusCode.SUCCESS:
+                logger.debug(
+                    "Consumed input from client %s successfully", address
+                )
+                client.tokens_for_producer[from_client.producer_id] -= 1
                 continue
 
             # Send error message
-            logger.error(f"Sending error message to client {address}")
+            status_name = gabriel_pb2.StatusCode.Name(status)
+            logger.error(
+                f"Sending error message to client {address}. "
+                f"{status_name}: {status_msg}"
+            )
             to_client = gabriel_pb2.ToClient()
-            to_client.response.source_id = input.source_id
-            to_client.response.frame_id = input.frame_id
-            to_client.response.return_token = True
-            to_client.response.result_wrapper.status = status
+            to_client.result_wrapper.producer_id = from_client.producer_id
+            to_client.result_wrapper.return_token = True
+            to_client.result_wrapper.result.status.code = status
+            to_client.result_wrapper.result.status.message = status_msg
+            to_client.result_wrapper.result.frame_id = from_client.frame_id
             await self._sock.send_multipart(
                 [address, to_client.SerializeToString()]
             )

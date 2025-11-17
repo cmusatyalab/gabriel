@@ -10,8 +10,12 @@ from collections import namedtuple
 from collections.abc import Callable
 from typing import Union
 
-from gabriel_protocol import gabriel_pb2
-from gabriel_protocol.gabriel_pb2 import ResultWrapper
+from gabriel_protocol.gabriel_pb2 import (
+    FromClient,
+    Result,
+    StatusCode,
+    ToClient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,27 +29,25 @@ class GabrielServer(ABC):
 
     def __init__(
         self,
-        num_tokens_per_source: int,
-        engine_cb: Callable[
-            [gabriel_pb2.FromClient], gabriel_pb2.ResultWrapper
-        ],
+        num_tokens_per_producer: int,
+        engine_cb: Callable[[FromClient], ToClient.ResultWrapper],
     ):
         """Initialize the Gabriel server.
 
         Args:
-            num_tokens_per_source (int):
-                The number of tokens available for each source
+            num_tokens_per_producer (int):
+                The number of tokens available for each producer
             engine_cb:
                 Callback invoked for each input received from a client.
         """
-        # Metadata for each client. 'tokens_for_source' is a dictionary that
-        # stores the tokens available for each source. 'task' is an async task
-        # that consumes inputs from 'inputs' for each client. 'websocket' is
-        # the Websockets handler for this client if using Websockets.
+        # Metadata for each client. 'tokens_for_producer' is a dictionary that
+        # stores the tokens available for each producer. 'task' is an async
+        # task that consumes inputs from 'inputs' for each client. 'websocket'
+        # is the Websockets handler for this client if using Websockets.
         self._Client = namedtuple(
-            "_Client", ["tokens_for_source", "inputs", "task", "websocket"]
+            "_Client", ["tokens_for_producer", "inputs", "task", "websocket"]
         )
-        self._num_tokens_per_source = num_tokens_per_source
+        self._num_tokens_per_producer = num_tokens_per_producer
         # The clients connected to the server
         self._clients = {}
         # Indicates that the server start up is finished
@@ -102,26 +104,25 @@ class GabrielServer(ABC):
         """Waits for the Gabriel server to start."""
         await self._start_event.wait()
 
-    async def send_result_wrapper(
+    async def send_result(
         self,
         address: str,
-        source_id: str,
+        producer_id: str,
         frame_id: int,
-        engine_name: str,
-        result_wrapper: gabriel_pb2.ResultWrapper,
+        engine_id: str,
+        result: Result,
         return_token: bool,
     ) -> bool:
         """Send result to client at address.
 
         Args:
             address (str): The identifier of the client to send the result to
-            source_id (str):
-                The id of the source that the result corresponds to
+            producer_id (str):
+                The id of the producer that the result corresponds to
             frame_id (int):
                 The frame id of the input that the result corresponds to
-            engine_name (str): The name of the engine that generated the result
-            result_wrapper (gabriel_pb2.ResultWrapper):
-                The result payload to send to the client
+            engine_id (str): The id of the engine that generated the result
+            result (Result): The result payload to send to the client
             return_token (bool): Whether to return a token to the client
 
         Returns True if send succeeded.
@@ -131,18 +132,18 @@ class GabrielServer(ABC):
             logger.warning("Send request to invalid address: %s", address)
             return False
 
-        if source_id not in client.tokens_for_source:
-            logger.warning("Send request with invalid source: %s", source_id)
+        if producer_id not in client.tokens_for_producer:
+            logger.warning(
+                "Send request with invalid producer: %s", producer_id
+            )
             # Still send so client gets back token
         elif return_token:
-            client.tokens_for_source[source_id] += 1
+            client.tokens_for_producer[producer_id] += 1
 
-        to_client = gabriel_pb2.ToClient()
-        to_client.response.source_id = source_id
-        to_client.response.target_engine_id = engine_name
-        to_client.response.frame_id = frame_id
-        to_client.response.return_token = return_token
-        to_client.response.result_wrapper.CopyFrom(result_wrapper)
+        to_client = ToClient()
+        to_client.result_wrapper.producer_id = producer_id
+        to_client.result_wrapper.return_token = return_token
+        to_client.result_wrapper.result.CopyFrom(result)
 
         return await self._send_via_transport(
             address, to_client.SerializeToString()
@@ -187,22 +188,24 @@ class GabrielServer(ABC):
             address: The identifier of the client
             from_client: A FromClient protobuf message containing the input
         """
-        source_id = from_client.source_id
+        producer_id = from_client.producer_id
 
-        if source_id not in client.tokens_for_source:
-            client.tokens_for_source[source_id] = self._num_tokens_per_source
-
-        if client.tokens_for_source[source_id] < 1:
-            logger.error(
-                f"Client {address} sending from source {source_id} without "
-                f"tokens"
+        if producer_id not in client.tokens_for_producer:
+            client.tokens_for_producer[producer_id] = (
+                self._num_tokens_per_producer
             )
-            return ResultWrapper.Status.NO_TOKENS
+
+        if client.tokens_for_producer[producer_id] < 1:
+            logger.error(
+                f"Client {address} sending from producer {producer_id} "
+                f"without tokens"
+            )
+            return (StatusCode.NO_TOKENS, "No tokens for producer")
 
         logger.debug(f"Sending input from client {address} to engine")
-        send_success = await self._engine_cb(from_client, address)
+        send_success, error_msg = await self._engine_cb(from_client, address)
         if send_success:
-            return ResultWrapper.Status.SUCCESS
+            return (StatusCode.SUCCESS, "")
         else:
-            logger.error(f"Server dropped frame from: {source_id}")
-            return gabriel_pb2.ResultWrapper.Status.SERVER_DROPPED_FRAME
+            logger.error(f"Server dropped frame from: {producer_id}")
+            return (StatusCode.SERVER_DROPPED_FRAME, error_msg)

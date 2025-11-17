@@ -36,7 +36,7 @@ class WebsocketClient(GabrielClient):
         self,
         server_endpoint: str,
         input_producers: list[InputProducer],
-        consumer: Callable[[gabriel_pb2.ResultWrapper], None],
+        consumer: Callable[[gabriel_pb2.Result], None],
     ):
         """Initialize the client.
 
@@ -47,7 +47,7 @@ class WebsocketClient(GabrielClient):
         input_producers (List[InputProducer]):
             A list of instances of InputProducer for the inputs
             produced by this client
-        consumer (Callable[[gabriel_pb2.ResultWrapper], None]):
+        consumer (Callable[[gabriel_pb2.Result], None]):
             Callback for results from server
 
         """
@@ -106,30 +106,27 @@ class WebsocketClient(GabrielClient):
 
             if to_client.HasField("welcome"):
                 self._process_welcome(to_client.welcome)
-            elif to_client.HasField("response"):
-                self._process_response(to_client.response)
+            elif to_client.HasField("result_wrapper"):
+                self._process_response(to_client.result_wrapper)
             else:
                 raise Exception("Empty to_client message")
 
     def _process_welcome(self, welcome):
-        self._num_tokens_per_source = welcome.num_tokens_per_source
+        self._num_tokens_per_producer = welcome.num_tokens_per_producer
         self._welcome_event.set()
 
-    def _process_response(self, response):
-        result_wrapper = response.result_wrapper
-        if result_wrapper.status == gabriel_pb2.ResultWrapper.SUCCESS:
-            self.consumer(result_wrapper)
-        elif (
-            result_wrapper.status
-            == gabriel_pb2.ResultWrapper.NO_ENGINE_FOR_SOURCE
-        ):
-            raise Exception("No engine for source")
+    def _process_response(self, result_wrapper):
+        result = result_wrapper.result
+        if result.status.code == gabriel_pb2.StatusCode.SUCCESS:
+            self.consumer(result_wrapper.result)
+        elif result.status.code == gabriel_pb2.StatusCode.NO_ENGINE_FOR_INPUT:
+            raise Exception("No engine for input")
         else:
-            status = result_wrapper.Status.Name(result_wrapper.status)
+            status = gabriel_pb2.StatusCode.Name(result.status.code)
             logger.error("Output status was: %s", status)
 
-        if response.return_token:
-            self._tokens[response.source_id].return_token()
+        if result_wrapper.return_token:
+            self._tokens[result_wrapper.producer_id].return_token()
 
     async def _producer_handler(self, producer: InputProducer):
         """Generate inputs and sends them to the server.
@@ -144,8 +141,8 @@ class WebsocketClient(GabrielClient):
 
         """
         await self._welcome_event.wait()
-        token_pool = TokenPool(self._num_tokens_per_source)
-        self._tokens[producer.source_id] = token_pool
+        token_pool = TokenPool(self._num_tokens_per_producer)
+        self._tokens[producer.producer_id] = token_pool
         frame_id = 1
 
         while self._running:
@@ -157,16 +154,17 @@ class WebsocketClient(GabrielClient):
                 logger.info("Received None from producer")
                 continue
 
-            input = gabriel_pb2.ClientInput()
-            input.frame_id = frame_id
-            frame_id += 1
-            input.source_id = producer.source_id
-            input.target_engine_ids.extend(producer.get_target_engines())
-            input.input_frame.CopyFrom(input_frame)
-
             from_client = gabriel_pb2.FromClient()
-            from_client.input.CopyFrom(input)
+            from_client.frame_id = frame_id
+            frame_id += 1
+            from_client.producer_id = producer.producer_id
+            from_client.target_engine_ids.extend(producer.get_target_engines())
+            from_client.input_frame.CopyFrom(input_frame)
 
+            # Send input to server
+            logger.debug(
+                f"Sending input to server; producer={producer.producer_id}"
+            )
             try:
                 await self._send_from_client(from_client)
             except websockets.exceptions.ConnectionClosed:
