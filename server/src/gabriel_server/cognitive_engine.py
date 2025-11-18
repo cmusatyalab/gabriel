@@ -12,8 +12,6 @@ class Result:
     """A result returned by a cognitive engine."""
 
     status: gabriel_pb2.Status
-    # Only populated if status.code == SUCCESS
-    payload_type: gabriel_pb2.PayloadType
     payload: Optional[Any] = None
 
 

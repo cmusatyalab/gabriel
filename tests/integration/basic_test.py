@@ -57,7 +57,7 @@ class Engine(cognitive_engine.Engine, threading.Thread):
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS
 
-        return Result(status, gabriel_pb2.PayloadType.TEXT, "hello")
+        return Result(status, "hello")
 
     def run(self):
         """Run the engine runner."""
@@ -255,6 +255,7 @@ def get_consumer(response_state):
         logger.info(f"Status is {result.status.code}")
         logger.info(f"Produced by {result.target_engine_id}")
         response_state["received"] = True
+        response_state["result"] = result
 
     return consumer
 
@@ -309,6 +310,14 @@ async def test_zeromq_client(
     logger.info("Client task is cancelled")
 
     assert response_state["received"]
+
+    result = response_state["result"]
+
+    assert result.status.code == gabriel_pb2.StatusCode.SUCCESS
+    field_set = result.WhichOneof("payload")
+    assert field_set
+    assert field_set == "string_result"
+    assert result.string_result == "hello"
 
 
 def get_multiple_engine_consumer(response_state):
@@ -832,4 +841,89 @@ async def test_empty_input_frame(
     logger.info("Client task is cancelled")
 
     assert "Input producer produced empty frame" in caplog.text
+    assert not response_state["received"]
+
+
+def bad_handle_none(self, input_frame):
+    """An engine handler that returns None."""
+    return None
+
+
+def bad_handle_status(self, input_frame):
+    """An engine handler that returns a None status."""
+    status = None
+    return Result(status, "hello")
+
+
+@pytest.mark.asyncio
+async def test_engine_return_none(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    monkeypatch,
+    caplog,
+):
+    """Test for error when an engine returns None."""
+    response_state.clear()
+    response_state["received"] = False
+
+    monkeypatch.setattr(Engine, "handle", bad_handle_none)
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        lambda x: x,
+    )
+    task = asyncio.create_task(client.launch_async())
+    await asyncio.sleep(1)
+
+    task.cancel()
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client task is cancelled")
+
+    assert "Incorrect type returned by engine" in caplog.text
+    assert not response_state["received"]
+
+
+@pytest.mark.asyncio
+async def test_engine_return_bad_status(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    monkeypatch,
+    caplog,
+):
+    """Test for error when an engine returns an invalid status."""
+    response_state.clear()
+    response_state["received"] = False
+
+    monkeypatch.setattr(Engine, "handle", bad_handle_status)
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        lambda x: x,
+    )
+    task = asyncio.create_task(client.launch_async())
+    await asyncio.sleep(1)
+
+    task.cancel()
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client task is cancelled")
+
+    assert "Return status not populated correctly by engine" in caplog.text
     assert not response_state["received"]
