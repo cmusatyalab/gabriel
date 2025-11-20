@@ -68,132 +68,122 @@ class EngineRunner:
         """Connects to the server and starts listening to messages."""
         context = zmq.asyncio.Context()
 
-        while self.running and self.request_retries > 0:
-            socket = context.socket(zmq.REQ)
-            socket.connect(self.server_address)
-            from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
-            from_standalone_engine.welcome.engine_id = self.engine_id
-            from_standalone_engine.welcome.all_responses_required = (
-                self.all_responses_required
-            )
-            await socket.send(from_standalone_engine.SerializeToString())
-            logger.info(
-                f"{self.engine_id} sent welcome message to server "
-                f"{self.server_address}"
-            )
-
-            while self.running:
-                if await socket.poll(self.timeout) == 0:
-                    logger.warning(
-                        f"{self.engine_id}: no response from server"
-                    )
+        try:
+            while self.running and self.request_retries > 0:
+                socket = context.socket(zmq.REQ)
+                try:
                     socket.setsockopt(zmq.LINGER, 0)
+                    socket.connect(self.server_address)
+                    await self.engine_loop(socket)
+                finally:
                     socket.close()
-                    self.request_retries -= 1
-                    break
+        finally:
+            context.term()
 
-                message_from_server = await socket.recv()
-                if message_from_server == network_engine.HEARTBEAT:
-                    logger.debug(
-                        f"{self.engine_id} received heartbeat from server"
-                    )
-                    await socket.send(network_engine.HEARTBEAT)
-                    continue
-
-                logger.debug(f"{self.engine_id} received input from server")
-                from_client = gabriel_pb2.FromClient()
-                from_client.ParseFromString(message_from_server)
-                input_frame = from_client.input_frame
-
-                # Send the frame to the engine handler.
-                result = self.engine.handle(input_frame)
-
-                result_proto = gabriel_pb2.Result()
-                result_proto.target_engine_id = self.engine_id
-                result_proto.frame_id = from_client.frame_id
-
-                if not isinstance(result, cognitive_engine.Result):
-                    error_msg = (
-                        f"Incorrect type returned by engine. "
-                        f"Expected a value of type cognitive_engine.Result, "
-                        f"found {type(result)}"
-                    )
-                    logger.error(error_msg)
-                    result_proto.status.code = (
-                        gabriel_pb2.StatusCode.ENGINE_ERROR
-                    )
-                    result_proto.status.message = error_msg
-                    await socket.send(
-                        create_engine_result_payload(result_proto)
-                    )
-                    return
-
-                if not isinstance(result.status, gabriel_pb2.Status):
-                    error_msg = (
-                        f"Return status not populated correctly by engine. "
-                        f"Expected a value of type gabriel_pb2.Status, found "
-                        f"{type(result.status)}"
-                    )
-                    logger.error(error_msg)
-                    result_proto.status.code = (
-                        gabriel_pb2.StatusCode.ENGINE_ERROR
-                    )
-                    result_proto.status.message = error_msg
-                    await socket.send(
-                        create_engine_result_payload(result_proto)
-                    )
-                    return
-                result_proto.status.CopyFrom(result.status)
-
-                if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
-                    logger.debug(f"{self.engine_id} sending error to server")
-                    await socket.send(
-                        create_engine_result_payload(result_proto)
-                    )
-                    return
-
-                payload = result.payload
-                if payload is None:
-                    error_msg = "Engine did not specify result payload"
-                    logger.error(error_msg)
-                    result_proto.status.code = (
-                        gabriel_pb2.StatusCode.ENGINE_ERROR
-                    )
-                    result_proto.status.message = error_msg
-                    await socket.send(
-                        create_engine_result_payload(result_proto)
-                    )
-                    return
-
-                if isinstance(payload, str):
-                    result_proto.string_result = payload
-                elif isinstance(payload, bytes):
-                    result_proto.bytes_result = payload
-                elif isinstance(payload, Any):
-                    result_proto.any_result.CopyFrom(payload)
-                else:
-                    error_msg = (
-                        f"Engine produced unsupported result payload "
-                        f"type: {type(payload)}"
-                    )
-                    logger.error(error_msg)
-                    result_proto.status.code = (
-                        gabriel_pb2.StatusCode.ENGINE_ERROR
-                    )
-                    result_proto.status.message = error_msg
-                    await socket.send(
-                        create_engine_result_payload(result_proto)
-                    )
-                    return
-
-                logger.debug(f"{self.engine_id} sending result to server")
-                await socket.send(create_engine_result_payload(result_proto))
         self.done_event.set()
 
         logger.warning(
             f"{self.engine_id} ran out of retries. Abandoning server "
             f"connection."
         )
+
+    async def engine_loop(self, socket):
+        """Listen for messages from the server."""
+        from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
+        from_standalone_engine.welcome.engine_id = self.engine_id
+        from_standalone_engine.welcome.all_responses_required = (
+            self.all_responses_required
+        )
+        await socket.send(from_standalone_engine.SerializeToString())
+        logger.info(
+            f"{self.engine_id} sent welcome message to server "
+            f"{self.server_address}"
+        )
+
+        while self.running:
+            if await socket.poll(self.timeout) == 0:
+                logger.warning(f"{self.engine_id}: no response from server")
+                self.request_retries -= 1
+                break
+
+            message_from_server = await socket.recv()
+            if message_from_server == network_engine.HEARTBEAT:
+                logger.debug(
+                    f"{self.engine_id} received heartbeat from server"
+                )
+                await socket.send(network_engine.HEARTBEAT)
+                continue
+
+            logger.debug(f"{self.engine_id} received input from server")
+            from_client = gabriel_pb2.FromClient()
+            from_client.ParseFromString(message_from_server)
+            input_frame = from_client.input_frame
+
+            # Send the frame to the engine handler.
+            result = self.engine.handle(input_frame)
+
+            result_proto = gabriel_pb2.Result()
+            result_proto.target_engine_id = self.engine_id
+            result_proto.frame_id = from_client.frame_id
+
+            if not isinstance(result, cognitive_engine.Result):
+                error_msg = (
+                    f"Incorrect type returned by engine. "
+                    f"Expected a value of type "
+                    f"cognitive_engine.Result, found {type(result)}"
+                )
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                await socket.send(create_engine_result_payload(result_proto))
+                return
+
+            if not isinstance(result.status, gabriel_pb2.Status):
+                error_msg = (
+                    f"Return status not populated correctly by "
+                    f"engine. Expected a value of type "
+                    f"gabriel_pb2.Status, found {type(result.status)}"
+                )
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                await socket.send(create_engine_result_payload(result_proto))
+                return
+            result_proto.status.CopyFrom(result.status)
+
+            if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
+                logger.debug(f"{self.engine_id} sending error to server")
+                await socket.send(create_engine_result_payload(result_proto))
+                return
+
+            payload = result.payload
+            if payload is None:
+                error_msg = "Engine did not specify result payload"
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                await socket.send(create_engine_result_payload(result_proto))
+                return
+
+            if isinstance(payload, str):
+                result_proto.string_result = payload
+            elif isinstance(payload, bytes):
+                result_proto.bytes_result = payload
+            elif isinstance(payload, Any):
+                result_proto.any_result.CopyFrom(payload)
+            else:
+                error_msg = (
+                    f"Engine produced unsupported result payload "
+                    f"type: {type(payload)}"
+                )
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                await socket.send(create_engine_result_payload(result_proto))
+                return
+
+            logger.debug(f"{self.engine_id} sending result to server")
+            await socket.send(create_engine_result_payload(result_proto))
 
     async def stop(self):
         """Stops the engine runner."""

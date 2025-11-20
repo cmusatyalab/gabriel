@@ -288,6 +288,14 @@ async def test_zeromq_client(
 
     logger.info("Starting test_zeromq_client")
 
+    async def monitor():
+        while True:
+            await asyncio.sleep(1)
+            for task in asyncio.all_tasks():
+                print(task, task.get_stack())
+
+    asyncio.create_task(monitor())
+
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
@@ -579,21 +587,21 @@ async def test_disconnection(
     assert len(response_state) == 1
 
     # Simulate server disconnection
-    logger.info("Stopping server client handler to simulate disconnection")
+    logger.debug("Simulating disconnection")
     server = run_server.get_server()
-    await server._stop_client_handler()
+    await server._close_server_socket()
     await asyncio.sleep(12)
     num_responses = response_state["Engine-0"]
 
     # Restart server
-    server_task = asyncio.create_task(server._restart_client_handler())
+    await server._recreate_server_socket()
     await asyncio.sleep(2)
     logger.info(f"{response_state=}")
     assert response_state["Engine-0"] > num_responses
 
-    server_task.cancel()
+    logger.info("Cancelling handler task")
     task.cancel()
-    await asyncio.gather(server_task, task, return_exceptions=True)
+    await asyncio.gather(task, return_exceptions=True)
 
 
 @pytest.fixture
@@ -802,7 +810,7 @@ async def test_invalid_engine(
     assert len(exceptions) == 1
     exception = exceptions[0]
     assert isinstance(exception, Exception)
-    assert "Server dropped frame" in str(exception)
+    assert "No engine for input: No target engines found" in str(exception)
 
 
 @pytest.mark.asyncio
@@ -889,6 +897,9 @@ async def test_engine_return_none(
     logger.info("Client task is cancelled")
 
     assert "Incorrect type returned by engine" in caplog.text
+    assert (
+        "Output status was: ENGINE_ERROR; Incorrect type returned by engine"
+    ) in caplog.text
     assert not response_state["received"]
 
 
@@ -926,4 +937,28 @@ async def test_engine_return_bad_status(
     logger.info("Client task is cancelled")
 
     assert "Return status not populated correctly by engine" in caplog.text
+    assert (
+        "Output status was: ENGINE_ERROR; Return status not populated "
+        "correctly by engine"
+    ) in caplog.text
     assert not response_state["received"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_engines", [[]])
+async def test_target_no_engines(
+    run_engines, input_producer, server_frontend_port, target_engines, caplog
+):
+    """Test that an exception is thrown if a client targets no engines."""
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        lambda x: x,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await asyncio.sleep(1)
+
+    assert "None targets no engines" in caplog.text
+
+    assert task.done()

@@ -9,6 +9,7 @@ from typing import Optional, Union
 import zmq
 import zmq.asyncio
 from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.gabriel_pb2 import StatusCode
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gabriel_server import cognitive_engine, network_engine
@@ -122,6 +123,7 @@ class ServerRunner:
         start_http_server(self.prometheus_port)
         context = zmq.asyncio.Context()
         zmq_socket = context.socket(zmq.ROUTER)
+        zmq_socket.setsockopt(zmq.LINGER, 0)
         zmq_socket.bind(self.engine_zmq_endpoint)
         logger.info(
             f"Waiting for engines to connect on {self.engine_zmq_endpoint}"
@@ -141,8 +143,8 @@ class ServerRunner:
                 self.client_endpoint, self.message_max_size
             )
         except:
-            zmq_socket.close(0)
-            context.destroy()
+            zmq_socket.close()
+            context.term()
             raise
 
     def get_server(self):
@@ -202,7 +204,7 @@ class _Server:
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
-            self._zmq_socket.close(0)
+            self._zmq_socket.close()
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -227,12 +229,15 @@ class _Server:
 
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages."""
-        try:
-            address, _, payload = await asyncio.wait_for(
-                self._zmq_socket.recv_multipart(), timeout=1
+        logger.info("Waiting for message from engine")
+        if await self._zmq_socket.poll(timeout=1000) == 0:
+            logger.debug(
+                "Timeout reached waiting for message from engine worker"
             )
-        except (asyncio.TimeoutError, TimeoutError):
             return
+        logger.debug("Ready to get message from engine worker")
+        address, _, payload = await self._zmq_socket.recv_multipart()
+
         logger.debug(f"Received message from engine {address}")
 
         engine_worker = self._engine_workers.get(address)
@@ -257,7 +262,7 @@ class _Server:
         logger.debug(
             f"Received result from engine {engine_worker.get_engine_id()}"
         )
-        engine_worker.set_last_received(time.time())
+        engine_worker.set_last_received(time.monotonic())
 
         ENGINE_INPUTS_PROCESSED_TOTAL.labels(
             engine_id=engine_worker.get_engine_id()
@@ -346,24 +351,24 @@ class _Server:
         self._engine_workers[address] = engine_worker
 
     async def _heartbeat_helper(self):
-        current_time = time.time()
         # We cannot directly iterate over items because we delete some entries
         for address, engine_worker in list(self._engine_workers.items()):
-            time_since_last_received = (
-                current_time - engine_worker.get_last_received()
-            )
+            last_received = engine_worker.get_last_received()
+            time_since_last_received = time.monotonic() - last_received
             if time_since_last_received < self._timeout:
                 continue
 
+            # If the engine is inactive, send a heartbeat.
             if (
                 not engine_worker.get_awaiting_heartbeat_response()
-            ) and engine_worker.get_current_input_metadata() is None:
+                and engine_worker.get_current_input_metadata() is None
+            ):
                 # Send a heartbeat since the engine is idle and we aren't
                 # waiting for a heartbeat from this engine
                 await engine_worker.send_heartbeat()
                 # Update the last received time so we reset the timeout
                 # countdown
-                engine_worker.set_last_received(time.time())
+                engine_worker.set_last_received(time.monotonic())
                 continue
 
             logger.info(
@@ -384,17 +389,17 @@ class _Server:
             if current_input_metadata is None:
                 logger.info("Engine disconnected while it was idle")
                 del self._engine_workers[address]
-                return
+                continue
 
             producer_info = self._producer_infos.get(
                 current_input_metadata.producer_id
             )
             if producer_info is None:
                 logger.error("Source info not found")
-                return
+                del self._engine_workers[address]
+                continue
 
             latest_input = producer_info.latest_input_sent_to_engine
-            current_input_metadata = engine_worker.get_current_input_metadata()
             if (
                 latest_input is not None
                 and current_input_metadata == latest_input.metadata
@@ -402,6 +407,7 @@ class _Server:
                 # Return token for frame engine was in the middle of processing
                 status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
                 result_wrapper = cognitive_engine.create_result_wrapper(status)
+
                 await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
                     producer_info.get_name(),
@@ -476,7 +482,7 @@ class _EngineWorker:
     def record_heatbeat(self):
         logger.debug(f"Received heartbeat from engine {self._engine_id}")
         self._awaiting_heartbeat_response = False
-        self._last_received = time.time()
+        self._last_received = time.monotonic()
 
     def get_awaiting_heartbeat_response(self):
         return self._awaiting_heartbeat_response
@@ -601,7 +607,7 @@ class _ProducerInfo:
                 f" {available_engine_ids=}"
             )
             return (
-                False,
+                StatusCode.NO_ENGINE_FOR_INPUT,
                 f"No target engines found. Specified target: "
                 f"{from_client.target_engine_ids}. Available engines: "
                 f"{available_engine_ids}",
@@ -633,22 +639,26 @@ class _ProducerInfo:
                 await engine_worker.send_payload(metadata_payload)
 
         if all_engines_busy:
-            await self.add_input_to_queue(metadata_payload)
-            return (True, "")
+            success = await self.add_input_to_queue(metadata_payload)
+            if success:
+                return (StatusCode.SUCCESS, "")
+            return (
+                StatusCode.SERVER_DROPPED_FRAME,
+                f"Input queue for {self._producer_id} is full, dropping input",
+            )
 
         # Latest input is only set if the input was sent to at least one
         # engine.
         self.latest_input_sent_to_engine = metadata_payload
-        return (True, "")
+        return (StatusCode.SUCCESS, "")
 
     async def add_input_to_queue(self, metadata_payload):
-        # Add input to the queue, dropping the oldest input if the queue is
-        # full
+        # Add input to the queue if it is not full
         if len(self._input_queue) == self._input_queue.maxlen:
-            logger.debug(
-                f"Input queue for {self._producer_id} is full, dropping "
-                f"oldest input"
+            logger.warning(
+                f"Input queue for {self._producer_id} is full, dropping input"
             )
+            return False
         self._input_queue.append(metadata_payload)
         PRODUCER_QUEUE_LENGTH.labels(producer_id=self._producer_id).set(
             len(self._input_queue)

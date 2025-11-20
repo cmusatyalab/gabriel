@@ -1,7 +1,6 @@
 """ZeroMQ Gabriel client used to communicate with a Gabriel server."""
 
 import asyncio
-import contextlib
 import logging
 import time
 from typing import Callable
@@ -64,6 +63,7 @@ class ZeroMQClient(GabrielClient):
         # Socket used for communicating with the server
         self._ctx = zmq.asyncio.Context()
         self._sock = self._ctx.socket(zmq.DEALER)
+        self._sock.setsockopt(zmq.LINGER, 0)
         # Check whether IPC mode is enabled, and only use the host if so
 
         parsed_server_endpoint = urlparse(server_endpoint.lower())
@@ -120,20 +120,17 @@ class ZeroMQClient(GabrielClient):
         except asyncio.CancelledError:
             for task in tasks:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
+            await asyncio.gather(*tasks, return_exceptions=True)
             raise
         except Exception as e:
             logger.error(f"Client encountered exception: {e}")
             for task in tasks:
-                if not task.done():
-                    task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await task
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             raise
         finally:
-            self._sock.close(0)
-            self._ctx.destroy()
+            self._sock.close()
+            self._ctx.term()
 
     async def _consumer_handler(self):
         """Handle messages from the server."""
@@ -151,8 +148,9 @@ class ZeroMQClient(GabrielClient):
                     )
 
                 # Resend heartbeat in case it was lost
-                self._sock.close(0)
+                self._sock.close()
                 self._sock = self._ctx.socket(zmq.DEALER)
+                self._sock.setsockopt(zmq.LINGER, 0)
                 self._sock.connect(self._server_endpoint)
 
                 # Send heartbeat even though we are disconnected
@@ -228,7 +226,6 @@ class ZeroMQClient(GabrielClient):
             raise Exception(f"No engine for input: {msg}")
         elif code == gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME:
             logger.error(f"Server dropped frame: {msg}")
-            raise Exception(f"Server dropped frame: {msg}")
         else:
             status_name = gabriel_pb2.StatusCode.Name(code)
             logger.error(f"Output status was: {status_name}; {msg}")
@@ -282,6 +279,18 @@ class ZeroMQClient(GabrielClient):
                     self._schedule_heartbeat.set()
                     continue
 
+                target_engines = producer.get_target_engines()
+                if target_engines == []:
+                    logger.error(
+                        f"{producer.producer_name} targets no engines"
+                    )
+
+                    token_pool.return_token()
+                    raise ValueError(
+                        f"{producer.producer_name} targets no engines"
+                    )
+                    continue
+
                 # Stop producing inputs if disconnected from the server
                 if not self._connected.is_set():
                     logger.debug("Stopping producer task")
@@ -325,6 +334,7 @@ class ZeroMQClient(GabrielClient):
                 from_client.frame_id = frame_id
                 frame_id += 1
                 from_client.producer_id = producer.producer_id
+
                 from_client.target_engine_ids.extend(
                     producer.get_target_engines()
                 )

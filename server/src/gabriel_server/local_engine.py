@@ -11,6 +11,7 @@ from typing import Optional
 from gabriel_protocol import gabriel_pb2
 from google.protobuf.any_pb2 import Any
 
+from gabriel_server import cognitive_engine
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
 
@@ -95,17 +96,37 @@ class LocalEngine:
             input_frame.ParseFromString(self.engine_conn.recv_bytes())
 
             result = engine.handle(input_frame)
-
             result_proto = gabriel_pb2.Result()
 
+            if not isinstance(result, cognitive_engine.Result):
+                error_msg = (
+                    f"Incorrect type returned by engine. "
+                    f"Expected a value of type cognitive_engine.Result, "
+                    f"found {type(result)}"
+                )
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                self.engine_conn.send_bytes(result_proto.SerializeToString())
+                continue
+
             if not isinstance(result.status, gabriel_pb2.Status):
-                raise TypeError(
+                error_msg = (
                     f"Return status not populated correctly by engine. "
                     f"Expected a value of type gabriel_pb2.Status, found "
                     f"{type(result.status)}"
                 )
-
+                logger.error(error_msg)
+                result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result_proto.status.message = error_msg
+                self.engine_conn.send_bytes(result_proto.SerializeToString())
+                continue
             result_proto.status.CopyFrom(result.status)
+
+            if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
+                logger.debug(f"{self.engine_id} sending error to server")
+                self.engine_conn.send_bytes(result_proto.SerializeToString())
+                continue
 
             if result.status.code == gabriel_pb2.StatusCode.SUCCESS:
                 payload = result.payload
@@ -113,8 +134,14 @@ class LocalEngine:
                 if payload is None:
                     error_msg = "Engine did not specify result payload"
                     logger.error(error_msg)
-                    result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
-                    result.status.message = error_msg
+                    result_proto.status.code = (
+                        gabriel_pb2.StatusCode.ENGINE_ERROR
+                    )
+                    result_proto.status.message = error_msg
+                    self.engine_conn.send_bytes(
+                        result_proto.SerializeToString()
+                    )
+                    continue
 
                 if isinstance(payload, str):
                     result_proto.string_result = payload
@@ -125,12 +152,19 @@ class LocalEngine:
                 else:
                     error_msg = (
                         f"Engine produced unsupported result payload "
-                        f"type: {type(result.payload)}"
+                        f"type: {type(payload)}"
                     )
                     logger.error(error_msg)
-                    result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
-                    result.status.message = error_msg
+                    result_proto.status.code = (
+                        gabriel_pb2.StatusCode.ENGINE_ERROR
+                    )
+                    result_proto.status.message = error_msg
+                    self.engine_conn.send_bytes(
+                        result_proto.SerializeToString()
+                    )
+                    continue
 
+            logger.debug(f"{self.engine_id} sending result to server")
             self.engine_conn.send_bytes(result_proto.SerializeToString())
 
 
@@ -154,10 +188,13 @@ class _LocalServer:
     async def _send_to_engine(self, from_client, address):
         logger.debug("Received input from client %s", address)
         if self._input_queue.full():
-            return False
+            return (
+                gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME,
+                "Input queue is full, dropping input",
+            )
 
         self._input_queue.put_nowait((from_client, address))
-        return (True, "")
+        return (gabriel_pb2.StatusCode.SUCCESS, "")
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
         asyncio.run(

@@ -203,9 +203,4 @@ class GabrielServer(ABC):
             return (StatusCode.NO_TOKENS, "No tokens for producer")
 
         logger.debug(f"Sending input from client {address} to engine")
-        send_success, error_msg = await self._engine_cb(from_client, address)
-        if send_success:
-            return (StatusCode.SUCCESS, "")
-        else:
-            logger.error(f"Server dropped frame from: {producer_id}")
-            return (StatusCode.SERVER_DROPPED_FRAME, error_msg)
+        return await self._engine_cb(from_client, address)

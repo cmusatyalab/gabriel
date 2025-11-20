@@ -52,6 +52,7 @@ class ZeroMQServer(GabrielServer):
         self._ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
         self._sock = self._ctx.socket(zmq.ROUTER)
+        self._sock.setsockopt(zmq.LINGER, 0)
         # For testing purposes only
         self._simulate_disconnection = False
 
@@ -85,12 +86,19 @@ class ZeroMQServer(GabrielServer):
         try:
             await self.handler_task
         except asyncio.CancelledError:
-            self._sock.close(0)
-            for client in self._clients.values():
-                client.task.cancel()
-                await asyncio.gather(client.task, return_exceptions=True)
-            self._ctx.destroy()
+            logger.debug("Handler task cancelled")
+            client_tasks = list(self._clients.values())
+            for task in client_tasks:
+                task.cancel()
+            await asyncio.gather(
+                *client_tasks,
+                return_exceptions=True,
+            )
             raise
+        finally:
+            logger.debug("Handler task terminated")
+            self._sock.close()
+            self._ctx.term()
 
     async def _send_via_transport(self, address, payload):
         if self._simulate_disconnection:
@@ -103,43 +111,38 @@ class ZeroMQServer(GabrielServer):
         """Check if the server is running."""
         return self._is_running
 
-    async def _stop_client_handler(self):
+    async def _close_server_socket(self):
         self._simulate_disconnection = True
-        await self.handler_task
-        self._sock.close(0)
+        self._sock.close()
 
-    async def _restart_client_handler(self):
-        self._simulate_disconnection = False
-
+    async def _recreate_server_socket(self):
         self._sock = self._ctx.socket(zmq.ROUTER)
+        self._sock.setsockopt(zmq.LINGER, 0)
 
         if not self.use_ipc:
             self._sock.bind(URI_FORMAT.format(self.port_or_path))
         else:
             self._sock.bind(IPC_FORMAT.format(self.port_or_path))
 
-        self.handler_task = asyncio.create_task(self._client_handler())
-
-        try:
-            await self.handler_task
-        except asyncio.CancelledError:
-            self._sock.close(0)
-            for client in self._clients.values():
-                client.task.cancel()
-                await asyncio.gather(client.task, return_exceptions=True)
-            self._ctx.destroy()
-            raise
+        self._simulate_disconnection = False
 
     async def _client_handler(self):
-        while self._is_running and not self._simulate_disconnection:
+        while self._is_running:
+            if self._simulate_disconnection:
+                await asyncio.sleep(0.1)
+                continue
             # Listen for client messages
             try:
                 address, raw_input = await self._sock.recv_multipart()
-            except (zmq.ZMQError, ValueError) as error:
+            except zmq.ZMQError as error:
                 logging.error(
                     f"Error '{error.msg}' when receiving on ZeroMQ socket"
                 )
                 continue
+            except asyncio.CancelledError:
+                if self._simulate_disconnection:
+                    continue
+                raise
 
             logger.debug(f"Received message from client {address}")
 
@@ -163,9 +166,19 @@ class ZeroMQServer(GabrielServer):
                 to_client.welcome.num_tokens_per_producer = (
                     self._num_tokens_per_producer
                 )
-                await self._sock.send_multipart(
-                    [address, to_client.SerializeToString()]
-                )
+                try:
+                    await self._sock.send_multipart(
+                        [address, to_client.SerializeToString()]
+                    )
+                except (zmq.ZMQError, ValueError) as error:
+                    logging.error(
+                        f"Error '{error.msg}' when sending on ZeroMQ socket"
+                    )
+                    continue
+                except asyncio.CancelledError:
+                    if self._simulate_disconnection:
+                        continue
+                    raise
                 logger.debug("Sent welcome message to new client: %s", address)
 
             if raw_input == HELLO_MSG:

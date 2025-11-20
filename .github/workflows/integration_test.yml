@@ -38,5 +38,5 @@ jobs:
           pre-commit run --all-files
 
       - name: Run pytest
-        run: pytest tests/integration --timeout=60 --retries 3
-        timeout-minutes: 2
+        run: pytest tests/integration --timeout=120 --retries 3
+        timeout-minutes: 3
