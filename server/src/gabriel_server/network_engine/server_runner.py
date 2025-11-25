@@ -142,7 +142,8 @@ class ServerRunner:
             await server.launch_async(
                 self.client_endpoint, self.message_max_size
             )
-        except:
+        except Exception as e:
+            logger.error(e)
             zmq_socket.close()
             context.term()
             raise
@@ -195,8 +196,10 @@ class _Server:
         )
         engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
 
-        server_task = self._server.launch_async(
-            client_port, message_max_size, self.use_ipc
+        server_task = asyncio.create_task(
+            self._server.launch_async(
+                client_port, message_max_size, self.use_ipc
+            )
         )
 
         tasks = [engine_receiver_task, engine_heartbeat_task, server_task]
@@ -294,7 +297,6 @@ class _Server:
             await self._server.send_result(
                 engine_worker_metadata.client_address,
                 producer_info.get_name(),
-                engine_worker_metadata.frame_id,
                 engine_worker.get_engine_id(),
                 result,
                 return_token=True,
@@ -308,7 +310,6 @@ class _Server:
             await self._server.send_result(
                 engine_worker_metadata.client_address,
                 producer_info.get_name(),
-                engine_worker_metadata.frame_id,
                 engine_worker.get_engine_id(),
                 result,
                 return_token=False,
@@ -411,7 +412,6 @@ class _Server:
                 await self._server.send_result_wrapper(
                     current_input_metadata.client_address,
                     producer_info.get_name(),
-                    current_input_metadata.frame_id,
                     engine_worker.get_engine_id(),
                     result_wrapper,
                     return_token=True,
@@ -573,7 +573,6 @@ class _ProducerInfo:
             f"target engines: {from_client.target_engine_ids}"
         )
 
-        logger.info("Incremented counter")
         CLIENT_INPUTS_RECEIVED_TOTAL.labels(
             producer_id=self._producer_id
         ).inc()

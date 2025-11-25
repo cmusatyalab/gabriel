@@ -92,11 +92,15 @@ class LocalEngine:
         engine = self.engine_factory()
         logger.info("Cognitive engine started")
         while True:
-            input_frame = gabriel_pb2.InputFrame()
-            input_frame.ParseFromString(self.engine_conn.recv_bytes())
+            from_client = gabriel_pb2.FromClient()
+            from_client.ParseFromString(self.engine_conn.recv_bytes())
+
+            input_frame = from_client.input_frame
 
             result = engine.handle(input_frame)
             result_proto = gabriel_pb2.Result()
+            result_proto.frame_id = from_client.frame_id
+            result_proto.target_engine_id = self.engine_id
 
             if not isinstance(result, cognitive_engine.Result):
                 error_msg = (
@@ -224,7 +228,7 @@ class _LocalServer:
             await loop.run_in_executor(
                 None,
                 self._conn.send_bytes,
-                from_client.input_frame.SerializeToString(),
+                from_client.SerializeToString(),
             )
             result = gabriel_pb2.Result()
 
@@ -238,7 +242,6 @@ class _LocalServer:
             await self._server.send_result(
                 address,
                 from_client.producer_id,
-                from_client.frame_id,
                 self.engine_id,
                 result,
                 return_token=True,

@@ -217,10 +217,12 @@ class ZeroMQClient(GabrielClient):
         code = result_status.code
         msg = result_status.message
         if code == gabriel_pb2.StatusCode.SUCCESS:
+            self.record_response_latency(result_wrapper)
             try:
                 self.consumer(result)
             except Exception as e:
                 logger.error(f"Error processing response from server: {e}")
+                raise
         elif code == gabriel_pb2.StatusCode.NO_ENGINE_FOR_INPUT:
             logger.critical(f"Fatal error: no engine for input: {msg}")
             raise Exception(f"No engine for input: {msg}")
@@ -256,8 +258,9 @@ class ZeroMQClient(GabrielClient):
         producer_task = None
         frame_id = 1
 
-        token_pool = TokenPool(self._num_tokens_per_producer)
-        self._tokens[producer.producer_id] = token_pool
+        producer_id = producer.producer_id
+        token_pool = TokenPool(self._num_tokens_per_producer, producer_id)
+        self._tokens[producer_id] = token_pool
 
         try:
             while self._running:
@@ -344,7 +347,7 @@ class ZeroMQClient(GabrielClient):
                 logger.debug(
                     f"Sending input to server; producer={producer.producer_id}"
                 )
-                await self._sock.send(from_client.SerializeToString())
+                await self.send_to_server(from_client)
 
                 logger.debug(
                     "Semaphore for %s is %s",
@@ -356,6 +359,11 @@ class ZeroMQClient(GabrielClient):
                 producer_task.cancel()
                 asyncio.gather(producer_task, return_exceptions=True)
             raise
+
+    async def send_to_server(self, from_client: gabriel_pb2.FromClient):
+        """Send a frame to the server."""
+        self.record_send_metrics(from_client)
+        await self._sock.send(from_client.SerializeToString())
 
     async def _send_heartbeat(self, force=False):
         """Send a heartbeat to the server.

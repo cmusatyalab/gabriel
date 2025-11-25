@@ -86,8 +86,7 @@ class ZeroMQServer(GabrielServer):
         try:
             await self.handler_task
         except asyncio.CancelledError:
-            logger.debug("Handler task cancelled")
-            client_tasks = list(self._clients.values())
+            client_tasks = [client.task for client in self._clients.values()]
             for task in client_tasks:
                 task.cancel()
             await asyncio.gather(
@@ -96,7 +95,6 @@ class ZeroMQServer(GabrielServer):
             )
             raise
         finally:
-            logger.debug("Handler task terminated")
             self._sock.close()
             self._ctx.term()
 

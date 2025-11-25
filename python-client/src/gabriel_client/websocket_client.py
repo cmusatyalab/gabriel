@@ -118,6 +118,7 @@ class WebsocketClient(GabrielClient):
     def _process_response(self, result_wrapper):
         result = result_wrapper.result
         if result.status.code == gabriel_pb2.StatusCode.SUCCESS:
+            self.record_response_latency(result_wrapper)
             self.consumer(result_wrapper.result)
         elif result.status.code == gabriel_pb2.StatusCode.NO_ENGINE_FOR_INPUT:
             raise Exception("No engine for input")
@@ -141,7 +142,9 @@ class WebsocketClient(GabrielClient):
 
         """
         await self._welcome_event.wait()
-        token_pool = TokenPool(self._num_tokens_per_producer)
+        token_pool = TokenPool(
+            self._num_tokens_per_producer, producer.producer_id
+        )
         self._tokens[producer.producer_id] = token_pool
         frame_id = 1
 
@@ -171,5 +174,6 @@ class WebsocketClient(GabrielClient):
                 return  # stop the handler
 
     async def _send_from_client(self, from_client):
+        self.record_send_metrics(from_client)
         # Removing this method will break measurement_client
         await self._websocket.send(from_client.SerializeToString())

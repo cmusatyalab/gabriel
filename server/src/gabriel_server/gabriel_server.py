@@ -108,7 +108,6 @@ class GabrielServer(ABC):
         self,
         address: str,
         producer_id: str,
-        frame_id: int,
         engine_id: str,
         result: Result,
         return_token: bool,
@@ -119,8 +118,6 @@ class GabrielServer(ABC):
             address (str): The identifier of the client to send the result to
             producer_id (str):
                 The id of the producer that the result corresponds to
-            frame_id (int):
-                The frame id of the input that the result corresponds to
             engine_id (str): The id of the engine that generated the result
             result (Result): The result payload to send to the client
             return_token (bool): Whether to return a token to the client

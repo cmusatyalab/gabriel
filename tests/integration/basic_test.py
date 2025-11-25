@@ -54,6 +54,12 @@ class Engine(cognitive_engine.Engine, threading.Thread):
     def handle(self, input_frame):
         """Process a single gabriel_pb2.InputFrame()."""
         logger.info(f"Engine {self.engine_id} received frame")
+
+        assert (
+            input_frame.payload_type
+            != gabriel_pb2.PayloadType.PAYLOAD_TYPE_UNSPECIFIED
+        )
+
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS
 
@@ -171,7 +177,11 @@ async def run_engines(run_server, server_backend_port, num_engines):
     for engine_id in range(num_engines):
         zeromq_address = f"tcp://localhost:{server_backend_port}"
         engine = Engine(engine_id, zeromq_address)
-        engines.append(asyncio.create_task(engine.run_async()))
+        task = asyncio.create_task(engine.run_async())
+        engines.append(task)
+        task.add_done_callback(
+            lambda t: t.result() if not t.cancelled() else None
+        )
 
     yield engines
     logger.info("Tearing down engines")
@@ -251,6 +261,9 @@ def get_consumer(response_state):
     """Create a consumer that sets response_state['received'] to True."""
 
     def consumer(result):
+        assert result.HasField("status")
+        assert len(result.target_engine_id) > 0
+        assert result.frame_id > 0
         logger.info("Received result")
         logger.info(f"Status is {result.status.code}")
         logger.info(f"Produced by {result.target_engine_id}")

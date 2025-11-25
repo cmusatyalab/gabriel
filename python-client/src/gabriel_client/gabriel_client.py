@@ -3,14 +3,34 @@
 import asyncio
 import logging
 import threading
+import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any, Union
 
-from gabriel_protocol.gabriel_pb2 import InputFrame
+from gabriel_protocol.gabriel_pb2 import FromClient, InputFrame, ToClient
+from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
+
+PRODUCER_TOKEN_COUNT = Gauge(
+    "gabriel_producer_token_count",
+    "Number of tokens remaining at each producer",
+    ["producer_id"],
+)
+
+CLIENT_INPUTS_SENT_TOTAL = Counter(
+    "gabriel_producer_inputs_sent_total",
+    "Total number of client inputs sent from a producer",
+    ["producer_id"],
+)
+
+CLIENT_INPUT_PROCESSING_LATENCY = Histogram(
+    "gabriel_client_input_processing_latency_seconds",
+    "End-to-end client input processing latency",
+    ["producer_id"],
+)
 
 
 class InputProducer:
@@ -127,19 +147,24 @@ class TokenPool:
     input source.
     """
 
-    def __init__(self, num_tokens):
+    def __init__(self, num_tokens: int, producer_id: str):
         """Initialize the token pool.
 
         Args:
             num_tokens (int): The number of tokens in the pool
+            producer_id (str): The producer identifier
 
         """
         self._max_tokens = num_tokens
-        self._num_tokens = num_tokens
         self._sem = asyncio.BoundedSemaphore(num_tokens)
+        self._producer_id = producer_id
+        PRODUCER_TOKEN_COUNT.labels(producer_id=producer_id).set(
+            self.get_remaining_tokens()
+        )
 
     def return_token(self) -> None:
         """Return a token to the pool."""
+        PRODUCER_TOKEN_COUNT.labels(producer_id=self._producer_id).inc()
         self._sem.release()
 
     async def get_token(self) -> None:
@@ -149,6 +174,9 @@ class TokenPool:
         """
         logger.debug("Waiting for token")
         await self._sem.acquire()
+        PRODUCER_TOKEN_COUNT.labels(producer_id=self._producer_id).set(
+            self.get_remaining_tokens()
+        )
         logger.debug("Token acquired")
 
     def is_locked(self) -> bool:
@@ -158,7 +186,9 @@ class TokenPool:
     def reset_tokens(self) -> None:
         """Reset the number of tokens in the pool to the max number."""
         self._sem = asyncio.Semaphore(self._max_tokens)
-        self._num_tokens = self._max_tokens
+        PRODUCER_TOKEN_COUNT.labels(producer_id=self._producer_id).set(
+            self.get_remaining_tokens()
+        )
 
     def get_remaining_tokens(self) -> int:
         """Return the number of remaining tokens in the pool."""
@@ -179,6 +209,9 @@ class GabrielClient(ABC):
         self._num_tokens_per_producer = None
         # Mapping from source id to tokens
         self._tokens = {}
+        # Mapping from frame ids to the timestamp at which the input was
+        # sent to the server
+        self._pending_results = {}
 
     @abstractmethod
     def launch(self) -> None:
@@ -196,3 +229,24 @@ class GabrielClient(ABC):
     def stop(self) -> None:
         """Stop the client."""
         self._running = False
+
+    def record_send_metrics(self, from_client: FromClient) -> bool:
+        """Record metrics related to sending of input to server."""
+        producer_id = from_client.producer_id
+        CLIENT_INPUTS_SENT_TOTAL.labels(producer_id=producer_id).inc()
+
+        frame_id = from_client.frame_id
+        self._pending_results[frame_id] = time.monotonic()
+
+    def record_response_latency(self, result_wrapper: ToClient.ResultWrapper):
+        """Record the response latency for input."""
+        producer_id = result_wrapper.producer_id
+        result = result_wrapper.result
+        frame_id = result.frame_id
+
+        send_time = self._pending_results[frame_id]
+        latency = time.monotonic() - send_time
+
+        CLIENT_INPUT_PROCESSING_LATENCY.labels(
+            producer_id=producer_id
+        ).observe(latency)
