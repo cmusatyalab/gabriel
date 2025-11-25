@@ -77,6 +77,7 @@ class EngineRunner:
                     await self.engine_loop(socket)
                 except Exception as e:
                     logger.error(e)
+                    raise
                 finally:
                     socket.close()
         finally:
