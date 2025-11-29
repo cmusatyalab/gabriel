@@ -177,6 +177,11 @@ class GabrielServer(ABC):
         """
         pass
 
+    @abstractmethod
+    async def _engines_updated_cb(self):
+        """Indicates that a new server connected or disconnected."""
+        pass
+
     async def _consumer_helper(self, client, address, from_client):
         """Send the input to the engine callback.
 

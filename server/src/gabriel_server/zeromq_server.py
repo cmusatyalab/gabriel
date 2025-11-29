@@ -37,15 +37,17 @@ class ZeroMQServer(GabrielServer):
         self,
         num_tokens_per_producer: int,
         engine_cb: Callable[[gabriel_pb2.InputFrame], gabriel_pb2.Result],
+        engine_ids: set[str],
     ):
         """Initialize the ZeroMQ server.
 
         Args:
             num_tokens_per_producer (int):
-                Number of tokens allocated to each input producer
+                The number of tokens available for each producer
             engine_cb:
-                A callback function that processes an InputFrame and returns a
-                ResultWrapper
+                Callback invoked for each input received from a client.
+            engine_ids:
+                The ids of the engines connected to the server
         """
         super().__init__(num_tokens_per_producer, engine_cb)
         self._is_running = False
@@ -55,6 +57,7 @@ class ZeroMQServer(GabrielServer):
         self._sock.setsockopt(zmq.LINGER, 0)
         # For testing purposes only
         self._simulate_disconnection = False
+        self._engine_ids = engine_ids
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
         """Launch the ZeroMQ server synchronously.
@@ -164,6 +167,7 @@ class ZeroMQServer(GabrielServer):
                 to_client.welcome.num_tokens_per_producer = (
                     self._num_tokens_per_producer
                 )
+                to_client.welcome.engine_ids.extend(self._engine_ids)
                 try:
                     await self._sock.send_multipart(
                         [address, to_client.SerializeToString()]
@@ -254,6 +258,13 @@ class ZeroMQServer(GabrielServer):
             await self._sock.send_multipart(
                 [address, to_client.SerializeToString()]
             )
+
+    async def _engines_updated_cb(self):
+        to_client = gabriel_pb2.ToClient()
+        to_client.control.engine_ids.extend(self._engine_ids)
+        msg = to_client.SerializeToString()
+        for address in self._clients:
+            await self._sock.send_multipart([address, msg])
 
 
 def handle_task_result(t: asyncio.Task):

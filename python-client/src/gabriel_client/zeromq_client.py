@@ -186,6 +186,10 @@ class ZeroMQClient(GabrielClient):
             elif to_client.HasField("result_wrapper"):
                 logger.debug("Processing response from server")
                 self._process_response(to_client.result_wrapper)
+            elif to_client.HasField("control"):
+                logger.debug("Received control message from server")
+                self._engine_ids = to_client.control.engine_ids
+                logger.debug(f"Updating engine ids to: {self._engine_ids}")
             else:
                 logger.critical(
                     "Fatal error: empty to_client message received from server"
@@ -202,7 +206,12 @@ class ZeroMQClient(GabrielClient):
 
         """
         self._num_tokens_per_producer = welcome.num_tokens_per_producer
+        self._engine_ids = welcome.engine_ids
         self._welcome_event.set()
+        logger.info(
+            f"Available engines: {self._engine_ids}; "
+            f"number of tokens per producer: {self._num_tokens_per_producer}"
+        )
 
     def _process_response(self, result_wrapper):
         """Process a result received from the server.
@@ -337,6 +346,17 @@ class ZeroMQClient(GabrielClient):
                 from_client.frame_id = frame_id
                 frame_id += 1
                 from_client.producer_id = producer.producer_id
+
+                target_engines = set(producer.get_target_engines())
+                available_engines = set(self._engine_ids)
+
+                if not target_engines.issubset(available_engines):
+                    msg = (
+                        f"Attempt to target engines that are not connected "
+                        f"to the server: {target_engines - available_engines}"
+                    )
+                    logger.error(msg)
+                    raise ValueError(msg)
 
                 from_client.target_engine_ids.extend(
                     producer.get_target_engines()

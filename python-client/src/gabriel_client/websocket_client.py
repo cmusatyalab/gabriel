@@ -113,6 +113,7 @@ class WebsocketClient(GabrielClient):
 
     def _process_welcome(self, welcome):
         self._num_tokens_per_producer = welcome.num_tokens_per_producer
+        self._engine_ids = welcome.engine_ids
         self._welcome_event.set()
 
     def _process_response(self, result_wrapper):
@@ -161,6 +162,18 @@ class WebsocketClient(GabrielClient):
             from_client.frame_id = frame_id
             frame_id += 1
             from_client.producer_id = producer.producer_id
+
+            target_engines = set(producer.get_target_engines())
+            available_engines = set(self._engine_ids)
+
+            if not target_engines.issubset(available_engines):
+                msg = (
+                    f"Attempt to target engines that are not connected "
+                    f"to the server: {target_engines - available_engines}"
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+
             from_client.target_engine_ids.extend(producer.get_target_engines())
             from_client.input_frame.CopyFrom(input_frame)
 

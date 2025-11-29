@@ -133,6 +133,12 @@ def prometheus_port(prometheus_port_generator):
     return next(prometheus_port_generator)
 
 
+@pytest.fixture
+def engine_disconnection_timeout():
+    """Amount of time before engine is considered disconnected."""
+    return 5
+
+
 @pytest_asyncio.fixture
 async def run_server(
     server_frontend_port,
@@ -140,6 +146,7 @@ async def run_server(
     use_zeromq,
     prometheus_port,
     use_ipc,
+    engine_disconnection_timeout,
 ):
     """Run a server with the specified configuration."""
     logger.info(
@@ -155,11 +162,13 @@ async def run_server(
         engine_zmq_endpoint=f"tcp://*:{server_backend_port}",
         num_tokens=DEFAULT_NUM_TOKENS,
         input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
+        timeout=engine_disconnection_timeout,
         use_zeromq=use_zeromq,
         prometheus_port=prometheus_port,
         use_ipc=use_ipc,
     )
     task = asyncio.create_task(server_run.run_async())
+    task.add_done_callback(lambda t: t.result() if not t.cancelled() else None)
     await asyncio.sleep(0)
     yield server_run
     logger.info("Tearing down server")
@@ -300,14 +309,6 @@ async def test_zeromq_client(
     response_state["received"] = False
 
     logger.info("Starting test_zeromq_client")
-
-    async def monitor():
-        while True:
-            await asyncio.sleep(1)
-            for task in asyncio.all_tasks():
-                print(task, task.get_stack())
-
-    asyncio.create_task(monitor())
 
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
@@ -823,7 +824,10 @@ async def test_invalid_engine(
     assert len(exceptions) == 1
     exception = exceptions[0]
     assert isinstance(exception, Exception)
-    assert "No engine for input: No target engines found" in str(exception)
+    assert (
+        "Attempt to target engines that are not connected to the server: "
+        "{'invalid_engine'}" in str(exception)
+    )
 
 
 @pytest.mark.asyncio
@@ -975,3 +979,62 @@ async def test_target_no_engines(
     assert "None targets no engines" in caplog.text
 
     assert task.done()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("engine_disconnection_timeout", [0.5])
+async def test_new_engine_connected(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    server_backend_port,
+    caplog,
+):
+    """Test client is updated when new engine is connected to server."""
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+    )
+    client_task = asyncio.create_task(client.launch_async())
+
+    await asyncio.sleep(0.1)
+
+    # Launch new engine
+    engine_id = 1
+    zeromq_address = f"tcp://localhost:{server_backend_port}"
+    engine = Engine(engine_id, zeromq_address)
+    engine_task = asyncio.create_task(engine.run_async())
+
+    await asyncio.sleep(0.1)
+
+    input_producer[0].change_target_engines(["Engine-1"])
+    response_state.clear()
+    response_state["received"] = False
+
+    await asyncio.sleep(0.1)
+
+    assert response_state["received"]
+
+    input_producer[0].stop()
+
+    engine_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await engine_task
+
+    await asyncio.sleep(1.5)
+
+    assert "Lost connection to engine worker Engine-1" in caplog.text
+
+    input_producer[0].resume()
+
+    exceptions = await asyncio.gather(client_task, return_exceptions=True)
+
+    assert len(exceptions) == 1
+    exception = exceptions[0]
+    assert isinstance(exception, Exception)
+    assert (
+        "Attempt to target engines that are not connected to the server: "
+        "{'Engine-1'}" in str(exception)
+    )

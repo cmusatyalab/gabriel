@@ -12,7 +12,7 @@ from gabriel_protocol import gabriel_pb2
 from gabriel_protocol.gabriel_pb2 import StatusCode
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
-from gabriel_server import cognitive_engine, network_engine
+from gabriel_server import network_engine
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
 
@@ -165,12 +165,13 @@ class _Server:
     ):
         self._zmq_socket = zmq_socket
         self._engine_workers = {}
+        self._engine_ids = set()
         # Mapping from producer id to producer info
         self._producer_infos: dict[str, _ProducerInfo] = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
         self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
-            num_tokens, self._send_to_engine
+            num_tokens, self._send_to_engine, self._engine_ids
         )
         self.use_ipc = use_ipc
 
@@ -232,13 +233,11 @@ class _Server:
 
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages."""
-        logger.info("Waiting for message from engine")
         if await self._zmq_socket.poll(timeout=1000) == 0:
             logger.debug(
                 "Timeout reached waiting for message from engine worker"
             )
             return
-        logger.debug("Ready to get message from engine worker")
         address, _, payload = await self._zmq_socket.recv_multipart()
 
         logger.debug(f"Received message from engine {address}")
@@ -350,6 +349,15 @@ class _Server:
             self._size_for_queues,
         )
         self._engine_workers[address] = engine_worker
+        self._engine_ids.add(engine_id)
+        await self._server._engines_updated_cb()
+
+    async def _remove_engine_worker(self, address):
+        """Remove an engine worker."""
+        engine_id = self._engine_workers[address].get_engine_id()
+        self._engine_ids.remove(engine_id)
+        del self._engine_workers[address]
+        await self._server._engines_updated_cb()
 
     async def _heartbeat_helper(self):
         # We cannot directly iterate over items because we delete some entries
@@ -372,24 +380,23 @@ class _Server:
                 engine_worker.set_last_received(time.monotonic())
                 continue
 
+            engine_id = engine_worker.get_engine_id()
+
             logger.info(
-                f"Engine {engine_worker.get_engine_id()} offline for "
+                f"Engine {engine_id} offline for "
                 f"{time_since_last_received:.2f} seconds"
             )
 
-            logger.info(
-                f"Lost connection to engine worker "
-                f"{engine_worker.get_engine_id()}"
-            )
+            logger.info(f"Lost connection to engine worker {engine_id}")
 
-            ENGINE_INPUTS_RECEIVED_TOTAL.remove(engine_worker.get_engine_id())
-            ENGINE_INPUTS_PROCESSED_TOTAL.remove(engine_worker.get_engine_id())
+            ENGINE_INPUTS_RECEIVED_TOTAL.remove(engine_id)
+            ENGINE_INPUTS_PROCESSED_TOTAL.remove(engine_id)
 
             current_input_metadata = engine_worker.get_current_input_metadata()
 
             if current_input_metadata is None:
                 logger.info("Engine disconnected while it was idle")
-                del self._engine_workers[address]
+                await self._remove_engine_worker(address)
                 continue
 
             producer_info = self._producer_infos.get(
@@ -397,7 +404,7 @@ class _Server:
             )
             if producer_info is None:
                 logger.error("Source info not found")
-                del self._engine_workers[address]
+                await self._remove_engine_worker(address)
                 continue
 
             latest_input = producer_info.latest_input_sent_to_engine
@@ -406,18 +413,22 @@ class _Server:
                 and current_input_metadata == latest_input.metadata
             ):
                 # Return token for frame engine was in the middle of processing
-                status = gabriel_pb2.ResultWrapper.Status.ENGINE_ERROR
-                result_wrapper = cognitive_engine.create_result_wrapper(status)
+                result = gabriel_pb2.Result()
+                result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                result.status.message = f"Engine {engine_id} disconnected"
+                result.target_engine_id = engine_id
+                result.frame_id = current_input_metadata.frame_id
 
-                await self._server.send_result_wrapper(
+                # TODO(Aditya): what about other targeted engines?
+
+                await self._server.send_result(
                     current_input_metadata.client_address,
                     producer_info.get_name(),
                     engine_worker.get_engine_id(),
-                    result_wrapper,
+                    result,
                     return_token=True,
                 )
-
-            del self._engine_workers[address]
+            await self._remove_engine_worker(address)
 
     async def _send_to_engine(self, from_client, client_address):
         logger.debug(

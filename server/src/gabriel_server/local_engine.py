@@ -184,8 +184,9 @@ class _LocalServer:
         self._input_queue = asyncio.Queue(input_queue_maxsize)
         self._conn = conn
         self._result_ready = asyncio.Event()
+        self._engine_ids = {engine_id}
         self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
-            num_tokens_per_producer, self._send_to_engine
+            num_tokens_per_producer, self._send_to_engine, self._engine_ids
         )
         self.engine_id = engine_id
 

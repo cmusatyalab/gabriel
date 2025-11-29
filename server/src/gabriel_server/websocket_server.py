@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 class WebsocketServer(GabrielServer):
     """A Gabriel server that uses Websockets for communication with clients."""
 
-    def __init__(self, num_tokens_per_producer, engine_cb):
+    def __init__(self, num_tokens_per_producer, engine_cb, engine_ids):
         """Initialize the Websocket server."""
         super().__init__(num_tokens_per_producer, engine_cb)
         self._server = None
+        self._engine_ids = engine_ids
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
         """Launch the Websocket server synchronously."""
@@ -85,6 +86,7 @@ class WebsocketServer(GabrielServer):
         to_client.welcome.num_tokens_per_producer = (
             self._num_tokens_per_producer
         )
+        to_client.welcome.engine_ids.extend(self._engine_ids)
         await websocket.send(to_client.SerializeToString())
 
         try:
@@ -119,3 +121,10 @@ class WebsocketServer(GabrielServer):
             to_client.result_wrapper.result.status = status
 
             await websocket.send(to_client.SerializeToString())
+
+    async def _engines_updated_cb(self):
+        to_client = gabriel_pb2.ToClient()
+        to_client.control.engine_ids.extend(self._engine_ids)
+        msg = to_client.SerializeToString()
+        for address in self._clients:
+            await self._send_via_transport(address, msg)
