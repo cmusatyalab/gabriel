@@ -198,8 +198,12 @@ class TokenPool:
 class GabrielClient(ABC):
     """Abstract base class for a Gabriel client."""
 
-    def __init__(self):
-        """Initialize the Gabriel client."""
+    def __init__(self, prometheus_port: int):
+        """Initialize the Gabriel client.
+
+        Args:
+            prometheus_port (int): Port for Prometheus metrics.
+        """
         self._running = True
         # Whether a welcome message has been received from the server
         self._welcome_event = asyncio.Event()
@@ -212,14 +216,14 @@ class GabrielClient(ABC):
         # Mapping from frame ids to the timestamp at which the input was
         # sent to the server
         self._pending_results = {}
+        self._prometheus_port = prometheus_port
 
-    @abstractmethod
     def launch(self) -> None:
         """Launch the client synchronously.
 
         This method will block execution until the client is stopped.
         """
-        pass
+        asyncio.run(self.launch_async())
 
     @abstractmethod
     def launch_async(self) -> None:

@@ -122,15 +122,27 @@ def num_engines():
 
 
 @pytest.fixture(scope="session")
-def prometheus_port_generator():
-    """Generate unique Prometheus ports for each test."""
+def prometheus_server_port_generator():
+    """Generate unique Prometheus ports for each test for server."""
     return itertools.count(8001)
 
 
 @pytest.fixture
-def prometheus_port(prometheus_port_generator):
-    """Get the next available Prometheus port."""
-    return next(prometheus_port_generator)
+def prometheus_server_port(prometheus_server_port_generator):
+    """Get the next available Prometheus port for server."""
+    return next(prometheus_server_port_generator)
+
+
+@pytest.fixture(scope="session")
+def prometheus_client_port_generator():
+    """Generate unique Prometheus ports for each test for client."""
+    return itertools.count(8001)
+
+
+@pytest.fixture
+def prometheus_client_port(prometheus_client_port_generator):
+    """Get the next available Prometheus port for client."""
+    return next(prometheus_client_port_generator)
 
 
 @pytest.fixture
@@ -144,7 +156,7 @@ async def run_server(
     server_frontend_port,
     server_backend_port,
     use_zeromq,
-    prometheus_port,
+    prometheus_server_port,
     use_ipc,
     engine_disconnection_timeout,
 ):
@@ -164,7 +176,7 @@ async def run_server(
         input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
         timeout=engine_disconnection_timeout,
         use_zeromq=use_zeromq,
-        prometheus_port=prometheus_port,
+        prometheus_port=prometheus_server_port,
         use_ipc=use_ipc,
     )
     task = asyncio.create_task(server_run.run_async())
@@ -302,7 +314,11 @@ def reset_prometheus_metrics():
 
 @pytest.mark.asyncio
 async def test_zeromq_client(
-    run_engines, input_producer, server_frontend_port, response_state
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    prometheus_client_port,
 ):
     """Test that the zeromq client can connect to a server."""
     response_state.clear()
@@ -314,6 +330,7 @@ async def test_zeromq_client(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -370,6 +387,7 @@ async def test_send_multiple_engines(
     target_engines,
     run_engines,
     response_state,
+    prometheus_client_port,
 ):
     """Test that we receive a response from each engine we target."""
     response_state.clear()
@@ -378,6 +396,7 @@ async def test_send_multiple_engines(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -390,7 +409,10 @@ async def test_send_multiple_engines(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [["local_engine"]])
 async def test_local_server(
-    input_producer, server_frontend_port, response_state
+    input_producer,
+    server_frontend_port,
+    response_state,
+    prometheus_client_port,
 ):
     """Test that we can run a local engine with zeromq."""
     response_state.clear()
@@ -410,6 +432,7 @@ async def test_local_server(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     client_task = asyncio.create_task(client.launch_async())
 
@@ -450,7 +473,10 @@ async def test_local_server(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [["local_engine"]])
 async def test_ipc_local_engine(
-    input_producer, server_frontend_port, response_state
+    input_producer,
+    server_frontend_port,
+    response_state,
+    prometheus_client_port,
 ):
     """Test that we can run a local engine with ipc."""
     response_state.clear()
@@ -471,6 +497,7 @@ async def test_ipc_local_engine(
         f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
         input_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     client_task = asyncio.create_task(client.launch_async())
 
@@ -525,6 +552,7 @@ async def test_send_multiple_engines_ipc(
     target_engines,
     run_engines,
     response_state,
+    prometheus_client_port,
 ):
     """Test that we receive a response from each engine we target using ipc."""
     response_state.clear()
@@ -533,6 +561,7 @@ async def test_send_multiple_engines_ipc(
         f"ipc:///tmp/gabriel_server_{server_frontend_port}.ipc",
         input_producer,
         get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -549,6 +578,7 @@ async def test_change_target_engines(
     target_engines,
     run_engines,
     response_state,
+    prometheus_client_port,
 ):
     """Test that we can change the target engines on the fly."""
     response_state.clear()
@@ -558,6 +588,7 @@ async def test_change_target_engines(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -584,6 +615,7 @@ async def test_disconnection(
     run_engines,
     response_state,
     run_server,
+    prometheus_client_port,
 ):
     """Test that the client can handle server disconnection."""
     response_state.clear()
@@ -592,6 +624,7 @@ async def test_disconnection(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -643,16 +676,17 @@ def find_value(metrics, metric_name, label_name=None, label_value=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("num_inputs_to_send", [5])
-async def test_prometheus_metrics(
+async def test_prometheus_server_metrics(
     input_producer,
     server_frontend_port,
     target_engines,
     run_engines,
     response_state,
-    prometheus_port,
+    prometheus_server_port,
     metrics_before,
+    prometheus_client_port,
 ):
-    """Test that Prometheus metrics are being collected."""
+    """Test that Prometheus metrics are being collected at the server."""
     response_state.clear()
     response_state["received"] = False
 
@@ -660,6 +694,7 @@ async def test_prometheus_metrics(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -686,10 +721,12 @@ async def test_prometheus_metrics(
         )
 
     with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-        await asyncio.wait_for(task, timeout=5)
+        await asyncio.wait_for(task, timeout=1)
     final_metrics = list(REGISTRY.collect())
 
+    metrics_found = 0
     for metric in final_metrics:
+        metrics_found += 1
         if metric.name == "gabriel_engine_processing_latency_seconds":
             found = False
             for sample in metric.samples:
@@ -734,6 +771,10 @@ async def test_prometheus_metrics(
                     found = True
                     assert sample.value == 5
             assert found
+        else:
+            metrics_found -= 1
+
+    assert metrics_found == len(expected_metrics)
 
 
 @pytest.mark.asyncio
@@ -777,6 +818,7 @@ async def test_stop_producer(
     input_producer,
     server_frontend_port,
     response_state,
+    prometheus_client_port,
 ):
     """Test that stopping the input producer stops inputs from being sent."""
     response_state.clear()
@@ -785,6 +827,7 @@ async def test_stop_producer(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -809,13 +852,17 @@ async def test_stop_producer(
 @pytest.mark.parametrize("target_engines", [["invalid_engine"]])
 @pytest.mark.asyncio
 async def test_invalid_engine(
-    run_engines, input_producer, server_frontend_port
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    prometheus_client_port,
 ):
     """Test that an invalid engine ID raises an error."""
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         lambda x: x,
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
     await asyncio.sleep(1)
@@ -837,6 +884,7 @@ async def test_empty_input_frame(
     server_frontend_port,
     response_state,
     caplog,
+    prometheus_client_port,
 ):
     """Test that an error is raised when an empty frame is produced."""
     response_state.clear()
@@ -848,6 +896,7 @@ async def test_empty_input_frame(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         empty_frame_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -888,6 +937,7 @@ async def test_engine_return_none(
     response_state,
     monkeypatch,
     caplog,
+    prometheus_client_port,
 ):
     """Test for error when an engine returns None."""
     response_state.clear()
@@ -899,6 +949,7 @@ async def test_engine_return_none(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         lambda x: x,
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
     await asyncio.sleep(1)
@@ -928,6 +979,7 @@ async def test_engine_return_bad_status(
     response_state,
     monkeypatch,
     caplog,
+    prometheus_client_port,
 ):
     """Test for error when an engine returns an invalid status."""
     response_state.clear()
@@ -939,6 +991,7 @@ async def test_engine_return_bad_status(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         lambda x: x,
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
     await asyncio.sleep(1)
@@ -964,13 +1017,19 @@ async def test_engine_return_bad_status(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [[]])
 async def test_target_no_engines(
-    run_engines, input_producer, server_frontend_port, target_engines, caplog
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    caplog,
+    prometheus_client_port,
 ):
     """Test that an exception is thrown if a client targets no engines."""
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         lambda x: x,
+        prometheus_client_port,
     )
     task = asyncio.create_task(client.launch_async())
 
@@ -990,12 +1049,14 @@ async def test_new_engine_connected(
     response_state,
     server_backend_port,
     caplog,
+    prometheus_client_port,
 ):
     """Test client is updated when new engine is connected to server."""
     client = ZeroMQClient(
         f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
         input_producer,
         get_consumer(response_state),
+        prometheus_client_port,
     )
     client_task = asyncio.create_task(client.launch_async())
 
@@ -1038,3 +1099,92 @@ async def test_new_engine_connected(
         "Attempt to target engines that are not connected to the server: "
         "{'Engine-1'}" in str(exception)
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_inputs_to_send", [5])
+async def test_prometheus_client_metrics(
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    prometheus_client_port,
+    metrics_before,
+):
+    """Test that Prometheus metrics are being collected at the client."""
+    response_state.clear()
+    response_state["received"] = False
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(task), timeout=1)
+
+    assert response_state["received"]
+
+    # Check that Prometheus metrics are being collected
+    metric_names = [metric.name for metric in metrics_before]
+    assert len(metric_names) > 0, "No metrics found in Prometheus registry"
+    expected_metrics = [
+        "gabriel_producer_token_count",
+        "gabriel_producer_inputs_sent",
+        "gabriel_client_input_processing_latency_seconds",
+    ]
+    for expected_metric in expected_metrics:
+        assert expected_metric in metric_names, (
+            f"{expected_metric} not found in metrics"
+        )
+
+    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+        await asyncio.wait_for(task, timeout=2)
+    final_metrics = list(REGISTRY.collect())
+
+    print(final_metrics)
+
+    metrics_found = 0
+    for metric in final_metrics:
+        metrics_found += 1
+        if metric.name == "gabriel_producer_inputs_sent":
+            found = False
+            for sample in metric.samples:
+                if sample.name == "gabriel_producer_inputs_sent_total":
+                    found = True
+                    assert sample.value == 5
+            assert found
+        elif metric.name == "gabriel_client_input_processing_latency_seconds":
+            found = False
+            for sample in metric.samples:
+                if (
+                    sample.name
+                    == "gabriel_client_input_processing_latency_seconds_count"
+                ):
+                    found = True
+                    init_val = (
+                        find_value(
+                            metrics_before,
+                            "gabriel_client_input_processing_latency_seconds_count",
+                            "producer_id",
+                            input_producer[0].producer_id,
+                        )
+                        or 0
+                    )
+                    assert init_val == 0
+                    assert sample.value == 5
+            assert found
+        elif metric.name == "gabriel_producer_token_count":
+            found = False
+            for sample in metric.samples:
+                if sample.name == "gabriel_producer_token_count":
+                    found = True
+                    assert sample.value > 0
+            assert found
+        else:
+            metrics_found -= 1
+    assert metrics_found == len(expected_metrics)

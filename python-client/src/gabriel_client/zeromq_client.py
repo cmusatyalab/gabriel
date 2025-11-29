@@ -44,6 +44,7 @@ class ZeroMQClient(GabrielClient):
         server_endpoint: str,
         input_producers: list[InputProducer],
         consumer: Callable[[gabriel_pb2.Result], None],
+        prometheus_port: int = 8001,
     ):
         """Initialize the client.
 
@@ -57,9 +58,11 @@ class ZeroMQClient(GabrielClient):
             produced by this client
         consumer (Callable[[gabriel_pb2.Result], None]):
             Callback for results from server
+        prometheus_port (int):
+            Port for Prometheus metrics.
 
         """
-        super().__init__()
+        super().__init__(prometheus_port)
         # Socket used for communicating with the server
         self._ctx = zmq.asyncio.Context()
         self._sock = self._ctx.socket(zmq.DEALER)
@@ -88,14 +91,6 @@ class ZeroMQClient(GabrielClient):
         self._connected.set()
 
     async def launch_async(self):
-        """Launch the client asynchronously."""
-        await self._launch_helper()
-
-    def launch(self, message_max_size=None):
-        """Launch the client synchronously."""
-        asyncio.run(self._launch_helper())
-
-    async def _launch_helper(self):
         """Launch async tasks for running the client.
 
         Handles producing inputs, consuming results, and sending heartbeats to

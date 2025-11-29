@@ -37,6 +37,7 @@ class WebsocketClient(GabrielClient):
         server_endpoint: str,
         input_producers: list[InputProducer],
         consumer: Callable[[gabriel_pb2.Result], None],
+        prometheus_port: int = 8001,
     ):
         """Initialize the client.
 
@@ -49,9 +50,11 @@ class WebsocketClient(GabrielClient):
             produced by this client
         consumer (Callable[[gabriel_pb2.Result], None]):
             Callback for results from server
+        prometheus_port (int):
+            Port for Prometheus metrics.
 
         """
-        super().__init__()
+        super().__init__(prometheus_port)
         self.consumer = consumer
         self.input_producers = set(input_producers)
 
@@ -61,10 +64,6 @@ class WebsocketClient(GabrielClient):
             raise ValueError(
                 f"Unsupported protocol {parsed_server_endpoint.scheme}"
             )
-
-    def launch(self, message_max_size=None):
-        """Launch the client synchronously."""
-        asyncio.run(self.launch_async())
 
     async def launch_async(self):
         """Launch the client asynchronously."""
