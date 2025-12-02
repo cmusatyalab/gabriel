@@ -107,7 +107,8 @@ class EngineRunner:
             if await socket.poll(self.timeout) == 0:
                 logger.warning(f"{self.engine_id}: no response from server")
                 self.request_retries -= 1
-                break
+                return
+            self.request_retries = REQUEST_RETRIES
 
             message_from_server = await socket.recv()
             if message_from_server == network_engine.HEARTBEAT:
@@ -139,7 +140,7 @@ class EngineRunner:
                 result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
                 result_proto.status.message = error_msg
                 await socket.send(create_engine_result_payload(result_proto))
-                return
+                raise Exception(error_msg)
 
             if not isinstance(result.status, gabriel_pb2.Status):
                 error_msg = (
@@ -151,13 +152,14 @@ class EngineRunner:
                 result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
                 result_proto.status.message = error_msg
                 await socket.send(create_engine_result_payload(result_proto))
-                return
+                raise Exception(error_msg)
+
             result_proto.status.CopyFrom(result.status)
 
             if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
                 logger.debug(f"{self.engine_id} sending error to server")
                 await socket.send(create_engine_result_payload(result_proto))
-                return
+                continue
 
             payload = result.payload
             if payload is None:
@@ -166,7 +168,7 @@ class EngineRunner:
                 result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
                 result_proto.status.message = error_msg
                 await socket.send(create_engine_result_payload(result_proto))
-                return
+                raise Exception(error_msg)
 
             if isinstance(payload, str):
                 result_proto.string_result = payload
@@ -183,7 +185,7 @@ class EngineRunner:
                 result_proto.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
                 result_proto.status.message = error_msg
                 await socket.send(create_engine_result_payload(result_proto))
-                return
+                raise Exception(error_msg)
 
             # result_proto.status.code = gabriel_pb2.StatusCode.SUCCESS
             logger.debug(f"{self.engine_id} sending result to server")

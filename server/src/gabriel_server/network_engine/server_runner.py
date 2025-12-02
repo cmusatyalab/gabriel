@@ -188,7 +188,7 @@ class _Server:
         async def heartbeat_loop():
             await self._server.wait_for_start()
             while self._server.is_running():
-                await asyncio.sleep(self._timeout)
+                await asyncio.sleep(0.1)
                 await self._heartbeat_helper()
             logger.info("Heartbeat loop shut down")
 
@@ -234,9 +234,6 @@ class _Server:
     async def _receive_from_engine_worker_helper(self):
         """Consume from ZeroMQ queue for cognitive engines messages."""
         if await self._zmq_socket.poll(timeout=1000) == 0:
-            logger.debug(
-                "Timeout reached waiting for message from engine worker"
-            )
             return
         address, _, payload = await self._zmq_socket.recv_multipart()
 
@@ -338,6 +335,16 @@ class _Server:
 
         welcome = from_standalone_engine.welcome
         engine_id = welcome.engine_id
+
+        # An engine with this id is already connected, remove that engine
+        # worker from the server
+        if engine_id in self._engine_ids:
+            logger.warning(f"Engine with id {engine_id} is already connected!")
+            for address, worker in list(self._engine_workers.items()):
+                if worker.get_engine_id() == engine_id:
+                    await self._remove_engine_worker(address)
+                    break
+
         logger.info(f"New engine {engine_id} connected")
 
         all_responses_required = welcome.all_responses_required
@@ -365,6 +372,7 @@ class _Server:
             last_received = engine_worker.get_last_received()
             time_since_last_received = time.monotonic() - last_received
             if time_since_last_received < self._timeout:
+                await asyncio.sleep(0)
                 continue
 
             # If the engine is inactive, send a heartbeat.
@@ -467,7 +475,7 @@ class _EngineWorker:
         self._engine_id = engine_id
         self._all_responses_required = all_responses_required
         # Last time a message was sent to the engine, including heartbeats
-        self._last_received = 0
+        self._last_received = time.monotonic()
         self._last_payload_send_time = 0
         self._awaiting_heartbeat_response = False
         self._current_input_metadata = None
@@ -673,6 +681,7 @@ class _ProducerInfo:
         PRODUCER_QUEUE_LENGTH.labels(producer_id=self._producer_id).set(
             len(self._input_queue)
         )
+        return True
 
     async def get_input_from_queue(self, engine_id):
         logger.debug(

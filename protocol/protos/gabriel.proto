@@ -18,7 +18,9 @@ enum PayloadType {
 }
 
 message InputFrame {
+    // The payload type of this input.
     PayloadType payload_type = 1;
+    // The payload.
     oneof payload {
         string string_payload = 2;
         bytes byte_payload = 3;
@@ -57,7 +59,9 @@ enum StatusCode {
 }
 
 message Status {
+    // Status code.
     StatusCode code = 1;
+    // Status message.
     string message = 2;
 }
 
@@ -77,11 +81,14 @@ message Result {
 
 message ToClient {
     message Welcome {
+        // Number of tokens each producer should get.
         int32 num_tokens_per_producer = 1;
+        // The engine ids that are connected to the server.
         repeated string engine_ids = 2;
     }
 
     message Control {
+        // The new set of engine ids connected to the server.
         repeated string engine_ids = 1;
     }
 
@@ -104,7 +111,11 @@ message ToClient {
 
 message FromStandaloneEngine {
     message Welcome {
+        // The engine id.
         string engine_id = 1;
+        // Whether all responses from this engine should be sent to the client,
+        // even if they do not correspond to the latest input. This flag
+        // determines whether stale results are sent to the client.
         bool all_responses_required = 2;
     }
 
