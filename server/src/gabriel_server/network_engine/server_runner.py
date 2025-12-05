@@ -192,10 +192,17 @@ class _Server:
                 await self._heartbeat_helper()
             logger.info("Heartbeat loop shut down")
 
+        async def log_connected_engines():
+            await self._server.wait_for_start()
+            while self._server.is_running():
+                await asyncio.sleep(10)
+                logger.info(f"Connected engines: {self._engine_ids}")
+
         engine_receiver_task = asyncio.create_task(
             receive_from_engine_worker_loop()
         )
         engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
+        log_engines_task = asyncio.create_task(log_connected_engines())
 
         server_task = asyncio.create_task(
             self._server.launch_async(
@@ -203,14 +210,17 @@ class _Server:
             )
         )
 
-        tasks = [engine_receiver_task, engine_heartbeat_task, server_task]
+        tasks = [
+            engine_receiver_task,
+            engine_heartbeat_task,
+            server_task,
+            log_engines_task,
+        ]
 
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             self._zmq_socket.close()
-            for task in tasks:
-                task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
         logger.info("Server shut down")

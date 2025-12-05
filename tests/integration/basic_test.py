@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class Engine(cognitive_engine.Engine, threading.Thread):
     """A simple echo engine that returns the input payload as output."""
 
-    def __init__(self, engine_id, zeromq_address):
+    def __init__(self, engine_id, zeromq_address, handle_method=None):
         """Initialize the engine and engine runner."""
         super().__init__()
         self.engine_id = engine_id
@@ -48,11 +48,14 @@ class Engine(cognitive_engine.Engine, threading.Thread):
             all_responses_required=True,
             request_retries=3,
         )
+        self.handle_method = handle_method
 
         logger.info(f"Engine {engine_id} initialized")
 
     def handle(self, input_frame):
         """Process a single gabriel_pb2.InputFrame()."""
+        if self.handle_method:
+            return self.handle_method(input_frame)
         logger.info(f"Engine {self.engine_id} received frame")
 
         assert (
@@ -189,15 +192,23 @@ async def run_server(
     logger.info("Done tearing down server")
 
 
+@pytest.fixture
+def handle_method():
+    """An engine handle method."""
+    return None
+
+
 @pytest_asyncio.fixture
-async def run_engines(run_server, server_backend_port, num_engines):
+async def run_engines(
+    run_server, server_backend_port, num_engines, handle_method
+):
     """Run engines connected to the server backend port."""
     engines = []
     logger.info(f"Running engines, connecting to {server_backend_port=}!")
 
     for engine_id in range(num_engines):
         zeromq_address = f"tcp://localhost:{server_backend_port}"
-        engine = Engine(engine_id, zeromq_address)
+        engine = Engine(engine_id, zeromq_address, handle_method)
         task = asyncio.create_task(engine.run_async())
         engines.append(task)
         task.add_done_callback(
@@ -1188,3 +1199,50 @@ async def test_prometheus_client_metrics(
         else:
             metrics_found -= 1
     assert metrics_found == len(expected_metrics)
+
+
+def server_dropped_frame_handle(input_frame):
+    """Engine handle method that returns server dropped frame error."""
+    status = gabriel_pb2.Status()
+    status.code = gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME
+    status.message = "Dropping frame at engine"
+    return cognitive_engine.Result(status, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handle_method", [server_dropped_frame_handle])
+async def test_server_dropped_frame(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    prometheus_client_port,
+    caplog,
+):
+    """Test that the server dropped frame error is correctly handled."""
+    response_state.clear()
+    response_state["received"] = False
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await asyncio.sleep(0.5)
+
+    assert not task.done()
+    task.cancel()
+
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client task is cancelled")
+
+    assert "Server Engine-0 dropped frame from producer" in caplog.text

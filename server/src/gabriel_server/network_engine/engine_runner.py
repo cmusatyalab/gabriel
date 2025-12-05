@@ -157,7 +157,11 @@ class EngineRunner:
             result_proto.status.CopyFrom(result.status)
 
             if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
-                logger.debug(f"{self.engine_id} sending error to server")
+                logger.error(
+                    f"{self.engine_id} sending error "
+                    f"{gabriel_pb2.StatusCode.Name(result.status.code)} to "
+                    f"server"
+                )
                 await socket.send(create_engine_result_payload(result_proto))
                 continue
 

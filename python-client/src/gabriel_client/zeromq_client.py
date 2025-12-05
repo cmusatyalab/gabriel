@@ -231,10 +231,17 @@ class ZeroMQClient(GabrielClient):
             logger.critical(f"Fatal error: no engine for input: {msg}")
             raise Exception(f"No engine for input: {msg}")
         elif code == gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME:
-            logger.error(f"Server dropped frame: {msg}")
+            logger.error(
+                f"Server {result.target_engine_id} dropped frame from "
+                f"producer {result_wrapper.producer_id}: {msg}"
+            )
         else:
             status_name = gabriel_pb2.StatusCode.Name(code)
             logger.error(f"Output status was: {status_name}; {msg}")
+            logger.error(
+                f"Input from producer {result_wrapper.producer_id} targeting "
+                f"server {result.target_engine_id} caused error: {msg}"
+            )
 
         if result_wrapper.return_token:
             producer_id = result_wrapper.producer_id
