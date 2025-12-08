@@ -191,7 +191,6 @@ class EngineRunner:
                 await socket.send(create_engine_result_payload(result_proto))
                 raise Exception(error_msg)
 
-            # result_proto.status.code = gabriel_pb2.StatusCode.SUCCESS
             logger.debug(f"{self.engine_id} sending result to server")
             await socket.send(create_engine_result_payload(result_proto))
 
