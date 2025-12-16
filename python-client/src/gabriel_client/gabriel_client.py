@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Iterable
 from typing import Any, Union
 
 from gabriel_protocol.gabriel_pb2 import FromClient, InputFrame, ToClient
@@ -49,7 +49,7 @@ class InputProducer:
     def __init__(
         self,
         producer: Callable[[], Coroutine[Any, Any, InputFrame | None]],
-        target_engine_ids: list[str],
+        target_engine_ids: Iterable[str],
         producer_name: Union[str, None] = None,
     ):
         """Initialize the input producer.
@@ -57,15 +57,15 @@ class InputProducer:
         Args:
             producer (coroutine function):
                 A coroutine function that produces input data
-            target_engine_ids (list[str]):
-                A list of target engine IDs for the input
+            target_engine_ids (Iterable[str]):
+                Target engine IDs for the input
             producer_name (str, optional):
                 The name of the producer producing the input
         """
         self._running = threading.Event()
         self._running.set()
         self._producer = producer
-        self._target_engine_ids = target_engine_ids
+        self._target_engine_ids = set(target_engine_ids)
         self._target_engine_lock = threading.Lock()
         self.producer_name = producer_name
         self.producer_id = (
@@ -82,7 +82,9 @@ class InputProducer:
             Exception: if the producer is not running
         """
         if not self._running.is_set():
-            raise Exception("Producer called when not running")
+            raise Exception(
+                f"Producer {self.producer_name} called when not running"
+            )
         res = await self._producer()
         return res
 
@@ -93,8 +95,8 @@ class InputProducer:
         self._running.set()
         with self._target_engine_lock:
             logger.info(
-                f"Resuming producer and targeting engines"
-                f"{self._target_engine_ids}"
+                f"Resuming producer {self.producer_name} and targeting "
+                f"engines {self._target_engine_ids}"
             )
 
     def stop(self) -> None:
@@ -102,7 +104,7 @@ class InputProducer:
         logger.info("Stopping producer")
         self._running.clear()
 
-    def change_target_engines(self, target_engine_ids: list[str]) -> None:
+    def change_target_engines(self, target_engine_ids: Iterable[str]) -> None:
         """Change the target engines for the producer.
 
         Args:
@@ -111,8 +113,42 @@ class InputProducer:
 
         """
         with self._target_engine_lock:
-            self._target_engine_ids = target_engine_ids
-        logger.info(f"Changing target engines to {target_engine_ids}")
+            self._target_engine_ids = set(target_engine_ids)
+        logger.info(
+            f"Changing target engines to {target_engine_ids} for "
+            f"producer {self.producer_name}"
+        )
+
+    def add_target_engine(self, target_engine_id: str) -> None:
+        """Add a target engine to producer.
+
+        Args:
+            target_engine_id (str): a target engine id to add
+
+        """
+        with self._target_engine_lock:
+            self._target_engine_ids.add(target_engine_id)
+        logger.info(
+            f"Adding {target_engine_id} to target engine ids for producer "
+            f"{self.producer_name}"
+        )
+
+    def remove_target_engine(self, target_engine_id: str) -> bool:
+        """Remove a target engine from the producer.
+
+        Args:
+            target_engine_id (str): a target engine id to remove
+
+        Returns:
+            True if the target engine id exists and was removed
+            False if the target engine id does not exist
+
+        """
+        with self._target_engine_lock:
+            if target_engine_id not in self._target_engine_ids:
+                return False
+            self._target_engine_ids.remove(target_engine_id)
+            return True
 
     def is_running(self) -> bool:
         """Check if the producer is running."""
@@ -134,10 +170,10 @@ class InputProducer:
             shutdown_event.set()
             raise
 
-    def get_target_engines(self) -> list[str]:
+    def get_target_engines(self) -> frozenset[str]:
         """Return the target engines for the producer."""
         with self._target_engine_lock:
-            return self._target_engine_ids
+            return frozenset(self._target_engine_ids)
 
 
 class TokenPool:

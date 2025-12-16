@@ -198,17 +198,26 @@ def handle_method():
     return None
 
 
+@pytest.fixture
+def engine_ids():
+    """An engine handle method."""
+    return None
+
+
 @pytest_asyncio.fixture
 async def run_engines(
-    run_server, server_backend_port, num_engines, handle_method
+    run_server, server_backend_port, num_engines, handle_method, engine_ids
 ):
     """Run engines connected to the server backend port."""
     engines = []
     logger.info(f"Running engines, connecting to {server_backend_port=}!")
 
-    for engine_id in range(num_engines):
+    for i in range(num_engines):
         zeromq_address = f"tcp://localhost:{server_backend_port}"
-        engine = Engine(engine_id, zeromq_address, handle_method)
+        if engine_ids:
+            engine = Engine(engine_ids[i], zeromq_address, handle_method)
+        else:
+            engine = Engine(i, zeromq_address, handle_method)
         task = asyncio.create_task(engine.run_async())
         engines.append(task)
         task.add_done_callback(
@@ -977,7 +986,9 @@ async def test_engine_return_none(
 
     assert "Incorrect type returned by engine" in caplog.text
     assert (
-        "Output status was: ENGINE_ERROR; Incorrect type returned by engine"
+        "targeting server Engine-0 caused error ENGINE_ERROR: Incorrect type "
+        "returned by engine. Expected a value of type cognitive_engine.Result"
+        ", found <class 'NoneType'>"
     ) in caplog.text
     assert not response_state["received"]
 
@@ -1019,8 +1030,9 @@ async def test_engine_return_bad_status(
 
     assert "Return status not populated correctly by engine" in caplog.text
     assert (
-        "Output status was: ENGINE_ERROR; Return status not populated "
-        "correctly by engine"
+        "targeting server Engine-0 caused error ENGINE_ERROR: Return status "
+        "not populated correctly by engine. Expected a value of type "
+        "gabriel_pb2.Status, found <class 'NoneType'>"
     ) in caplog.text
     assert not response_state["received"]
 
@@ -1246,3 +1258,41 @@ async def test_server_dropped_frame(
     logger.info("Client task is cancelled")
 
     assert "Server Engine-0 dropped frame from producer" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_engines", [2])
+@pytest.mark.parametrize("engine_ids", [[0, 0]])
+async def test_duplicate_engine_id(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    prometheus_client_port,
+    caplog,
+):
+    """Test the behavior when multiple engines connect with same engine id."""
+    response_state.clear()
+    response_state["received"] = False
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await asyncio.sleep(0.1)
+
+    assert not task.done()
+    task.cancel()
+
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client task is cancelled")

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from collections.abc import Iterable
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -42,7 +43,7 @@ class ZeroMQClient(GabrielClient):
     def __init__(
         self,
         server_endpoint: str,
-        input_producers: list[InputProducer],
+        input_producers: Iterable[InputProducer],
         consumer: Callable[[gabriel_pb2.Result], None],
         prometheus_port: int = 8001,
     ):
@@ -53,8 +54,8 @@ class ZeroMQClient(GabrielClient):
             The server endpoint to connect to. Must have the form
             'protocol://interface:port'. Protocols supported are
             tcp and ipc
-        input_producers (list[InputProducer]):
-            A list of instances of InputProducer for the inputs
+        input_producers (Iterable[InputProducer]):
+            An iterable of instances of InputProducer for the inputs
             produced by this client
         consumer (Callable[[gabriel_pb2.Result], None]):
             Callback for results from server
@@ -89,6 +90,13 @@ class ZeroMQClient(GabrielClient):
         self._schedule_heartbeat = asyncio.Event()
 
         self._connected.set()
+
+    def remove_input_producer(self, input_producer):
+        """Remove an input producer from the client."""
+        if input_producer not in self.input_producers:
+            return False
+        self.input_producers.remove(input_producer)
+        return True
 
     async def launch_async(self):
         """Launch async tasks for running the client.
@@ -237,10 +245,10 @@ class ZeroMQClient(GabrielClient):
             )
         else:
             status_name = gabriel_pb2.StatusCode.Name(code)
-            logger.error(f"Output status was: {status_name}; {msg}")
             logger.error(
                 f"Input from producer {result_wrapper.producer_id} targeting "
-                f"server {result.target_engine_id} caused error: {msg}"
+                f"server {result.target_engine_id} caused error "
+                f"{status_name}: {msg}"
             )
 
         if result_wrapper.return_token:
@@ -274,7 +282,7 @@ class ZeroMQClient(GabrielClient):
         self._tokens[producer_id] = token_pool
 
         try:
-            while self._running:
+            while self._running and producer in self.input_producers:
                 if not producer.is_running():
                     logger.info(
                         f"Producer {producer.producer_id} is not running; "
@@ -294,7 +302,7 @@ class ZeroMQClient(GabrielClient):
                     continue
 
                 target_engines = producer.get_target_engines()
-                if target_engines == []:
+                if not target_engines:
                     logger.error(
                         f"{producer.producer_name} targets no engines"
                     )
@@ -376,11 +384,10 @@ class ZeroMQClient(GabrielClient):
                     producer.producer_id,
                     "LOCKED" if token_pool.is_locked() else "AVAILABLE",
                 )
-        except asyncio.CancelledError:
+        finally:
             if producer_task is not None:
                 producer_task.cancel()
                 asyncio.gather(producer_task, return_exceptions=True)
-            raise
 
     async def send_to_server(self, from_client: gabriel_pb2.FromClient):
         """Send a frame to the server."""

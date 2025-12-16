@@ -31,12 +31,14 @@ message InputFrame {
 message FromClient {
     // A monotonically increasing frame identifier.
     int64 frame_id = 1;
-    // The identifier of the producer producing input.
+    // The identifier of the producer generating input.
     string producer_id = 2;
     // The targeted engines for this input.
     repeated string target_engine_ids = 3;
     // The data to be sent to the server.
     InputFrame input_frame = 4;
+    // Arbitrary information about the client.
+    google.protobuf.Any client_info = 5;
 }
 
 enum StatusCode {
