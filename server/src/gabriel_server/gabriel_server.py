@@ -17,6 +17,8 @@ from gabriel_protocol.gabriel_pb2 import (
     ToClient,
 )
 
+from gabriel_server.result_manager import ResultManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +56,7 @@ class GabrielServer(ABC):
         self._start_event = asyncio.Event()
         self._is_running = False
         self._engine_cb = engine_cb
+        self.result_manager = ResultManager()
 
     @abstractmethod
     def launch(
