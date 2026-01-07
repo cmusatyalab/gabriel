@@ -137,7 +137,7 @@ class ServerRunner:
             self.use_zeromq,
             self.use_ipc,
         )
-        self.server = server.get_server()
+        self.server = server.server
         try:
             await server.launch_async(
                 self.client_endpoint, self.message_max_size
@@ -147,10 +147,6 @@ class ServerRunner:
             zmq_socket.close()
             context.term()
             raise
-
-    def get_server(self):
-        """Return the server instance."""
-        return self.server
 
 
 class _Server:
@@ -170,7 +166,7 @@ class _Server:
         self._producer_infos: dict[str, _ProducerInfo] = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
-        self._server = (ZeroMQServer if use_zeromq else WebsocketServer)(
+        self.server = (ZeroMQServer if use_zeromq else WebsocketServer)(
             num_tokens, self._send_to_engine, self._engine_ids
         )
         self.use_ipc = use_ipc
@@ -180,21 +176,21 @@ class _Server:
 
     async def launch_async(self, client_port, message_max_size):
         async def receive_from_engine_worker_loop():
-            await self._server.wait_for_start()
-            while self._server.is_running():
+            await self.server.wait_for_start()
+            while self.server.is_running():
                 await self._receive_from_engine_worker_helper()
             logger.info("Engine receiver loop shut down")
 
         async def heartbeat_loop():
-            await self._server.wait_for_start()
-            while self._server.is_running():
+            await self.server.wait_for_start()
+            while self.server.is_running():
                 await asyncio.sleep(0.1)
                 await self._heartbeat_helper()
             logger.info("Heartbeat loop shut down")
 
         async def log_connected_engines():
-            await self._server.wait_for_start()
-            while self._server.is_running():
+            await self.server.wait_for_start()
+            while self.server.is_running():
                 await asyncio.sleep(10)
                 logger.info(f"Connected engines: {self._engine_ids}")
 
@@ -205,7 +201,7 @@ class _Server:
         log_engines_task = asyncio.create_task(log_connected_engines())
 
         server_task = asyncio.create_task(
-            self._server.launch_async(
+            self.server.launch_async(
                 client_port, message_max_size, self.use_ipc
             )
         )
@@ -224,10 +220,6 @@ class _Server:
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
         logger.info("Server shut down")
-
-    def get_server(self):
-        """Return the server instance."""
-        return self._server
 
     async def _calculate_engine_metrics(self, engine_worker):
         processing_latency = (
@@ -278,6 +270,10 @@ class _Server:
         ).inc()
 
         result = from_standalone_engine.result
+
+        # Pass the result to the result manager for sending to any result sinks
+        await self.server.result_manager.process_result(result)
+
         engine_worker_metadata = engine_worker.get_current_input_metadata()
         producer_info = self._producer_infos.get(
             engine_worker_metadata.producer_id
@@ -300,7 +296,7 @@ class _Server:
                 f"Sending result from engine {engine_worker.get_engine_id()}"
                 f" to client {engine_worker_metadata.client_address}"
             )
-            await self._server.send_result(
+            await self.server.send_result(
                 engine_worker_metadata.client_address,
                 producer_info.get_name(),
                 engine_worker.get_engine_id(),
@@ -313,7 +309,7 @@ class _Server:
             return
 
         if engine_worker.get_all_responses_required():
-            await self._server.send_result(
+            await self.server.send_result(
                 engine_worker_metadata.client_address,
                 producer_info.get_name(),
                 engine_worker.get_engine_id(),
@@ -367,14 +363,14 @@ class _Server:
         )
         self._engine_workers[address] = engine_worker
         self._engine_ids.add(engine_id)
-        await self._server._engines_updated_cb()
+        await self.server._engines_updated_cb()
 
     async def _remove_engine_worker(self, address):
         """Remove an engine worker."""
         engine_id = self._engine_workers[address].get_engine_id()
         self._engine_ids.remove(engine_id)
         del self._engine_workers[address]
-        await self._server._engines_updated_cb()
+        await self.server._engines_updated_cb()
 
     async def _heartbeat_helper(self):
         # We cannot directly iterate over items because we delete some entries
@@ -439,7 +435,7 @@ class _Server:
 
                 # TODO(Aditya): what about other targeted engines?
 
-                await self._server.send_result(
+                await self.server.send_result(
                     current_input_metadata.client_address,
                     producer_info.get_name(),
                     engine_worker.get_engine_id(),

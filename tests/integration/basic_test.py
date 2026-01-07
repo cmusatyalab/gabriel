@@ -9,6 +9,8 @@ import threading
 
 import pytest
 import pytest_asyncio
+import zmq
+import zmq.asyncio
 from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.zeromq_client import ZeroMQClient
@@ -17,6 +19,7 @@ from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.local_engine import LocalEngine
 from gabriel_server.network_engine import engine_runner, server_runner
+from gabriel_server.result_manager import ZeroMQSink
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Summary
 
 DEFAULT_NUM_TOKENS = 2
@@ -655,7 +658,7 @@ async def test_disconnection(
 
     # Simulate server disconnection
     logger.debug("Simulating disconnection")
-    server = run_server.get_server()
+    server = run_server.server
     await server._close_server_socket()
     await asyncio.sleep(12)
     num_responses = response_state["Engine-0"]
@@ -1296,3 +1299,55 @@ async def test_duplicate_engine_id(
         if task is not None and task.cancelled():
             raise
     logger.info("Client task is cancelled")
+
+
+@pytest.mark.asyncio
+async def test_zeromq_result_output(
+    run_engines,
+    run_server,
+    input_producer,
+    server_frontend_port,
+    response_state,
+):
+    """Test that the ZeroMQ result pipeline works."""
+    server = run_server.server
+    result_manager = server.result_manager
+    zeromq_sink = ZeroMQSink("/tmp/engine_results")
+
+    result_manager.register_result_sink(zeromq_sink)
+
+    # Create a SUBSCRIBE socket
+    ctx = zmq.asyncio.Context()
+    sock = ctx.socket(zmq.SUB)
+    sock.connect("ipc:///tmp/engine_results")
+    sock.setsockopt(zmq.SUBSCRIBE, b"Engine-0")
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await asyncio.sleep(0.5)
+
+    assert not task.done()
+    task.cancel()
+
+    try:
+        logger.info("Waiting for client task to cancel")
+        await task
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+
+    assert await sock.poll(timeout=1) & zmq.POLLIN
+    msg = await sock.recv_multipart()
+    result = gabriel_pb2.Result()
+    result.ParseFromString(msg[1])
+
+    assert result.target_engine_id == "Engine-0"
+    assert result.string_result == "hello"
+    assert result.frame_id == 1

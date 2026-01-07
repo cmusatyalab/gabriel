@@ -19,6 +19,11 @@ class ResultSink(ABC):
         """Process the engine result."""
         pass
 
+    @abstractmethod
+    async def cleanup(self):
+        """Cleanup logic."""
+        pass
+
 
 class ZeroMQSink(ResultSink):
     """Publishes results to a ZeroMQ socket for consumption."""
@@ -31,7 +36,7 @@ class ZeroMQSink(ResultSink):
                 The bind port or the bind unix socket path
         """
         self._context = zmq.asyncio.Context()
-        self._sock = self.context.socket(zmq.PUB)
+        self._sock = self._context.socket(zmq.PUB)
         self._sock.setsockopt(zmq.LINGER, 0)
         if isinstance(port_or_path, int):
             self._sock.bind(f"tcp://*:{port_or_path}")
@@ -40,11 +45,23 @@ class ZeroMQSink(ResultSink):
 
     async def process_result(self, result):
         """Process the engine result."""
-        await self._sock.send(result.SerializeToString())
+        logger.info("ZeroMQ sink received engine result")
+        await self._sock.send_multipart(
+            [result.target_engine_id.encode(), result.SerializeToString()]
+        )
+
+    async def cleanup(self):
+        """Cleanup logic."""
+        self._sock.close(0)
+        self._context.term()
 
 
 class ResultManager:
-    """Manages result sinks."""
+    """Manages result sinks.
+
+    Each server instance has a result manager instance associated with it. Do
+    not instantiate a result manager separately.
+    """
 
     def __init__(self):
         """Initialize internal data structures."""
@@ -59,4 +76,12 @@ class ResultManager:
         if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
             return
         for sink in self._sinks:
-            await sink.process_result(result)
+            try:
+                await sink.process_result(result)
+            except Exception as e:
+                logger.error(e)
+
+    async def cleanup(self):
+        """Cleanup logic."""
+        for sink in self._sinks:
+            await sink.cleanup()

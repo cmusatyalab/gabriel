@@ -4,4 +4,3 @@
 pytest
 pytest-asyncio
 pytest-timeout
-pre-commit

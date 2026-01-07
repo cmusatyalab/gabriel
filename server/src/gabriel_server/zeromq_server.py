@@ -100,6 +100,7 @@ class ZeroMQServer(GabrielServer):
         finally:
             self._sock.close()
             self._ctx.term()
+            await self.result_manager.cleanup()
 
     async def _send_via_transport(self, address, payload):
         if self._simulate_disconnection:
