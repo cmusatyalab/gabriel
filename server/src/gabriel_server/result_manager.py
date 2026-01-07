@@ -33,7 +33,7 @@ class ZeroMQSink(ResultSink):
 
         Args:
             port_or_path (int | str):
-                The bind port or the bind unix socket path
+                The bind port or the bind unix socket path.
         """
         self._context = zmq.asyncio.Context()
         self._sock = self._context.socket(zmq.PUB)
@@ -68,11 +68,23 @@ class ResultManager:
         self._sinks = set()
 
     def register_result_sink(self, result_sink: ResultSink):
-        """Register a sink to send engine results to."""
+        """Register a sink to send engine results to.
+
+        Not thread-safe. Must be called from the same asyncio loop that
+        the server is running on.
+        """
         self._sinks.add(result_sink)
 
+    def unregister_result_sink(self, result_sink: ResultSink):
+        """Unregister a result sink.
+
+        Not thread-safe. Must be called from the same asyncio loop that
+        the server is running on.
+        """
+        self._sinks.discard(result_sink)
+
     async def process_result(self, result: gabriel_pb2.Result):
-        """Process an engine result."""
+        """Process an engine result, invoked by the server."""
         if result.status.code != gabriel_pb2.StatusCode.SUCCESS:
             return
         for sink in self._sinks:
@@ -82,6 +94,6 @@ class ResultManager:
                 logger.error(e)
 
     async def cleanup(self):
-        """Cleanup logic."""
+        """Cleanup logic, invoked by the server."""
         for sink in self._sinks:
             await sink.cleanup()
