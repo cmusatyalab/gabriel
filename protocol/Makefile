@@ -1,5 +1,5 @@
 PROTO_DIR := protos
-GO_OUT := go/gabriel_protocol
+GO_OUT := go
 PY_OUT := python/src/gabriel_protocol
 
 PROTO_FILES := $(shell find $(PROTO_DIR) -name '*.proto')

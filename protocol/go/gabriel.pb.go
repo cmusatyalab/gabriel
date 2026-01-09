@@ -4,7 +4,7 @@
 // 	protoc        v6.33.2
 // source: gabriel.proto
 
-package gabriel_protocol
+package gabrielpb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -996,8 +996,8 @@ const file_gabriel_proto_rawDesc = "" +
 	"\x12WRONG_INPUT_FORMAT\x10\x03\x12\x17\n" +
 	"\x13NO_ENGINE_FOR_INPUT\x10\x04\x12\r\n" +
 	"\tNO_TOKENS\x10\x05\x12\x18\n" +
-	"\x14SERVER_DROPPED_FRAME\x10\x06BN\n" +
-	"\x1bedu.cmu.cs.gabriel.protocolB\x06ProtosZ'github.com/cmusatyalab/gabriel-protocolb\x06proto3"
+	"\x14SERVER_DROPPED_FRAME\x10\x06B[\n" +
+	"\x1bedu.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3"
 
 var (
 	file_gabriel_proto_rawDescOnce sync.Once

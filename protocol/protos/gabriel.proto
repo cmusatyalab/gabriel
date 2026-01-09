@@ -6,7 +6,7 @@ import "google/protobuf/any.proto";
 
 option java_package = "edu.cmu.cs.gabriel.protocol";
 option java_outer_classname = "Protos";
-option go_package = "github.com/cmusatyalab/gabriel-protocol";
+option go_package = "github.com/cmusatyalab/gabriel/protocol/go;gabrielpb";
 
 enum PayloadType {
     PAYLOAD_TYPE_UNSPECIFIED = 0;
