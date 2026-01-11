@@ -28,6 +28,8 @@ import androidx.camera.core.ImageProxy;
 import androidx.camera.core.MeteringPoint;
 import androidx.camera.core.MeteringPointFactory;
 import androidx.camera.core.Preview;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 
 import androidx.camera.view.PreviewView;
@@ -229,8 +231,13 @@ public class CameraCapture {
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
 
+                ResolutionSelector resolutionSelector = new ResolutionSelector.Builder()
+                        .setResolutionStrategy(new ResolutionStrategy(new Size(width, height),
+                                ResolutionStrategy.FALLBACK_RULE_NONE))
+                        .build();
+
                 ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                        .setTargetResolution(new Size(width, height))
+                        .setResolutionSelector(resolutionSelector)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build();
                 imageAnalysis.setAnalyzer(this.cameraExecutor, imageAnalyzer);
