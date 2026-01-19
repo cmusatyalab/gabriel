@@ -190,9 +190,9 @@ class ZeroMQClient(GabrielClient):
                 logger.debug("Processing response from server")
                 self._process_response(to_client.result_wrapper)
             elif to_client.HasField("control"):
-                logger.debug("Received control message from server")
+                logger.info("Received control message from server")
                 self._engine_ids = to_client.control.engine_ids
-                logger.debug(f"Updating engine ids to: {self._engine_ids}")
+                logger.info(f"Updating engine ids to: {self._engine_ids}")
             else:
                 logger.critical(
                     "Fatal error: empty to_client message received from server"
@@ -240,14 +240,14 @@ class ZeroMQClient(GabrielClient):
             raise Exception(f"No engine for input: {msg}")
         elif code == gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME:
             logger.error(
-                f"Server {result.target_engine_id} dropped frame from "
+                f"Engine {result.target_engine_id} dropped frame from "
                 f"producer {result_wrapper.producer_id}: {msg}"
             )
         else:
             status_name = gabriel_pb2.StatusCode.Name(code)
             logger.error(
                 f"Input from producer {result_wrapper.producer_id} targeting "
-                f"server {result.target_engine_id} caused error "
+                f"engine {result.target_engine_id} caused error "
                 f"{status_name}: {msg}"
             )
 

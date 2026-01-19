@@ -6,6 +6,7 @@ import numpy as np
 from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.network_engine import engine_runner
+from gabriel_server.cognitive_engine import Result
 
 SERVER_ADDRESS_FORMAT = "tcp://{}:{}"
 
@@ -19,6 +20,10 @@ class DisplayEngine(cognitive_engine.Engine):
 
     def handle(self, input_frame):
         """Handles an input frame."""
+        status = gabriel_pb2.Status()
+        status.code = gabriel_pb2.StatusCode.SUCCESS
+
+        return Result(status, "Hello from engine")
         np_data = np.frombuffer(input_frame.payloads[0], dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
         cv2.imshow(f"Image from engine: {self._engine_name}", frame)
