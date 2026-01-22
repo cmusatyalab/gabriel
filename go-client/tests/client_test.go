@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,11 +28,16 @@ func TestEndToEnd(t *testing.T) {
 		return ch
 	}
 	producer := client.NewInputProducer("producer-1", producerFn, []string{"0"})
+	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
-
+		receivedResponse.Store(true)
 	}
 	zmq_client, _ := client.NewZeroMQClient("ipc:///tmp/gabriel-server", []*client.InputProducer{producer}, consumer)
 
 	glog.Infoln("Launching client")
-	zmq_client.Launch(ctx)
+	go zmq_client.Launch(ctx)
+	time.Sleep(500 * time.Millisecond)
+	if !receivedResponse.Load() {
+		t.Fatal("Did not receive response")
+	}
 }

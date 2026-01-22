@@ -5,8 +5,8 @@ import cv2
 import numpy as np
 from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
-from gabriel_server.network_engine import engine_runner
 from gabriel_server.cognitive_engine import Result
+from gabriel_server.network_engine import engine_runner
 
 SERVER_ADDRESS_FORMAT = "tcp://{}:{}"
 

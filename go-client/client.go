@@ -10,7 +10,7 @@ import (
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
 	"github.com/golang/glog"
-	"github.com/zeromq/goczmq"
+	zmq "github.com/pebbe/zmq4"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
@@ -151,7 +151,7 @@ type ZeroMQClient struct {
 	ServerEndpoint       string
 	consumer             func(*gabrielpb.Result)
 	tokenPool            map[string]tokenPool
-	socket               *goczmq.Sock
+	socket               *zmq.Socket
 	connected            bool
 	connectedMu          sync.Mutex
 	connectedCond        *sync.Cond
@@ -190,11 +190,15 @@ func (client *ZeroMQClient) Launch(ctx context.Context) {
 	glog.Infoln("Connecting to server at", client.ServerEndpoint)
 	// Connect to the server and send hello message.
 	var err error
-	client.socket, err = goczmq.NewDealer(client.ServerEndpoint)
+	client.socket, err = zmq.NewSocket(zmq.DEALER)
 	if err != nil {
 		log.Fatalln("Error creating dealer socket:", err)
 	}
-	err = client.socket.SendFrame([]byte(HelloMsg), goczmq.FlagNone)
+	err = client.socket.Connect(client.ServerEndpoint)
+	if err != nil {
+		log.Fatalln("Error connecting to server:", err)
+	}
+	_, err = client.socket.Send(HelloMsg, 0)
 	if err != nil {
 		log.Fatalln("Error sending hello msg to server:", err)
 	}
@@ -208,16 +212,14 @@ func (client *ZeroMQClient) Launch(ctx context.Context) {
 
 	<-ctx.Done()
 	// cleanup
-	client.socket.Destroy()
+	client.socket.Close()
 }
 
 // consumerHandler handles incoming messages from the server.
 func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
 	timeoutMillis := ServerTimeoutSecs * 1000
-	poller, err := goczmq.NewPoller(client.socket)
-	if err != nil {
-		glog.Fatalln(err)
-	}
+	poller := zmq.NewPoller()
+	poller.Add(client.socket, zmq.POLLIN)
 
 	for {
 		select {
@@ -227,9 +229,11 @@ func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
 		}
 
 		now := time.Now()
-		glog.Infoln("Poller waiting for", timeoutMillis, "ms")
-		poll_result, _ := poller.Wait(timeoutMillis)
-		if poll_result == nil {
+		polled, err := poller.Poll(ServerTimeoutSecs * time.Second)
+		if err != nil {
+			glog.Fatalln("Received error", err, "when polling")
+		}
+		if len(polled) == 0 {
 			glog.Infoln("Socket polling took", time.Since(now))
 			client.connectedMu.Lock()
 			if client.connected {
@@ -240,18 +244,18 @@ func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
 				client.connectedMu.Unlock()
 				glog.Infoln("Still disconnected; reconnecting and resending heartbeat")
 			}
-			poller.Remove(client.socket)
-			client.socket.Destroy()
-			client.socket, err = goczmq.NewDealer(client.ServerEndpoint)
+			poller.Remove(0)
+			client.socket.Close()
+			client.socket, err = zmq.NewSocket(zmq.DEALER)
 			if err != nil {
-				log.Fatalln(err)
+				log.Fatalln("Error creating dealer socket:", err)
 			}
 			client.sendHeartbeat(true /* force */)
-			poller.Add(client.socket)
+			poller.Add(client.socket, zmq.POLLIN)
 			continue
 		}
 
-		reply, err := client.socket.RecvMessage()
+		reply, err := client.socket.RecvMessageBytes(0)
 		if err != nil {
 			glog.Fatalln(err)
 		}
@@ -481,7 +485,10 @@ func (client *ZeroMQClient) sendToServer(fromClient *gabrielpb.FromClient) {
 	if err != nil {
 		glog.Fatalln(err)
 	}
-	client.socket.SendFrame(msg, goczmq.FlagNone)
+	_, err = client.socket.SendBytes(msg, 0)
+	if err != nil {
+		glog.Fatalln("Error sending message to server:", err)
+	}
 }
 
 func (client *ZeroMQClient) sendHeartbeat(force bool) {
@@ -491,5 +498,8 @@ func (client *ZeroMQClient) sendHeartbeat(force bool) {
 	}
 	glog.V(2).Infoln("Sending heartbeat to server")
 	client.lastHeartbeatTime = time.Now()
-	client.socket.SendFrame([]byte(HeartbeatMsg), goczmq.FlagNone)
+	_, err := client.socket.SendBytes([]byte(HeartbeatMsg), 0)
+	if err != nil {
+		glog.Fatalln("Error sending heartbeat to server:", err)
+	}
 }

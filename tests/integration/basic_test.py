@@ -989,7 +989,7 @@ async def test_engine_return_none(
 
     assert "Incorrect type returned by engine" in caplog.text
     assert (
-        "targeting server Engine-0 caused error ENGINE_ERROR: Incorrect type "
+        "targeting engine Engine-0 caused error ENGINE_ERROR: Incorrect type "
         "returned by engine. Expected a value of type cognitive_engine.Result"
         ", found <class 'NoneType'>"
     ) in caplog.text
@@ -1033,7 +1033,7 @@ async def test_engine_return_bad_status(
 
     assert "Return status not populated correctly by engine" in caplog.text
     assert (
-        "targeting server Engine-0 caused error ENGINE_ERROR: Return status "
+        "targeting engine Engine-0 caused error ENGINE_ERROR: Return status "
         "not populated correctly by engine. Expected a value of type "
         "gabriel_pb2.Status, found <class 'NoneType'>"
     ) in caplog.text
@@ -1260,7 +1260,7 @@ async def test_server_dropped_frame(
             raise
     logger.info("Client task is cancelled")
 
-    assert "Server Engine-0 dropped frame from producer" in caplog.text
+    assert "Engine Engine-0 dropped frame from producer" in caplog.text
 
 
 @pytest.mark.asyncio
