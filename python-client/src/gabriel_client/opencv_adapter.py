@@ -17,7 +17,6 @@ class OpencvAdapter:
     def __init__(
         self,
         preprocess,
-        produce_extras,
         consume_frame,
         video_capture,
         engine_name,
@@ -26,8 +25,6 @@ class OpencvAdapter:
 
         Args:
             preprocess: A function to preprocess the video frame.
-            produce_extras:
-                A function to produce extra fields for the input frame.
             consume_frame:
                 A function to consume the output frame from the server.
             video_capture: The OpenCV video capture object.
@@ -35,7 +32,6 @@ class OpencvAdapter:
 
         """
         self._preprocess = preprocess
-        self._produce_extras = produce_extras
         self._consume_frame = consume_frame
         self._video_capture = video_capture
         self._engine_name = engine_name
@@ -53,11 +49,7 @@ class OpencvAdapter:
 
             input_frame = gabriel_pb2.InputFrame()
             input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-            input_frame.payloads.append(jpeg_frame.tobytes())
-
-            extras = self._produce_extras()
-            if extras is not None:
-                input_frame.extras.Pack(extras)
+            input_frame.byte_payload = jpeg_frame.tobytes()
 
             return input_frame
 
@@ -67,21 +59,10 @@ class OpencvAdapter:
             )
         ]
 
-    def consumer(self, result_wrapper):
+    def consumer(self, result):
         """Consume the output frame from the server."""
-        if len(result_wrapper.results) != 1:
-            logger.error(
-                "Got %d results from server", len(result_wrapper.results)
-            )
-            return
-
-        result = result_wrapper.results[0]
-        if result.payload_type != gabriel_pb2.PayloadType.IMAGE:
-            type_name = gabriel_pb2.PayloadType.Name(result.payload_type)
-            logger.error("Got result of type %s", type_name)
-            return
-
-        np_data = np.frombuffer(result.payload, dtype=np.uint8)
+        assert result.WhichOneof("payload") == "bytes_result"
+        np_data = np.frombuffer(result.bytes_result, dtype=np.uint8)
         frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
 
-        self._consume_frame(frame, result_wrapper.extras)
+        self._consume_frame(frame)

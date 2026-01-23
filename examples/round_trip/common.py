@@ -3,7 +3,7 @@
 import logging
 
 ZEROMQ_PORT = 9099
-DEFAULT_ENGINE_NAME = "Engine-0"
+DEFAULT_ENGINE_ID = "Engine-0"
 
 
 def configure_logging():

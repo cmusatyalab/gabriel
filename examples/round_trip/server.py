@@ -12,15 +12,11 @@ class DisplayEngine(cognitive_engine.Engine):
 
     def handle(self, input_frame):
         """Handles an input frame."""
-        status = gabriel_pb2.ResultWrapper.Status.SUCCESS
-        result_wrapper = cognitive_engine.create_result_wrapper(status)
-
-        result = gabriel_pb2.ResultWrapper.Result()
-        result.payload_type = gabriel_pb2.PayloadType.IMAGE
-        result.payload = input_frame.payloads[0]
-        result_wrapper.results.append(result)
-
-        return result_wrapper
+        status = gabriel_pb2.Status()
+        status.code = gabriel_pb2.StatusCode.SUCCESS
+        return cognitive_engine.Result(
+            status=status, payload=input_frame.byte_payload
+        )
 
 
 def main():
@@ -28,7 +24,7 @@ def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "engine_name", nargs="?", default=common.DEFAULT_ENGINE_NAME
+        "engine_id", nargs="?", default=common.DEFAULT_ENGINE_ID
     )
     args = parser.parse_args()
 
@@ -40,7 +36,7 @@ def main():
         input_queue_maxsize=60,
         port=common.ZEROMQ_PORT,
         num_tokens=2,
-        engine_name=args.engine_name,
+        engine_id=args.engine_id,
         use_zeromq=True,
     )
 

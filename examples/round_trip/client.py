@@ -15,12 +15,7 @@ def preprocess(frame):
     return frame
 
 
-def produce_extras():
-    """Produce extras to send to server."""
-    return None
-
-
-def consume_frame(frame, _):
+def consume_frame(frame):
     """Consume the frame received from server."""
     cv2.imshow("Image from server", frame)
     cv2.waitKey(1)
@@ -31,14 +26,14 @@ def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "engine_name", nargs="?", default=common.DEFAULT_ENGINE_NAME
+        "engine_id", nargs="?", default=common.DEFAULT_ENGINE_ID
     )
     parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
 
     capture = cv2.VideoCapture(0)
     opencv_adapter = OpencvAdapter(
-        preprocess, produce_extras, consume_frame, capture, args.engine_name
+        preprocess, consume_frame, capture, args.engine_id
     )
 
     client = ZeroMQClient(
