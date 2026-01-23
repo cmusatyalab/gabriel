@@ -48,7 +48,7 @@ def main():
     input_producers = [
         InputProducer(
             producer=gen_producer(i),
-            target_engine_ids=[common.DEFAULT_ENGINE_NAME],
+            target_engine_ids=[common.DEFAULT_ENGINE_ID],
         )
         for i in range(args.num_sources)
     ]

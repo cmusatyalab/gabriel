@@ -16,9 +16,9 @@ def consumer(_):
 class Source:
     """A push-based source used to send frames to Gabriel server."""
 
-    def __init__(self, source_name, target_engine_ids):
+    def __init__(self, producer_name, target_engine_ids):
         """Initialize the push-based source."""
-        self._source_name = source_name
+        self._producer_name = producer_name
         self._frame_available = asyncio.Semaphore(0)
         self._latest_input_frame = None
         self._read, self._write = multiprocessing.Pipe(duplex=False)
@@ -47,7 +47,7 @@ class Source:
         return InputProducer(
             producer=producer,
             target_engine_ids=self._target_engine_ids,
-            source_name=self._source_name,
+            producer_name=self._producer_name,
         )
 
     def send(self, input_frame):

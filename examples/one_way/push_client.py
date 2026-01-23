@@ -18,7 +18,7 @@ def send_frames(source):
         _, jpeg_frame = cv2.imencode(".jpg", frame)
         input_frame = gabriel_pb2.InputFrame()
         input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-        input_frame.payloads.append(jpeg_frame.tobytes())
+        input_frame.byte_payload = jpeg_frame.tobytes()
 
         source.send(input_frame)
         time.sleep(0.1)
@@ -27,8 +27,8 @@ def send_frames(source):
 def main():
     """Starts the Gabriel client."""
     common.configure_logging()
-    args = common.parse_engine_name_server_host()
-    source = push_source.Source(args.engine_name, [common.DEFAULT_ENGINE_NAME])
+    args = common.parse_engine_id_server_host()
+    source = push_source.Source(args.engine_id, [common.DEFAULT_ENGINE_ID])
     p = multiprocessing.Process(target=send_frames, args=(source,))
     p.start()
     input_producers = [source.get_input_producer()]

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gabriel-client"
-version = "4.1.2"
+version = "4.1.4"
 description = "Client library for the Gabriel real-time AI orchestration framework"
 requires-python = ">=3.10"
 
