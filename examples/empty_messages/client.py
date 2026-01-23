@@ -26,7 +26,9 @@ def main():
 
     input_producers = [
         InputProducer(
-            producer=producer, source_name="empty", target_engine_ids=["empty"]
+            producer=producer,
+            producer_name="empty",
+            target_engine_ids=["empty"],
         )
     ]
     client = ZeroMQClient(

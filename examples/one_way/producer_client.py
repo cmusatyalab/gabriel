@@ -39,7 +39,7 @@ def main():
             _, jpeg_frame = cv2.imencode(".jpg", frame)
             input_frame = gabriel_pb2.InputFrame()
             input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-            input_frame.payloads.append(jpeg_frame.tobytes())
+            input_frame.byte_payload = jpeg_frame.tobytes()
 
             return input_frame
 

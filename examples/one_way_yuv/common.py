@@ -3,7 +3,7 @@
 import logging
 
 ZEROMQ_PORT = 9099
-DEFAULT_ENGINE_NAME = "camera_yuv"
+DEFAULT_ENGINE_ID = "camera_yuv"
 
 
 def configure_logging():

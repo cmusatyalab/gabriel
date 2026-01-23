@@ -9,6 +9,7 @@ from gabriel_client import push_source
 from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
+from google.protobuf.any_pb2 import Any
 
 DEFAULT_SERVER_HOST = "localhost"
 ROTATION = 0
@@ -54,7 +55,7 @@ def main():
     common.configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "source_name", nargs="?", default=common.DEFAULT_ENGINE_NAME
+        "source_name", nargs="?", default=common.DEFAULT_ENGINE_ID
     )
     parser.add_argument("server_host", nargs="?", default=DEFAULT_SERVER_HOST)
     args = parser.parse_args()
@@ -72,20 +73,21 @@ def main():
 
         input_frame = gabriel_pb2.InputFrame()
         input_frame.payload_type = gabriel_pb2.PayloadType.IMAGE
-        input_frame.payloads.append(yuv.tobytes())
 
         to_server = yuv_pb2.ToServer()
+        to_server.image = yuv.tobytes()
         to_server.height = height
         to_server.width = width
         to_server.rotation = ROTATION
-
-        input_frame.extras.Pack(to_server)
+        any_payload = Any()
+        any_payload.Pack(to_server)
+        input_frame.any_payload.CopyFrom(any_payload)
 
         return input_frame
 
     input_producers = [
         InputProducer(
-            producer=producer, target_engine_ids=[common.DEFAULT_ENGINE_NAME]
+            producer=producer, target_engine_ids=[common.DEFAULT_ENGINE_ID]
         )
     ]
 
