@@ -1,0 +1,17 @@
+name: Build and push Gabriel server
+
+on:
+  push:
+    branches: [ "master" ]
+    tags: [ "v*" ]
+    paths:
+      - 'server/**'
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/deploy-docker-img.yml
+    with:
+      name: gabriel-server
+      dockerfile: server/Dockerfile
+      ctx: server
+      free_disk_space: true
+    secrets: inherit
