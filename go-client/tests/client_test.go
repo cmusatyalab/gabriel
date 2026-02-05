@@ -32,7 +32,7 @@ func TestEndToEnd(t *testing.T) {
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
 	}
-	zmq_client, _ := client.NewZeroMQClient("ipc:///tmp/gabriel-server", []*client.InputProducer{producer}, consumer)
+	zmq_client, _ := client.NewZeroMQClient("tcp://localhost:9099", []*client.InputProducer{producer}, consumer)
 
 	glog.Infoln("Launching client")
 	go zmq_client.Launch(ctx)

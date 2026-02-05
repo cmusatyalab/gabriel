@@ -24,7 +24,7 @@ const HeartbeatIntervalSecs = 1 * time.Second
 // Producer is a function that produces input frames for the client. It takes
 // a context.Context as input and returns a channel that produces
 // *gabrielpb.InputFrame. The Producer must stop producing and close the
-// channel when the context is cancelled.
+// channel when the context is canceled.
 type Producer func(ctx context.Context) <-chan *gabrielpb.InputFrame
 
 type InputProducer struct {
@@ -55,7 +55,7 @@ func NewInputProducer(name string, producer Producer, targetEngineIDs []string) 
 }
 
 // Produce calls the underlying producer function to produce input frames.
-// The returned channel will be closed when the given context is cancelled.
+// The returned channel will be closed when the given context is canceled.
 func (producer *InputProducer) Produce(ctx context.Context) <-chan *gabrielpb.InputFrame {
 	return producer.producer(ctx)
 }
@@ -217,7 +217,6 @@ func (client *ZeroMQClient) Launch(ctx context.Context) {
 
 // consumerHandler handles incoming messages from the server.
 func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
-	timeoutMillis := ServerTimeoutSecs * 1000
 	poller := zmq.NewPoller()
 	poller.Add(client.socket, zmq.POLLIN)
 
