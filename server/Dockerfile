@@ -20,6 +20,7 @@ COPY requirements.txt ./requirements.txt
 RUN python3 -m pip install -r requirements.txt
 COPY main.py main.py
 
+# Expose ports
 EXPOSE 5555 9099 8000
 
 ENTRYPOINT ["python3", "main.py"]
