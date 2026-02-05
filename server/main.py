@@ -12,6 +12,7 @@ import logging
 
 from gabriel_server.network_engine.server_runner import ServerRunner
 
+DEFAULT_PORT = 9099
 DEFAULT_NUM_TOKENS = 2
 INPUT_QUEUE_MAXSIZE = 60
 
@@ -38,12 +39,15 @@ def main():
         help="number of tokens",
     )
 
-    parser.add_argument("-p", "--port", type=int, help="Set port number")
+    parser.add_argument(
+        "-p", "--port", type=int, default=DEFAULT_PORT, help="Set port number"
+    )
 
     parser.add_argument("--path", type=str, help="Set ipc path")
 
     parser.add_argument(
-        "-q--queue",
+        "-q",
+        "--queue",
         type=int,
         default=INPUT_QUEUE_MAXSIZE,
         help="Max input queue size",
