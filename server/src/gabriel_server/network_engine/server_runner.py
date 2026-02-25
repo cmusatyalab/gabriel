@@ -290,7 +290,7 @@ class _Server:
         # Check if this engine is the first to finish processing the latest
         # input. If so, it should get the next input from the queue.
         if (
-            latest_input is not None
+            not producer_info.token_returned
             and latest_input.metadata == engine_worker_metadata
         ):
             # Send response to client
@@ -305,9 +305,10 @@ class _Server:
                 result,
                 return_token=True,
             )
+            producer_info.token_returned = True
 
             # Send the next input to the engine from the queue
-            await engine_worker.send_next_input()
+            await engine_worker.send_next_input(from_queue=True)
             return
 
         if engine_worker.get_all_responses_required():
@@ -318,20 +319,7 @@ class _Server:
                 result,
                 return_token=False,
             )
-
-        if latest_input is None:
-            # There is no new input to give the worker
-            logger.debug(
-                f"No new input for engine {engine_worker.get_engine_id()}"
-            )
-            engine_worker.clear_current_input_metadata()
-        else:
-            # Give the worker the latest input
-            logger.debug(
-                f"Sending latest input to engine "
-                f"{engine_worker.get_engine_id()}"
-            )
-            await engine_worker.send_payload(latest_input)
+        await engine_worker.send_next_input()
 
     async def _add_engine_worker(self, address, from_standalone_engine):
         if not from_standalone_engine.HasField("welcome"):
@@ -491,6 +479,9 @@ class _EngineWorker:
         self._size_for_queues = fresh_inputs_queue_size
         self._producers = deque()
 
+        # Latest input processed for each producer
+        self._latest_input_processed = {}
+
     def get_address(self):
         return self._address
 
@@ -537,24 +528,56 @@ class _EngineWorker:
             logger.debug(f"Sent heartbeat to engine {self._engine_id}")
 
     async def send_payload(self, metadata_payload):
-        self._current_input_metadata = metadata_payload.metadata
+        metadata = metadata_payload.metadata
+        self._current_input_metadata = metadata
+        self._latest_input_processed[metadata.producer_id] = metadata
         await self._send_helper(metadata_payload.payload, heartbeat=False)
 
-    async def send_next_input(self):
+    async def send_next_input(self, from_queue=False):
         """Send next input from queue."""
-        current_producer = self._producers[0]
-        if len(self._producers) > 1:
-            current_producer.latest_input_sent_to_engine = None
-
+        # for _ in range(len(self._producers)):
+        #    producer_info = self._producers.popleft()
+        #    self._producers.append(producer_info)
+        #    metadata_payload = await producer_info.get_input_from_queue(
+        #        self._engine_id
+        #    )
+        #    if metadata_payload is not None:
+        #        await self.send_payload(metadata_payload)
+        #        return
         for _ in range(len(self._producers)):
             self._producers.rotate(-1)
             producer = self._producers[0]
-            metadata_payload = await producer.get_input_from_queue(
-                self._engine_id
+
+            # If the token for the last input sent to an engine was already
+            # returned to the client, we can start working on the next
+            # input in the queue
+            if producer.token_returned:
+                # Send the next input from the queue
+                metadata_payload = await producer.get_input_from_queue(
+                    self._engine_id
+                )
+                if metadata_payload is not None:
+                    producer.token_returned = False
+                    await self.send_payload(metadata_payload)
+                    return
+
+            # Send the latest available frame from this producer if we haven't
+            # processed it yet
+            metadata_payload = producer.latest_input_sent_to_engine
+            if metadata_payload is None:
+                continue
+            producer_id = producer._producer_id
+            latest_processed_frame = self._latest_input_processed.get(
+                producer_id, None
             )
-            if metadata_payload is not None:
+            if (
+                latest_processed_frame is None
+                or metadata_payload.metadata.frame_id
+                > latest_processed_frame.frame_id
+            ):
                 await self.send_payload(metadata_payload)
                 return
+
         self.clear_current_input_metadata()
 
     async def add_producer(self, producer_info):
@@ -565,6 +588,7 @@ class _EngineWorker:
     async def remove_producer(self, producer_info):
         if producer_info in self._producers:
             self._producers.remove(producer_info)
+            del self._latest_input_processed[producer_info._producer_id]
 
 
 class _ProducerInfo:
@@ -583,6 +607,9 @@ class _ProducerInfo:
         # engine.
         self.latest_input_sent_to_engine = None
         self.target_engines = None
+
+        # Whether a token was returned for the latest input
+        self.token_returned = None
 
     def get_name(self):
         return self._producer_id
@@ -680,6 +707,7 @@ class _ProducerInfo:
         # Latest input is only set if the input was sent to at least one
         # engine.
         self.latest_input_sent_to_engine = metadata_payload
+        self.token_returned = False
         return (StatusCode.SUCCESS, "")
 
     async def add_input_to_queue(self, metadata_payload):
@@ -704,8 +732,8 @@ class _ProducerInfo:
             logger.debug(
                 f"Input queue is empty for producer id {self._producer_id}"
             )
-            self.latest_input_sent_to_engine = None
             return None
         metadata_payload = self._input_queue[0]
         self.latest_input_sent_to_engine = metadata_payload
+        self.token_returned = False
         return self._input_queue.popleft()
