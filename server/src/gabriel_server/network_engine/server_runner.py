@@ -284,7 +284,9 @@ class _Server:
 
         # Check if the result corresponds to the latest input that was
         # available for this engine from this producer
+
         latest_input = producer_info.latest_input_sent_to_engine
+
         # Check if this engine is the first to finish processing the latest
         # input. If so, it should get the next input from the queue.
         if (
@@ -540,10 +542,14 @@ class _EngineWorker:
 
     async def send_next_input(self):
         """Send next input from queue."""
+        current_producer = self._producers[0]
+        if len(self._producers) > 1:
+            current_producer.latest_input_sent_to_engine = None
+
         for _ in range(len(self._producers)):
-            producer_info = self._producers.popleft()
-            self._producers.append(producer_info)
-            metadata_payload = await producer_info.get_input_from_queue(
+            self._producers.rotate(-1)
+            producer = self._producers[0]
+            metadata_payload = await producer.get_input_from_queue(
                 self._engine_id
             )
             if metadata_payload is not None:

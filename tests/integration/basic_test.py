@@ -5,7 +5,9 @@ import contextlib
 import copy
 import itertools
 import logging
+import random
 import threading
+import time
 
 import pytest
 import pytest_asyncio
@@ -40,7 +42,7 @@ class Engine(cognitive_engine.Engine, threading.Thread):
 
     def __init__(self, engine_id, zeromq_address, handle_method=None):
         """Initialize the engine and engine runner."""
-        super().__init__()
+        super().__init__(daemon=True)
         self.engine_id = engine_id
         self.engine_name = f"Engine-{engine_id}"
         self.zeromq_address = zeromq_address
@@ -73,6 +75,7 @@ class Engine(cognitive_engine.Engine, threading.Thread):
 
     def run(self):
         """Run the engine runner."""
+        logger.info(f"Running engine {self.engine_id} in a new thread")
         self.engine_runner.run()
 
     async def run_async(self):
@@ -157,6 +160,12 @@ def engine_disconnection_timeout():
     return 5
 
 
+@pytest.fixture
+def num_tokens():
+    """Number of tokens to use for the input producer."""
+    return DEFAULT_NUM_TOKENS
+
+
 @pytest_asyncio.fixture
 async def run_server(
     server_frontend_port,
@@ -207,12 +216,24 @@ def engine_ids():
     return None
 
 
+@pytest.fixture
+def run_engines_threaded():
+    """Run engines in a different thread."""
+    return False
+
+
 @pytest_asyncio.fixture
 async def run_engines(
-    run_server, server_backend_port, num_engines, handle_method, engine_ids
+    run_server,
+    server_backend_port,
+    num_engines,
+    handle_method,
+    engine_ids,
+    run_engines_threaded,
 ):
     """Run engines connected to the server backend port."""
     engines = []
+    engine_tasks = []
     logger.info(f"Running engines, connecting to {server_backend_port=}!")
 
     for i in range(num_engines):
@@ -221,17 +242,24 @@ async def run_engines(
             engine = Engine(engine_ids[i], zeromq_address, handle_method)
         else:
             engine = Engine(i, zeromq_address, handle_method)
-        task = asyncio.create_task(engine.run_async())
-        engines.append(task)
-        task.add_done_callback(
-            lambda t: t.result() if not t.cancelled() else None
-        )
+        engines.append(engine)
+        if run_engines_threaded:
+            engine.start()
+            # task = asyncio.create_task(asyncio.to_thread(engine.join))
+        else:
+            task = asyncio.create_task(engine.run_async())
+            task.add_done_callback(
+                lambda t: t.result() if not t.cancelled() else None
+            )
+            engine_tasks.append(task)
 
     yield engines
+    if run_engines_threaded:
+        return
     logger.info("Tearing down engines")
-    for task in engines:
+    for task in engine_tasks:
         task.cancel()
-    await asyncio.gather(*engines, return_exceptions=True)
+    await asyncio.gather(*engine_tasks, return_exceptions=True)
     logger.info("Done tearing down engines")
 
 
@@ -275,6 +303,43 @@ def input_producer(target_engines, num_inputs_to_send):
     )
     yield [input_producer]
     input_producer.stop()
+
+
+@pytest.fixture
+def multiple_input_producers(target_engines, num_inputs_to_send):
+    """Create an InputProducer that sends text frames to the server."""
+    logger.info(f"Target engines: {target_engines}")
+
+    inputs_sent = 0
+
+    async def producer() -> gabriel_pb2.InputFrame | None:
+        logger.info("Producing input")
+        frame = gabriel_pb2.InputFrame()
+        frame.payload_type = gabriel_pb2.PayloadType.TEXT
+        frame.string_payload = "Hello from client"
+        await asyncio.sleep(0.5)
+
+        nonlocal inputs_sent
+        nonlocal num_inputs_to_send
+        inputs_sent += 1
+        if num_inputs_to_send > 0 and inputs_sent > num_inputs_to_send:
+            return None
+        logger.info(f"Inputs sent: {inputs_sent}")
+
+        return frame
+
+    producer1 = InputProducer(
+        producer=producer, target_engine_ids=target_engines
+    )
+    producer2 = InputProducer(
+        producer=producer, target_engine_ids=target_engines
+    )
+    producer3 = InputProducer(
+        producer=producer, target_engine_ids=target_engines
+    )
+    yield [producer1, producer2, producer3]
+    producer1.stop()
+    producer2.stop()
 
 
 @pytest.fixture
@@ -1351,3 +1416,64 @@ async def test_zeromq_result_output(
     assert result.target_engine_id == "Engine-0"
     assert result.string_result == "hello"
     assert result.frame_id == 1
+
+
+def heterogenous_engine_handle(input_frame):
+    """A handle method that sleeps different durations."""
+    sleep_duration = random.choice([0.01, 0.02, 0.03])
+    time.sleep(sleep_duration)
+    logger.info(f"Slept for {sleep_duration} seconds")
+    status = gabriel_pb2.Status()
+    status.code = gabriel_pb2.StatusCode.SUCCESS
+
+    return cognitive_engine.Result(status, "hello")
+
+
+@pytest.mark.parametrize("num_engines", [3])
+@pytest.mark.parametrize(
+    "target_engines", [["Engine-0", "Engine-1", "Engine-2"]]
+)
+@pytest.mark.parametrize("run_engines_threaded", [True])
+@pytest.mark.parametrize("handle_method", [heterogenous_engine_handle])
+@pytest.mark.asyncio
+async def test_tokens_bug(
+    multiple_input_producers,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    prometheus_client_port,
+):
+    """Test that we never exceed the token semaphore limit."""
+    response_state.clear()
+    client1 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    task1 = asyncio.create_task(client1.launch_async())
+
+    client2 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    task2 = asyncio.create_task(client2.launch_async())
+
+    await asyncio.sleep(10)
+
+    task1.cancel()
+    task2.cancel()
+    try:
+        logger.info("Waiting for client tasks to cancel")
+        await task1
+        await task2
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client tasks are cancelled")
+
+    assert len(response_state) == len(target_engines)

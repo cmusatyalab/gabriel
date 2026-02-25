@@ -5,6 +5,7 @@ Handles communication between the cognitive engine and the server.
 
 import asyncio
 import logging
+import threading
 
 import zmq
 import zmq.asyncio
@@ -57,7 +58,7 @@ class EngineRunner:
         self.all_responses_required = all_responses_required
         self.timeout = timeout
         self.request_retries = request_retries
-        self.running = True
+        self.stop_event = threading.Event()
         self.done_event = asyncio.Event()
 
     def run(self):
@@ -69,7 +70,7 @@ class EngineRunner:
         context = zmq.asyncio.Context()
 
         try:
-            while self.running and self.request_retries > 0:
+            while not self.stop_event.is_set() and self.request_retries > 0:
                 socket = context.socket(zmq.REQ)
                 try:
                     socket.setsockopt(zmq.LINGER, 0)
@@ -103,7 +104,7 @@ class EngineRunner:
             f"{self.server_address}"
         )
 
-        while self.running:
+        while not self.stop_event.is_set():
             if await socket.poll(self.timeout) == 0:
                 logger.warning(f"{self.engine_id}: no response from server")
                 self.request_retries -= 1
@@ -196,8 +197,7 @@ class EngineRunner:
 
     async def stop(self):
         """Stops the engine runner."""
-        self.running = False
-        await self.done_event.wait()
+        self.stop_event.set()
 
 
 def create_engine_result_payload(result_proto):
