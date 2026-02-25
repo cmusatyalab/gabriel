@@ -290,9 +290,10 @@ class _Server:
         # Check if this engine is the first to finish processing the latest
         # input. If so, it should get the next input from the queue.
         if (
-            not producer_info.token_returned
+            producer_info.pending_token_return
             and latest_input.metadata == engine_worker_metadata
         ):
+            producer_info.pending_token_return = False
             # Send response to client
             logger.debug(
                 f"Sending result from engine {engine_worker.get_engine_id()}"
@@ -305,10 +306,9 @@ class _Server:
                 result,
                 return_token=True,
             )
-            producer_info.token_returned = True
 
             # Send the next input to the engine from the queue
-            await engine_worker.send_next_input(from_queue=True)
+            await engine_worker.send_next_input()
             return
 
         if engine_worker.get_all_responses_required():
@@ -533,7 +533,7 @@ class _EngineWorker:
         self._latest_input_processed[metadata.producer_id] = metadata
         await self._send_helper(metadata_payload.payload, heartbeat=False)
 
-    async def send_next_input(self, from_queue=False):
+    async def send_next_input(self):
         """Send next input from queue."""
         # for _ in range(len(self._producers)):
         #    producer_info = self._producers.popleft()
@@ -548,16 +548,15 @@ class _EngineWorker:
             self._producers.rotate(-1)
             producer = self._producers[0]
 
-            # If the token for the last input sent to an engine was already
-            # returned to the client, we can start working on the next
-            # input in the queue
-            if producer.token_returned:
+            # If a token return is pending, that means no engine has returned
+            # a result for the current input for this producer
+            if not producer.pending_token_return:
                 # Send the next input from the queue
                 metadata_payload = await producer.get_input_from_queue(
                     self._engine_id
                 )
                 if metadata_payload is not None:
-                    producer.token_returned = False
+                    producer.pending_token_return = True
                     await self.send_payload(metadata_payload)
                     return
 
@@ -608,8 +607,9 @@ class _ProducerInfo:
         self.latest_input_sent_to_engine = None
         self.target_engines = None
 
-        # Whether a token was returned for the latest input
-        self.token_returned = None
+        # Whether the token return for the last input sent to at least one
+        # engine is pending
+        self.pending_token_return = None
 
     def get_name(self):
         return self._producer_id
@@ -707,7 +707,7 @@ class _ProducerInfo:
         # Latest input is only set if the input was sent to at least one
         # engine.
         self.latest_input_sent_to_engine = metadata_payload
-        self.token_returned = False
+        self.pending_token_return = True
         return (StatusCode.SUCCESS, "")
 
     async def add_input_to_queue(self, metadata_payload):
@@ -735,5 +735,5 @@ class _ProducerInfo:
             return None
         metadata_payload = self._input_queue[0]
         self.latest_input_sent_to_engine = metadata_payload
-        self.token_returned = False
+        self.pending_token_return = True
         return self._input_queue.popleft()
