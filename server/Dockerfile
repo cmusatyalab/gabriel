@@ -16,9 +16,8 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip3 install --upgrade pip
 
-COPY requirements.txt ./requirements.txt
-RUN python3 -m pip install -r requirements.txt
-COPY main.py main.py
+COPY . .
+RUN python3 -m pip install -e .
 
 # Expose ports
 EXPOSE 5555 9099 8000
