@@ -293,12 +293,12 @@ class _Server:
             producer_info.pending_token_return
             and latest_input.metadata == engine_worker_metadata
         ):
-            producer_info.pending_token_return = False
             # Send response to client
             logger.debug(
                 f"Sending result from engine {engine_worker.get_engine_id()}"
                 f" to client {engine_worker_metadata.client_address}"
             )
+            producer_info.pending_token_return = False
             await self.server.send_result(
                 engine_worker_metadata.client_address,
                 producer_info.get_name(),
@@ -534,34 +534,25 @@ class _EngineWorker:
         await self._send_helper(metadata_payload.payload, heartbeat=False)
 
     async def send_next_input(self):
-        """Send next input from queue."""
-        # for _ in range(len(self._producers)):
-        #    producer_info = self._producers.popleft()
-        #    self._producers.append(producer_info)
-        #    metadata_payload = await producer_info.get_input_from_queue(
-        #        self._engine_id
-        #    )
-        #    if metadata_payload is not None:
-        #        await self.send_payload(metadata_payload)
-        #        return
+        """Send next input."""
         for _ in range(len(self._producers)):
             self._producers.rotate(-1)
             producer = self._producers[0]
 
             # If a token return is pending, that means no engine has returned
-            # a result for the current input for this producer
+            # a result for the current input for this producer. So we cannot
+            # get a new item from the queue yet.
             if not producer.pending_token_return:
                 # Send the next input from the queue
                 metadata_payload = await producer.get_input_from_queue(
                     self._engine_id
                 )
                 if metadata_payload is not None:
-                    producer.pending_token_return = True
                     await self.send_payload(metadata_payload)
                     return
 
             # Send the latest available frame from this producer if we haven't
-            # processed it yet
+            # processed it yet.
             metadata_payload = producer.latest_input_sent_to_engine
             if metadata_payload is None:
                 continue
@@ -570,13 +561,14 @@ class _EngineWorker:
                 producer_id, None
             )
             if (
-                latest_processed_frame is None
-                or metadata_payload.metadata.frame_id
+                latest_processed_frame is not None
+                and metadata_payload.metadata.frame_id
                 > latest_processed_frame.frame_id
             ):
                 await self.send_payload(metadata_payload)
                 return
 
+        # No input available
         self.clear_current_input_metadata()
 
     async def add_producer(self, producer_info):
