@@ -363,7 +363,8 @@ class ZeroMQClient(GabrielClient):
                 if not target_engines.issubset(available_engines):
                     msg = (
                         f"Attempt to target engines that are not connected "
-                        f"to the server: {target_engines - available_engines}"
+                        f"to the server: {target_engines - available_engines};"
+                        f" {available_engines=}"
                     )
                     logger.error(msg)
                     raise ValueError(msg)
