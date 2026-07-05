@@ -8,6 +8,12 @@ option java_package = "edu.cmu.cs.gabriel.protocol";
 option java_outer_classname = "Protos";
 option go_package = "github.com/cmusatyalab/gabriel/protocol/go;gabrielpb";
 
+// gRPC service for Gabriel clients.
+service GabrielService {
+  // Start a new session with a Gabriel server.
+  rpc Session(stream FromClient) returns (stream ToClient);
+}
+
 enum PayloadType {
     PAYLOAD_TYPE_UNSPECIFIED = 0;
     TEXT = 1;

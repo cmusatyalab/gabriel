@@ -996,7 +996,9 @@ const file_gabriel_proto_rawDesc = "" +
 	"\x12WRONG_INPUT_FORMAT\x10\x03\x12\x17\n" +
 	"\x13NO_ENGINE_FOR_INPUT\x10\x04\x12\r\n" +
 	"\tNO_TOKENS\x10\x05\x12\x18\n" +
-	"\x14SERVER_DROPPED_FRAME\x10\x06B[\n" +
+	"\x14SERVER_DROPPED_FRAME\x10\x062G\n" +
+	"\x0eGabrielService\x125\n" +
+	"\aSession\x12\x13.gabriel.FromClient\x1a\x11.gabriel.ToClient(\x010\x01B[\n" +
 	"\x1bedu.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3"
 
 var (
@@ -1042,8 +1044,10 @@ var file_gabriel_proto_depIdxs = []int32{
 	11, // 10: gabriel.FromStandaloneEngine.welcome:type_name -> gabriel.FromStandaloneEngine.Welcome
 	5,  // 11: gabriel.FromStandaloneEngine.result:type_name -> gabriel.Result
 	5,  // 12: gabriel.ToClient.ResultWrapper.result:type_name -> gabriel.Result
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
+	3,  // 13: gabriel.GabrielService.Session:input_type -> gabriel.FromClient
+	6,  // 14: gabriel.GabrielService.Session:output_type -> gabriel.ToClient
+	14, // [14:15] is the sub-list for method output_type
+	13, // [13:14] is the sub-list for method input_type
 	13, // [13:13] is the sub-list for extension type_name
 	13, // [13:13] is the sub-list for extension extendee
 	0,  // [0:13] is the sub-list for field type_name
@@ -1081,7 +1085,7 @@ func file_gabriel_proto_init() {
 			NumEnums:      2,
 			NumMessages:   10,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_gabriel_proto_goTypes,
 		DependencyIndexes: file_gabriel_proto_depIdxs,
