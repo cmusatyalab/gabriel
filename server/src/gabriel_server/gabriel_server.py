@@ -33,6 +33,7 @@ class GabrielServer(ABC):
         self,
         num_tokens_per_producer: int,
         engine_cb: Callable[[FromClient], ToClient.ResultWrapper],
+        engine_ids: set[str],
     ):
         """Initialize the Gabriel server.
 
@@ -41,6 +42,8 @@ class GabrielServer(ABC):
                 The number of tokens available for each producer
             engine_cb:
                 Callback invoked for each input received from a client.
+            engine_ids:
+                The ids of the engines connected to the server
         """
         # Metadata for each client. 'tokens_for_producer' is a dictionary that
         # stores the tokens available for each producer. 'task' is an async
@@ -57,8 +60,8 @@ class GabrielServer(ABC):
         self._is_running = False
         self._engine_cb = engine_cb
         self.result_manager = ResultManager()
+        self._engine_ids = engine_ids
 
-    @abstractmethod
     def launch(
         self,
         port_or_path: Union[int, str],
@@ -79,7 +82,7 @@ class GabrielServer(ABC):
             use_ipc (bool):
                 Toggles whether the connection is over TCP or IPC
         """
-        pass
+        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     @abstractmethod
     def launch_async(
@@ -180,10 +183,13 @@ class GabrielServer(ABC):
         """
         pass
 
-    @abstractmethod
     async def _engines_updated_cb(self):
         """Indicates that a new server connected or disconnected."""
-        pass
+        to_client = ToClient()
+        to_client.control.engine_ids.extend(self._engine_ids)
+        msg = to_client.SerializeToString()
+        for address in self._clients:
+            await self._send_via_transport(address, msg)
 
     async def _consumer_helper(self, client, address, from_client):
         """Send the input to the engine callback.
@@ -209,3 +215,24 @@ class GabrielServer(ABC):
 
         logger.debug(f"Sending input from client {address} to engine")
         return await self._engine_cb(from_client, address)
+
+    def _make_welcome(self) -> ToClient:
+        """Construct a welcome message to send to the client."""
+        to_client = ToClient()
+        to_client.welcome.num_tokens_per_producer = (
+            self._num_tokens_per_producer
+        )
+        to_client.welcome.engine_ids.extend(self._engine_ids)
+        return to_client
+
+    @staticmethod
+    def _make_error_response(
+        from_client: FromClient, status: StatusCode, status_msg: str
+    ) -> ToClient:
+        to_client = ToClient()
+        to_client.result_wrapper.producer_id = from_client.producer_id
+        to_client.result_wrapper.return_token = True
+        to_client.result_wrapper.result.status.code = status
+        to_client.result_wrapper.result.status.message = status_msg
+        to_client.result_wrapper.result.frame_id = from_client.frame_id
+        return to_client

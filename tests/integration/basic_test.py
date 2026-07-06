@@ -21,10 +21,11 @@ from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.local_engine import LocalEngine
 from gabriel_server.network_engine import engine_runner, server_runner
+from gabriel_server.network_engine.server_runner import Transport
 from gabriel_server.result_manager import ZeroMQSink
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Summary
 
-DEFAULT_NUM_TOKENS = 2
+DEFAULT_NUM_TOKENS = 5
 DEFAULT_SERVER_HOST = "localhost"
 INPUT_QUEUE_MAXSIZE = 60
 
@@ -113,9 +114,9 @@ def server_backend_port(server_backend_port_generator):
 
 
 @pytest.fixture
-def use_zeromq():
-    """Whether to use ZeroMQ for server-client communication."""
-    return True
+def transport():
+    """Which transport to use for server-client communication."""
+    return Transport.ZEROMQ
 
 
 @pytest.fixture
@@ -170,14 +171,14 @@ def num_tokens():
 async def run_server(
     server_frontend_port,
     server_backend_port,
-    use_zeromq,
+    transport,
     prometheus_server_port,
     use_ipc,
     engine_disconnection_timeout,
 ):
     """Run a server with the specified configuration."""
     logger.info(
-        f"Starting server: {use_zeromq=} {server_backend_port=}"
+        f"Starting server: {transport=} {server_backend_port=}"
         f" {server_frontend_port=} {use_ipc=}"
     )
     if use_ipc:
@@ -190,7 +191,7 @@ async def run_server(
         num_tokens=DEFAULT_NUM_TOKENS,
         input_queue_maxsize=INPUT_QUEUE_MAXSIZE,
         timeout=engine_disconnection_timeout,
-        use_zeromq=use_zeromq,
+        transport=transport,
         prometheus_port=prometheus_server_port,
         use_ipc=use_ipc,
     )
@@ -317,7 +318,7 @@ def multiple_input_producers(target_engines, num_inputs_to_send):
         frame = gabriel_pb2.InputFrame()
         frame.payload_type = gabriel_pb2.PayloadType.TEXT
         frame.string_payload = "Hello from client"
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
 
         nonlocal inputs_sent
         nonlocal num_inputs_to_send
@@ -340,6 +341,7 @@ def multiple_input_producers(target_engines, num_inputs_to_send):
     yield [producer1, producer2, producer3]
     producer1.stop()
     producer2.stop()
+    producer3.stop()
 
 
 @pytest.fixture
@@ -866,7 +868,7 @@ async def test_prometheus_server_metrics(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("use_zeromq", [False])
+@pytest.mark.parametrize("transport", [Transport.WEBSOCKET])
 @pytest.mark.parametrize("server_frontend_port", [65535])
 async def test_websocket_client(run_engines, input_producer, response_state):
     """Test that the websocket client can connect to a server."""
@@ -1462,7 +1464,7 @@ async def test_tokens_bug(
     )
     task2 = asyncio.create_task(client2.launch_async())
 
-    await asyncio.sleep(10)
+    await asyncio.sleep(30)
 
     task1.cancel()
     task2.cancel()
@@ -1475,5 +1477,106 @@ async def test_tokens_bug(
         if task is not None and task.cancelled():
             raise
     logger.info("Client tasks are cancelled")
+
+    assert len(response_state) == len(target_engines)
+
+
+def heterogenous_engine_handle2(input_frame):
+    """A handle method that sleeps different durations."""
+    sleep_duration = random.choice([0.05, 0.01, 0.02])
+    time.sleep(sleep_duration)
+    logger.info(f"Slept for {sleep_duration} seconds")
+    status = gabriel_pb2.Status()
+    status.code = gabriel_pb2.StatusCode.SUCCESS
+
+    return cognitive_engine.Result(status, "hello")
+
+
+@pytest.mark.parametrize("num_engines", [3])
+@pytest.mark.parametrize(
+    "target_engines", [["Engine-0", "Engine-1", "Engine-2"]]
+)
+@pytest.mark.parametrize("run_engines_threaded", [True])
+@pytest.mark.parametrize("handle_method", [heterogenous_engine_handle])
+@pytest.mark.asyncio
+async def test_tokens_bug2(
+    multiple_input_producers,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    prometheus_client_port,
+):
+    """Test that we never exceed the token semaphore limit."""
+    response_state.clear()
+    client1 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    task1 = asyncio.create_task(client1.launch_async())
+
+    client2 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    task2 = asyncio.create_task(client2.launch_async())
+
+    await asyncio.sleep(60)
+
+    task1.cancel()
+    task2.cancel()
+    try:
+        logger.info("Waiting for client tasks to cancel")
+        await task1
+        await task2
+    except asyncio.CancelledError:
+        task = asyncio.current_task()
+        if task is not None and task.cancelled():
+            raise
+    logger.info("Client tasks are cancelled")
+
+    assert len(response_state) == len(target_engines)
+
+
+@pytest.mark.parametrize("num_engines", [3])
+@pytest.mark.parametrize(
+    "target_engines", [["Engine-0", "Engine-1", "Engine-2"]]
+)
+@pytest.mark.parametrize("run_engines_threaded", [True])
+@pytest.mark.parametrize("handle_method", [heterogenous_engine_handle])
+@pytest.mark.asyncio
+async def test_tokens_bug_threaded_client(
+    multiple_input_producers,
+    server_frontend_port,
+    target_engines,
+    run_engines,
+    response_state,
+    prometheus_client_port,
+):
+    """Test that we never exceed the token semaphore limit."""
+    response_state.clear()
+    client1 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    t1 = threading.Thread(target=client1.launch, daemon=True)
+
+    client2 = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        multiple_input_producers,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    t2 = threading.Thread(target=client2.launch, daemon=True)
+    t1.start()
+    t2.start()
+
+    await asyncio.sleep(30)
 
     assert len(response_state) == len(target_engines)

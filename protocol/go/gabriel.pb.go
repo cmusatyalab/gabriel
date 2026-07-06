@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.33.2
-// source: gabriel.proto
+// source: gabriel_protocol/gabriel.proto
 
 package gabrielpb
 
@@ -67,11 +67,11 @@ func (x PayloadType) String() string {
 }
 
 func (PayloadType) Descriptor() protoreflect.EnumDescriptor {
-	return file_gabriel_proto_enumTypes[0].Descriptor()
+	return file_gabriel_protocol_gabriel_proto_enumTypes[0].Descriptor()
 }
 
 func (PayloadType) Type() protoreflect.EnumType {
-	return &file_gabriel_proto_enumTypes[0]
+	return &file_gabriel_protocol_gabriel_proto_enumTypes[0]
 }
 
 func (x PayloadType) Number() protoreflect.EnumNumber {
@@ -80,7 +80,7 @@ func (x PayloadType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PayloadType.Descriptor instead.
 func (PayloadType) EnumDescriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{0}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{0}
 }
 
 type StatusCode int32
@@ -136,11 +136,11 @@ func (x StatusCode) String() string {
 }
 
 func (StatusCode) Descriptor() protoreflect.EnumDescriptor {
-	return file_gabriel_proto_enumTypes[1].Descriptor()
+	return file_gabriel_protocol_gabriel_proto_enumTypes[1].Descriptor()
 }
 
 func (StatusCode) Type() protoreflect.EnumType {
-	return &file_gabriel_proto_enumTypes[1]
+	return &file_gabriel_protocol_gabriel_proto_enumTypes[1]
 }
 
 func (x StatusCode) Number() protoreflect.EnumNumber {
@@ -149,7 +149,7 @@ func (x StatusCode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StatusCode.Descriptor instead.
 func (StatusCode) EnumDescriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{1}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{1}
 }
 
 type InputFrame struct {
@@ -170,7 +170,7 @@ type InputFrame struct {
 
 func (x *InputFrame) Reset() {
 	*x = InputFrame{}
-	mi := &file_gabriel_proto_msgTypes[0]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +182,7 @@ func (x *InputFrame) String() string {
 func (*InputFrame) ProtoMessage() {}
 
 func (x *InputFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[0]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +195,7 @@ func (x *InputFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputFrame.ProtoReflect.Descriptor instead.
 func (*InputFrame) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{0}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *InputFrame) GetPayloadType() PayloadType {
@@ -279,7 +279,7 @@ type FromClient struct {
 
 func (x *FromClient) Reset() {
 	*x = FromClient{}
-	mi := &file_gabriel_proto_msgTypes[1]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +291,7 @@ func (x *FromClient) String() string {
 func (*FromClient) ProtoMessage() {}
 
 func (x *FromClient) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[1]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +304,7 @@ func (x *FromClient) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FromClient.ProtoReflect.Descriptor instead.
 func (*FromClient) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{1}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *FromClient) GetFrameId() int64 {
@@ -354,7 +354,7 @@ type Status struct {
 
 func (x *Status) Reset() {
 	*x = Status{}
-	mi := &file_gabriel_proto_msgTypes[2]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +366,7 @@ func (x *Status) String() string {
 func (*Status) ProtoMessage() {}
 
 func (x *Status) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[2]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +379,7 @@ func (x *Status) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Status.ProtoReflect.Descriptor instead.
 func (*Status) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{2}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Status) GetCode() StatusCode {
@@ -417,7 +417,7 @@ type Result struct {
 
 func (x *Result) Reset() {
 	*x = Result{}
-	mi := &file_gabriel_proto_msgTypes[3]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -429,7 +429,7 @@ func (x *Result) String() string {
 func (*Result) ProtoMessage() {}
 
 func (x *Result) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[3]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -442,7 +442,7 @@ func (x *Result) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Result.ProtoReflect.Descriptor instead.
 func (*Result) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{3}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Result) GetStatus() *Status {
@@ -536,7 +536,7 @@ type ToClient struct {
 
 func (x *ToClient) Reset() {
 	*x = ToClient{}
-	mi := &file_gabriel_proto_msgTypes[4]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +548,7 @@ func (x *ToClient) String() string {
 func (*ToClient) ProtoMessage() {}
 
 func (x *ToClient) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[4]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +561,7 @@ func (x *ToClient) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToClient.ProtoReflect.Descriptor instead.
 func (*ToClient) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{4}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ToClient) GetMessageType() isToClient_MessageType {
@@ -633,7 +633,7 @@ type FromStandaloneEngine struct {
 
 func (x *FromStandaloneEngine) Reset() {
 	*x = FromStandaloneEngine{}
-	mi := &file_gabriel_proto_msgTypes[5]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +645,7 @@ func (x *FromStandaloneEngine) String() string {
 func (*FromStandaloneEngine) ProtoMessage() {}
 
 func (x *FromStandaloneEngine) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[5]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +658,7 @@ func (x *FromStandaloneEngine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FromStandaloneEngine.ProtoReflect.Descriptor instead.
 func (*FromStandaloneEngine) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{5}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FromStandaloneEngine) GetWelcomeOrResult() isFromStandaloneEngine_WelcomeOrResult {
@@ -714,7 +714,7 @@ type ToClient_Welcome struct {
 
 func (x *ToClient_Welcome) Reset() {
 	*x = ToClient_Welcome{}
-	mi := &file_gabriel_proto_msgTypes[6]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +726,7 @@ func (x *ToClient_Welcome) String() string {
 func (*ToClient_Welcome) ProtoMessage() {}
 
 func (x *ToClient_Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[6]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -739,7 +739,7 @@ func (x *ToClient_Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToClient_Welcome.ProtoReflect.Descriptor instead.
 func (*ToClient_Welcome) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{4, 0}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{4, 0}
 }
 
 func (x *ToClient_Welcome) GetNumTokensPerProducer() int32 {
@@ -766,7 +766,7 @@ type ToClient_Control struct {
 
 func (x *ToClient_Control) Reset() {
 	*x = ToClient_Control{}
-	mi := &file_gabriel_proto_msgTypes[7]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -778,7 +778,7 @@ func (x *ToClient_Control) String() string {
 func (*ToClient_Control) ProtoMessage() {}
 
 func (x *ToClient_Control) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[7]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -791,7 +791,7 @@ func (x *ToClient_Control) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToClient_Control.ProtoReflect.Descriptor instead.
 func (*ToClient_Control) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{4, 1}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{4, 1}
 }
 
 func (x *ToClient_Control) GetEngineIds() []string {
@@ -816,7 +816,7 @@ type ToClient_ResultWrapper struct {
 
 func (x *ToClient_ResultWrapper) Reset() {
 	*x = ToClient_ResultWrapper{}
-	mi := &file_gabriel_proto_msgTypes[8]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -828,7 +828,7 @@ func (x *ToClient_ResultWrapper) String() string {
 func (*ToClient_ResultWrapper) ProtoMessage() {}
 
 func (x *ToClient_ResultWrapper) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[8]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -841,7 +841,7 @@ func (x *ToClient_ResultWrapper) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToClient_ResultWrapper.ProtoReflect.Descriptor instead.
 func (*ToClient_ResultWrapper) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{4, 2}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{4, 2}
 }
 
 func (x *ToClient_ResultWrapper) GetProducerId() string {
@@ -879,7 +879,7 @@ type FromStandaloneEngine_Welcome struct {
 
 func (x *FromStandaloneEngine_Welcome) Reset() {
 	*x = FromStandaloneEngine_Welcome{}
-	mi := &file_gabriel_proto_msgTypes[9]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -891,7 +891,7 @@ func (x *FromStandaloneEngine_Welcome) String() string {
 func (*FromStandaloneEngine_Welcome) ProtoMessage() {}
 
 func (x *FromStandaloneEngine_Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_proto_msgTypes[9]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -904,7 +904,7 @@ func (x *FromStandaloneEngine_Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FromStandaloneEngine_Welcome.ProtoReflect.Descriptor instead.
 func (*FromStandaloneEngine_Welcome) Descriptor() ([]byte, []int) {
-	return file_gabriel_proto_rawDescGZIP(), []int{5, 0}
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{5, 0}
 }
 
 func (x *FromStandaloneEngine_Welcome) GetEngineId() string {
@@ -921,11 +921,11 @@ func (x *FromStandaloneEngine_Welcome) GetAllResponsesRequired() bool {
 	return false
 }
 
-var File_gabriel_proto protoreflect.FileDescriptor
+var File_gabriel_protocol_gabriel_proto protoreflect.FileDescriptor
 
-const file_gabriel_proto_rawDesc = "" +
+const file_gabriel_protocol_gabriel_proto_rawDesc = "" +
 	"\n" +
-	"\rgabriel.proto\x12\agabriel\x1a\x19google/protobuf/any.proto\"\xd7\x01\n" +
+	"\x1egabriel_protocol/gabriel.proto\x12\agabriel\x1a\x19google/protobuf/any.proto\"\xd7\x01\n" +
 	"\n" +
 	"InputFrame\x127\n" +
 	"\fpayload_type\x18\x01 \x01(\x0e2\x14.gabriel.PayloadTypeR\vpayloadType\x12'\n" +
@@ -1002,20 +1002,20 @@ const file_gabriel_proto_rawDesc = "" +
 	"\x1bedu.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3"
 
 var (
-	file_gabriel_proto_rawDescOnce sync.Once
-	file_gabriel_proto_rawDescData []byte
+	file_gabriel_protocol_gabriel_proto_rawDescOnce sync.Once
+	file_gabriel_protocol_gabriel_proto_rawDescData []byte
 )
 
-func file_gabriel_proto_rawDescGZIP() []byte {
-	file_gabriel_proto_rawDescOnce.Do(func() {
-		file_gabriel_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_gabriel_proto_rawDesc), len(file_gabriel_proto_rawDesc)))
+func file_gabriel_protocol_gabriel_proto_rawDescGZIP() []byte {
+	file_gabriel_protocol_gabriel_proto_rawDescOnce.Do(func() {
+		file_gabriel_protocol_gabriel_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_gabriel_protocol_gabriel_proto_rawDesc), len(file_gabriel_protocol_gabriel_proto_rawDesc)))
 	})
-	return file_gabriel_proto_rawDescData
+	return file_gabriel_protocol_gabriel_proto_rawDescData
 }
 
-var file_gabriel_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_gabriel_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
-var file_gabriel_proto_goTypes = []any{
+var file_gabriel_protocol_gabriel_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_gabriel_protocol_gabriel_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_gabriel_protocol_gabriel_proto_goTypes = []any{
 	(PayloadType)(0),                     // 0: gabriel.PayloadType
 	(StatusCode)(0),                      // 1: gabriel.StatusCode
 	(*InputFrame)(nil),                   // 2: gabriel.InputFrame
@@ -1030,7 +1030,7 @@ var file_gabriel_proto_goTypes = []any{
 	(*FromStandaloneEngine_Welcome)(nil), // 11: gabriel.FromStandaloneEngine.Welcome
 	(*anypb.Any)(nil),                    // 12: google.protobuf.Any
 }
-var file_gabriel_proto_depIdxs = []int32{
+var file_gabriel_protocol_gabriel_proto_depIdxs = []int32{
 	0,  // 0: gabriel.InputFrame.payload_type:type_name -> gabriel.PayloadType
 	12, // 1: gabriel.InputFrame.any_payload:type_name -> google.protobuf.Any
 	2,  // 2: gabriel.FromClient.input_frame:type_name -> gabriel.InputFrame
@@ -1053,27 +1053,27 @@ var file_gabriel_proto_depIdxs = []int32{
 	0,  // [0:13] is the sub-list for field type_name
 }
 
-func init() { file_gabriel_proto_init() }
-func file_gabriel_proto_init() {
-	if File_gabriel_proto != nil {
+func init() { file_gabriel_protocol_gabriel_proto_init() }
+func file_gabriel_protocol_gabriel_proto_init() {
+	if File_gabriel_protocol_gabriel_proto != nil {
 		return
 	}
-	file_gabriel_proto_msgTypes[0].OneofWrappers = []any{
+	file_gabriel_protocol_gabriel_proto_msgTypes[0].OneofWrappers = []any{
 		(*InputFrame_StringPayload)(nil),
 		(*InputFrame_BytePayload)(nil),
 		(*InputFrame_AnyPayload)(nil),
 	}
-	file_gabriel_proto_msgTypes[3].OneofWrappers = []any{
+	file_gabriel_protocol_gabriel_proto_msgTypes[3].OneofWrappers = []any{
 		(*Result_StringResult)(nil),
 		(*Result_BytesResult)(nil),
 		(*Result_AnyResult)(nil),
 	}
-	file_gabriel_proto_msgTypes[4].OneofWrappers = []any{
+	file_gabriel_protocol_gabriel_proto_msgTypes[4].OneofWrappers = []any{
 		(*ToClient_Welcome_)(nil),
 		(*ToClient_ResultWrapper_)(nil),
 		(*ToClient_Control_)(nil),
 	}
-	file_gabriel_proto_msgTypes[5].OneofWrappers = []any{
+	file_gabriel_protocol_gabriel_proto_msgTypes[5].OneofWrappers = []any{
 		(*FromStandaloneEngine_Welcome_)(nil),
 		(*FromStandaloneEngine_Result)(nil),
 	}
@@ -1081,18 +1081,18 @@ func file_gabriel_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gabriel_proto_rawDesc), len(file_gabriel_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gabriel_protocol_gabriel_proto_rawDesc), len(file_gabriel_protocol_gabriel_proto_rawDesc)),
 			NumEnums:      2,
 			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_gabriel_proto_goTypes,
-		DependencyIndexes: file_gabriel_proto_depIdxs,
-		EnumInfos:         file_gabriel_proto_enumTypes,
-		MessageInfos:      file_gabriel_proto_msgTypes,
+		GoTypes:           file_gabriel_protocol_gabriel_proto_goTypes,
+		DependencyIndexes: file_gabriel_protocol_gabriel_proto_depIdxs,
+		EnumInfos:         file_gabriel_protocol_gabriel_proto_enumTypes,
+		MessageInfos:      file_gabriel_protocol_gabriel_proto_msgTypes,
 	}.Build()
-	File_gabriel_proto = out.File
-	file_gabriel_proto_goTypes = nil
-	file_gabriel_proto_depIdxs = nil
+	File_gabriel_protocol_gabriel_proto = out.File
+	file_gabriel_protocol_gabriel_proto_goTypes = nil
+	file_gabriel_protocol_gabriel_proto_depIdxs = nil
 }

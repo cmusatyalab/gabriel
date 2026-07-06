@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v6.33.2
-// source: gabriel.proto
+// source: gabriel_protocol/gabriel.proto
 
 package gabrielpb
 
@@ -117,5 +117,5 @@ var GabrielService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "gabriel.proto",
+	Metadata: "gabriel_protocol/gabriel.proto",
 }
