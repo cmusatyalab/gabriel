@@ -18,13 +18,8 @@ class WebsocketServer(GabrielServer):
 
     def __init__(self, num_tokens_per_producer, engine_cb, engine_ids):
         """Initialize the Websocket server."""
-        super().__init__(num_tokens_per_producer, engine_cb)
+        super().__init__(num_tokens_per_producer, engine_cb, engine_ids)
         self._server = None
-        self._engine_ids = engine_ids
-
-    def launch(self, port_or_path, message_max_size, use_ipc=False):
-        """Launch the Websocket server synchronously."""
-        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
@@ -82,12 +77,8 @@ class WebsocketServer(GabrielServer):
         self._clients[address] = client
 
         # Send client welcome message
-        to_client = gabriel_pb2.ToClient()
-        to_client.welcome.num_tokens_per_producer = (
-            self._num_tokens_per_producer
-        )
-        to_client.welcome.engine_ids.extend(self._engine_ids)
-        await websocket.send(to_client.SerializeToString())
+        welcome = self._make_welcome()
+        await websocket.send(welcome.SerializeToString())
 
         try:
             await self._consumer(websocket, client)
@@ -114,17 +105,8 @@ class WebsocketServer(GabrielServer):
                 continue
 
             # Send error message
-            to_client = gabriel_pb2.ToClient()
-            to_client.result_wrapper.producer_id = from_client.producer_id
-            to_client.result_wrapper.return_token = True
-            to_client.result_wrapper.result.frame_id = from_client.frame_id
-            to_client.result_wrapper.result.status = status
+            err_msg = self._make_error_response(
+                from_client, status, status_msg
+            )
 
-            await websocket.send(to_client.SerializeToString())
-
-    async def _engines_updated_cb(self):
-        to_client = gabriel_pb2.ToClient()
-        to_client.control.engine_ids.extend(self._engine_ids)
-        msg = to_client.SerializeToString()
-        for address in self._clients:
-            await self._send_via_transport(address, msg)
+            await websocket.send(err_msg.SerializeToString())

@@ -1,6 +1,7 @@
 """Run the Gabriel server that connects clients to cognitive engines."""
 
 import asyncio
+import enum
 import logging
 import time
 from collections import deque, namedtuple
@@ -13,12 +14,28 @@ from gabriel_protocol.gabriel_pb2 import StatusCode
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gabriel_server import network_engine
+from gabriel_server.grpc_server import GrpcServer
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
 
 FIVE_SECONDS = 5
 
 logger = logging.getLogger(__name__)
+
+
+class Transport(enum.Enum):
+    """The transport used for client connections."""
+
+    ZEROMQ = "zeromq"
+    WEBSOCKET = "websocket"
+    GRPC = "grpc"
+
+
+_TRANSPORT_CLASSES = {
+    Transport.ZEROMQ: ZeroMQServer,
+    Transport.WEBSOCKET: WebsocketServer,
+    Transport.GRPC: GrpcServer,
+}
 
 
 Metadata = namedtuple(
@@ -72,7 +89,7 @@ class ServerRunner:
         input_queue_maxsize: int,
         timeout: int = FIVE_SECONDS,
         message_max_size: Optional[int] = None,
-        use_zeromq: bool = True,
+        transport: Transport = Transport.ZEROMQ,
         prometheus_port: int = 8000,
         use_ipc: bool = False,
     ):
@@ -93,14 +110,12 @@ class ServerRunner:
             message_max_size (int, optional):
                 Maximum size of messages from clients in bytes. Only applies to
                 websocket connections.
-            use_zeromq (bool):
-                Whether to use ZeroMQ for client connections instead of
-                websockets.
+            transport (Transport):
+                Which transport to use for client connections.
             prometheus_port (int):
                 Port for Prometheus metrics.
             use_ipc (bool):
-                Whether to use IPC for client connections instead of TCP. If
-                this is True, use_zeromq must also be True.
+                Whether to use IPC for client connections instead of TCP.
         """
         self.client_endpoint = client_endpoint
         self.engine_zmq_endpoint = engine_zmq_endpoint
@@ -108,7 +123,7 @@ class ServerRunner:
         self.input_queue_maxsize = input_queue_maxsize
         self.timeout = timeout
         self.message_max_size = message_max_size
-        self.use_zeromq = use_zeromq
+        self.transport = transport
         self.prometheus_port = prometheus_port
         self.use_ipc = use_ipc
 
@@ -118,8 +133,6 @@ class ServerRunner:
 
     async def run_async(self):
         """Run the Gabriel server."""
-        if self.use_ipc and not self.use_zeromq:
-            raise ValueError("IPC can only be used with ZeroMQ")
         start_http_server(self.prometheus_port)
         context = zmq.asyncio.Context()
         zmq_socket = context.socket(zmq.ROUTER)
@@ -134,7 +147,7 @@ class ServerRunner:
             zmq_socket,
             self.timeout,
             self.input_queue_maxsize,
-            self.use_zeromq,
+            self.transport,
             self.use_ipc,
         )
         self.server = server.server
@@ -156,7 +169,7 @@ class _Server:
         zmq_socket,
         timeout,
         size_for_queues,
-        use_zeromq,
+        transport,
         use_ipc,
     ):
         self._zmq_socket = zmq_socket
@@ -166,7 +179,7 @@ class _Server:
         self._producer_infos: dict[str, _ProducerInfo] = {}
         self._timeout = timeout
         self._size_for_queues = size_for_queues
-        self.server = (ZeroMQServer if use_zeromq else WebsocketServer)(
+        self.server = _TRANSPORT_CLASSES[transport](
             num_tokens, self._send_to_engine, self._engine_ids
         )
         self.use_ipc = use_ipc

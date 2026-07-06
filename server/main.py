@@ -10,7 +10,7 @@
 import argparse
 import logging
 
-from gabriel_server.network_engine.server_runner import ServerRunner
+from gabriel_server.network_engine.server_runner import ServerRunner, Transport
 
 DEFAULT_PORT = 9099
 DEFAULT_NUM_TOKENS = 2
@@ -54,10 +54,10 @@ def main():
     )
 
     parser.add_argument(
-        "-w",
-        "--websockets",
-        action="store_true",
-        help="Use Websockets Gabriel client",
+        "--transport",
+        choices=[transport.value for transport in Transport],
+        default=Transport.ZEROMQ.value,
+        help="Transport to use for client connections",
     )
 
     args, _ = parser.parse_known_args()
@@ -77,7 +77,7 @@ def main():
         engine_zmq_endpoint="tcp://*:5555",
         num_tokens=args.tokens,
         input_queue_maxsize=INPUT_QUEUE_MAXSIZE,  # TODO: Don't hardcode this
-        use_zeromq=not args.websockets,
+        transport=Transport(args.transport),
         use_ipc=use_ipc,
     )
     server_runner.run()

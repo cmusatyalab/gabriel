@@ -26,6 +26,36 @@ repos:
         args: [ --fix ]
       - id: ruff-format
 
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt (go-client)
+        entry: bash -c 'cd go-client && diff=$(gofmt -l .) && [ -z "$diff" ] || { echo "$diff"; echo "run gofmt -w on the above files"; exit 1; }'
+        language: system
+        files: ^go-client/.*\.go$
+        pass_filenames: false
+
+      - id: go-vet
+        name: go vet (go-client)
+        entry: bash -c 'cd go-client && go vet ./...'
+        language: system
+        files: ^go-client/.*\.go$
+        pass_filenames: false
+
+      - id: go-build
+        name: go build (go-client)
+        entry: bash -c 'cd go-client && go build ./...'
+        language: system
+        files: ^go-client/.*\.go$
+        pass_filenames: false
+
+      - id: go-test
+        name: go test (go-client)
+        entry: bash -c 'cd go-client && go test ./...'
+        language: system
+        files: ^go-client/.*\.go$
+        pass_filenames: false
+
 #  - repo: https://github.com/fsfe/reuse-tool
 #    rev: v1.0.0
 #    hooks:

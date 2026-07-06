@@ -1,28 +1,24 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"log"
+	"fmt"
+	"io"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
-	"github.com/golang/glog"
-	zmq "github.com/pebbe/zmq4"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/semaphore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
 
-const HelloMsg = "Hello message"
-const HeartbeatMsg = ""
-const ServerTimeoutSecs = 10
-const HeartbeatIntervalSecs = 1 * time.Second
-
-// Producer is a function that produces input frames for the client. It takes
-// a context.Context as input and returns a channel that produces
+// Producer is a function that produces input frames for the client. It takes a
+// context.Context as input and returns a channel that produces
 // *gabrielpb.InputFrame. The Producer must stop producing and close the
 // channel when the context is canceled.
 type Producer func(ctx context.Context) <-chan *gabrielpb.InputFrame
@@ -54,8 +50,8 @@ func NewInputProducer(name string, producer Producer, targetEngineIDs []string) 
 	return inputProducer
 }
 
-// Produce calls the underlying producer function to produce input frames.
-// The returned channel will be closed when the given context is canceled.
+// Produce calls the underlying producer function to produce input frames. The
+// returned channel will be closed when the given context is canceled.
 func (producer *InputProducer) Produce(ctx context.Context) <-chan *gabrielpb.InputFrame {
 	return producer.producer(ctx)
 }
@@ -68,11 +64,12 @@ func (producer *InputProducer) Resume() {
 	producer.cond.Signal()
 }
 
-// ChangeTargetEngines changes the target engines of the InputProducer to
-// the given targetEngineIDs.
+// ChangeTargetEngines changes the target engines of the InputProducer to the
+// given targetEngineIDs.
 func (producer *InputProducer) ChangeTargetEngines(targetEngineIDs []string) {
 	producer.engineMu.Lock()
 	defer producer.engineMu.Unlock()
+	producer.targetEngineIDs = make(map[string]struct{})
 	for _, engineID := range targetEngineIDs {
 		producer.targetEngineIDs[engineID] = struct{}{}
 	}
@@ -128,15 +125,15 @@ type tokenPool struct {
 	producerName string
 }
 
-func (pool tokenPool) ResetTokens() {
+func (pool *tokenPool) ResetTokens() {
 	pool.sem = semaphore.NewWeighted(int64(pool.maxTokens))
 }
 
-func (pool tokenPool) GetToken(ctx context.Context) error {
+func (pool *tokenPool) GetToken(ctx context.Context) error {
 	return pool.sem.Acquire(ctx, 1)
 }
 
-func (pool tokenPool) ReturnToken() {
+func (pool *tokenPool) ReturnToken() {
 	pool.sem.Release(1)
 }
 
@@ -145,13 +142,20 @@ type Client interface {
 	Launch(context.Context)
 }
 
-// ZeroMQClient implements the Client interface using ZeroMQ for communication
-// with the server.
-type ZeroMQClient struct {
+// GrpcClient implements the Client interface using gRPC for communication
+// with the server. It relies on gRPC's own HTTP/2 keepalive for liveness
+// detection rather than hand-rolled heartbeats, and it does not attempt to
+// resume a session on disconnect: once the stream ends, the client shuts
+// down.
+type GrpcClient struct {
+	// ServerEndpoint must be a valid gRPC target, e.g. "host:port" for TCP
+	// or "unix:///path/to/socket" for a Unix domain socket.
 	ServerEndpoint       string
 	consumer             func(*gabrielpb.Result)
 	tokenPool            map[string]tokenPool
-	socket               *zmq.Socket
+	conn                 *grpc.ClientConn
+	stream               grpc.BidiStreamingClient[gabrielpb.FromClient, gabrielpb.ToClient]
+	streamMu             sync.Mutex
 	connected            bool
 	connectedMu          sync.Mutex
 	connectedCond        *sync.Cond
@@ -159,24 +163,19 @@ type ZeroMQClient struct {
 	numTokensPerProducer int
 	engineIDs            map[string]struct{}
 	engineIDMu           sync.Mutex
-	pendingHeartbeat     atomic.Bool
-	lastHeartbeatTime    time.Time
-	heartbeatCh          chan struct{}
 }
 
-// NewZeroMQClient creates a new ZeroMQClient with the given server endpoint
-// and input producers. serverEndpoint can be in the format of
-// "tcp://<ip>:<port>" or "ipc://<path>".
-func NewZeroMQClient(
+// NewGrpcClient creates a new GrpcClient with the given server endpoint and
+// input producers.
+func NewGrpcClient(
 	serverEndpoint string,
 	inputProducers []*InputProducer,
-	consumer func(*gabrielpb.Result)) (*ZeroMQClient, error) {
+	consumer func(*gabrielpb.Result)) (*GrpcClient, error) {
 
-	client := ZeroMQClient{
+	client := GrpcClient{
 		ServerEndpoint: serverEndpoint,
 		consumer:       consumer,
 		inputProducers: inputProducers,
-		heartbeatCh:    make(chan struct{}, 1),
 		tokenPool:      make(map[string]tokenPool),
 		engineIDs:      make(map[string]struct{}),
 	}
@@ -185,105 +184,83 @@ func NewZeroMQClient(
 	return &client, nil
 }
 
-// Launch starts the ZeroMQClient and connects to the server.
-func (client *ZeroMQClient) Launch(ctx context.Context) {
-	glog.Infoln("Connecting to server at", client.ServerEndpoint)
-	// Connect to the server and send hello message.
-	var err error
-	client.socket, err = zmq.NewSocket(zmq.DEALER)
-	if err != nil {
-		log.Fatalln("Error creating dealer socket:", err)
-	}
-	err = client.socket.Connect(client.ServerEndpoint)
-	if err != nil {
-		log.Fatalln("Error connecting to server:", err)
-	}
-	_, err = client.socket.Send(HelloMsg, 0)
-	if err != nil {
-		log.Fatalln("Error sending hello msg to server:", err)
-	}
-	glog.Infoln("Sent hello message to server")
+func (client *GrpcClient) sendMsg(msg *gabrielpb.FromClient) error {
+	client.streamMu.Lock()
+	defer client.streamMu.Unlock()
+	return client.stream.Send(msg)
+}
 
-	// Start subroutines.
+// Launch starts the GrpcClient and connects to the Gabriel server. This
+// function is non-blocking.
+func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	log.Info().Str("endpoint", client.ServerEndpoint).Msg("connecting to server")
+	conn, err := grpc.NewClient(
+		client.ServerEndpoint,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Err(err).Msg("error creating gRPC client")
+		cancel()
+		return nil, err
+	}
+	client.conn = conn
+
+	stream, err := gabrielpb.NewGabrielServiceClient(conn).Session(ctx)
+	if err != nil {
+		log.Err(err).Msg("error opening session with server")
+		client.conn.Close()
+		cancel()
+		return nil, err
+	}
+	client.stream = stream
+
+	errCh := make(chan error, len(client.inputProducers)+1)
 	for _, producer := range client.inputProducers {
-		go client.producerHandler(ctx, producer)
+		go client.producerHandler(ctx, cancel, errCh, producer)
 	}
-	go client.consumerHandler(ctx)
+	go client.consumerHandler(ctx, cancel, errCh)
 
-	<-ctx.Done()
-	// cleanup
-	client.socket.Close()
+	go func() {
+		// cleanup grpc client connection
+		<-ctx.Done()
+		client.conn.Close()
+	}()
+
+	return errCh, nil
 }
 
 // consumerHandler handles incoming messages from the server.
-func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
-	poller := zmq.NewPoller()
-	poller.Add(client.socket, zmq.POLLIN)
-
+func (client *GrpcClient) consumerHandler(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	errCh chan error) {
 	for {
-		select {
-		case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
+			errCh <- err
+			log.Err(err).Msg("consumer handler exited")
 			return
-		default:
 		}
-
-		now := time.Now()
-		polled, err := poller.Poll(ServerTimeoutSecs * time.Second)
+		toClient, err := client.stream.Recv()
+		if err == io.EOF {
+			errCh <- err
+			log.Err(err).Msg("server closed the session")
+			cancel()
+			return
+		}
 		if err != nil {
-			glog.Fatalln("Received error", err, "when polling")
-		}
-		if len(polled) == 0 {
-			glog.Infoln("Socket polling took", time.Since(now))
-			client.connectedMu.Lock()
-			if client.connected {
-				client.connected = false
-				client.connectedMu.Unlock()
-				glog.Fatalln("Disconnected from server")
-			} else {
-				client.connectedMu.Unlock()
-				glog.Infoln("Still disconnected; reconnecting and resending heartbeat")
+			errCh <- err
+			if status.Code(err) == codes.Canceled {
+				return // ctx was canceled; shutting down normally
 			}
-			poller.Remove(0)
-			client.socket.Close()
-			client.socket, err = zmq.NewSocket(zmq.DEALER)
-			if err != nil {
-				log.Fatalln("Error creating dealer socket:", err)
-			}
-			client.sendHeartbeat(true /* force */)
-			poller.Add(client.socket, zmq.POLLIN)
-			continue
+			log.Err(err).Msg("received error from server")
+			cancel()
+			return
 		}
 
-		reply, err := client.socket.RecvMessageBytes(0)
-		if err != nil {
-			glog.Fatalln(err)
-		}
-
-		client.connectedMu.Lock()
-		if !client.connected {
-			client.connected = true
-			client.connectedMu.Unlock()
-			glog.Infoln("Reconnected to server")
-			for t := range client.tokenPool {
-				client.tokenPool[t].ResetTokens()
-			}
-		} else {
-			client.connectedMu.Unlock()
-		}
-
-		if bytes.Equal(reply[0], []byte(HeartbeatMsg)) {
-			glog.V(1).Infoln("Received heartbeat from server")
-			client.pendingHeartbeat.Store(false)
-			continue
-		}
-
-		toClient := &gabrielpb.ToClient{}
-
-		if err := proto.Unmarshal(reply[0], toClient); err != nil {
-			glog.Fatalln(err)
-		}
-
-		glog.Infoln("Received message from server:", prototext.Format(toClient))
+		log.Info().
+			Str("message", prototext.Format(toClient)).
+			Msg("received message from server")
 
 		switch x := toClient.MessageType.(type) {
 		case *gabrielpb.ToClient_Welcome_:
@@ -291,7 +268,7 @@ func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
 		case *gabrielpb.ToClient_ResultWrapper_:
 			client.processResult(x.ResultWrapper)
 		case *gabrielpb.ToClient_Control_:
-			glog.Infoln("Received control message from server")
+			log.Info().Msg("received control message from server")
 			engineIDs := make(map[string]struct{})
 			for _, engineID := range x.Control.EngineIds {
 				engineIDs[engineID] = struct{}{}
@@ -300,155 +277,134 @@ func (client *ZeroMQClient) consumerHandler(ctx context.Context) {
 			client.engineIDs = engineIDs
 			client.engineIDMu.Unlock()
 		case nil:
-			glog.Fatalln("Could not decode message type")
+			log.Error().Msg("could not decode message type")
 		default:
-			glog.Fatalln("Could not decode message type")
+			log.Error().Msg("could not decode message type")
 		}
 	}
 }
 
 // processWelcome processes the welcome message from the server.
-func (client *ZeroMQClient) processWelcome(welcome *gabrielpb.ToClient_Welcome) {
-	glog.Infoln("Received welcome from server")
+func (client *GrpcClient) processWelcome(welcome *gabrielpb.ToClient_Welcome) {
+	log.Info().Msg("received welcome from server")
 	client.numTokensPerProducer = int(welcome.NumTokensPerProducer)
+	client.engineIDMu.Lock()
 	for _, engineID := range welcome.EngineIds {
 		client.engineIDs[engineID] = struct{}{}
 	}
+	client.engineIDMu.Unlock()
+
+	for _, p := range client.inputProducers {
+		client.tokenPool[p.Name] = tokenPool{
+			sem:          semaphore.NewWeighted(int64(client.numTokensPerProducer)),
+			maxTokens:    client.numTokensPerProducer,
+			producerName: p.Name,
+		}
+	}
+
 	client.connectedMu.Lock()
 	client.connected = true
-	client.connectedCond.Signal()
+	client.connectedCond.Broadcast()
 	client.connectedMu.Unlock()
-	glog.Infoln(
-		"Available engines:",
-		welcome.EngineIds,
-		"; number of tokens per producer:",
-		welcome.NumTokensPerProducer)
+
+	log.Info().
+		Strs("engine_ids", welcome.EngineIds).
+		Int("num_tokens_per_producer", int(welcome.NumTokensPerProducer)).
+		Msg("available engines")
 }
 
 // processResult processes results from the server.
-func (client *ZeroMQClient) processResult(resultWrapper *gabrielpb.ToClient_ResultWrapper) {
+func (client *GrpcClient) processResult(resultWrapper *gabrielpb.ToClient_ResultWrapper) {
 	result := resultWrapper.Result
 	resultStatus := result.Status
 	code := resultStatus.Code
 	msg := resultStatus.Message
-	glog.V(1).Infoln("Processing result from engine", result.TargetEngineId)
+	log.Debug().Str("engine_id", result.TargetEngineId).Msg("processing result from engine")
 
 	switch code {
 	case gabrielpb.StatusCode_SUCCESS:
 		client.consumer(result)
 
 	case gabrielpb.StatusCode_NO_ENGINE_FOR_INPUT:
-		glog.Fatalln("No engine for input: ", msg)
+		log.Error().Str("message", msg).Msg("no engine for input")
 
 	case gabrielpb.StatusCode_SERVER_DROPPED_FRAME:
-		glog.Errorf(
-			"Engine %s dropped frame from producer %s: %s",
-			result.TargetEngineId,
-			resultWrapper.ProducerId,
-			msg)
+		log.Error().
+			Str("engine_id", result.TargetEngineId).
+			Str("producer_id", resultWrapper.ProducerId).
+			Str("message", msg).
+			Msg("engine dropped frame")
 
 	default:
-		glog.Errorf(
-			"Input from producer %s targeting engine %s caused error %s: %s",
-			resultWrapper.ProducerId,
-			result.TargetEngineId,
-			code,
-			msg)
+		log.Error().
+			Str("producer_id", resultWrapper.ProducerId).
+			Str("engine_id", result.TargetEngineId).
+			Str("code", code.String()).
+			Str("message", msg).
+			Msg("input caused error")
 	}
 
 	if resultWrapper.ReturnToken {
 		producerID := resultWrapper.ProducerId
-		client.tokenPool[producerID].ReturnToken()
+		if pool, ok := client.tokenPool[producerID]; ok {
+			pool.ReturnToken()
+		} else {
+			log.Error().Msgf("failed to return token, producer id %s does not exist", producerID)
+		}
 	}
 }
 
 // producerHandler handles input production for a single InputProducer.
-func (client *ZeroMQClient) producerHandler(ctx context.Context, producer *InputProducer) {
+func (client *GrpcClient) producerHandler(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	errCh chan error,
+	producer *InputProducer) {
+	logger := log.With().Str("producer", producer.Name).Logger()
+
 	client.connectedMu.Lock()
 	for !client.connected {
 		client.connectedCond.Wait()
 	}
 	client.connectedMu.Unlock()
-	client.tokenPool[producer.Name] = tokenPool{
-		sem:          semaphore.NewWeighted(int64(client.numTokensPerProducer)),
-		maxTokens:    client.numTokensPerProducer,
-		producerName: producer.Name,
-	}
-	frameId := 1
-
-	var producerCtx context.Context
-	var producerCancel context.CancelFunc
-	var resultCh <-chan *gabrielpb.InputFrame
-	var pendingTask bool
 
 	tokenPool := client.tokenPool[producer.Name]
 
+	frameId := 1
+	resultCh := producer.Produce(ctx)
+
 	for {
-		if _, ok := client.tokenPool[producer.Name]; !ok {
-			break
+		if err := ctx.Err(); err != nil {
+			errCh <- err
+			logger.Err(err).Msg("producer exited")
+			return
 		}
 		if !producer.IsRunning() {
-			glog.Infoln("Producer", producer.Name, "is not running; waiting")
+			logger.Info().Msg("producer is not running; waiting")
 			producer.WaitForRunning()
-			glog.Infoln("Producer", producer.Name, "resumed")
-		}
-		semCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-		glog.V(2).Infoln("Producer", producer.Name, "waiting for token")
-		err := tokenPool.GetToken(semCtx)
-		glog.V(2).Infoln("Producer", producer.Name, "obtained token")
-		cancel()
-		// Failed to acquire semaphore because timeout was reached.
-		if err != nil {
-			go client.sendHeartbeat(false /* force */)
-			continue
+			logger.Info().Msg("producer resumed")
 		}
 
-		// Check if still connected to server
-		client.connectedMu.Lock()
-		if !client.connected && pendingTask {
-			// Cancel the existing producer goroutine
-			client.connectedMu.Unlock()
-			producerCancel()
-			pendingTask = false
-			client.connectedMu.Lock()
+		if err := tokenPool.GetToken(ctx); err != nil {
+			errCh <- err
+			return // ctx was canceled
 		}
-		// Wait for reconnection
-		for !client.connected {
-			client.connectedCond.Wait()
-		}
-		client.connectedMu.Unlock()
 
-		if !pendingTask {
-			glog.V(2).Infoln("Creating new producer task")
-			producerCtx, producerCancel = context.WithCancel(ctx)
-			resultCh = producer.Produce(producerCtx)
-			pendingTask = true
-		}
 		var inputFrame *gabrielpb.InputFrame
-
-		// Wait for the producer to produce an input. Time out to send
-		// a heartbeat to the server.
 		select {
+		case <-ctx.Done():
+			logger.Info().Msg("producer handler exited, context done")
+			return
 		case inputFrame = <-resultCh:
-			glog.V(2).Info("Got input from producer")
-			pendingTask = false
-			producerCancel()
-			if inputFrame == nil {
-				glog.Infoln("Received None from producer", producer.Name)
-				tokenPool.ReturnToken()
-				continue
-			}
-
-		case <-time.After(1 * time.Second):
-			// send heartbeat
-			tokenPool.ReturnToken()
-			client.sendHeartbeat(false /* force */)
-			glog.Infoln("Timed out waiting for input from producer", producer.Name)
-			continue
 		}
 
+		if inputFrame == nil {
+			logger.Error().Msg("received nil frame from producer")
+			tokenPool.ReturnToken()
+			continue
+		}
 		if proto.Size(inputFrame) == 0 {
-			glog.Errorln("Producer ", producer.Name, " produced empty frame")
+			logger.Error().Msg("producer produced empty frame")
 			tokenPool.ReturnToken()
 			continue
 		}
@@ -465,40 +421,23 @@ func (client *ZeroMQClient) producerHandler(ctx context.Context, producer *Input
 
 		for _, engineID := range targetEngines {
 			if _, ok := availableEngines[engineID]; !ok {
-				glog.Fatalln(
-					"Attempt to target engine that is not connected to the server:",
-					engineID)
+				errCh <- fmt.Errorf("engine %s not connected to the server", engineID)
+				logger.Error().
+					Str("engine_id", engineID).
+					Msg("attempt to target engine that is not connected to the server")
+				cancel()
+				return
 			}
 			fromClient.TargetEngineIds = append(fromClient.TargetEngineIds, engineID)
 		}
 		fromClient.InputFrame = inputFrame
 
-		glog.V(2).Infoln("Sending input to server; producer=", producer.Name)
-		client.sendToServer(fromClient)
-	}
-}
-
-// sendToServer sends the given FromClient message to the server.
-func (client *ZeroMQClient) sendToServer(fromClient *gabrielpb.FromClient) {
-	msg, err := proto.Marshal(fromClient)
-	if err != nil {
-		glog.Fatalln(err)
-	}
-	_, err = client.socket.SendBytes(msg, 0)
-	if err != nil {
-		glog.Fatalln("Error sending message to server:", err)
-	}
-}
-
-func (client *ZeroMQClient) sendHeartbeat(force bool) {
-	if time.Since(client.lastHeartbeatTime) < HeartbeatIntervalSecs ||
-		client.pendingHeartbeat.Swap(true) {
-		return
-	}
-	glog.V(2).Infoln("Sending heartbeat to server")
-	client.lastHeartbeatTime = time.Now()
-	_, err := client.socket.SendBytes([]byte(HeartbeatMsg), 0)
-	if err != nil {
-		glog.Fatalln("Error sending heartbeat to server:", err)
+		logger.Trace().Str("producer", producer.Name).Msg("sending input to server")
+		if err := client.sendMsg(fromClient); err != nil {
+			errCh <- fmt.Errorf("error sending message to server: %w", err)
+			logger.Err(err).Msg("error sending message to server")
+			cancel()
+			return
+		}
 	}
 }

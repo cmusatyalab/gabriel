@@ -49,7 +49,7 @@ class ZeroMQServer(GabrielServer):
             engine_ids:
                 The ids of the engines connected to the server
         """
-        super().__init__(num_tokens_per_producer, engine_cb)
+        super().__init__(num_tokens_per_producer, engine_cb, engine_ids)
         self._is_running = False
         self._ctx = zmq.asyncio.Context()
         # The socket used for communicating with all clients
@@ -57,14 +57,6 @@ class ZeroMQServer(GabrielServer):
         self._sock.setsockopt(zmq.LINGER, 0)
         # For testing purposes only
         self._simulate_disconnection = False
-        self._engine_ids = engine_ids
-
-    def launch(self, port_or_path, message_max_size, use_ipc=False):
-        """Launch the ZeroMQ server synchronously.
-
-        This method will block execution until the server is stopped.
-        """
-        asyncio.run(self.launch_async(port_or_path, message_max_size, use_ipc))
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
@@ -164,14 +156,10 @@ class ZeroMQServer(GabrielServer):
                 self._clients[address] = client
 
                 # Send client welcome message
-                to_client = gabriel_pb2.ToClient()
-                to_client.welcome.num_tokens_per_producer = (
-                    self._num_tokens_per_producer
-                )
-                to_client.welcome.engine_ids.extend(self._engine_ids)
+                welcome = self._make_welcome()
                 try:
                     await self._sock.send_multipart(
-                        [address, to_client.SerializeToString()]
+                        [address, welcome.SerializeToString()]
                     )
                 except (zmq.ZMQError, ValueError) as error:
                     logging.error(
@@ -250,22 +238,12 @@ class ZeroMQServer(GabrielServer):
                 f"Sending error message to client {address}. "
                 f"{status_name}: {status_msg}"
             )
-            to_client = gabriel_pb2.ToClient()
-            to_client.result_wrapper.producer_id = from_client.producer_id
-            to_client.result_wrapper.return_token = True
-            to_client.result_wrapper.result.status.code = status
-            to_client.result_wrapper.result.status.message = status_msg
-            to_client.result_wrapper.result.frame_id = from_client.frame_id
-            await self._sock.send_multipart(
-                [address, to_client.SerializeToString()]
+            err_msg = self._make_error_response(
+                from_client, status, status_msg
             )
-
-    async def _engines_updated_cb(self):
-        to_client = gabriel_pb2.ToClient()
-        to_client.control.engine_ids.extend(self._engine_ids)
-        msg = to_client.SerializeToString()
-        for address in self._clients:
-            await self._sock.send_multipart([address, msg])
+            await self._sock.send_multipart(
+                [address, err_msg.SerializeToString()]
+            )
 
 
 def handle_task_result(t: asyncio.Task):

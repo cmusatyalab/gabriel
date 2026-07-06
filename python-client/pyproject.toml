@@ -12,6 +12,7 @@ dependencies = [
     "gabriel-protocol==4.1",
     "websockets",
     "pyzmq",
+    "grpcio",
     "prometheus-client",
     "opencv-python",
     "protobuf>=6.0.0,<7.0.0",

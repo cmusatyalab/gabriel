@@ -1,6 +1,7 @@
 PROTO_DIR := protos
 GO_OUT := go
-PY_OUT := python/src/gabriel_protocol
+GO_MODULE := github.com/cmusatyalab/gabriel/protocol/go
+PY_OUT := python/src
 PYTHON := python3
 
 PROTO_FILES := $(shell find $(PROTO_DIR) -name '*.proto')
@@ -13,8 +14,8 @@ gen:
 		-I protoc/include \
 		--go-grpc_out=$(GO_OUT) \
 		--go_out=$(GO_OUT) \
-		--go_opt=paths=source_relative \
-		--go-grpc_opt=paths=source_relative \
+		--go_opt=module=$(GO_MODULE) \
+		--go-grpc_opt=module=$(GO_MODULE) \
 		$(PROTO_FILES)
 	$(PYTHON) -m grpc_tools.protoc \
 		-I $(PROTO_DIR) \
