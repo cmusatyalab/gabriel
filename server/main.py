@@ -34,10 +34,16 @@ def main():
     )
 
     parser.add_argument(
-        "-p", "--port", type=int, default=DEFAULT_PORT, help="Set port number"
+        "-p",
+        "--client_port",
+        type=int,
+        default=DEFAULT_PORT,
+        help="Port to listen on for client connections",
     )
 
-    parser.add_argument("--path", type=str, help="Set ipc path")
+    parser.add_argument(
+        "--client_path", type=str, help="Set client connection ipc path"
+    )
 
     parser.add_argument(
         "-q",
@@ -61,6 +67,13 @@ def main():
         help="Logging verbosity",
     )
 
+    parser.add_argument(
+        "--engine_port",
+        type=int,
+        default=5555,
+        help="Port to listen on for engine connections",
+    )
+
     args, _ = parser.parse_known_args()
 
     logging.basicConfig(
@@ -70,19 +83,21 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    print(args.port)
-    if args.port and args.path:
+    print(args.client_port)
+    if args.client_port and args.client_path:
         raise ValueError("Can't specify both port and path")
 
     use_ipc = False
-    if args.path:
+    if args.client_path:
         use_ipc = True
 
-    client_endpoint = args.port if not args.path else args.path
+    client_endpoint = (
+        args.client_port if not args.client_path else args.client_path
+    )
 
     server_runner = ServerRunner(
         client_endpoint=client_endpoint,
-        engine_zmq_endpoint="tcp://*:5555",
+        engine_zmq_endpoint=f"tcp://*:{args.engine_port}",
         num_tokens=args.tokens,
         input_queue_maxsize=INPUT_QUEUE_MAXSIZE,  # TODO: Don't hardcode this
         transport=Transport(args.transport),

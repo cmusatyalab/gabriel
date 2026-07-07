@@ -21,14 +21,14 @@ var grpcServerAddr string
 // python and repoRoot are set once by TestMain and used by startEngine to
 // launch additional echo engine subprocesses on demand from individual tests.
 var (
-	python       string
-	repoRoot     string
-	engineScript string
+	python            string
+	repoRoot          string
+	engineScript      string
+	engineBackendAddr string
 )
 
 const (
-	testEngineID       = "0"
-	engineBackendAddr  = "tcp://localhost:5555"
+	testEngineID       = "engine-0"
 	serverReadyTimeout = 2 * time.Second
 	defaultPyenvEnv    = "gabriel-ci"
 	engineRegisterWait = time.Second
@@ -56,17 +56,25 @@ func runWithGabrielServer(m *testing.M) (int, error) {
 
 	python = resolvePythonInterpreter()
 
-	port, err := freeTCPPort()
+	grpc_port, err := freeTCPPort()
 	if err != nil {
 		return 1, fmt.Errorf("finding a free port: %w", err)
 	}
-	grpcServerAddr = fmt.Sprintf("127.0.0.1:%d", port)
+	grpcServerAddr = fmt.Sprintf("127.0.0.1:%d", grpc_port)
+	fmt.Fprintf(os.Stderr, "Using port %d for gRPC server\n", grpc_port)
 
+	engine_port, err := freeTCPPort()
+	if err != nil {
+		return 1, fmt.Errorf("finding a free port: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "Using port %d for gabriel server\n", engine_port)
 	serverCmd := exec.Command(python, serverMain,
 		"--transport", "grpc",
-		"--port", strconv.Itoa(port),
+		"--client_port", strconv.Itoa(grpc_port),
 		"--log-level", "INFO",
+		"--engine_port", strconv.Itoa(engine_port),
 	)
+	engineBackendAddr = fmt.Sprintf("tcp://127.0.0.1:%d", engine_port)
 	serverCmd.Dir = repoRoot
 	serverCmd.Stdout = &prefixedWriter{prefix: "[server] "}
 	serverCmd.Stderr = &prefixedWriter{prefix: "[server] "}

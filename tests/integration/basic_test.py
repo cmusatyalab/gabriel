@@ -134,7 +134,7 @@ def num_engines():
 @pytest.fixture(scope="session")
 def prometheus_server_port_generator():
     """Generate unique Prometheus ports for each test for server."""
-    return itertools.count(8001)
+    return itertools.count(11111)
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def prometheus_server_port(prometheus_server_port_generator):
 @pytest.fixture(scope="session")
 def prometheus_client_port_generator():
     """Generate unique Prometheus ports for each test for client."""
-    return itertools.count(8001)
+    return itertools.count(12222)
 
 
 @pytest.fixture

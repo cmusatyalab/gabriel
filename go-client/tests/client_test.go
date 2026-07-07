@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	launchResponseWait     = 3 * time.Second
-	targetEngineSwitchWait = 3 * time.Second
-	inputInterval          = 100 * time.Millisecond
+	launchResponseWait     = 1 * time.Second
+	targetEngineSwitchWait = 1 * time.Second
+	inputInterval          = 50 * time.Millisecond
 )
 
 // repeatingProducer returns a Producer that emits a text frame with the given
@@ -86,7 +86,7 @@ func TestEndToEnd(t *testing.T) {
 		}()
 		return ch
 	}
-	producer := gabrielclient.NewInputProducer("producer-1", producerFn, []string{"0"})
+	producer := gabrielclient.NewInputProducer("producer-1", producerFn, []string{"engine-0"})
 	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
@@ -108,7 +108,7 @@ func TestMultipleEngines(t *testing.T) {
 	engine2 := startEngine(t)
 
 	producer := gabrielclient.NewInputProducer(
-		"producer-1", repeatingProducer("hi", inputInterval), []string{"0", engine1, engine2},
+		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0", engine1, engine2},
 	)
 	counts := &engineCounts{}
 	grpcClient, _ := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
@@ -116,7 +116,7 @@ func TestMultipleEngines(t *testing.T) {
 	go grpcClient.Launch(t.Context())
 	time.Sleep(launchResponseWait)
 
-	for _, engineID := range []string{"0", engine1, engine2} {
+	for _, engineID := range []string{"engine-0", engine1, engine2} {
 		if counts.get(engineID) == 0 {
 			t.Errorf("did not receive a response from engine %s", engineID)
 		}
@@ -161,7 +161,7 @@ func TestEmptyInputFrame(t *testing.T) {
 		}()
 		return ch
 	}
-	producer := gabrielclient.NewInputProducer("producer-1", emptyOnce, []string{"0"})
+	producer := gabrielclient.NewInputProducer("producer-1", emptyOnce, []string{"engine-0"})
 	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
@@ -182,7 +182,7 @@ func TestChangeTargetEngines(t *testing.T) {
 	engine1 := startEngine(t)
 
 	producer := gabrielclient.NewInputProducer(
-		"producer-1", repeatingProducer("hi", inputInterval), []string{"0"},
+		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0"},
 	)
 	counts := &engineCounts{}
 	grpcClient, _ := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
@@ -190,7 +190,7 @@ func TestChangeTargetEngines(t *testing.T) {
 	go grpcClient.Launch(t.Context())
 	time.Sleep(launchResponseWait)
 
-	if counts.get("0") == 0 {
+	if counts.get("engine-0") == 0 {
 		t.Fatal("did not receive a response from engine 0 before changing targets")
 	}
 
@@ -208,7 +208,7 @@ func TestAddRemoveTargetEngine(t *testing.T) {
 	engine1 := startEngine(t)
 
 	producer := gabrielclient.NewInputProducer(
-		"producer-1", repeatingProducer("hi", inputInterval), []string{"0"},
+		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0"},
 	)
 	counts := &engineCounts{}
 	grpcClient, _ := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
@@ -216,7 +216,7 @@ func TestAddRemoveTargetEngine(t *testing.T) {
 	go grpcClient.Launch(t.Context())
 	time.Sleep(launchResponseWait)
 
-	if counts.get("0") == 0 {
+	if counts.get("engine-0") == 0 {
 		t.Fatal("did not receive a response from engine 0")
 	}
 
@@ -227,16 +227,16 @@ func TestAddRemoveTargetEngine(t *testing.T) {
 		t.Fatalf("did not receive a response from engine %s after adding it as a target", engine1)
 	}
 
-	producer.RemoveTargetEngine("0")
-	countAfterRemoval := counts.get("0")
+	producer.RemoveTargetEngine("engine-0")
+	countAfterRemoval := counts.get("engine-0")
 	time.Sleep(targetEngineSwitchWait)
 
 	// Allow a small tolerance for a frame that was already in flight to engine
 	// 0 at the moment it was removed as a target.
-	if counts.get("0")-countAfterRemoval > 1 {
+	if counts.get("engine-0")-countAfterRemoval > 1 {
 		t.Fatalf(
 			"still receiving responses from engine 0 after removing it as a target: %d -> %d",
-			countAfterRemoval, counts.get("0"),
+			countAfterRemoval, counts.get("engine-0"),
 		)
 	}
 }
