@@ -424,8 +424,16 @@ class ZeroMQClient(GabrielClient):
         """
         while self._running:
             if not self._schedule_heartbeat.is_set():
-                # Wait for heartbeat to be scheduled by another task
-                await self._schedule_heartbeat.wait()
+                # Wait for heartbeat to be scheduled by another task, but
+                # time out periodically so self._running is re-checked
+                # instead of blocking here forever after stop() is called.
+                try:
+                    await asyncio.wait_for(
+                        self._schedule_heartbeat.wait(),
+                        timeout=HEARTBEAT_INTERVAL,
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    continue
             self._schedule_heartbeat.clear()
 
             # Heartbeat was sent recently

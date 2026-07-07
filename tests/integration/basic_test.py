@@ -256,6 +256,11 @@ async def run_engines(
 
     yield engines
     if run_engines_threaded:
+        logger.info("Tearing down threaded engines")
+        for engine in engines:
+            engine.engine_runner.stop_event.set()
+        for engine in engines:
+            engine.join(timeout=5)
         return
     logger.info("Tearing down engines")
     for task in engine_tasks:
@@ -1578,5 +1583,10 @@ async def test_tokens_bug_threaded_client(
     t2.start()
 
     await asyncio.sleep(30)
+
+    client1.stop()
+    client2.stop()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
 
     assert len(response_state) == len(target_engines)
