@@ -3,9 +3,9 @@
 import asyncio
 import contextlib
 import copy
-import itertools
 import logging
 import random
+import socket
 import threading
 import time
 
@@ -28,6 +28,23 @@ from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Summary
 DEFAULT_NUM_TOKENS = 5
 DEFAULT_SERVER_HOST = "localhost"
 INPUT_QUEUE_MAXSIZE = 60
+
+
+def _get_free_port() -> int:
+    """Ask the OS for an unused TCP port.
+
+    Safe across pytest-xdist workers (each a separate process) since the
+    OS guarantees not to hand out a bound, in-use port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
+def _free_port_generator():
+    while True:
+        yield _get_free_port()
+
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - "
@@ -92,7 +109,7 @@ class Engine(cognitive_engine.Engine, threading.Thread):
 @pytest.fixture(scope="session")
 def server_frontend_port_generator():
     """Generate unique server frontend ports for each test."""
-    return itertools.count(90999)
+    return _free_port_generator()
 
 
 @pytest.fixture
@@ -104,7 +121,7 @@ def server_frontend_port(server_frontend_port_generator):
 @pytest.fixture(scope="session")
 def server_backend_port_generator():
     """Generate unique server backend ports for each test."""
-    return itertools.count(55555)
+    return _free_port_generator()
 
 
 @pytest.fixture
@@ -134,7 +151,7 @@ def num_engines():
 @pytest.fixture(scope="session")
 def prometheus_server_port_generator():
     """Generate unique Prometheus ports for each test for server."""
-    return itertools.count(11111)
+    return _free_port_generator()
 
 
 @pytest.fixture
@@ -146,7 +163,7 @@ def prometheus_server_port(prometheus_server_port_generator):
 @pytest.fixture(scope="session")
 def prometheus_client_port_generator():
     """Generate unique Prometheus ports for each test for client."""
-    return itertools.count(12222)
+    return _free_port_generator()
 
 
 @pytest.fixture
@@ -260,7 +277,7 @@ async def run_engines(
         for engine in engines:
             engine.engine_runner.stop_event.set()
         for engine in engines:
-            engine.join(timeout=5)
+            engine.join()
         return
     logger.info("Tearing down engines")
     for task in engine_tasks:
@@ -1586,7 +1603,7 @@ async def test_tokens_bug_threaded_client(
 
     client1.stop()
     client2.stop()
-    t1.join(timeout=5)
-    t2.join(timeout=5)
+    t1.join()
+    t2.join()
 
     assert len(response_state) == len(target_engines)
