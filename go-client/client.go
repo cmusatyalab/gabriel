@@ -139,7 +139,7 @@ func (pool *tokenPool) ReturnToken() {
 
 // Client defines the interface for a Gabriel client.
 type Client interface {
-	Launch(context.Context)
+	Launch(context.Context) (<-chan error, error)
 }
 
 // GrpcClient implements the Client interface using gRPC for communication
@@ -444,3 +444,5 @@ func (client *GrpcClient) producerHandler(
 		}
 	}
 }
+
+var _ Client = (*GrpcClient)(nil)
