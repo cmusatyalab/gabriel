@@ -55,7 +55,7 @@ jobs:
     - name: Set Docker image tag
       id: get_tag
       run: |
-        if [ "${{ github.ref_name }}" == "master" ]; then
+        if [ "${{ github.ref_name }}" == "main" ]; then
           echo "tag=latest" >> "$GITHUB_OUTPUT"
         else
           echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"

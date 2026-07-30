@@ -2,7 +2,7 @@ name: Build and push Gabriel server
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
     tags: [ "v*" ]
     paths:
       - 'server/**'
