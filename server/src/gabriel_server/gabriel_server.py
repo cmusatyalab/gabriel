@@ -199,7 +199,7 @@ class GabrielServer(ABC):
             address: The identifier of the client
             from_client: A FromClient protobuf message containing the input
         """
-        producer_id = from_client.producer_id
+        producer_id = from_client.input.producer_id
 
         if producer_id not in client.tokens_for_producer:
             client.tokens_for_producer[producer_id] = (
@@ -230,9 +230,9 @@ class GabrielServer(ABC):
         from_client: FromClient, status: StatusCode, status_msg: str
     ) -> ToClient:
         to_client = ToClient()
-        to_client.result_wrapper.producer_id = from_client.producer_id
+        to_client.result_wrapper.producer_id = from_client.input.producer_id
         to_client.result_wrapper.return_token = True
         to_client.result_wrapper.result.status.code = status
         to_client.result_wrapper.result.status.message = status_msg
-        to_client.result_wrapper.result.frame_id = from_client.frame_id
+        to_client.result_wrapper.result.frame_id = from_client.input.frame_id
         return to_client

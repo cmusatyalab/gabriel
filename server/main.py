@@ -15,7 +15,7 @@ from gabriel_server.network_engine.server_runner import ServerRunner, Transport
 DEFAULT_PORT = 9099
 DEFAULT_NUM_TOKENS = 2
 DEFAULT_LOG_LEVEL = "DEBUG"
-INPUT_QUEUE_MAXSIZE = 60
+INPUT_QUEUE_MAXLEN = 60
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,8 @@ def main():
         "-q",
         "--queue",
         type=int,
-        default=INPUT_QUEUE_MAXSIZE,
-        help="Max input queue size",
+        default=INPUT_QUEUE_MAXLEN,
+        help="Max input queue length",
     )
 
     parser.add_argument(
@@ -74,6 +74,38 @@ def main():
         help="Port to listen on for engine connections",
     )
 
+    parser.add_argument(
+        "--engine_path", type=str, help="Set engine connection ipc path"
+    )
+
+    parser.add_argument(
+        "--tls-cert",
+        type=str,
+        help="Path to a PEM certificate chain for gRPC servers to present. "
+        "If omitted (along with --tls-key), gRPC servers listen on "
+        "insecure (plaintext) ports.",
+    )
+
+    parser.add_argument(
+        "--tls-key",
+        type=str,
+        help="Path to the PEM private key matching --tls-cert.",
+    )
+
+    parser.add_argument(
+        "--tls-client-ca-cert",
+        type=str,
+        help="Path to a PEM CA certificate used to verify client/engine "
+        "certificates. Providing this enables mutual TLS.",
+    )
+
+    parser.add_argument(
+        "--prometheus_port",
+        type=int,
+        default=8000,
+        help="Port for Prometheus metrics",
+    )
+
     args, _ = parser.parse_known_args()
 
     logging.basicConfig(
@@ -83,25 +115,40 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    print(args.client_port)
     if args.client_port and args.client_path:
         raise ValueError("Can't specify both port and path")
 
-    use_ipc = False
+    use_client_ipc = False
     if args.client_path:
-        use_ipc = True
+        use_client_ipc = True
 
     client_endpoint = (
         args.client_port if not args.client_path else args.client_path
     )
 
+    if args.engine_port and args.engine_path:
+        raise ValueError("Can't specify both port and path")
+
+    use_engine_ipc = False
+    if args.engine_path:
+        use_engine_ipc = True
+
+    engine_endpoint = (
+        args.engine_port if not args.engine_path else args.engine_path
+    )
+
     server_runner = ServerRunner(
         client_endpoint=client_endpoint,
-        engine_zmq_endpoint=f"tcp://*:{args.engine_port}",
+        engine_endpoint=engine_endpoint,
         num_tokens=args.tokens,
-        input_queue_maxsize=INPUT_QUEUE_MAXSIZE,  # TODO: Don't hardcode this
-        transport=Transport(args.transport),
-        use_ipc=use_ipc,
+        input_queue_maxsize=args.queue,
+        client_transport=Transport(args.transport),
+        use_client_ipc=use_client_ipc,
+        use_engine_ipc=use_engine_ipc,
+        prometheus_port=args.prometheus_port,
+        tls_cert=args.tls_cert,
+        tls_key=args.tls_key,
+        tls_client_ca_cert=args.tls_client_ca_cert,
     )
     server_runner.run()
 

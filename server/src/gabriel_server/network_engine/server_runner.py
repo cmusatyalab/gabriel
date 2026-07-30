@@ -7,18 +7,30 @@ import time
 from collections import deque, namedtuple
 from typing import Optional, Union
 
-import zmq
-import zmq.asyncio
-from gabriel_protocol import gabriel_pb2
+import grpc
+from gabriel_protocol import gabriel_pb2, gabriel_pb2_grpc
 from gabriel_protocol.gabriel_pb2 import StatusCode
+from gabriel_protocol.tls_utils import build_server_credentials
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
-from gabriel_server import network_engine
 from gabriel_server.grpc_server import GrpcServer
 from gabriel_server.websocket_server import WebsocketServer
 from gabriel_server.zeromq_server import ZeroMQServer
 
 FIVE_SECONDS = 5
+ENGINE_SERVER_STOP_GRACE_SECONDS = 1
+
+# Must permit pings at least as often as the engine's
+# engine_runner.KEEPALIVE_TIME_MS, or gRPC will kill the connection for
+# "too_many_pings" instead of letting the keepalive do its job.
+ENGINE_KEEPALIVE_MIN_PING_INTERVAL_MS = 5_000
+
+# The server also pings each engine itself, so a silently dead engine (e.g.
+# a crashed process or network partition, as opposed to a clean stream
+# close) is still noticed and cleaned up, mirroring what the app-level
+# heartbeat used to do.
+ENGINE_KEEPALIVE_TIME_MS = 10_000
+ENGINE_KEEPALIVE_TIMEOUT_MS = 5_000
 
 logger = logging.getLogger(__name__)
 
@@ -84,48 +96,73 @@ class ServerRunner:
     def __init__(
         self,
         client_endpoint: Union[int, str],
-        engine_zmq_endpoint: str,
+        engine_endpoint: Union[int, str],
         num_tokens: int,
         input_queue_maxsize: int,
-        timeout: int = FIVE_SECONDS,
         message_max_size: Optional[int] = None,
-        transport: Transport = Transport.ZEROMQ,
+        client_transport: Transport = Transport.GRPC,
         prometheus_port: int = 8000,
-        use_ipc: bool = False,
+        use_client_ipc: bool = False,
+        use_engine_ipc: bool = False,
+        tls_cert: Optional[str] = None,
+        tls_key: Optional[str] = None,
+        tls_client_ca_cert: Optional[str] = None,
     ):
         """Initialize the server runner.
 
         Args:
             client_endpoint (int | str):
-                Port for client connections, or pathname for IPC socket if
-                use_ipc is True.
-            engine_zmq_endpoint (str):
-                Address for cognitive engine connections.
+                Port for client connections, or pathname for a Unix domain
+                socket if use_client_ipc is True.
+            engine_endpoint (int | str):
+                Port for cognitive engine connections over gRPC, or pathname
+                for a Unix domain socket if use_engine_ipc is True.
             num_tokens (int):
                 Number of tokens for flow control.
             input_queue_maxsize (int):
                 Maximum size of input queue for each cognitive engine.
-            timeout (int):
-                Timeout in seconds for cognitive engine heartbeats.
             message_max_size (int, optional):
                 Maximum size of messages from clients in bytes. Only applies to
                 websocket connections.
-            transport (Transport):
+            client_transport (Transport):
                 Which transport to use for client connections.
             prometheus_port (int):
                 Port for Prometheus metrics.
-            use_ipc (bool):
-                Whether to use IPC for client connections instead of TCP.
+            use_client_ipc (bool):
+                Whether to use a Unix domain socket for client connections
+                instead of TCP.
+            use_engine_ipc (bool):
+                Whether to use a Unix domain socket for engine connections
+                instead of TCP. Only sensible when engines run on the same
+                host as the server.
+            tls_cert (str, optional):
+                Path to a PEM certificate chain for the gRPC servers (both
+                the client-facing one, if `client_transport` is
+                `Transport.GRPC`, and the engine-facing one) to present. If
+                either tls_cert or tls_key is omitted, gRPC servers listen
+                on insecure (plaintext) ports.
+            tls_key (str, optional):
+                Path to a PEM private key for the gRPC servers (both the
+                client-facing one, if `client_transport` is
+                `Transport.GRPC`, and the engine-facing one) to present. If
+                either tls_cert or tls_key is omitted, gRPC servers listen
+                on insecure (plaintext) ports.
+            tls_client_ca_cert (str, optional):
+                Path to a PEM CA certificate used to verify client/engine
+                certificates. Providing this enables mutual TLS.
         """
         self.client_endpoint = client_endpoint
-        self.engine_zmq_endpoint = engine_zmq_endpoint
+        self.engine_endpoint = engine_endpoint
         self.num_tokens = num_tokens
         self.input_queue_maxsize = input_queue_maxsize
-        self.timeout = timeout
         self.message_max_size = message_max_size
-        self.transport = transport
+        self.client_transport = client_transport
         self.prometheus_port = prometheus_port
-        self.use_ipc = use_ipc
+        self.use_client_ipc = use_client_ipc
+        self.use_engine_ipc = use_engine_ipc
+        self.tls_cert = tls_cert
+        self.tls_key = tls_key
+        self.tls_client_ca_cert = tls_client_ca_cert
 
     def run(self):
         """Run the Gabriel server."""
@@ -133,106 +170,197 @@ class ServerRunner:
 
     async def run_async(self):
         """Run the Gabriel server."""
-        start_http_server(self.prometheus_port)
-        context = zmq.asyncio.Context()
-        zmq_socket = context.socket(zmq.ROUTER)
-        zmq_socket.setsockopt(zmq.LINGER, 0)
-        zmq_socket.bind(self.engine_zmq_endpoint)
-        logger.info(
-            f"Waiting for engines to connect on {self.engine_zmq_endpoint}"
+        # start_http_server spawns a daemon thread running its own
+        # serve_forever() loop. It gives us no way to stop it unless we
+        # hang onto the returned server/thread ourselves, so make sure to
+        # shut it down in the finally block below instead
+        prometheus_httpd, prometheus_thread = start_http_server(
+            self.prometheus_port
         )
 
         server = _Server(
             self.num_tokens,
-            zmq_socket,
-            self.timeout,
+            self.engine_endpoint,
             self.input_queue_maxsize,
-            self.transport,
-            self.use_ipc,
+            self.client_transport,
+            self.use_client_ipc,
+            self.use_engine_ipc,
+            self.tls_cert,
+            self.tls_key,
+            self.tls_client_ca_cert,
         )
         self.server = server.server
         try:
             await server.launch_async(
                 self.client_endpoint, self.message_max_size
             )
-        except Exception as e:
-            logger.error(e)
-            zmq_socket.close()
-            context.term()
-            raise
+        finally:
+
+            def shutdown_prometheus():
+                prometheus_httpd.shutdown()
+                prometheus_httpd.server_close()
+                prometheus_thread.join()
+
+            await asyncio.to_thread(shutdown_prometheus)
 
 
-class _Server:
+class _Server(gabriel_pb2_grpc.GabrielEngineServiceServicer):
     def __init__(
         self,
         num_tokens,
-        zmq_socket,
-        timeout,
+        engine_endpoint,
         size_for_queues,
-        transport,
-        use_ipc,
+        client_transport,
+        use_client_ipc,
+        use_engine_ipc,
+        tls_cert=None,
+        tls_key=None,
+        tls_client_ca_cert=None,
     ):
-        self._zmq_socket = zmq_socket
+        self._engine_endpoint = engine_endpoint
+        self._use_engine_ipc = use_engine_ipc
         self._engine_workers = {}
         self._engine_ids = set()
         # Mapping from producer id to producer info
         self._producer_infos: dict[str, _ProducerInfo] = {}
-        self._timeout = timeout
         self._size_for_queues = size_for_queues
-        self.server = _TRANSPORT_CLASSES[transport](
-            num_tokens, self._send_to_engine, self._engine_ids
+        self._tls_cert = tls_cert
+        self._tls_key = tls_key
+        self._tls_client_ca_cert = tls_client_ca_cert
+        transport_kwargs = {}
+        if client_transport == Transport.GRPC:
+            transport_kwargs = {
+                "tls_cert": tls_cert,
+                "tls_key": tls_key,
+                "tls_client_ca_cert": tls_client_ca_cert,
+            }
+        # The server used to service Gabriel clients
+        self.server = _TRANSPORT_CLASSES[client_transport](
+            num_tokens,
+            self._send_to_engine,
+            self._engine_ids,
+            **transport_kwargs,
         )
-        self.use_ipc = use_ipc
+        self.client_transport = client_transport
+        self.use_client_ipc = use_client_ipc
+        self._engine_grpc_server = None
 
     def launch(self, client_port, message_max_size):
         asyncio.run(self.launch_async(client_port, message_max_size))
 
     async def launch_async(self, client_port, message_max_size):
-        async def receive_from_engine_worker_loop():
-            await self.server.wait_for_start()
-            while self.server.is_running():
-                await self._receive_from_engine_worker_helper()
-            logger.info("Engine receiver loop shut down")
-
-        async def heartbeat_loop():
-            await self.server.wait_for_start()
-            while self.server.is_running():
-                await asyncio.sleep(0.1)
-                await self._heartbeat_helper()
-            logger.info("Heartbeat loop shut down")
-
         async def log_connected_engines():
             await self.server.wait_for_start()
             while self.server.is_running():
                 await asyncio.sleep(10)
                 logger.info(f"Connected engines: {self._engine_ids}")
 
-        engine_receiver_task = asyncio.create_task(
-            receive_from_engine_worker_loop()
+        options = [
+            # Permit the engine's own keepalive pings (see engine_runner.py's
+            # KEEPALIVE_TIME_MS) on an otherwise idle stream, so the server
+            # doesn't kill the connection for "too_many_pings".
+            (
+                "grpc.http2.min_ping_interval_without_data_ms",
+                ENGINE_KEEPALIVE_MIN_PING_INTERVAL_MS,
+            ),
+            ("grpc.http2.max_pings_without_data", 0),
+            # Also ping each engine from the server side, so a silently dead
+            # engine is noticed even if it never sends another ping itself.
+            # Either direction's failed ping tears down the RPC, which
+            # EngineSession's finally block already handles.
+            ("grpc.keepalive_time_ms", ENGINE_KEEPALIVE_TIME_MS),
+            ("grpc.keepalive_timeout_ms", ENGINE_KEEPALIVE_TIMEOUT_MS),
+            ("grpc.keepalive_permit_without_calls", 1),
+        ]
+        if message_max_size is not None:
+            options.append(("grpc.max_send_message_length", message_max_size))
+            options.append(
+                ("grpc.max_receive_message_length", message_max_size)
+            )
+
+        self._engine_grpc_server = grpc.aio.server(options=options)
+        gabriel_pb2_grpc.add_GabrielEngineServiceServicer_to_server(
+            self, self._engine_grpc_server
         )
-        engine_heartbeat_task = asyncio.create_task(heartbeat_loop())
-        log_engines_task = asyncio.create_task(log_connected_engines())
+        target = (
+            f"unix://{self._engine_endpoint}"
+            if self._use_engine_ipc
+            else f"[::]:{self._engine_endpoint}"
+        )
+        credentials = build_server_credentials(
+            self._tls_cert, self._tls_key, self._tls_client_ca_cert
+        )
+        if credentials is not None:
+            self._engine_grpc_server.add_secure_port(target, credentials)
+        else:
+            self._engine_grpc_server.add_insecure_port(target)
+
+        await self._engine_grpc_server.start()
+        logger.info(
+            f"Waiting for engines to connect on {self._engine_endpoint}"
+        )
 
         server_task = asyncio.create_task(
             self.server.launch_async(
-                client_port, message_max_size, self.use_ipc
+                client_port, message_max_size, self.use_client_ipc
             )
         )
 
-        tasks = [
-            engine_receiver_task,
-            engine_heartbeat_task,
-            server_task,
-            log_engines_task,
-        ]
+        log_engines_task = asyncio.create_task(log_connected_engines())
+
+        tasks = [log_engines_task, server_task]
 
         try:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
-            self._zmq_socket.close()
+            # When the gather() await itself is cancelled (as opposed to one
+            # of the tasks raising its own exception below), asyncio has
+            # already delivered that cancellation to every task in `tasks`
+            # as part of cancelling the gather - cancelling them again here
+            # would interrupt a task's cleanup code a second time, mid-flight.
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
+        except BaseException:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        finally:
+            await self._engine_grpc_server.stop(
+                grace=ENGINE_SERVER_STOP_GRACE_SECONDS
+            )
         logger.info("Server shut down")
+
+    async def EngineSession(self, request_iterator, context):  # noqa: N802
+        """Handle a cognitive engine's stream for its entire lifetime.
+
+        Invoked directly by the gRPC framework once per engine connection. The
+        first message on the stream must be a `Register` message.
+        """
+        engine_iter = request_iterator.__aiter__()
+        try:
+            first = await engine_iter.__anext__()
+        except StopAsyncIteration:
+            return
+
+        if not first.HasField("register"):
+            logger.warning(
+                "First message from engine was not a register message. "
+                "Consider increasing timeout."
+            )
+            return
+
+        await self._add_engine_worker(context, first.register)
+
+        try:
+            async for from_engine in engine_iter:
+                await self._handle_from_engine(context, from_engine)
+        finally:
+            if context in self._engine_workers:
+                engine_id = self._engine_workers[context].get_engine_id()
+                logger.info(f"Engine {engine_id} stream closed")
+                await self._remove_engine_worker(context)
 
     async def _calculate_engine_metrics(self, engine_worker):
         processing_latency = (
@@ -246,48 +374,39 @@ class _Server:
             processing_latency
         )
 
-    async def _receive_from_engine_worker_helper(self):
-        """Consume from ZeroMQ queue for cognitive engines messages."""
-        if await self._zmq_socket.poll(timeout=1000) == 0:
-            return
-        address, _, payload = await self._zmq_socket.recv_multipart()
-
-        logger.debug(f"Received message from engine {address}")
-
-        engine_worker = self._engine_workers.get(address)
-        if payload == network_engine.HEARTBEAT:
-            if engine_worker is None:
-                logger.error("Heartbeat from unknown engine")
-            else:
-                engine_worker.record_heatbeat()
-            return
-
-        from_standalone_engine = gabriel_pb2.FromStandaloneEngine()
-        from_standalone_engine.ParseFromString(payload)
+    async def _handle_from_engine(self, context, from_engine):
+        """Handle a single message received from a cognitive engine."""
+        engine_worker = self._engine_workers.get(context)
         if engine_worker is None:
-            await self._add_engine_worker(address, from_standalone_engine)
+            logger.error("Message from unregistered engine")
             return
 
-        if from_standalone_engine.HasField("welcome"):
-            logger.error("Engine sent duplicate welcome message")
+        if from_engine.HasField("register"):
+            logger.error("Engine sent duplicate register message")
             return
 
         await self._calculate_engine_metrics(engine_worker)
         logger.debug(
             f"Received result from engine {engine_worker.get_engine_id()}"
         )
-        engine_worker.set_last_received(time.monotonic())
 
         ENGINE_INPUTS_PROCESSED_TOTAL.labels(
             engine_id=engine_worker.get_engine_id()
         ).inc()
 
-        result = from_standalone_engine.result
+        result = from_engine.result
+
+        engine_worker_metadata = engine_worker.get_current_input_metadata()
+        if engine_worker_metadata is not None:
+            result.frame_id = engine_worker_metadata.frame_id
 
         # Pass the result to the result manager for sending to any result sinks
         await self.server.result_manager.process_result(result)
 
-        engine_worker_metadata = engine_worker.get_current_input_metadata()
+        if engine_worker_metadata is None:
+            logger.error("No input metadata found for engine result")
+            return
+
         producer_info = self._producer_infos.get(
             engine_worker_metadata.producer_id
         )
@@ -334,132 +453,94 @@ class _Server:
             )
         await engine_worker.send_next_input()
 
-    async def _add_engine_worker(self, address, from_standalone_engine):
-        if not from_standalone_engine.HasField("welcome"):
-            logger.warning(
-                "Non-welcome message from unknown engine. Consider increasing "
-                "timeout."
-            )
-            return
-
-        welcome = from_standalone_engine.welcome
-        engine_id = welcome.engine_id
+    async def _add_engine_worker(self, context, register):
+        engine_id = register.engine_id
 
         # An engine with this id is already connected, remove that engine
         # worker from the server
         if engine_id in self._engine_ids:
             logger.warning(f"Engine with id {engine_id} is already connected!")
-            for address, worker in list(self._engine_workers.items()):
+            for existing_context, worker in list(self._engine_workers.items()):
                 if worker.get_engine_id() == engine_id:
-                    await self._remove_engine_worker(address)
+                    await self._remove_engine_worker(existing_context)
                     break
 
         logger.info(f"New engine {engine_id} connected")
 
-        all_responses_required = welcome.all_responses_required
         engine_worker = _EngineWorker(
-            self._zmq_socket,
-            address,
+            context,
             engine_id,
-            all_responses_required,
+            register.all_responses_required,
             self._size_for_queues,
         )
-        self._engine_workers[address] = engine_worker
+        self._engine_workers[context] = engine_worker
         self._engine_ids.add(engine_id)
         await self.server._engines_updated_cb()
 
-    async def _remove_engine_worker(self, address):
-        """Remove an engine worker."""
-        engine_id = self._engine_workers[address].get_engine_id()
-        self._engine_ids.remove(engine_id)
-        del self._engine_workers[address]
-        await self.server._engines_updated_cb()
+    async def _remove_engine_worker(self, context):
+        """Remove an engine worker once it is disconnected.
 
-    async def _heartbeat_helper(self):
-        # We cannot directly iterate over items because we delete some entries
-        for address, engine_worker in list(self._engine_workers.items()):
-            last_received = engine_worker.get_last_received()
-            time_since_last_received = time.monotonic() - last_received
-            if time_since_last_received < self._timeout:
-                await asyncio.sleep(0)
-                continue
+        Cleans up metrics and, if the engine was in the middle of processing a
+        frame when it disconnected, returns a token for that frame to the
+        client so it isn't left waiting forever.
+        """
+        engine_worker = self._engine_workers[context]
+        engine_id = engine_worker.get_engine_id()
 
-            # If the engine is inactive, send a heartbeat.
-            if (
-                not engine_worker.get_awaiting_heartbeat_response()
-                and engine_worker.get_current_input_metadata() is None
-            ):
-                # Send a heartbeat since the engine is idle and we aren't
-                # waiting for a heartbeat from this engine
-                await engine_worker.send_heartbeat()
-                # Update the last received time so we reset the timeout
-                # countdown
-                engine_worker.set_last_received(time.monotonic())
-                continue
+        ENGINE_INPUTS_RECEIVED_TOTAL.remove(engine_id)
+        ENGINE_INPUTS_PROCESSED_TOTAL.remove(engine_id)
 
-            engine_id = engine_worker.get_engine_id()
-
-            logger.info(
-                f"Engine {engine_id} offline for "
-                f"{time_since_last_received:.2f} seconds"
-            )
-
-            logger.info(f"Lost connection to engine worker {engine_id}")
-
-            ENGINE_INPUTS_RECEIVED_TOTAL.remove(engine_id)
-            ENGINE_INPUTS_PROCESSED_TOTAL.remove(engine_id)
-
-            current_input_metadata = engine_worker.get_current_input_metadata()
-
-            if current_input_metadata is None:
-                logger.info("Engine disconnected while it was idle")
-                await self._remove_engine_worker(address)
-                continue
-
+        current_input_metadata = engine_worker.get_current_input_metadata()
+        if current_input_metadata is not None:
             producer_info = self._producer_infos.get(
                 current_input_metadata.producer_id
             )
             if producer_info is None:
                 logger.error("Source info not found")
-                await self._remove_engine_worker(address)
-                continue
+            else:
+                latest_input = producer_info.latest_input_sent_to_engine
+                if (
+                    latest_input is not None
+                    and current_input_metadata == latest_input.metadata
+                ):
+                    # Return token for frame engine was in the middle of
+                    # processing.
+                    result = gabriel_pb2.Result()
+                    result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
+                    result.status.message = f"Engine {engine_id} disconnected"
+                    result.target_engine_id = engine_id
+                    result.frame_id = current_input_metadata.frame_id
 
-            latest_input = producer_info.latest_input_sent_to_engine
-            if (
-                latest_input is not None
-                and current_input_metadata == latest_input.metadata
-            ):
-                # Return token for frame engine was in the middle of processing
-                result = gabriel_pb2.Result()
-                result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
-                result.status.message = f"Engine {engine_id} disconnected"
-                result.target_engine_id = engine_id
-                result.frame_id = current_input_metadata.frame_id
+                    # TODO(Aditya): what about other targeted engines?
 
-                # TODO(Aditya): what about other targeted engines?
+                    await self.server.send_result(
+                        current_input_metadata.client_address,
+                        producer_info.get_name(),
+                        engine_id,
+                        result,
+                        return_token=True,
+                    )
 
-                await self.server.send_result(
-                    current_input_metadata.client_address,
-                    producer_info.get_name(),
-                    engine_worker.get_engine_id(),
-                    result,
-                    return_token=True,
-                )
-            await self._remove_engine_worker(address)
+        self._engine_ids.remove(engine_id)
+        del self._engine_workers[context]
+        await self.server._engines_updated_cb()
 
     async def _send_to_engine(self, from_client, client_address):
         logger.debug(
             f"Received input from client {client_address} with source ID "
-            f"{from_client.producer_id} and frame id {from_client.frame_id}; "
-            f"target engines: {from_client.target_engine_ids}"
+            f"{from_client.input.producer_id} and frame id "
+            f"{from_client.input.frame_id}; target engines: "
+            f"{from_client.input.target_engine_ids}"
         )
-        if from_client.producer_id not in self._producer_infos:
-            self._producer_infos[from_client.producer_id] = _ProducerInfo(
-                from_client.producer_id,
-                self._engine_workers,
-                self._size_for_queues,
+        if from_client.input.producer_id not in self._producer_infos:
+            self._producer_infos[from_client.input.producer_id] = (
+                _ProducerInfo(
+                    from_client.input.producer_id,
+                    self._engine_workers,
+                    self._size_for_queues,
+                )
             )
-        producer_info = self._producer_infos[from_client.producer_id]
+        producer_info = self._producer_infos[from_client.input.producer_id]
         return await producer_info.process_input_from_client(
             from_client, client_address
         )
@@ -473,20 +554,15 @@ class _EngineWorker:
 
     def __init__(
         self,
-        zmq_socket,
-        address,
+        context,
         engine_id,
         all_responses_required,
         fresh_inputs_queue_size,
     ):
-        self._zmq_socket = zmq_socket
-        self._address = address
+        self._context = context
         self._engine_id = engine_id
         self._all_responses_required = all_responses_required
-        # Last time a message was sent to the engine, including heartbeats
-        self._last_received = time.monotonic()
         self._last_payload_send_time = 0
-        self._awaiting_heartbeat_response = False
         self._current_input_metadata = None
         # Maximum size for each source queue
         self._size_for_queues = fresh_inputs_queue_size
@@ -494,9 +570,6 @@ class _EngineWorker:
 
         # Latest input processed for each producer
         self._latest_input_processed = {}
-
-    def get_address(self):
-        return self._address
 
     def get_engine_id(self):
         return self._engine_id
@@ -510,41 +583,21 @@ class _EngineWorker:
     def clear_current_input_metadata(self):
         self._current_input_metadata = None
 
-    def record_heatbeat(self):
-        logger.debug(f"Received heartbeat from engine {self._engine_id}")
-        self._awaiting_heartbeat_response = False
-        self._last_received = time.monotonic()
-
-    def get_awaiting_heartbeat_response(self):
-        return self._awaiting_heartbeat_response
-
-    def get_last_received(self):
-        return self._last_received
-
     def get_last_payload_send_time(self):
         return self._last_payload_send_time
 
-    def set_last_received(self, time):
-        self._last_received = time
-
-    async def send_heartbeat(self):
-        await self._send_helper(network_engine.HEARTBEAT, heartbeat=True)
-        self._awaiting_heartbeat_response = True
-
-    async def _send_helper(self, payload, heartbeat=False):
-        """Send the payload to the cognitive engine."""
-        await self._zmq_socket.send_multipart([self._address, b"", payload])
-        if not heartbeat:
-            self._last_payload_send_time = time.perf_counter()
-            logger.debug(f"Sent payload to engine {self._engine_id}")
-        else:
-            logger.debug(f"Sent heartbeat to engine {self._engine_id}")
+    async def _send_helper(self, to_engine):
+        """Send the message to the cognitive engine."""
+        await self._context.write(to_engine)
+        self._last_payload_send_time = time.perf_counter()
+        logger.debug(f"Sent payload to engine {self._engine_id}")
 
     async def send_payload(self, metadata_payload):
         metadata = metadata_payload.metadata
         self._current_input_metadata = metadata
         self._latest_input_processed[metadata.producer_id] = metadata
-        await self._send_helper(metadata_payload.payload, heartbeat=False)
+        to_engine = gabriel_pb2.ToEngine(input_frame=metadata_payload.payload)
+        await self._send_helper(to_engine)
 
     async def send_next_input(self):
         """Send next input."""
@@ -632,8 +685,9 @@ class _ProducerInfo:
         """
         logger.debug(
             f"Processing input from client {client_address} with source ID "
-            f"{from_client.producer_id} and frame id {from_client.frame_id}; "
-            f"target engines: {from_client.target_engine_ids}"
+            f"{from_client.input.producer_id} and frame id "
+            f"{from_client.input.frame_id}; target engines: "
+            f"{from_client.input.target_engine_ids}"
         )
 
         CLIENT_INPUTS_RECEIVED_TOTAL.labels(
@@ -641,17 +695,20 @@ class _ProducerInfo:
         ).inc()
 
         metadata = Metadata(
-            frame_id=from_client.frame_id,
+            frame_id=from_client.input.frame_id,
             producer_id=self._producer_id,
             client_address=client_address,
-            target_engine_ids=from_client.target_engine_ids,
+            target_engine_ids=from_client.input.target_engine_ids,
         )
-        payload = from_client.SerializeToString()
+        payload = from_client.input.input_frame
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
 
         target_engines = set()
         for engine_worker in self._engine_workers.values():
-            if engine_worker.get_engine_id() in from_client.target_engine_ids:
+            if (
+                engine_worker.get_engine_id()
+                in from_client.input.target_engine_ids
+            ):
                 target_engines.add(engine_worker)
                 ENGINE_INPUTS_RECEIVED_TOTAL.labels(
                     engine_id=engine_worker.get_engine_id()
@@ -665,13 +722,14 @@ class _ProducerInfo:
 
             # TODO: better error handling
             logger.error(
-                f"No target engines found for {from_client.target_engine_ids};"
-                f" {available_engine_ids=}"
+                f"No target engines found for "
+                f"{from_client.input.target_engine_ids}; "
+                f"{available_engine_ids=}"
             )
             return (
                 StatusCode.NO_ENGINE_FOR_INPUT,
                 f"No target engines found. Specified target: "
-                f"{from_client.target_engine_ids}. Available engines: "
+                f"{from_client.input.target_engine_ids}. Available engines: "
                 f"{available_engine_ids}",
             )
 
@@ -710,7 +768,7 @@ class _ProducerInfo:
             )
 
         # Latest input is only set if the input was sent to at least one
-        # engine.
+        # engine
         self.latest_input_sent_to_engine = metadata_payload
         self.pending_token_return = True
         return (StatusCode.SUCCESS, "")

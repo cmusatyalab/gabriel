@@ -7,11 +7,11 @@ from gabriel_client.zeromq_client import ZeroMQClient
 from gabriel_protocol import gabriel_pb2
 
 
-def consumer(result_wrapper):
-    """Consumes a result wrapper."""
+def consumer(result):
+    """Consumes a result."""
     print(
-        "Received a result wrapper with status:",
-        gabriel_pb2.ResultWrapper.Status.Name(result_wrapper.status),
+        "Received a result with status:",
+        gabriel_pb2.StatusCode.Name(result.status.code),
     )
 
 

@@ -25,8 +25,8 @@ if _version_not_supported:
     )
 
 
-class GabrielServiceStub:
-    """gRPC service for Gabriel clients.
+class GabrielClientServiceStub:
+    """gRPC service implemented by a Gabriel server, used by clients.
     """
 
     def __init__(self, channel):
@@ -35,46 +35,46 @@ class GabrielServiceStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.Session = channel.stream_stream(
-                '/gabriel.GabrielService/Session',
+        self.ClientSession = channel.stream_stream(
+                '/gabriel.GabrielClientService/ClientSession',
                 request_serializer=gabriel__protocol_dot_gabriel__pb2.FromClient.SerializeToString,
                 response_deserializer=gabriel__protocol_dot_gabriel__pb2.ToClient.FromString,
                 _registered_method=True)
 
 
-class GabrielServiceServicer:
-    """gRPC service for Gabriel clients.
+class GabrielClientServiceServicer:
+    """gRPC service implemented by a Gabriel server, used by clients.
     """
 
-    def Session(self, request_iterator, context):
-        """Start a new session with a Gabriel server.
+    def ClientSession(self, request_iterator, context):
+        """Start a new session with a Gabriel server as a client.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_GabrielServiceServicer_to_server(servicer, server):
+def add_GabrielClientServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Session': grpc.stream_stream_rpc_method_handler(
-                    servicer.Session,
+            'ClientSession': grpc.stream_stream_rpc_method_handler(
+                    servicer.ClientSession,
                     request_deserializer=gabriel__protocol_dot_gabriel__pb2.FromClient.FromString,
                     response_serializer=gabriel__protocol_dot_gabriel__pb2.ToClient.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'gabriel.GabrielService', rpc_method_handlers)
+            'gabriel.GabrielClientService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('gabriel.GabrielService', rpc_method_handlers)
+    server.add_registered_method_handlers('gabriel.GabrielClientService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class GabrielService:
-    """gRPC service for Gabriel clients.
+class GabrielClientService:
+    """gRPC service implemented by a Gabriel server, used by clients.
     """
 
     @staticmethod
-    def Session(request_iterator,
+    def ClientSession(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -87,9 +87,85 @@ class GabrielService:
         return grpc.experimental.stream_stream(
             request_iterator,
             target,
-            '/gabriel.GabrielService/Session',
+            '/gabriel.GabrielClientService/ClientSession',
             gabriel__protocol_dot_gabriel__pb2.FromClient.SerializeToString,
             gabriel__protocol_dot_gabriel__pb2.ToClient.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class GabrielEngineServiceStub:
+    """gRPC service implemented by a Gabriel server, used by cognitive engines.
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.EngineSession = channel.stream_stream(
+                '/gabriel.GabrielEngineService/EngineSession',
+                request_serializer=gabriel__protocol_dot_gabriel__pb2.FromEngine.SerializeToString,
+                response_deserializer=gabriel__protocol_dot_gabriel__pb2.ToEngine.FromString,
+                _registered_method=True)
+
+
+class GabrielEngineServiceServicer:
+    """gRPC service implemented by a Gabriel server, used by cognitive engines.
+    """
+
+    def EngineSession(self, request_iterator, context):
+        """Start a new session with a Gabriel server as a cognitive engine.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_GabrielEngineServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'EngineSession': grpc.stream_stream_rpc_method_handler(
+                    servicer.EngineSession,
+                    request_deserializer=gabriel__protocol_dot_gabriel__pb2.FromEngine.FromString,
+                    response_serializer=gabriel__protocol_dot_gabriel__pb2.ToEngine.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'gabriel.GabrielEngineService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('gabriel.GabrielEngineService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class GabrielEngineService:
+    """gRPC service implemented by a Gabriel server, used by cognitive engines.
+    """
+
+    @staticmethod
+    def EngineSession(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_stream(
+            request_iterator,
+            target,
+            '/gabriel.GabrielEngineService/EngineSession',
+            gabriel__protocol_dot_gabriel__pb2.FromEngine.SerializeToString,
+            gabriel__protocol_dot_gabriel__pb2.ToEngine.FromString,
             options,
             channel_credentials,
             insecure,

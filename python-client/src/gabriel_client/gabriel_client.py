@@ -272,10 +272,10 @@ class GabrielClient(ABC):
 
     def record_send_metrics(self, from_client: FromClient) -> bool:
         """Record metrics related to sending of input to server."""
-        producer_id = from_client.producer_id
+        producer_id = from_client.input.producer_id
         CLIENT_INPUTS_SENT_TOTAL.labels(producer_id=producer_id).inc()
 
-        frame_id = from_client.frame_id
+        frame_id = from_client.input.frame_id
         self._pending_results[frame_id] = time.monotonic()
 
     def record_response_latency(self, result_wrapper: ToClient.ResultWrapper):

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class MeasurementClient(WebsocketClient):
-    """A Websocket client that measures performance metrics."""
+    """A WebSocket client that measures performance metrics."""
 
     def __init__(
         self, host, port, producer_wrappers, consumer, output_freq=10
@@ -44,7 +44,7 @@ class MeasurementClient(WebsocketClient):
         await super()._send_from_client(from_client)
         send_time = time.time()
         source_measurement = self._source_measurements[from_client.source_name]
-        source_measurement.log_send(from_client.frame_id, send_time)
+        source_measurement.log_send(from_client.input.frame_id, send_time)
 
 
 class _SourceMeasurement:

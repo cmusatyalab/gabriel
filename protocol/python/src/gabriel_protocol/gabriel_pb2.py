@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import any_pb2 as google_dot_protobuf_dot_any__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1egabriel_protocol/gabriel.proto\x12\x07gabriel\x1a\x19google/protobuf/any.proto\"\xa2\x01\n\nInputFrame\x12*\n\x0cpayload_type\x18\x01 \x01(\x0e\x32\x14.gabriel.PayloadType\x12\x18\n\x0estring_payload\x18\x02 \x01(\tH\x00\x12\x16\n\x0c\x62yte_payload\x18\x03 \x01(\x0cH\x00\x12+\n\x0b\x61ny_payload\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00\x42\t\n\x07payload\"\xa3\x01\n\nFromClient\x12\x10\n\x08\x66rame_id\x18\x01 \x01(\x03\x12\x13\n\x0bproducer_id\x18\x02 \x01(\t\x12\x19\n\x11target_engine_ids\x18\x03 \x03(\t\x12(\n\x0binput_frame\x18\x04 \x01(\x0b\x32\x13.gabriel.InputFrame\x12)\n\x0b\x63lient_info\x18\x05 \x01(\x0b\x32\x14.google.protobuf.Any\"<\n\x06Status\x12!\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x13.gabriel.StatusCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"\xbd\x01\n\x06Result\x12\x1f\n\x06status\x18\x01 \x01(\x0b\x32\x0f.gabriel.Status\x12\x17\n\rstring_result\x18\x02 \x01(\tH\x00\x12\x16\n\x0c\x62ytes_result\x18\x03 \x01(\x0cH\x00\x12*\n\nany_result\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00\x12\x18\n\x10target_engine_id\x18\x05 \x01(\t\x12\x10\n\x08\x66rame_id\x18\x06 \x01(\x03\x42\t\n\x07payload\"\xed\x02\n\x08ToClient\x12,\n\x07welcome\x18\x01 \x01(\x0b\x32\x19.gabriel.ToClient.WelcomeH\x00\x12\x39\n\x0eresult_wrapper\x18\x02 \x01(\x0b\x32\x1f.gabriel.ToClient.ResultWrapperH\x00\x12,\n\x07\x63ontrol\x18\x03 \x01(\x0b\x32\x19.gabriel.ToClient.ControlH\x00\x1a>\n\x07Welcome\x12\x1f\n\x17num_tokens_per_producer\x18\x01 \x01(\x05\x12\x12\n\nengine_ids\x18\x02 \x03(\t\x1a\x1d\n\x07\x43ontrol\x12\x12\n\nengine_ids\x18\x01 \x03(\t\x1a[\n\rResultWrapper\x12\x13\n\x0bproducer_id\x18\x01 \x01(\t\x12\x14\n\x0creturn_token\x18\x02 \x01(\x08\x12\x1f\n\x06result\x18\x03 \x01(\x0b\x32\x0f.gabriel.ResultB\x0e\n\x0cmessage_type\"\xc6\x01\n\x14\x46romStandaloneEngine\x12\x38\n\x07welcome\x18\x01 \x01(\x0b\x32%.gabriel.FromStandaloneEngine.WelcomeH\x00\x12!\n\x06result\x18\x02 \x01(\x0b\x32\x0f.gabriel.ResultH\x00\x1a<\n\x07Welcome\x12\x11\n\tengine_id\x18\x01 \x01(\t\x12\x1e\n\x16\x61ll_responses_required\x18\x02 \x01(\x08\x42\x13\n\x11welcome_or_result*n\n\x0bPayloadType\x12\x1c\n\x18PAYLOAD_TYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04TEXT\x10\x01\x12\t\n\x05IMAGE\x10\x02\x12\t\n\x05\x41UDIO\x10\x03\x12\t\n\x05VIDEO\x10\x04\x12\x0b\n\x07\x43ONTROL\x10\x05\x12\t\n\x05OTHER\x10\x64*\x9c\x01\n\nStatusCode\x12\x0b\n\x07SUCCESS\x10\x00\x12\x15\n\x11UNSPECIFIED_ERROR\x10\x01\x12\x10\n\x0c\x45NGINE_ERROR\x10\x02\x12\x16\n\x12WRONG_INPUT_FORMAT\x10\x03\x12\x17\n\x13NO_ENGINE_FOR_INPUT\x10\x04\x12\r\n\tNO_TOKENS\x10\x05\x12\x18\n\x14SERVER_DROPPED_FRAME\x10\x06\x32G\n\x0eGabrielService\x12\x35\n\x07Session\x12\x13.gabriel.FromClient\x1a\x11.gabriel.ToClient(\x01\x30\x01\x42[\n\x1b\x65\x64u.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1egabriel_protocol/gabriel.proto\x12\x07gabriel\x1a\x19google/protobuf/any.proto\"\xa2\x01\n\nInputFrame\x12*\n\x0cpayload_type\x18\x01 \x01(\x0e\x32\x14.gabriel.PayloadType\x12\x18\n\x0estring_payload\x18\x02 \x01(\tH\x00\x12\x16\n\x0c\x62yte_payload\x18\x03 \x01(\x0cH\x00\x12+\n\x0b\x61ny_payload\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00\x42\t\n\x07payload\"\xa6\x02\n\nFromClient\x12*\n\x05input\x18\x01 \x01(\x0b\x32\x19.gabriel.FromClient.InputH\x00\x12\x30\n\x08metadata\x18\x02 \x01(\x0b\x32\x1c.gabriel.FromClient.MetadataH\x00\x1as\n\x05Input\x12\x10\n\x08\x66rame_id\x18\x01 \x01(\x03\x12\x13\n\x0bproducer_id\x18\x02 \x01(\t\x12\x19\n\x11target_engine_ids\x18\x03 \x03(\t\x12(\n\x0binput_frame\x18\x04 \x01(\x0b\x32\x13.gabriel.InputFrame\x1a\x35\n\x08Metadata\x12)\n\x0b\x63lient_info\x18\x05 \x01(\x0b\x32\x14.google.protobuf.AnyB\x0e\n\x0cmessage_type\"<\n\x06Status\x12!\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x13.gabriel.StatusCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"\xbd\x01\n\x06Result\x12\x1f\n\x06status\x18\x01 \x01(\x0b\x32\x0f.gabriel.Status\x12\x17\n\rstring_result\x18\x02 \x01(\tH\x00\x12\x16\n\x0c\x62ytes_result\x18\x03 \x01(\x0cH\x00\x12*\n\nany_result\x18\x04 \x01(\x0b\x32\x14.google.protobuf.AnyH\x00\x12\x18\n\x10target_engine_id\x18\x05 \x01(\t\x12\x10\n\x08\x66rame_id\x18\x06 \x01(\x03\x42\t\n\x07payload\"\xed\x02\n\x08ToClient\x12,\n\x07welcome\x18\x01 \x01(\x0b\x32\x19.gabriel.ToClient.WelcomeH\x00\x12\x39\n\x0eresult_wrapper\x18\x02 \x01(\x0b\x32\x1f.gabriel.ToClient.ResultWrapperH\x00\x12,\n\x07\x63ontrol\x18\x03 \x01(\x0b\x32\x19.gabriel.ToClient.ControlH\x00\x1a>\n\x07Welcome\x12\x1f\n\x17num_tokens_per_producer\x18\x01 \x01(\x05\x12\x12\n\nengine_ids\x18\x02 \x03(\t\x1a\x1d\n\x07\x43ontrol\x12\x12\n\nengine_ids\x18\x01 \x03(\t\x1a[\n\rResultWrapper\x12\x13\n\x0bproducer_id\x18\x01 \x01(\t\x12\x14\n\x0creturn_token\x18\x02 \x01(\x08\x12\x1f\n\x06result\x18\x03 \x01(\x0b\x32\x0f.gabriel.ResultB\x0e\n\x0cmessage_type\"\xb0\x01\n\nFromEngine\x12\x30\n\x08register\x18\x01 \x01(\x0b\x32\x1c.gabriel.FromEngine.RegisterH\x00\x12!\n\x06result\x18\x02 \x01(\x0b\x32\x0f.gabriel.ResultH\x00\x1a=\n\x08Register\x12\x11\n\tengine_id\x18\x01 \x01(\t\x12\x1e\n\x16\x61ll_responses_required\x18\x02 \x01(\x08\x42\x0e\n\x0cmessage_type\"F\n\x08ToEngine\x12*\n\x0binput_frame\x18\x01 \x01(\x0b\x32\x13.gabriel.InputFrameH\x00\x42\x0e\n\x0cmessage_type*a\n\x0bPayloadType\x12\x1c\n\x18PAYLOAD_TYPE_UNSPECIFIED\x10\x00\x12\x08\n\x04TEXT\x10\x01\x12\t\n\x05IMAGE\x10\x02\x12\t\n\x05\x41UDIO\x10\x03\x12\t\n\x05VIDEO\x10\x04\x12\t\n\x05OTHER\x10\x64*\x9c\x01\n\nStatusCode\x12\x0b\n\x07SUCCESS\x10\x00\x12\x15\n\x11UNSPECIFIED_ERROR\x10\x01\x12\x10\n\x0c\x45NGINE_ERROR\x10\x02\x12\x16\n\x12WRONG_INPUT_FORMAT\x10\x03\x12\x17\n\x13NO_ENGINE_FOR_INPUT\x10\x04\x12\r\n\tNO_TOKENS\x10\x05\x12\x18\n\x14SERVER_DROPPED_FRAME\x10\x06\x32S\n\x14GabrielClientService\x12;\n\rClientSession\x12\x13.gabriel.FromClient\x1a\x11.gabriel.ToClient(\x01\x30\x01\x32S\n\x14GabrielEngineService\x12;\n\rEngineSession\x12\x13.gabriel.FromEngine\x1a\x11.gabriel.ToEngine(\x01\x30\x01\x42[\n\x1b\x65\x64u.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,30 +33,38 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'gabriel_protocol.gabriel_pb
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\033edu.cmu.cs.gabriel.protocolB\006ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpb'
-  _globals['_PAYLOADTYPE']._serialized_start=1224
-  _globals['_PAYLOADTYPE']._serialized_end=1334
-  _globals['_STATUSCODE']._serialized_start=1337
-  _globals['_STATUSCODE']._serialized_end=1493
+  _globals['_PAYLOADTYPE']._serialized_start=1405
+  _globals['_PAYLOADTYPE']._serialized_end=1502
+  _globals['_STATUSCODE']._serialized_start=1505
+  _globals['_STATUSCODE']._serialized_end=1661
   _globals['_INPUTFRAME']._serialized_start=71
   _globals['_INPUTFRAME']._serialized_end=233
   _globals['_FROMCLIENT']._serialized_start=236
-  _globals['_FROMCLIENT']._serialized_end=399
-  _globals['_STATUS']._serialized_start=401
-  _globals['_STATUS']._serialized_end=461
-  _globals['_RESULT']._serialized_start=464
-  _globals['_RESULT']._serialized_end=653
-  _globals['_TOCLIENT']._serialized_start=656
-  _globals['_TOCLIENT']._serialized_end=1021
-  _globals['_TOCLIENT_WELCOME']._serialized_start=819
-  _globals['_TOCLIENT_WELCOME']._serialized_end=881
-  _globals['_TOCLIENT_CONTROL']._serialized_start=883
-  _globals['_TOCLIENT_CONTROL']._serialized_end=912
-  _globals['_TOCLIENT_RESULTWRAPPER']._serialized_start=914
-  _globals['_TOCLIENT_RESULTWRAPPER']._serialized_end=1005
-  _globals['_FROMSTANDALONEENGINE']._serialized_start=1024
-  _globals['_FROMSTANDALONEENGINE']._serialized_end=1222
-  _globals['_FROMSTANDALONEENGINE_WELCOME']._serialized_start=1141
-  _globals['_FROMSTANDALONEENGINE_WELCOME']._serialized_end=1201
-  _globals['_GABRIELSERVICE']._serialized_start=1495
-  _globals['_GABRIELSERVICE']._serialized_end=1566
+  _globals['_FROMCLIENT']._serialized_end=530
+  _globals['_FROMCLIENT_INPUT']._serialized_start=344
+  _globals['_FROMCLIENT_INPUT']._serialized_end=459
+  _globals['_FROMCLIENT_METADATA']._serialized_start=461
+  _globals['_FROMCLIENT_METADATA']._serialized_end=514
+  _globals['_STATUS']._serialized_start=532
+  _globals['_STATUS']._serialized_end=592
+  _globals['_RESULT']._serialized_start=595
+  _globals['_RESULT']._serialized_end=784
+  _globals['_TOCLIENT']._serialized_start=787
+  _globals['_TOCLIENT']._serialized_end=1152
+  _globals['_TOCLIENT_WELCOME']._serialized_start=950
+  _globals['_TOCLIENT_WELCOME']._serialized_end=1012
+  _globals['_TOCLIENT_CONTROL']._serialized_start=1014
+  _globals['_TOCLIENT_CONTROL']._serialized_end=1043
+  _globals['_TOCLIENT_RESULTWRAPPER']._serialized_start=1045
+  _globals['_TOCLIENT_RESULTWRAPPER']._serialized_end=1136
+  _globals['_FROMENGINE']._serialized_start=1155
+  _globals['_FROMENGINE']._serialized_end=1331
+  _globals['_FROMENGINE_REGISTER']._serialized_start=1254
+  _globals['_FROMENGINE_REGISTER']._serialized_end=1315
+  _globals['_TOENGINE']._serialized_start=1333
+  _globals['_TOENGINE']._serialized_end=1403
+  _globals['_GABRIELCLIENTSERVICE']._serialized_start=1663
+  _globals['_GABRIELCLIENTSERVICE']._serialized_end=1746
+  _globals['_GABRIELENGINESERVICE']._serialized_start=1748
+  _globals['_GABRIELENGINESERVICE']._serialized_end=1831
 # @@protoc_insertion_point(module_scope)

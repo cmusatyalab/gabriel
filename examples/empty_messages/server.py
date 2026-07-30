@@ -9,9 +9,9 @@ class EmptyEngine(cognitive_engine.Engine):
 
     def handle(self, input_frame):
         """Handles an input frame."""
-        status = gabriel_pb2.ResultWrapper.Status.SUCCESS
-        result_wrapper = cognitive_engine.create_result_wrapper(status)
-        return result_wrapper
+        status = gabriel_pb2.Status()
+        status.code = gabriel_pb2.StatusCode.SUCCESS
+        return cognitive_engine.Result(status, "")
 
 
 def main():

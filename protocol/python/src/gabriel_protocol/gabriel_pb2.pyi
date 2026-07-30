@@ -15,7 +15,6 @@ class PayloadType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     IMAGE: _ClassVar[PayloadType]
     AUDIO: _ClassVar[PayloadType]
     VIDEO: _ClassVar[PayloadType]
-    CONTROL: _ClassVar[PayloadType]
     OTHER: _ClassVar[PayloadType]
 
 class StatusCode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
@@ -32,7 +31,6 @@ TEXT: PayloadType
 IMAGE: PayloadType
 AUDIO: PayloadType
 VIDEO: PayloadType
-CONTROL: PayloadType
 OTHER: PayloadType
 SUCCESS: StatusCode
 UNSPECIFIED_ERROR: StatusCode
@@ -55,18 +53,28 @@ class InputFrame(_message.Message):
     def __init__(self, payload_type: _Optional[_Union[PayloadType, str]] = ..., string_payload: _Optional[str] = ..., byte_payload: _Optional[bytes] = ..., any_payload: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
 
 class FromClient(_message.Message):
-    __slots__ = ("frame_id", "producer_id", "target_engine_ids", "input_frame", "client_info")
-    FRAME_ID_FIELD_NUMBER: _ClassVar[int]
-    PRODUCER_ID_FIELD_NUMBER: _ClassVar[int]
-    TARGET_ENGINE_IDS_FIELD_NUMBER: _ClassVar[int]
-    INPUT_FRAME_FIELD_NUMBER: _ClassVar[int]
-    CLIENT_INFO_FIELD_NUMBER: _ClassVar[int]
-    frame_id: int
-    producer_id: str
-    target_engine_ids: _containers.RepeatedScalarFieldContainer[str]
-    input_frame: InputFrame
-    client_info: _any_pb2.Any
-    def __init__(self, frame_id: _Optional[int] = ..., producer_id: _Optional[str] = ..., target_engine_ids: _Optional[_Iterable[str]] = ..., input_frame: _Optional[_Union[InputFrame, _Mapping]] = ..., client_info: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
+    __slots__ = ("input", "metadata")
+    class Input(_message.Message):
+        __slots__ = ("frame_id", "producer_id", "target_engine_ids", "input_frame")
+        FRAME_ID_FIELD_NUMBER: _ClassVar[int]
+        PRODUCER_ID_FIELD_NUMBER: _ClassVar[int]
+        TARGET_ENGINE_IDS_FIELD_NUMBER: _ClassVar[int]
+        INPUT_FRAME_FIELD_NUMBER: _ClassVar[int]
+        frame_id: int
+        producer_id: str
+        target_engine_ids: _containers.RepeatedScalarFieldContainer[str]
+        input_frame: InputFrame
+        def __init__(self, frame_id: _Optional[int] = ..., producer_id: _Optional[str] = ..., target_engine_ids: _Optional[_Iterable[str]] = ..., input_frame: _Optional[_Union[InputFrame, _Mapping]] = ...) -> None: ...
+    class Metadata(_message.Message):
+        __slots__ = ("client_info",)
+        CLIENT_INFO_FIELD_NUMBER: _ClassVar[int]
+        client_info: _any_pb2.Any
+        def __init__(self, client_info: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
+    INPUT_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    input: FromClient.Input
+    metadata: FromClient.Metadata
+    def __init__(self, input: _Optional[_Union[FromClient.Input, _Mapping]] = ..., metadata: _Optional[_Union[FromClient.Metadata, _Mapping]] = ...) -> None: ...
 
 class Status(_message.Message):
     __slots__ = ("code", "message")
@@ -123,17 +131,23 @@ class ToClient(_message.Message):
     control: ToClient.Control
     def __init__(self, welcome: _Optional[_Union[ToClient.Welcome, _Mapping]] = ..., result_wrapper: _Optional[_Union[ToClient.ResultWrapper, _Mapping]] = ..., control: _Optional[_Union[ToClient.Control, _Mapping]] = ...) -> None: ...
 
-class FromStandaloneEngine(_message.Message):
-    __slots__ = ("welcome", "result")
-    class Welcome(_message.Message):
+class FromEngine(_message.Message):
+    __slots__ = ("register", "result")
+    class Register(_message.Message):
         __slots__ = ("engine_id", "all_responses_required")
         ENGINE_ID_FIELD_NUMBER: _ClassVar[int]
         ALL_RESPONSES_REQUIRED_FIELD_NUMBER: _ClassVar[int]
         engine_id: str
         all_responses_required: bool
         def __init__(self, engine_id: _Optional[str] = ..., all_responses_required: _Optional[bool] = ...) -> None: ...
-    WELCOME_FIELD_NUMBER: _ClassVar[int]
+    REGISTER_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
-    welcome: FromStandaloneEngine.Welcome
+    register: FromEngine.Register
     result: Result
-    def __init__(self, welcome: _Optional[_Union[FromStandaloneEngine.Welcome, _Mapping]] = ..., result: _Optional[_Union[Result, _Mapping]] = ...) -> None: ...
+    def __init__(self, register: _Optional[_Union[FromEngine.Register, _Mapping]] = ..., result: _Optional[_Union[Result, _Mapping]] = ...) -> None: ...
+
+class ToEngine(_message.Message):
+    __slots__ = ("input_frame",)
+    INPUT_FRAME_FIELD_NUMBER: _ClassVar[int]
+    input_frame: InputFrame
+    def __init__(self, input_frame: _Optional[_Union[InputFrame, _Mapping]] = ...) -> None: ...

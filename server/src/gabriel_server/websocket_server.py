@@ -20,6 +20,10 @@ class WebsocketServer(GabrielServer):
         """Initialize the Websocket server."""
         super().__init__(num_tokens_per_producer, engine_cb, engine_ids)
         self._server = None
+        # websockets doesn't allow concurrent send()s on the same connection,
+        # so use a lock to ensure that we do not interleave sends. The map is
+        # keyed on the address of each client.
+        self._write_locks: dict[object, asyncio.Lock] = {}
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
@@ -47,9 +51,15 @@ class WebsocketServer(GabrielServer):
             return unix_serve(handler, path=port_or_path)
 
     async def _send_via_transport(self, address, payload):
+        client = self._clients.get(address)
+        write_lock = self._write_locks.get(address)
+        if client is None or write_lock is None:
+            return False
+
         logger.debug("Sending to address: %s", address)
         try:
-            await self._clients.get(address).websocket.send(payload)
+            async with write_lock:
+                await client.websocket.send(payload)
         except websockets.exceptions.ConnectionClosed:
             logger.info("No connection to address: %s", address)
             return False
@@ -75,10 +85,13 @@ class WebsocketServer(GabrielServer):
             websocket=websocket,
         )
         self._clients[address] = client
+        write_lock = asyncio.Lock()
+        self._write_locks[address] = write_lock
 
         # Send client welcome message
         welcome = self._make_welcome()
-        await websocket.send(welcome.SerializeToString())
+        async with write_lock:
+            await websocket.send(welcome.SerializeToString())
 
         try:
             await self._consumer(websocket, client)
@@ -86,6 +99,7 @@ class WebsocketServer(GabrielServer):
             pass
         finally:
             del self._clients[address]
+            del self._write_locks[address]
             logger.info(f"Client disconnected: {address}")
 
     async def _consumer(self, websocket, client):
@@ -101,7 +115,7 @@ class WebsocketServer(GabrielServer):
             )
             if status == gabriel_pb2.StatusCode.SUCCESS:
                 # Deduct a token when you get a new input from the client
-                client.tokens_for_producer[from_client.producer_id] -= 1
+                client.tokens_for_producer[from_client.input.producer_id] -= 1
                 continue
 
             # Send error message
@@ -109,4 +123,5 @@ class WebsocketServer(GabrielServer):
                 from_client, status, status_msg
             )
 
-            await websocket.send(err_msg.SerializeToString())
+            async with self._write_locks[address]:
+                await websocket.send(err_msg.SerializeToString())

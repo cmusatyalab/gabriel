@@ -229,7 +229,7 @@ class ZeroMQServer(GabrielServer):
                 logger.debug(
                     "Consumed input from client %s successfully", address
                 )
-                client.tokens_for_producer[from_client.producer_id] -= 1
+                client.tokens_for_producer[from_client.input.producer_id] -= 1
                 continue
 
             # Send error message

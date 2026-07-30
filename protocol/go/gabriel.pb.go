@@ -30,7 +30,6 @@ const (
 	PayloadType_IMAGE                    PayloadType = 2
 	PayloadType_AUDIO                    PayloadType = 3
 	PayloadType_VIDEO                    PayloadType = 4
-	PayloadType_CONTROL                  PayloadType = 5
 	PayloadType_OTHER                    PayloadType = 100
 )
 
@@ -42,7 +41,6 @@ var (
 		2:   "IMAGE",
 		3:   "AUDIO",
 		4:   "VIDEO",
-		5:   "CONTROL",
 		100: "OTHER",
 	}
 	PayloadType_value = map[string]int32{
@@ -51,7 +49,6 @@ var (
 		"IMAGE":                    2,
 		"AUDIO":                    3,
 		"VIDEO":                    4,
-		"CONTROL":                  5,
 		"OTHER":                    100,
 	}
 )
@@ -90,8 +87,7 @@ const (
 	StatusCode_SUCCESS StatusCode = 0
 	// Errors whose cause is not known.
 	StatusCode_UNSPECIFIED_ERROR StatusCode = 1
-	// Errors that are not related to Gabriel but rather to the engine
-	// itself.
+	// Errors that are not related to Gabriel but rather to the engine itself.
 	StatusCode_ENGINE_ERROR StatusCode = 2
 	// Cognitive engine expected different PayloadType from this producer.
 	StatusCode_WRONG_INPUT_FORMAT StatusCode = 3
@@ -263,16 +259,11 @@ func (*InputFrame_AnyPayload) isInputFrame_Payload() {}
 
 type FromClient struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// A monotonically increasing frame identifier.
-	FrameId int64 `protobuf:"varint,1,opt,name=frame_id,json=frameId,proto3" json:"frame_id,omitempty"`
-	// The identifier of the producer generating input.
-	ProducerId string `protobuf:"bytes,2,opt,name=producer_id,json=producerId,proto3" json:"producer_id,omitempty"`
-	// The targeted engines for this input.
-	TargetEngineIds []string `protobuf:"bytes,3,rep,name=target_engine_ids,json=targetEngineIds,proto3" json:"target_engine_ids,omitempty"`
-	// The data to be sent to the server.
-	InputFrame *InputFrame `protobuf:"bytes,4,opt,name=input_frame,json=inputFrame,proto3" json:"input_frame,omitempty"`
-	// Arbitrary information about the client.
-	ClientInfo    *anypb.Any `protobuf:"bytes,5,opt,name=client_info,json=clientInfo,proto3" json:"client_info,omitempty"`
+	// Types that are valid to be assigned to MessageType:
+	//
+	//	*FromClient_Input_
+	//	*FromClient_Metadata_
+	MessageType   isFromClient_MessageType `protobuf_oneof:"message_type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -307,40 +298,46 @@ func (*FromClient) Descriptor() ([]byte, []int) {
 	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *FromClient) GetFrameId() int64 {
+func (x *FromClient) GetMessageType() isFromClient_MessageType {
 	if x != nil {
-		return x.FrameId
-	}
-	return 0
-}
-
-func (x *FromClient) GetProducerId() string {
-	if x != nil {
-		return x.ProducerId
-	}
-	return ""
-}
-
-func (x *FromClient) GetTargetEngineIds() []string {
-	if x != nil {
-		return x.TargetEngineIds
+		return x.MessageType
 	}
 	return nil
 }
 
-func (x *FromClient) GetInputFrame() *InputFrame {
+func (x *FromClient) GetInput() *FromClient_Input {
 	if x != nil {
-		return x.InputFrame
+		if x, ok := x.MessageType.(*FromClient_Input_); ok {
+			return x.Input
+		}
 	}
 	return nil
 }
 
-func (x *FromClient) GetClientInfo() *anypb.Any {
+func (x *FromClient) GetMetadata() *FromClient_Metadata {
 	if x != nil {
-		return x.ClientInfo
+		if x, ok := x.MessageType.(*FromClient_Metadata_); ok {
+			return x.Metadata
+		}
 	}
 	return nil
 }
+
+type isFromClient_MessageType interface {
+	isFromClient_MessageType()
+}
+
+type FromClient_Input_ struct {
+	Input *FromClient_Input `protobuf:"bytes,1,opt,name=input,proto3,oneof"`
+}
+
+type FromClient_Metadata_ struct {
+	Metadata *FromClient_Metadata `protobuf:"bytes,2,opt,name=metadata,proto3,oneof"`
+}
+
+func (*FromClient_Input_) isFromClient_MessageType() {}
+
+func (*FromClient_Metadata_) isFromClient_MessageType() {}
 
 type Status struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -620,31 +617,31 @@ func (*ToClient_ResultWrapper_) isToClient_MessageType() {}
 
 func (*ToClient_Control_) isToClient_MessageType() {}
 
-type FromStandaloneEngine struct {
+type FromEngine struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to WelcomeOrResult:
+	// Types that are valid to be assigned to MessageType:
 	//
-	//	*FromStandaloneEngine_Welcome_
-	//	*FromStandaloneEngine_Result
-	WelcomeOrResult isFromStandaloneEngine_WelcomeOrResult `protobuf_oneof:"welcome_or_result"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	//	*FromEngine_Register_
+	//	*FromEngine_Result
+	MessageType   isFromEngine_MessageType `protobuf_oneof:"message_type"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *FromStandaloneEngine) Reset() {
-	*x = FromStandaloneEngine{}
+func (x *FromEngine) Reset() {
+	*x = FromEngine{}
 	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *FromStandaloneEngine) String() string {
+func (x *FromEngine) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FromStandaloneEngine) ProtoMessage() {}
+func (*FromEngine) ProtoMessage() {}
 
-func (x *FromStandaloneEngine) ProtoReflect() protoreflect.Message {
+func (x *FromEngine) ProtoReflect() protoreflect.Message {
 	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -656,51 +653,234 @@ func (x *FromStandaloneEngine) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FromStandaloneEngine.ProtoReflect.Descriptor instead.
-func (*FromStandaloneEngine) Descriptor() ([]byte, []int) {
+// Deprecated: Use FromEngine.ProtoReflect.Descriptor instead.
+func (*FromEngine) Descriptor() ([]byte, []int) {
 	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *FromStandaloneEngine) GetWelcomeOrResult() isFromStandaloneEngine_WelcomeOrResult {
+func (x *FromEngine) GetMessageType() isFromEngine_MessageType {
 	if x != nil {
-		return x.WelcomeOrResult
+		return x.MessageType
 	}
 	return nil
 }
 
-func (x *FromStandaloneEngine) GetWelcome() *FromStandaloneEngine_Welcome {
+func (x *FromEngine) GetRegister() *FromEngine_Register {
 	if x != nil {
-		if x, ok := x.WelcomeOrResult.(*FromStandaloneEngine_Welcome_); ok {
-			return x.Welcome
+		if x, ok := x.MessageType.(*FromEngine_Register_); ok {
+			return x.Register
 		}
 	}
 	return nil
 }
 
-func (x *FromStandaloneEngine) GetResult() *Result {
+func (x *FromEngine) GetResult() *Result {
 	if x != nil {
-		if x, ok := x.WelcomeOrResult.(*FromStandaloneEngine_Result); ok {
+		if x, ok := x.MessageType.(*FromEngine_Result); ok {
 			return x.Result
 		}
 	}
 	return nil
 }
 
-type isFromStandaloneEngine_WelcomeOrResult interface {
-	isFromStandaloneEngine_WelcomeOrResult()
+type isFromEngine_MessageType interface {
+	isFromEngine_MessageType()
 }
 
-type FromStandaloneEngine_Welcome_ struct {
-	Welcome *FromStandaloneEngine_Welcome `protobuf:"bytes,1,opt,name=welcome,proto3,oneof"`
+type FromEngine_Register_ struct {
+	Register *FromEngine_Register `protobuf:"bytes,1,opt,name=register,proto3,oneof"`
 }
 
-type FromStandaloneEngine_Result struct {
+type FromEngine_Result struct {
 	Result *Result `protobuf:"bytes,2,opt,name=result,proto3,oneof"`
 }
 
-func (*FromStandaloneEngine_Welcome_) isFromStandaloneEngine_WelcomeOrResult() {}
+func (*FromEngine_Register_) isFromEngine_MessageType() {}
 
-func (*FromStandaloneEngine_Result) isFromStandaloneEngine_WelcomeOrResult() {}
+func (*FromEngine_Result) isFromEngine_MessageType() {}
+
+type ToEngine struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to MessageType:
+	//
+	//	*ToEngine_InputFrame
+	MessageType   isToEngine_MessageType `protobuf_oneof:"message_type"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ToEngine) Reset() {
+	*x = ToEngine{}
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToEngine) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToEngine) ProtoMessage() {}
+
+func (x *ToEngine) ProtoReflect() protoreflect.Message {
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToEngine.ProtoReflect.Descriptor instead.
+func (*ToEngine) Descriptor() ([]byte, []int) {
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ToEngine) GetMessageType() isToEngine_MessageType {
+	if x != nil {
+		return x.MessageType
+	}
+	return nil
+}
+
+func (x *ToEngine) GetInputFrame() *InputFrame {
+	if x != nil {
+		if x, ok := x.MessageType.(*ToEngine_InputFrame); ok {
+			return x.InputFrame
+		}
+	}
+	return nil
+}
+
+type isToEngine_MessageType interface {
+	isToEngine_MessageType()
+}
+
+type ToEngine_InputFrame struct {
+	InputFrame *InputFrame `protobuf:"bytes,1,opt,name=input_frame,json=inputFrame,proto3,oneof"`
+}
+
+func (*ToEngine_InputFrame) isToEngine_MessageType() {}
+
+type FromClient_Input struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// A monotonically increasing frame identifier.
+	FrameId int64 `protobuf:"varint,1,opt,name=frame_id,json=frameId,proto3" json:"frame_id,omitempty"`
+	// The identifier of the producer generating input.
+	ProducerId string `protobuf:"bytes,2,opt,name=producer_id,json=producerId,proto3" json:"producer_id,omitempty"`
+	// The targeted engines for this input.
+	TargetEngineIds []string `protobuf:"bytes,3,rep,name=target_engine_ids,json=targetEngineIds,proto3" json:"target_engine_ids,omitempty"`
+	// The data to be sent to the server.
+	InputFrame    *InputFrame `protobuf:"bytes,4,opt,name=input_frame,json=inputFrame,proto3" json:"input_frame,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FromClient_Input) Reset() {
+	*x = FromClient_Input{}
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FromClient_Input) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FromClient_Input) ProtoMessage() {}
+
+func (x *FromClient_Input) ProtoReflect() protoreflect.Message {
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FromClient_Input.ProtoReflect.Descriptor instead.
+func (*FromClient_Input) Descriptor() ([]byte, []int) {
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{1, 0}
+}
+
+func (x *FromClient_Input) GetFrameId() int64 {
+	if x != nil {
+		return x.FrameId
+	}
+	return 0
+}
+
+func (x *FromClient_Input) GetProducerId() string {
+	if x != nil {
+		return x.ProducerId
+	}
+	return ""
+}
+
+func (x *FromClient_Input) GetTargetEngineIds() []string {
+	if x != nil {
+		return x.TargetEngineIds
+	}
+	return nil
+}
+
+func (x *FromClient_Input) GetInputFrame() *InputFrame {
+	if x != nil {
+		return x.InputFrame
+	}
+	return nil
+}
+
+type FromClient_Metadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Arbitrary information about the client.
+	ClientInfo    *anypb.Any `protobuf:"bytes,5,opt,name=client_info,json=clientInfo,proto3" json:"client_info,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FromClient_Metadata) Reset() {
+	*x = FromClient_Metadata{}
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FromClient_Metadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FromClient_Metadata) ProtoMessage() {}
+
+func (x *FromClient_Metadata) ProtoReflect() protoreflect.Message {
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FromClient_Metadata.ProtoReflect.Descriptor instead.
+func (*FromClient_Metadata) Descriptor() ([]byte, []int) {
+	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{1, 1}
+}
+
+func (x *FromClient_Metadata) GetClientInfo() *anypb.Any {
+	if x != nil {
+		return x.ClientInfo
+	}
+	return nil
+}
 
 type ToClient_Welcome struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -714,7 +894,7 @@ type ToClient_Welcome struct {
 
 func (x *ToClient_Welcome) Reset() {
 	*x = ToClient_Welcome{}
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +906,7 @@ func (x *ToClient_Welcome) String() string {
 func (*ToClient_Welcome) ProtoMessage() {}
 
 func (x *ToClient_Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[6]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -766,7 +946,7 @@ type ToClient_Control struct {
 
 func (x *ToClient_Control) Reset() {
 	*x = ToClient_Control{}
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -778,7 +958,7 @@ func (x *ToClient_Control) String() string {
 func (*ToClient_Control) ProtoMessage() {}
 
 func (x *ToClient_Control) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[7]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +996,7 @@ type ToClient_ResultWrapper struct {
 
 func (x *ToClient_ResultWrapper) Reset() {
 	*x = ToClient_ResultWrapper{}
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -828,7 +1008,7 @@ func (x *ToClient_ResultWrapper) String() string {
 func (*ToClient_ResultWrapper) ProtoMessage() {}
 
 func (x *ToClient_ResultWrapper) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[8]
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,33 +1045,33 @@ func (x *ToClient_ResultWrapper) GetResult() *Result {
 	return nil
 }
 
-type FromStandaloneEngine_Welcome struct {
+type FromEngine_Register struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The engine id.
 	EngineId string `protobuf:"bytes,1,opt,name=engine_id,json=engineId,proto3" json:"engine_id,omitempty"`
-	// Whether all responses from this engine should be sent to the client,
-	// even if they do not correspond to the latest input. This flag
-	// determines whether stale results are sent to the client.
+	// Whether all responses from this engine should be sent onward to the
+	// producer, even if they do not correspond to the latest input. This
+	// flag determines whether stale results are sent to the producer.
 	AllResponsesRequired bool `protobuf:"varint,2,opt,name=all_responses_required,json=allResponsesRequired,proto3" json:"all_responses_required,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
-func (x *FromStandaloneEngine_Welcome) Reset() {
-	*x = FromStandaloneEngine_Welcome{}
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
+func (x *FromEngine_Register) Reset() {
+	*x = FromEngine_Register{}
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *FromStandaloneEngine_Welcome) String() string {
+func (x *FromEngine_Register) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FromStandaloneEngine_Welcome) ProtoMessage() {}
+func (*FromEngine_Register) ProtoMessage() {}
 
-func (x *FromStandaloneEngine_Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[9]
+func (x *FromEngine_Register) ProtoReflect() protoreflect.Message {
+	mi := &file_gabriel_protocol_gabriel_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,19 +1082,19 @@ func (x *FromStandaloneEngine_Welcome) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FromStandaloneEngine_Welcome.ProtoReflect.Descriptor instead.
-func (*FromStandaloneEngine_Welcome) Descriptor() ([]byte, []int) {
+// Deprecated: Use FromEngine_Register.ProtoReflect.Descriptor instead.
+func (*FromEngine_Register) Descriptor() ([]byte, []int) {
 	return file_gabriel_protocol_gabriel_proto_rawDescGZIP(), []int{5, 0}
 }
 
-func (x *FromStandaloneEngine_Welcome) GetEngineId() string {
+func (x *FromEngine_Register) GetEngineId() string {
 	if x != nil {
 		return x.EngineId
 	}
 	return ""
 }
 
-func (x *FromStandaloneEngine_Welcome) GetAllResponsesRequired() bool {
+func (x *FromEngine_Register) GetAllResponsesRequired() bool {
 	if x != nil {
 		return x.AllResponsesRequired
 	}
@@ -933,17 +1113,22 @@ const file_gabriel_protocol_gabriel_proto_rawDesc = "" +
 	"\fbyte_payload\x18\x03 \x01(\fH\x00R\vbytePayload\x127\n" +
 	"\vany_payload\x18\x04 \x01(\v2\x14.google.protobuf.AnyH\x00R\n" +
 	"anyPayloadB\t\n" +
-	"\apayload\"\xe1\x01\n" +
+	"\apayload\"\xf6\x02\n" +
 	"\n" +
-	"FromClient\x12\x19\n" +
+	"FromClient\x121\n" +
+	"\x05input\x18\x01 \x01(\v2\x19.gabriel.FromClient.InputH\x00R\x05input\x12:\n" +
+	"\bmetadata\x18\x02 \x01(\v2\x1c.gabriel.FromClient.MetadataH\x00R\bmetadata\x1a\xa5\x01\n" +
+	"\x05Input\x12\x19\n" +
 	"\bframe_id\x18\x01 \x01(\x03R\aframeId\x12\x1f\n" +
 	"\vproducer_id\x18\x02 \x01(\tR\n" +
 	"producerId\x12*\n" +
 	"\x11target_engine_ids\x18\x03 \x03(\tR\x0ftargetEngineIds\x124\n" +
 	"\vinput_frame\x18\x04 \x01(\v2\x13.gabriel.InputFrameR\n" +
-	"inputFrame\x125\n" +
+	"inputFrame\x1aA\n" +
+	"\bMetadata\x125\n" +
 	"\vclient_info\x18\x05 \x01(\v2\x14.google.protobuf.AnyR\n" +
-	"clientInfo\"K\n" +
+	"clientInfoB\x0e\n" +
+	"\fmessage_type\"K\n" +
 	"\x06Status\x12'\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x13.gabriel.StatusCodeR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"\x84\x02\n" +
@@ -972,21 +1157,25 @@ const file_gabriel_protocol_gabriel_proto_rawDesc = "" +
 	"producerId\x12!\n" +
 	"\freturn_token\x18\x02 \x01(\bR\vreturnToken\x12'\n" +
 	"\x06result\x18\x03 \x01(\v2\x0f.gabriel.ResultR\x06resultB\x0e\n" +
-	"\fmessage_type\"\xf7\x01\n" +
-	"\x14FromStandaloneEngine\x12A\n" +
-	"\awelcome\x18\x01 \x01(\v2%.gabriel.FromStandaloneEngine.WelcomeH\x00R\awelcome\x12)\n" +
-	"\x06result\x18\x02 \x01(\v2\x0f.gabriel.ResultH\x00R\x06result\x1a\\\n" +
-	"\aWelcome\x12\x1b\n" +
+	"\fmessage_type\"\xe2\x01\n" +
+	"\n" +
+	"FromEngine\x12:\n" +
+	"\bregister\x18\x01 \x01(\v2\x1c.gabriel.FromEngine.RegisterH\x00R\bregister\x12)\n" +
+	"\x06result\x18\x02 \x01(\v2\x0f.gabriel.ResultH\x00R\x06result\x1a]\n" +
+	"\bRegister\x12\x1b\n" +
 	"\tengine_id\x18\x01 \x01(\tR\bengineId\x124\n" +
-	"\x16all_responses_required\x18\x02 \x01(\bR\x14allResponsesRequiredB\x13\n" +
-	"\x11welcome_or_result*n\n" +
+	"\x16all_responses_required\x18\x02 \x01(\bR\x14allResponsesRequiredB\x0e\n" +
+	"\fmessage_type\"R\n" +
+	"\bToEngine\x126\n" +
+	"\vinput_frame\x18\x01 \x01(\v2\x13.gabriel.InputFrameH\x00R\n" +
+	"inputFrameB\x0e\n" +
+	"\fmessage_type*a\n" +
 	"\vPayloadType\x12\x1c\n" +
 	"\x18PAYLOAD_TYPE_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04TEXT\x10\x01\x12\t\n" +
 	"\x05IMAGE\x10\x02\x12\t\n" +
 	"\x05AUDIO\x10\x03\x12\t\n" +
-	"\x05VIDEO\x10\x04\x12\v\n" +
-	"\aCONTROL\x10\x05\x12\t\n" +
+	"\x05VIDEO\x10\x04\x12\t\n" +
 	"\x05OTHER\x10d*\x9c\x01\n" +
 	"\n" +
 	"StatusCode\x12\v\n" +
@@ -996,9 +1185,11 @@ const file_gabriel_protocol_gabriel_proto_rawDesc = "" +
 	"\x12WRONG_INPUT_FORMAT\x10\x03\x12\x17\n" +
 	"\x13NO_ENGINE_FOR_INPUT\x10\x04\x12\r\n" +
 	"\tNO_TOKENS\x10\x05\x12\x18\n" +
-	"\x14SERVER_DROPPED_FRAME\x10\x062G\n" +
-	"\x0eGabrielService\x125\n" +
-	"\aSession\x12\x13.gabriel.FromClient\x1a\x11.gabriel.ToClient(\x010\x01B[\n" +
+	"\x14SERVER_DROPPED_FRAME\x10\x062S\n" +
+	"\x14GabrielClientService\x12;\n" +
+	"\rClientSession\x12\x13.gabriel.FromClient\x1a\x11.gabriel.ToClient(\x010\x012S\n" +
+	"\x14GabrielEngineService\x12;\n" +
+	"\rEngineSession\x12\x13.gabriel.FromEngine\x1a\x11.gabriel.ToEngine(\x010\x01B[\n" +
 	"\x1bedu.cmu.cs.gabriel.protocolB\x06ProtosZ4github.com/cmusatyalab/gabriel/protocol/go;gabrielpbb\x06proto3"
 
 var (
@@ -1014,43 +1205,51 @@ func file_gabriel_protocol_gabriel_proto_rawDescGZIP() []byte {
 }
 
 var file_gabriel_protocol_gabriel_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_gabriel_protocol_gabriel_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_gabriel_protocol_gabriel_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_gabriel_protocol_gabriel_proto_goTypes = []any{
-	(PayloadType)(0),                     // 0: gabriel.PayloadType
-	(StatusCode)(0),                      // 1: gabriel.StatusCode
-	(*InputFrame)(nil),                   // 2: gabriel.InputFrame
-	(*FromClient)(nil),                   // 3: gabriel.FromClient
-	(*Status)(nil),                       // 4: gabriel.Status
-	(*Result)(nil),                       // 5: gabriel.Result
-	(*ToClient)(nil),                     // 6: gabriel.ToClient
-	(*FromStandaloneEngine)(nil),         // 7: gabriel.FromStandaloneEngine
-	(*ToClient_Welcome)(nil),             // 8: gabriel.ToClient.Welcome
-	(*ToClient_Control)(nil),             // 9: gabriel.ToClient.Control
-	(*ToClient_ResultWrapper)(nil),       // 10: gabriel.ToClient.ResultWrapper
-	(*FromStandaloneEngine_Welcome)(nil), // 11: gabriel.FromStandaloneEngine.Welcome
-	(*anypb.Any)(nil),                    // 12: google.protobuf.Any
+	(PayloadType)(0),               // 0: gabriel.PayloadType
+	(StatusCode)(0),                // 1: gabriel.StatusCode
+	(*InputFrame)(nil),             // 2: gabriel.InputFrame
+	(*FromClient)(nil),             // 3: gabriel.FromClient
+	(*Status)(nil),                 // 4: gabriel.Status
+	(*Result)(nil),                 // 5: gabriel.Result
+	(*ToClient)(nil),               // 6: gabriel.ToClient
+	(*FromEngine)(nil),             // 7: gabriel.FromEngine
+	(*ToEngine)(nil),               // 8: gabriel.ToEngine
+	(*FromClient_Input)(nil),       // 9: gabriel.FromClient.Input
+	(*FromClient_Metadata)(nil),    // 10: gabriel.FromClient.Metadata
+	(*ToClient_Welcome)(nil),       // 11: gabriel.ToClient.Welcome
+	(*ToClient_Control)(nil),       // 12: gabriel.ToClient.Control
+	(*ToClient_ResultWrapper)(nil), // 13: gabriel.ToClient.ResultWrapper
+	(*FromEngine_Register)(nil),    // 14: gabriel.FromEngine.Register
+	(*anypb.Any)(nil),              // 15: google.protobuf.Any
 }
 var file_gabriel_protocol_gabriel_proto_depIdxs = []int32{
 	0,  // 0: gabriel.InputFrame.payload_type:type_name -> gabriel.PayloadType
-	12, // 1: gabriel.InputFrame.any_payload:type_name -> google.protobuf.Any
-	2,  // 2: gabriel.FromClient.input_frame:type_name -> gabriel.InputFrame
-	12, // 3: gabriel.FromClient.client_info:type_name -> google.protobuf.Any
+	15, // 1: gabriel.InputFrame.any_payload:type_name -> google.protobuf.Any
+	9,  // 2: gabriel.FromClient.input:type_name -> gabriel.FromClient.Input
+	10, // 3: gabriel.FromClient.metadata:type_name -> gabriel.FromClient.Metadata
 	1,  // 4: gabriel.Status.code:type_name -> gabriel.StatusCode
 	4,  // 5: gabriel.Result.status:type_name -> gabriel.Status
-	12, // 6: gabriel.Result.any_result:type_name -> google.protobuf.Any
-	8,  // 7: gabriel.ToClient.welcome:type_name -> gabriel.ToClient.Welcome
-	10, // 8: gabriel.ToClient.result_wrapper:type_name -> gabriel.ToClient.ResultWrapper
-	9,  // 9: gabriel.ToClient.control:type_name -> gabriel.ToClient.Control
-	11, // 10: gabriel.FromStandaloneEngine.welcome:type_name -> gabriel.FromStandaloneEngine.Welcome
-	5,  // 11: gabriel.FromStandaloneEngine.result:type_name -> gabriel.Result
-	5,  // 12: gabriel.ToClient.ResultWrapper.result:type_name -> gabriel.Result
-	3,  // 13: gabriel.GabrielService.Session:input_type -> gabriel.FromClient
-	6,  // 14: gabriel.GabrielService.Session:output_type -> gabriel.ToClient
-	14, // [14:15] is the sub-list for method output_type
-	13, // [13:14] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	15, // 6: gabriel.Result.any_result:type_name -> google.protobuf.Any
+	11, // 7: gabriel.ToClient.welcome:type_name -> gabriel.ToClient.Welcome
+	13, // 8: gabriel.ToClient.result_wrapper:type_name -> gabriel.ToClient.ResultWrapper
+	12, // 9: gabriel.ToClient.control:type_name -> gabriel.ToClient.Control
+	14, // 10: gabriel.FromEngine.register:type_name -> gabriel.FromEngine.Register
+	5,  // 11: gabriel.FromEngine.result:type_name -> gabriel.Result
+	2,  // 12: gabriel.ToEngine.input_frame:type_name -> gabriel.InputFrame
+	2,  // 13: gabriel.FromClient.Input.input_frame:type_name -> gabriel.InputFrame
+	15, // 14: gabriel.FromClient.Metadata.client_info:type_name -> google.protobuf.Any
+	5,  // 15: gabriel.ToClient.ResultWrapper.result:type_name -> gabriel.Result
+	3,  // 16: gabriel.GabrielClientService.ClientSession:input_type -> gabriel.FromClient
+	7,  // 17: gabriel.GabrielEngineService.EngineSession:input_type -> gabriel.FromEngine
+	6,  // 18: gabriel.GabrielClientService.ClientSession:output_type -> gabriel.ToClient
+	8,  // 19: gabriel.GabrielEngineService.EngineSession:output_type -> gabriel.ToEngine
+	18, // [18:20] is the sub-list for method output_type
+	16, // [16:18] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_gabriel_protocol_gabriel_proto_init() }
@@ -1063,6 +1262,10 @@ func file_gabriel_protocol_gabriel_proto_init() {
 		(*InputFrame_BytePayload)(nil),
 		(*InputFrame_AnyPayload)(nil),
 	}
+	file_gabriel_protocol_gabriel_proto_msgTypes[1].OneofWrappers = []any{
+		(*FromClient_Input_)(nil),
+		(*FromClient_Metadata_)(nil),
+	}
 	file_gabriel_protocol_gabriel_proto_msgTypes[3].OneofWrappers = []any{
 		(*Result_StringResult)(nil),
 		(*Result_BytesResult)(nil),
@@ -1074,8 +1277,11 @@ func file_gabriel_protocol_gabriel_proto_init() {
 		(*ToClient_Control_)(nil),
 	}
 	file_gabriel_protocol_gabriel_proto_msgTypes[5].OneofWrappers = []any{
-		(*FromStandaloneEngine_Welcome_)(nil),
-		(*FromStandaloneEngine_Result)(nil),
+		(*FromEngine_Register_)(nil),
+		(*FromEngine_Result)(nil),
+	}
+	file_gabriel_protocol_gabriel_proto_msgTypes[6].OneofWrappers = []any{
+		(*ToEngine_InputFrame)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1083,9 +1289,9 @@ func file_gabriel_protocol_gabriel_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gabriel_protocol_gabriel_proto_rawDesc), len(file_gabriel_protocol_gabriel_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_gabriel_protocol_gabriel_proto_goTypes,
 		DependencyIndexes: file_gabriel_protocol_gabriel_proto_depIdxs,

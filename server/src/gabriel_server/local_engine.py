@@ -95,11 +95,11 @@ class LocalEngine:
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(self.engine_conn.recv_bytes())
 
-            input_frame = from_client.input_frame
+            input_frame = from_client.input.input_frame
 
             result = engine.handle(input_frame)
             result_proto = gabriel_pb2.Result()
-            result_proto.frame_id = from_client.frame_id
+            result_proto.frame_id = from_client.input.frame_id
             result_proto.target_engine_id = self.engine_id
 
             if not isinstance(result, cognitive_engine.Result):
@@ -242,7 +242,7 @@ class _LocalServer:
 
             await self._server.send_result(
                 address,
-                from_client.producer_id,
+                from_client.input.producer_id,
                 self.engine_id,
                 result,
                 return_token=True,

@@ -8,7 +8,14 @@ You can find more details about Gabriel from our [design document](design), our
 ## Getting Started
 
 1. Create a Gabriel [server](server).
-2. Create a client for [Python](python-client) or [Android](android-client).
+2. Create a client using the [Python](python-client), [Go](go-client), or
+   [Android](android-client) client library.
+3. Write a cognitive engine that connects to the server and processes frames
+   from a client.
+
+Clients, engines, and the server communicate over gRPC (the default), or
+optionally WebSocket or ZeroMQ, using the protobuf messages defined in
+[protocol](protocol). Connections can be secured with TLS.
 
 ## Example Workflows
 
@@ -16,77 +23,60 @@ You can find more details about Gabriel from our [design document](design), our
 2. [Instruction-based assistants](https://github.com/cmusatyalab/gabriel-instruction)
 
 The [examples](examples) directory of this repository contains some toy
-workflows.
+workflows, and [tests/integration](tests/integration) has end-to-end tests
+that double as usage examples.
 
 ## Details
 
 The following section provides low-level details about how this code works. See
 our [design document](design) for a higher-level explanation.
 
-Clients send one frame to the server at a time. Clients have sources, which
-produce frames. A source can be an interactive application that sends frames
-without filtering them (such as OpenRTiST), or an early discard filter. Two
-different early discard filters can send frames that were captured by the same
-sensor. However, these filters are different sources from Gabriel's perspective.
-Each source must be given a name (such as "openrtist" or "face"). This allows
-cognitive engines to know what to expect in input frames and (if applicable)
-what results the client expects back.
+Clients send one frame to the server at a time. Each frame comes from a
+producer, identified by a `producer_id` (such as "openrtist" or "face"). A
+producer can be an interactive application that sends frames without
+filtering them (such as OpenRTiST), or an early discard filter. Two different
+early discard filters can send frames captured by the same sensor, but they
+are still different producers from Gabriel's perspective.
 
-Every frame from one source should have the same type of data, and this type
-should not change. For example, if a source sends images, it should only ever
-send images, and it should not also include audio along with an image. Audio and
-images should be sent by two different sources. `InputFrame` messages have an
-`extras` field that can be used to send metadata, such as GPS and IMU
-measurements, or app state. Embedding binary data as `extras` to circumvent the
-"one type of media per source" restriction will likely lead to cognitive
-engines that are difficult for other people to maintain. Multiple payloads can
-be sent in a single `InputFrame` message. This is intended for cases where an
-input to an engine must contain several consecutive images. A single
-`InputFrame` message should represent one single input to a cognitive engine.
+Every frame from one producer should have the same `PayloadType`, and this
+type should not change. For example, if a producer sends images, it should
+only ever send images, not also audio. Each `FromClient.Input` message
+explicitly lists the `target_engine_ids` it should be routed to, so a client
+decides at send time which cognitive engines see a given frame.
 
-Each client has one set of tokens per source. This allows the client to send
-frames that have passed "source x" at a different rate than it sends frames that
-have passed "source y." A cognitive engine can only consume frames that have
-passed one source. A cognitive engine cannot change the source that it consumes
-frames from. Multiple cognitive engines can consume frames that pass the same
-source.
+Each client has one set of tokens per producer. This allows the client to
+send frames from "producer x" at a different rate than it sends frames from
+"producer y." Multiple cognitive engines can consume frames from the same
+producer.
 
-The Gabriel server returns a token to the client for "source x" as soon as the
-first cognitive engine that consumes frames from "source x" returns a
-`ResultWrapper` for that frame. When a second cognitive engine that also
-consumes frames from "source x" returns a `ResultWrapper` for the same frame,
-the Gabriel server does not return a second token to the client. Engines can be
-configured to allow the server to ignore a `ResultWrapper` if this engine was
-not the first to return a `ResultWrapper` for a frame. Engines can also be
-configured to force the server to send all `ResultWrapper` messages to the
-client.
-When an engine configured to require all responses is not the first engine to
-return a `ResultWrapper` for a frame, the server will send the client this
-`ResultWrapper`, but it will not return a token (because it already returned the
-token for this frame with the result from the first cognitive engine).
+The Gabriel server returns a token to the client for "producer x" as soon as
+the first cognitive engine targeted by a frame from "producer x" returns a
+result for that frame. When a second targeted engine returns a result for the
+same frame, the server does not return a second token. An engine can register
+with `all_responses_required` set so the server always forwards its results
+to the client, even when it isn't the first engine to respond; in that case
+the server still only returns one token per frame.
 
 Cognitive engines might not receive every frame sent to the server. In
 particular, the client will send frames to the server at the rate that the
-fastest cognitive engine can process them. Slower engines that consume frames
-from the same source might miss some of the frames that were given to the
-fastest engine for this source. After an engine finishes processing its current
-frame, it will be given the most recent frame that was given to the fastest
-engine. When the first engine completes the most recent frame, a new frame will
-be taken off the input queue and given to this engine.
+fastest targeted engine can process them. Slower engines might miss frames
+that were given to the fastest one. After an engine finishes processing its
+current frame, it is given the most recent frame available for it, not
+necessarily the next one in the queue.
 
 ### Flow Control
 
 Gabriel's flow control is based on tokens. When the client sends a frame to the
-server, this consumes a token for the source that produced the frame. When the
-first cognitive engine finishes processing this frame, the client gets back the
-token that was consumed sending the frame. This ensures that frames are sent to
-the server at the rate that the fastest engine consuming frames from this source
+server, this consumes a token for the producer that produced the frame. When
+the first targeted cognitive engine finishes processing this frame, the client
+gets back the token that was consumed sending the frame. This ensures that
+frames are sent to the server at the rate that the fastest targeted engine
 can process them. If the server runs into an error processing a frame, it
 immediately sends a message to the client indicating the return of a token.
 
-After a client consumes all of its tokens for a source, the client will only
-send a new frame from this source after it receives a token back
-(for this source). This can lead to periods where the server has no input when
+After a client consumes all of its tokens for a producer, the client will only
+send a new frame from this producer after it receives a token back
+(for this producer). This can lead to periods where the server has no input when
 the latency between clients and the server is high. Setting a high number of
 tokens will fill up the queue of inputs on the server and thus reduce the length
 of these idle periods. However, the frames in the queue might be stale by the
@@ -94,15 +84,16 @@ time they get processed. You should not set the number of tokens above two,
 unless the latency between clients and the server is high, and your workload is
 not latency critical.
 
-Each `FromClient` message the client sends consumes one token. A
-`ToClient.Response` message with `return_token` set to true indicates the return
-of one token. Specifying the specific number of tokens that a client has for a
-source in the `ToClient.Response` message would lead to race conditions based on
-the order that the client and server send and receive messages. Representing the
-consumption or return of a single token in a message avoids this problem.
-Clients communicate with the server using
-[The WebSocket Protocol](https://tools.ietf.org/html/rfc6455), which uses TCP.
-Therefore, we assume that messages are delivered reliably and in order.
+Each `FromClient.Input` message the client sends consumes one token. A
+`ToClient.ResultWrapper` message with `return_token` set to true indicates
+the return of one token. Specifying the specific number of tokens that a
+client has for a producer in the `ResultWrapper` message would lead to race
+conditions based on the order that the client and server send and receive
+messages. Representing the consumption or return of a single token in a
+message avoids this problem. Clients communicate with the server over gRPC
+by default (WebSocket and ZeroMQ transports are also available), all of
+which run over TCP, so we assume that messages are delivered reliably and in
+order.
 
 ## Future Improvements
 

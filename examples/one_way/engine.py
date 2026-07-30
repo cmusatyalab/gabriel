@@ -1,14 +1,12 @@
 """A Gabriel engine that displays the input frame."""
 
 import common
-import cv2
-import numpy as np
 from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.network_engine import engine_runner
 
-SERVER_ADDRESS_FORMAT = "tcp://{}:{}"
+SERVER_ADDRESS_FORMAT = "{}:{}"
 
 
 class DisplayEngine(cognitive_engine.Engine):
@@ -23,10 +21,10 @@ class DisplayEngine(cognitive_engine.Engine):
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS
 
-        np_data = np.frombuffer(input_frame.byte_payload, dtype=np.uint8)
-        frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
-        cv2.imshow(f"Image from engine: {self._engine_id}", frame)
-        cv2.waitKey(1)
+        # np_data = np.frombuffer(input_frame.byte_payload, dtype=np.uint8)
+        # frame = cv2.imdecode(np_data, cv2.IMREAD_COLOR)
+        # cv2.imshow(f"Image from engine: {self._engine_id}", frame)
+        # cv2.waitKey(1)
 
         return Result(status, "Hello from engine")
 

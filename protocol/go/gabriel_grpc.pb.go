@@ -19,30 +19,30 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GabrielService_Session_FullMethodName = "/gabriel.GabrielService/Session"
+	GabrielClientService_ClientSession_FullMethodName = "/gabriel.GabrielClientService/ClientSession"
 )
 
-// GabrielServiceClient is the client API for GabrielService service.
+// GabrielClientServiceClient is the client API for GabrielClientService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// gRPC service for Gabriel clients.
-type GabrielServiceClient interface {
-	// Start a new session with a Gabriel server.
-	Session(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromClient, ToClient], error)
+// gRPC service implemented by a Gabriel server, used by clients.
+type GabrielClientServiceClient interface {
+	// Start a new session with a Gabriel server as a client.
+	ClientSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromClient, ToClient], error)
 }
 
-type gabrielServiceClient struct {
+type gabrielClientServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewGabrielServiceClient(cc grpc.ClientConnInterface) GabrielServiceClient {
-	return &gabrielServiceClient{cc}
+func NewGabrielClientServiceClient(cc grpc.ClientConnInterface) GabrielClientServiceClient {
+	return &gabrielClientServiceClient{cc}
 }
 
-func (c *gabrielServiceClient) Session(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromClient, ToClient], error) {
+func (c *gabrielClientServiceClient) ClientSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromClient, ToClient], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &GabrielService_ServiceDesc.Streams[0], GabrielService_Session_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &GabrielClientService_ServiceDesc.Streams[0], GabrielClientService_ClientSession_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -51,68 +51,170 @@ func (c *gabrielServiceClient) Session(ctx context.Context, opts ...grpc.CallOpt
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type GabrielService_SessionClient = grpc.BidiStreamingClient[FromClient, ToClient]
+type GabrielClientService_ClientSessionClient = grpc.BidiStreamingClient[FromClient, ToClient]
 
-// GabrielServiceServer is the server API for GabrielService service.
-// All implementations must embed UnimplementedGabrielServiceServer
+// GabrielClientServiceServer is the server API for GabrielClientService service.
+// All implementations must embed UnimplementedGabrielClientServiceServer
 // for forward compatibility.
 //
-// gRPC service for Gabriel clients.
-type GabrielServiceServer interface {
-	// Start a new session with a Gabriel server.
-	Session(grpc.BidiStreamingServer[FromClient, ToClient]) error
-	mustEmbedUnimplementedGabrielServiceServer()
+// gRPC service implemented by a Gabriel server, used by clients.
+type GabrielClientServiceServer interface {
+	// Start a new session with a Gabriel server as a client.
+	ClientSession(grpc.BidiStreamingServer[FromClient, ToClient]) error
+	mustEmbedUnimplementedGabrielClientServiceServer()
 }
 
-// UnimplementedGabrielServiceServer must be embedded to have
+// UnimplementedGabrielClientServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedGabrielServiceServer struct{}
+type UnimplementedGabrielClientServiceServer struct{}
 
-func (UnimplementedGabrielServiceServer) Session(grpc.BidiStreamingServer[FromClient, ToClient]) error {
-	return status.Error(codes.Unimplemented, "method Session not implemented")
+func (UnimplementedGabrielClientServiceServer) ClientSession(grpc.BidiStreamingServer[FromClient, ToClient]) error {
+	return status.Error(codes.Unimplemented, "method ClientSession not implemented")
 }
-func (UnimplementedGabrielServiceServer) mustEmbedUnimplementedGabrielServiceServer() {}
-func (UnimplementedGabrielServiceServer) testEmbeddedByValue()                        {}
+func (UnimplementedGabrielClientServiceServer) mustEmbedUnimplementedGabrielClientServiceServer() {}
+func (UnimplementedGabrielClientServiceServer) testEmbeddedByValue()                              {}
 
-// UnsafeGabrielServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to GabrielServiceServer will
+// UnsafeGabrielClientServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to GabrielClientServiceServer will
 // result in compilation errors.
-type UnsafeGabrielServiceServer interface {
-	mustEmbedUnimplementedGabrielServiceServer()
+type UnsafeGabrielClientServiceServer interface {
+	mustEmbedUnimplementedGabrielClientServiceServer()
 }
 
-func RegisterGabrielServiceServer(s grpc.ServiceRegistrar, srv GabrielServiceServer) {
-	// If the following call panics, it indicates UnimplementedGabrielServiceServer was
+func RegisterGabrielClientServiceServer(s grpc.ServiceRegistrar, srv GabrielClientServiceServer) {
+	// If the following call panics, it indicates UnimplementedGabrielClientServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&GabrielService_ServiceDesc, srv)
+	s.RegisterService(&GabrielClientService_ServiceDesc, srv)
 }
 
-func _GabrielService_Session_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(GabrielServiceServer).Session(&grpc.GenericServerStream[FromClient, ToClient]{ServerStream: stream})
+func _GabrielClientService_ClientSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GabrielClientServiceServer).ClientSession(&grpc.GenericServerStream[FromClient, ToClient]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type GabrielService_SessionServer = grpc.BidiStreamingServer[FromClient, ToClient]
+type GabrielClientService_ClientSessionServer = grpc.BidiStreamingServer[FromClient, ToClient]
 
-// GabrielService_ServiceDesc is the grpc.ServiceDesc for GabrielService service.
+// GabrielClientService_ServiceDesc is the grpc.ServiceDesc for GabrielClientService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var GabrielService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gabriel.GabrielService",
-	HandlerType: (*GabrielServiceServer)(nil),
+var GabrielClientService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "gabriel.GabrielClientService",
+	HandlerType: (*GabrielClientServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Session",
-			Handler:       _GabrielService_Session_Handler,
+			StreamName:    "ClientSession",
+			Handler:       _GabrielClientService_ClientSession_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "gabriel_protocol/gabriel.proto",
+}
+
+const (
+	GabrielEngineService_EngineSession_FullMethodName = "/gabriel.GabrielEngineService/EngineSession"
+)
+
+// GabrielEngineServiceClient is the client API for GabrielEngineService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// gRPC service implemented by a Gabriel server, used by cognitive engines.
+type GabrielEngineServiceClient interface {
+	// Start a new session with a Gabriel server as a cognitive engine.
+	EngineSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromEngine, ToEngine], error)
+}
+
+type gabrielEngineServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewGabrielEngineServiceClient(cc grpc.ClientConnInterface) GabrielEngineServiceClient {
+	return &gabrielEngineServiceClient{cc}
+}
+
+func (c *gabrielEngineServiceClient) EngineSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[FromEngine, ToEngine], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &GabrielEngineService_ServiceDesc.Streams[0], GabrielEngineService_EngineSession_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[FromEngine, ToEngine]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GabrielEngineService_EngineSessionClient = grpc.BidiStreamingClient[FromEngine, ToEngine]
+
+// GabrielEngineServiceServer is the server API for GabrielEngineService service.
+// All implementations must embed UnimplementedGabrielEngineServiceServer
+// for forward compatibility.
+//
+// gRPC service implemented by a Gabriel server, used by cognitive engines.
+type GabrielEngineServiceServer interface {
+	// Start a new session with a Gabriel server as a cognitive engine.
+	EngineSession(grpc.BidiStreamingServer[FromEngine, ToEngine]) error
+	mustEmbedUnimplementedGabrielEngineServiceServer()
+}
+
+// UnimplementedGabrielEngineServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedGabrielEngineServiceServer struct{}
+
+func (UnimplementedGabrielEngineServiceServer) EngineSession(grpc.BidiStreamingServer[FromEngine, ToEngine]) error {
+	return status.Error(codes.Unimplemented, "method EngineSession not implemented")
+}
+func (UnimplementedGabrielEngineServiceServer) mustEmbedUnimplementedGabrielEngineServiceServer() {}
+func (UnimplementedGabrielEngineServiceServer) testEmbeddedByValue()                              {}
+
+// UnsafeGabrielEngineServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to GabrielEngineServiceServer will
+// result in compilation errors.
+type UnsafeGabrielEngineServiceServer interface {
+	mustEmbedUnimplementedGabrielEngineServiceServer()
+}
+
+func RegisterGabrielEngineServiceServer(s grpc.ServiceRegistrar, srv GabrielEngineServiceServer) {
+	// If the following call panics, it indicates UnimplementedGabrielEngineServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&GabrielEngineService_ServiceDesc, srv)
+}
+
+func _GabrielEngineService_EngineSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GabrielEngineServiceServer).EngineSession(&grpc.GenericServerStream[FromEngine, ToEngine]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type GabrielEngineService_EngineSessionServer = grpc.BidiStreamingServer[FromEngine, ToEngine]
+
+// GabrielEngineService_ServiceDesc is the grpc.ServiceDesc for GabrielEngineService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var GabrielEngineService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "gabriel.GabrielEngineService",
+	HandlerType: (*GabrielEngineServiceServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "EngineSession",
+			Handler:       _GabrielEngineService_EngineSession_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

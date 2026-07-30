@@ -353,9 +353,9 @@ class ZeroMQClient(GabrielClient):
                     continue
 
                 from_client = gabriel_pb2.FromClient()
-                from_client.frame_id = frame_id
+                from_client.input.frame_id = frame_id
                 frame_id += 1
-                from_client.producer_id = producer.producer_id
+                from_client.input.producer_id = producer.producer_id
 
                 target_engines = set(producer.get_target_engines())
                 available_engines = set(self._engine_ids)
@@ -369,10 +369,10 @@ class ZeroMQClient(GabrielClient):
                     logger.error(msg)
                     raise ValueError(msg)
 
-                from_client.target_engine_ids.extend(
+                from_client.input.target_engine_ids.extend(
                     producer.get_target_engines()
                 )
-                from_client.input_frame.CopyFrom(input_frame)
+                from_client.input.input_frame.CopyFrom(input_frame)
 
                 # Send input to server
                 logger.debug(

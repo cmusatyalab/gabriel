@@ -1,7 +1,7 @@
 """Minimal cognitive engine used by the Go client's integration tests.
 
 Started as a subprocess by tests/main_test.go, this connects to a Gabriel
-server's ZeroMQ engine backend and echoes a fixed response for every input
+server's gRPC engine backend and echoes a fixed response for every input
 frame it receives.
 """
 
@@ -34,12 +34,30 @@ def main():
     """Starts the echo engine."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine-id", default="0")
-    parser.add_argument("--server-address", default="tcp://localhost:5555")
+    parser.add_argument("--server-address", default="localhost:5555")
+    parser.add_argument(
+        "--tls-ca-cert",
+        help="Path to a PEM CA certificate used to verify the server's "
+        "certificate.",
+    )
+    parser.add_argument(
+        "--tls-client-cert",
+        help="Path to a PEM client certificate presented for mutual TLS.",
+    )
+    parser.add_argument(
+        "--tls-client-key",
+        help="Path to the PEM private key matching --tls-client-cert.",
+    )
     args = parser.parse_args()
 
     engine = EchoEngine(args.engine_id)
     runner = engine_runner.EngineRunner(
-        engine, args.engine_id, args.server_address
+        engine,
+        args.engine_id,
+        args.server_address,
+        tls_ca_cert=args.tls_ca_cert,
+        tls_client_cert=args.tls_client_cert,
+        tls_client_key=args.tls_client_key,
     )
     runner.run()
 
