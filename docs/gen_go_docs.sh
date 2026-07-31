@@ -12,4 +12,3 @@ if ! command -v gomarkdoc >/dev/null 2>&1; then
 fi
 
 gomarkdoc --output source/go_client.md ../go-client
-gomarkdoc --output source/go_protocol.md ../protocol/go

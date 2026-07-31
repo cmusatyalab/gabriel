@@ -20,4 +20,3 @@ Gabriel is a framework for wearable cognitive assistance using cloudlets.
    :caption: Go
 
    go_client
-   go_protocol

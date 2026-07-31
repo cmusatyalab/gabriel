@@ -218,7 +218,7 @@ func (client *GrpcClient) producerHandler(
 		}
 		if !producer.IsRunning() {
 			logger.Info().Msg("producer is not running; waiting")
-			producer.WaitForRunning()
+			producer.waitForRunning()
 			logger.Info().Msg("producer resumed")
 		}
 

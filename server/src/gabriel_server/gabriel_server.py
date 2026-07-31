@@ -28,6 +28,12 @@ class GabrielServer(ABC):
 
     Consumes input from the clients and passes it to the specified callback
     function. Results are sent back to the client as they become available.
+
+    This is a low-level building block. Most users should not instantiate or
+    subclass it directly; use
+    :class:`gabriel_server.network_engine.server_runner.ServerRunner` instead,
+    which wires a `GabrielServer` transport up to cognitive engines over the
+    network.
     """
 
     def __init__(

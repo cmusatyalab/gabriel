@@ -50,8 +50,8 @@ _TRANSPORT_CLASSES = {
 }
 
 
-Metadata = namedtuple(
-    "Metadata",
+_Metadata = namedtuple(
+    "_Metadata",
     [
         "frame_id",
         "producer_id",
@@ -62,7 +62,7 @@ Metadata = namedtuple(
 )
 
 
-MetadataPayload = namedtuple("MetadataPayload", ["metadata", "payload"])
+_MetadataPayload = namedtuple("_MetadataPayload", ["metadata", "payload"])
 
 ENGINE_LATENCY = Histogram(
     "gabriel_engine_processing_latency_seconds",
@@ -734,7 +734,7 @@ class _ProducerInfo:
             producer_id=self._producer_id
         ).inc()
 
-        metadata = Metadata(
+        metadata = _Metadata(
             frame_id=from_client.input.frame_id,
             producer_id=self._producer_id,
             client_address=client_address,
@@ -742,7 +742,7 @@ class _ProducerInfo:
             client_info=client_info,
         )
         payload = from_client.input.input_frame
-        metadata_payload = MetadataPayload(metadata=metadata, payload=payload)
+        metadata_payload = _MetadataPayload(metadata=metadata, payload=payload)
 
         target_engines = set()
         for engine_worker in self._engine_workers.values():

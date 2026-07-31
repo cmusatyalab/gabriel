@@ -24,7 +24,7 @@ type InputSource struct {
 	cond            *sync.Cond
 }
 
-// NewInputSource creates a new input producer with the given name and
+// NewInputSource creates a new input source with the given name and
 // producer. The resulting InputSource will target engines specified by
 // targetEngineIDs.
 func NewInputSource(name string, producer Producer, targetEngineIDs []string) *InputSource {
@@ -96,8 +96,8 @@ func (producer *InputSource) IsRunning() bool {
 	return producer.running
 }
 
-// WaitForRunning blocks until the InputSource is running.
-func (producer *InputSource) WaitForRunning() {
+// waitForRunning blocks until the InputSource is running.
+func (producer *InputSource) waitForRunning() {
 	producer.runningMu.Lock()
 	defer producer.runningMu.Unlock()
 	for !producer.running {

@@ -16,7 +16,7 @@ from gabriel_client.gabriel_client import (
     DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,
     GabrielClient,
     InputProducer,
-    TokenPool,
+    _TokenPool,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,13 +107,6 @@ class ZeroMQClient(GabrielClient):
 
         self._connected.set()
 
-    def remove_input_producer(self, input_producer):
-        """Remove an input producer from the client."""
-        if input_producer not in self.input_producers:
-            return False
-        self.input_producers.remove(input_producer)
-        return True
-
     async def launch_async(self):
         """Launch async tasks for running the client.
 
@@ -128,8 +121,8 @@ class ZeroMQClient(GabrielClient):
         logger.info("Sent hello message to server")
 
         tasks = [
-            asyncio.create_task(self._producer_handler(input_producer))
-            for input_producer in self.input_producers
+            asyncio.create_task(self._producer_handler(input_source))
+            for input_source in self.input_producers
         ]
         tasks.append(asyncio.create_task(self._consumer_handler()))
         tasks.append(asyncio.create_task(self._heartbeat_loop()))
@@ -251,7 +244,7 @@ class ZeroMQClient(GabrielClient):
         code = result_status.code
         msg = result_status.message
         if code == gabriel_pb2.StatusCode.SUCCESS:
-            self.record_response_latency(result_wrapper)
+            self._record_response_latency(result_wrapper)
             try:
                 self.consumer(result)
             except Exception as e:
@@ -301,7 +294,7 @@ class ZeroMQClient(GabrielClient):
         frame_id = 1
 
         producer_id = producer.producer_id
-        token_pool = TokenPool(self._num_tokens_per_producer, producer_id)
+        token_pool = _TokenPool(self._num_tokens_per_producer, producer_id)
         self._tokens[producer_id] = token_pool
 
         try:
@@ -311,7 +304,7 @@ class ZeroMQClient(GabrielClient):
                         f"Producer {producer.producer_id} is not running; "
                         f"waiting"
                     )
-                    await producer.wait_for_running()
+                    await producer._wait_for_running()
                     logger.info(f"Producer {producer.producer_id} resumed")
 
                 try:
@@ -416,7 +409,7 @@ class ZeroMQClient(GabrielClient):
 
     async def send_to_server(self, from_client: gabriel_pb2.FromClient):
         """Send a frame to the server."""
-        self.record_send_metrics(from_client)
+        self._record_send_metrics(from_client)
         await self._send_raw(from_client)
 
     async def _send_raw(self, from_client: gabriel_pb2.FromClient):

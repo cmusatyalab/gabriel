@@ -2,7 +2,11 @@
 
 import logging
 import time
+from typing import Callable
 
+from gabriel_protocol import gabriel_pb2
+
+from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.websocket_client import WebsocketClient
 
 logger = logging.getLogger(__name__)
@@ -12,38 +16,52 @@ class MeasurementClient(WebsocketClient):
     """A WebSocket client that measures performance metrics."""
 
     def __init__(
-        self, host, port, producer_wrappers, consumer, output_freq=10
+        self,
+        server_endpoint: str,
+        input_producers: list[InputProducer],
+        consumer: Callable[[gabriel_pb2.Result], None],
+        output_freq: int = 10,
+        **kwargs,
     ):
         """Initialize the measurement client."""
-        super().__init__(host, port, producer_wrappers, consumer)
+        super().__init__(server_endpoint, input_producers, consumer, **kwargs)
 
-        self._source_measurements = {}
         self._output_freq = output_freq
+        self._start_time = None
+        self._source_measurements = {}
 
     def _process_registered(self, registered):
         super()._process_registered(registered)
-        start_time = time.time()
-        for source_name in registered.sources_consumed:
-            source_measurement = _SourceMeasurement(
-                start_time, self._output_freq
-            )
-            self._source_measurements[source_name] = source_measurement
+        self._start_time = time.time()
 
-    def _process_response(self, response):
+    def _get_source_measurement(self, producer_id):
+        source_measurement = self._source_measurements.get(producer_id)
+        if source_measurement is None:
+            source_measurement = _SourceMeasurement(
+                self._start_time, self._output_freq
+            )
+            self._source_measurements[producer_id] = source_measurement
+        return source_measurement
+
+    def _process_response(self, result_wrapper):
         response_time = time.time()
-        super()._process_response(response)
-        if response.return_token:
-            source_measurement = self._source_measurements[
-                response.source_name
-            ]
+        super()._process_response(result_wrapper)
+        if result_wrapper.return_token:
+            source_measurement = self._get_source_measurement(
+                result_wrapper.producer_id
+            )
             source_measurement.process_response(
-                response.frame_id, response.source_name, response_time
+                result_wrapper.result.frame_id,
+                result_wrapper.producer_id,
+                response_time,
             )
 
     async def _send_from_client(self, from_client):
         await super()._send_from_client(from_client)
         send_time = time.time()
-        source_measurement = self._source_measurements[from_client.source_name]
+        source_measurement = self._get_source_measurement(
+            from_client.input.producer_id
+        )
         source_measurement.log_send(from_client.input.frame_id, send_time)
 
 
@@ -56,16 +74,16 @@ class _SourceMeasurement:
         self._interval_start_time = start_time
         self._output_freq = output_freq
 
-    def process_response(self, frame_id, source_name, response_time):
+    def process_response(self, frame_id, producer_id, response_time):
         self._recv_timestamps[frame_id] = response_time
         self._count += 1
 
         if (self._count % self._output_freq) == 0:
-            self._compute_and_print(source_name, response_time)
+            self._compute_and_print(producer_id, response_time)
             self._interval_start_time = time.time()
 
-    def _compute_and_print(self, source_name, response_time):
-        print("Measurements for source:", source_name)
+    def _compute_and_print(self, producer_id, response_time):
+        print("Measurements for producer:", producer_id)
         overall_fps = _compute_fps(
             self._count, response_time, self._start_time
         )

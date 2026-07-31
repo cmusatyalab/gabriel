@@ -13,7 +13,7 @@ from gabriel_client.gabriel_client import (
     DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,
     GabrielClient,
     InputProducer,
-    TokenPool,
+    _TokenPool,
 )
 
 URI_FORMAT = "ws://{host}:{port}"
@@ -90,8 +90,8 @@ class WebsocketClient(GabrielClient):
             self._websocket = websocket
             consumer_task = asyncio.create_task(self._consumer_handler())
             tasks = [
-                asyncio.create_task(self._producer_handler(input_producer))
-                for input_producer in self.input_producers
+                asyncio.create_task(self._producer_handler(input_source))
+                for input_source in self.input_producers
             ]
             tasks.append(consumer_task)
             registration_task = asyncio.create_task(
@@ -144,7 +144,7 @@ class WebsocketClient(GabrielClient):
     def _process_response(self, result_wrapper):
         result = result_wrapper.result
         if result.status.code == gabriel_pb2.StatusCode.SUCCESS:
-            self.record_response_latency(result_wrapper)
+            self._record_response_latency(result_wrapper)
             self.consumer(result_wrapper.result)
         elif result.status.code == gabriel_pb2.StatusCode.NO_ENGINE_FOR_INPUT:
             raise Exception("No engine for input")
@@ -169,7 +169,7 @@ class WebsocketClient(GabrielClient):
         """
         if not await self._wait_while_running(self._registered_event):
             return
-        token_pool = TokenPool(
+        token_pool = _TokenPool(
             self._num_tokens_per_producer, producer.producer_id
         )
         self._tokens[producer.producer_id] = token_pool
@@ -215,7 +215,7 @@ class WebsocketClient(GabrielClient):
                 return  # stop the handler
 
     async def _send_from_client(self, from_client):
-        self.record_send_metrics(from_client)
+        self._record_send_metrics(from_client)
         # Removing this method will break measurement_client
         await self._send_raw(from_client)
 

@@ -49,7 +49,12 @@ class InputProducer:
     :meth:`resume`. The current status (stopped/running) can be obtained using
     :meth:`is_running`. By default, the input producer is running.
 
-    The methods of this class are thread-safe.
+    The methods of this class are thread-safe. In particular,
+    :meth:`change_target_engines`, :meth:`add_target_engine`,
+    :meth:`remove_target_engine`, and :meth:`get_target_engines` may be called
+    safely at any time, including while the producer is running and
+    concurrently with each other; a change takes effect on the next iteration
+    of the producer loop.
     """
 
     def __init__(
@@ -165,7 +170,7 @@ class InputProducer:
             if self._running.wait(0.1):
                 break
 
-    async def wait_for_running(self) -> None:
+    async def _wait_for_running(self) -> None:
         """Block until the producer is running."""
         shutdown_event = threading.Event()
         try:
@@ -182,7 +187,7 @@ class InputProducer:
             return frozenset(self._target_engine_ids)
 
 
-class TokenPool:
+class _TokenPool:
     """A pool of tokens.
 
     Used to limit the number of in-flight requests for a particular
@@ -367,7 +372,7 @@ class GabrielClient(ABC):
             self._reregistration_needed.clear()
             self._registered_event.clear()
 
-    def record_send_metrics(self, from_client: FromClient) -> bool:
+    def _record_send_metrics(self, from_client: FromClient) -> bool:
         """Record metrics related to sending of input to server."""
         producer_id = from_client.input.producer_id
         CLIENT_INPUTS_SENT_TOTAL.labels(producer_id=producer_id).inc()
@@ -375,7 +380,7 @@ class GabrielClient(ABC):
         frame_id = from_client.input.frame_id
         self._pending_results[frame_id] = time.monotonic()
 
-    def record_response_latency(self, result_wrapper: ToClient.ResultWrapper):
+    def _record_response_latency(self, result_wrapper: ToClient.ResultWrapper):
         """Record the response latency for input."""
         producer_id = result_wrapper.producer_id
         result = result_wrapper.result
