@@ -120,21 +120,10 @@ order.
    2. Each client is assigned to a specific instance of an engine. No other
       instances of this engine will get frames from this client. This setting
       will be used for engines that store state information for each client.
-3. Gabriel does not expose any client identification information to cognitive
-   engines. Clients can include this information in the `extras` field of
-   `InputFrame` messages. However, this should be added as a part of Gabriel
-   itself at some point.
-   1. Should this identity persist when the client disconnects and reconnects?
-   2. If support for multiple instances of the same engine is added, should this
-      identity be used when a group is set to assign a client to one specific
-      instance of an engine?
-4. When cognitive engines are run separately from the server, clients do
-   not handle the case when all engines that consume a source disconnect. To
-   handle this case, the Gabriel server would need to tell clients when this
-   happens. The clients would then need to stop sending inputs from this source.
-5. The security of Gabriel could be improved in a number of areas. The
-   connections between clients and the server, and the connections between
-   the server and standalone engine runners, could both be improved. These
-   improvements could be in the form of encrypting traffic, requiring a password
-   for clients and engine runners to connect to the server, and specifying a
-   list of approved clients and engine runners in a server configuration file.
+3. The security of Gabriel could be improved further. Connections between
+   clients and the server, and between the server and standalone engine
+   runners, can already be encrypted with TLS (including mutual TLS via a
+   client CA cert). However, Gabriel still does not support requiring a
+   password or token for clients and engine runners to connect to the
+   server, nor specifying a list of approved clients and engine runners in a
+   server configuration file.

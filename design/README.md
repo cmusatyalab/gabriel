@@ -26,17 +26,18 @@ source, but we restrict each cognitive engine to consuming data from one source.
 This reduces the complexity of cognitive engines.
 
 Cognitive engines are all implemented in Python. Developers implement a single
-function that takes a frame as its input parameter and returns a list of
-results when it completes. Cogitive engines that do not need to return results
-to mobile devices can just return an empty list. Our flow control mechanism is
-based on tokens. Clients have a set of tokens for every source. When a client
-sends a frame to the cloudlet, it gives up a token for this source. The cloudlet
+`handle` method that takes a frame (and metadata about the client that
+produced it) as input and returns a single result when it completes.
+Cognitive engines that do not need to return results to mobile devices can
+just return a result with no payload. Our flow control mechanism is based on
+tokens. Clients have a set of tokens for every source. When a client sends a
+frame to the cloudlet, it gives up a token for this source. The cloudlet
 returns the relevant token when the function processing the frame returns.
 A client will drop all frames from a source, until it gets a token for this
-source. Clients and
-cloudlets communicate using the The
-[WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455), which is
-built on TCP. Therefore, tokens will never be lost due to packet loss.
+source. Clients and cloudlets communicate over gRPC by default (WebSocket and
+ZeroMQ transports are also available), all of which run over TCP, so tokens
+will never be lost due to packet loss. Connections can be secured with TLS,
+including mutual TLS between clients/engines and the server.
 
 Applications that are very latency sensitive should be run with a single token
 per source.
@@ -85,20 +86,22 @@ ignores the frames it missed and just processes the frame that is currently at
 the head of the queue.
 
 Many applications will only need a single cognitive engine. Our server code
-runs workflows like this as a single Python program. A WebSocket server is run
+runs workflows like this as a single Python program. A server is run
 in the main process, and the cognitive engine is run in a separate process using
 Python's multiprocessing module. Inter-process communication is done using the
 multiprocessing module's Pipe function. For workloads that require multiple
 cognitive engines (such as the one depicted below,
-the WebSocket server is run as a standalone Python program and each cognitive
+the server is run as a standalone Python program and each cognitive
 engine is run as a separate program. The programs communicate
-with each other using [ZeroMQ](https://zeromq.org/).
+with each other over [gRPC](https://grpc.io/).
 
 ![Architecture](architecture.png)
 
 We have developed client libraries for Python and Android. These include
-networking componenets that communicate with our server code using WebSockets.
-The libraries also contain functions to capture images with a camera and
-transmit the latest frame whenever a token is available. The Python library uses
-[OpenCV](https://opencv.org) to capture images while the Android library uses
+networking components that communicate with our server code: the Python
+library supports gRPC, WebSocket, and ZeroMQ, while the Android library
+currently supports WebSocket only. The libraries also contain functions to
+capture images with a camera and transmit the latest frame whenever a token is
+available. The Python library uses [OpenCV](https://opencv.org) to capture
+images while the Android library uses
 [CameraX](https://developer.android.com/training/camerax).

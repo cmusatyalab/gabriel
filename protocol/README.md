@@ -17,7 +17,7 @@ Run `buf generate` from this directory to regenerate the Go and Python bindings 
 
 ## Publishing Changes to PyPi
 
-Update the version number in `python/setup.py`. Then follow
+Update the `version` field in `python/pyproject.toml`. Then follow
 [these instructions](https://packaging.python.org/tutorials/packaging-projects/#generating-distribution-archives).
 
 ## Publishing Changes to Maven Central
