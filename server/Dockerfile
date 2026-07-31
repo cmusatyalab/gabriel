@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip3 install --upgrade pip
 
+COPY --from=protocol . /gabriel-protocol
+RUN python3 -m pip install /gabriel-protocol
+
 COPY . .
 RUN python3 -m pip install -e .
 

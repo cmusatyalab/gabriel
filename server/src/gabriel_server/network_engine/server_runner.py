@@ -615,7 +615,26 @@ class _EngineWorker:
         await self._send_helper(to_engine)
 
     async def send_next_input(self):
-        """Send next input."""
+        """Send this engine its next input, rotating fairly across producers.
+
+        Producers are tried in round-robin order (self._producers.rotate),
+        and returning as soon as one has something to send leaves the deque
+        rotated for next time, so a busy producer can't monopolize this
+        engine's attention.
+
+        Each producer has at most one "in-flight" frame at a time: the frame
+        most recently dispatched to any of its target engines, for which no
+        engine has yet returned a result (producer.pending_token_return is
+        True while it's in flight, producer.latest_input_sent_to_engine holds
+        it). Whichever engine finishes the in-flight frame first returns its
+        token, which clears pending_token_return and lets this engine dequeue
+        the next frame - making that the new in-flight frame. Any engine that
+        asks for work while a frame is still in flight doesn't pull from the
+        queue at all; it just picks up that same in-flight frame, as long as
+        it hasn't already been sent it. This is what lets a slower engine
+        skip straight to the newest input instead of working through a
+        backlog.
+        """
         for _ in range(len(self._producers)):
             self._producers.rotate(-1)
             producer = self._producers[0]
@@ -675,13 +694,14 @@ class _ProducerInfo:
         self._engine_workers = engine_workers
         self._input_queue = deque(maxlen=size_for_queues)
         self._size_for_queues = size_for_queues
-        # The latest input from this source that was sent to at least one
-        # engine.
+        # The "in-flight" input: the latest input from this source that was
+        # sent to at least one engine.
         self.latest_input_sent_to_engine = None
         self.target_engines = None
 
-        # Whether the token return for the last input sent to at least one
-        # engine is pending
+        # Whether the in-flight input above is still awaiting its token
+        # return, i.e. no engine has returned a result for it yet. See
+        # _EngineWorker.send_next_input for how this gates the input queue.
         self.pending_token_return = None
 
     def get_name(self):
@@ -771,6 +791,11 @@ class _ProducerInfo:
             f"Targeting engines {[e.get_engine_id() for e in target_engines]}"
         )
 
+        # Dispatch to every idle target engine right away, rather than
+        # picking just one, so a frame can be processed by more than one
+        # engine at once. Only if every target engine is currently busy does
+        # it fall back to this producer's queue, to be picked up later via
+        # send_next_input.
         all_engines_busy = True
         for engine_worker in set(target_engines):
             await engine_worker.add_producer(self)

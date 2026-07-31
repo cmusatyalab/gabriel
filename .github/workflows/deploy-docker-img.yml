@@ -17,6 +17,10 @@ on:
         required: true
         type: string
         default: '.'
+      build_contexts:
+        description: 'Extra named build contexts, one "name=path" per line'
+        type: string
+        default: ''
     secrets:
       DOCKERHUB_USERNAME:
         required: true
@@ -66,6 +70,7 @@ jobs:
       with:
         context: ${{ inputs.ctx }}
         file: ${{ inputs.dockerfile }}
+        build-contexts: ${{ inputs.build_contexts }}
         push: true
         tags: cmusatyalab/${{ inputs.name }}:${{ steps.get_tag.outputs.tag }}
         #cache-from: type=registry,ref=cmusatyalab/${{ inputs.name }}:latest

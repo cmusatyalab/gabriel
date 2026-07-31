@@ -6,6 +6,7 @@ on:
     tags: [ "v*" ]
     paths:
       - 'server/**'
+      - 'protocol/python/**'
 jobs:
   build-and-push:
     uses: ./.github/workflows/deploy-docker-img.yml
@@ -13,5 +14,6 @@ jobs:
       name: gabriel-server
       dockerfile: server/Dockerfile
       ctx: server
+      build_contexts: protocol=protocol/python
       free_disk_space: true
     secrets: inherit

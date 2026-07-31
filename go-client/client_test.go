@@ -22,6 +22,11 @@ const (
 	targetEngineSwitchWait = 3 * time.Second
 	inputInterval          = 50 * time.Millisecond
 	pollInterval           = 50 * time.Millisecond
+	// multipleEnginesWait bounds how long TestMultipleEngines polls for every
+	// engine to have received at least one response. It's longer than
+	// launchResponseWait to give scheduling/timing jitter under CI load some
+	// headroom before a given engine gets its first frame.
+	multipleEnginesWait = 10 * time.Second
 	// inFlightDrainWait bounds how long frames that snapshotted a producer's
 	// target engines before a change takes effect may take to be sent and
 	// answered by the server.
@@ -143,7 +148,7 @@ func TestMultipleEngines(t *testing.T) {
 
 	for _, engineID := range []string{"engine-0", engine1, engine2} {
 		engineID := engineID
-		if !waitUntil(launchResponseWait, pollInterval, func() bool { return counts.get(engineID) > 0 }) {
+		if !waitUntil(multipleEnginesWait, pollInterval, func() bool { return counts.get(engineID) > 0 }) {
 			t.Errorf("did not receive a response from engine %s", engineID)
 		}
 	}
