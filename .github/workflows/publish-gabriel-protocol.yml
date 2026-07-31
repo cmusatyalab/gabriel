@@ -1,0 +1,16 @@
+# .github/workflows/publish-gabriel-protocol.yml
+name: Publish gabriel-protocol to PyPI
+
+on:
+  push:
+    tags:
+      - "protocol/python/v*"
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-python-package.yml
+    with:
+      package-dir: protocol/python
+      artifact-name: gabriel-protocol-dist
+    permissions:
+      id-token: write

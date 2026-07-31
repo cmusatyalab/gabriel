@@ -1,0 +1,16 @@
+# .github/workflows/publish-gabriel-server.yml
+name: Publish gabriel-server to PyPI
+
+on:
+  push:
+    tags:
+      - "server/v*"
+
+jobs:
+  publish:
+    uses: ./.github/workflows/publish-python-package.yml
+    with:
+      package-dir: server
+      artifact-name: gabriel-server-dist
+    permissions:
+      id-token: write
