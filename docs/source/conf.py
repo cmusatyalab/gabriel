@@ -28,7 +28,13 @@ extensions = [
     "sphinx.ext.autodoc",  # Pulls docstrings from your code
     "sphinx.ext.napoleon",  # Supports Google & NumPy-style docstrings
     "sphinx.ext.viewcode",  # Adds "View Source" links
+    "myst_parser",  # Supports Markdown pages (e.g. generated Go docs)
 ]
+
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
 
 templates_path = ["_templates"]
 exclude_patterns = []

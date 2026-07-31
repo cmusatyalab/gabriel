@@ -1,0 +1,5 @@
+sphinx
+myst-parser
+../python-client
+../server
+../protocol/python

@@ -10,7 +10,14 @@ Gabriel is a framework for wearable cognitive assistance using cloudlets.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Python
 
    gabriel_client
    gabriel_server
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Go
+
+   go_client
+   go_protocol

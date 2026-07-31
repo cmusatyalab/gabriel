@@ -22,3 +22,5 @@ local.properties
 
 # sphinx
 docs/build
+docs/source/go_client.md
+docs/source/go_protocol.md
