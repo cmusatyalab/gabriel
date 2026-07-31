@@ -52,7 +52,13 @@ _TRANSPORT_CLASSES = {
 
 Metadata = namedtuple(
     "Metadata",
-    ["frame_id", "producer_id", "client_address", "target_engine_ids"],
+    [
+        "frame_id",
+        "producer_id",
+        "client_address",
+        "target_engine_ids",
+        "client_info",
+    ],
 )
 
 
@@ -502,30 +508,36 @@ class _Server(gabriel_pb2_grpc.GabrielEngineServiceServicer):
                 if (
                     latest_input is not None
                     and current_input_metadata == latest_input.metadata
+                    and (
+                        producer_info.pending_token_return
+                        or engine_worker.get_all_responses_required()
+                    )
                 ):
-                    # Return token for frame engine was in the middle of
-                    # processing.
+                    return_token = producer_info.pending_token_return
+                    # Clear the flag first so that other engines targeted by
+                    # the same input don't also return a token for it if
+                    # they disconnect too.
+                    producer_info.pending_token_return = False
+
                     result = gabriel_pb2.Result()
                     result.status.code = gabriel_pb2.StatusCode.ENGINE_ERROR
                     result.status.message = f"Engine {engine_id} disconnected"
                     result.target_engine_id = engine_id
                     result.frame_id = current_input_metadata.frame_id
 
-                    # TODO(Aditya): what about other targeted engines?
-
                     await self.server.send_result(
                         current_input_metadata.client_address,
                         producer_info.get_name(),
                         engine_id,
                         result,
-                        return_token=True,
+                        return_token=return_token,
                     )
 
         self._engine_ids.remove(engine_id)
         del self._engine_workers[context]
         await self.server._engines_updated_cb()
 
-    async def _send_to_engine(self, from_client, client_address):
+    async def _send_to_engine(self, from_client, client_address, client_info):
         logger.debug(
             f"Received input from client {client_address} with source ID "
             f"{from_client.input.producer_id} and frame id "
@@ -542,7 +554,7 @@ class _Server(gabriel_pb2_grpc.GabrielEngineServiceServicer):
             )
         producer_info = self._producer_infos[from_client.input.producer_id]
         return await producer_info.process_input_from_client(
-            from_client, client_address
+            from_client, client_address, client_info
         )
 
 
@@ -596,7 +608,10 @@ class _EngineWorker:
         metadata = metadata_payload.metadata
         self._current_input_metadata = metadata
         self._latest_input_processed[metadata.producer_id] = metadata
-        to_engine = gabriel_pb2.ToEngine(input_frame=metadata_payload.payload)
+        to_engine = gabriel_pb2.ToEngine(
+            input_frame=metadata_payload.payload,
+            client_info=metadata.client_info,
+        )
         await self._send_helper(to_engine)
 
     async def send_next_input(self):
@@ -673,7 +688,10 @@ class _ProducerInfo:
         return self._producer_id
 
     async def process_input_from_client(
-        self, from_client: gabriel_pb2.FromClient, client_address: str
+        self,
+        from_client: gabriel_pb2.FromClient,
+        client_address: str,
+        client_info,
     ):
         """Process input received from a client.
 
@@ -682,6 +700,8 @@ class _ProducerInfo:
         Args:
             from_client: The client input to process.
             client_address: The address of the client.
+            client_info: The Any registered by the client, forwarded to
+                engine workers alongside the input.
         """
         logger.debug(
             f"Processing input from client {client_address} with source ID "
@@ -699,6 +719,7 @@ class _ProducerInfo:
             producer_id=self._producer_id,
             client_address=client_address,
             target_engine_ids=from_client.input.target_engine_ids,
+            client_info=client_info,
         )
         payload = from_client.input.input_frame
         metadata_payload = MetadataPayload(metadata=metadata, payload=payload)

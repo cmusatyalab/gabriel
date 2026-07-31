@@ -147,30 +147,8 @@ class ZeroMQServer(GabrielServer):
                 logger.info("New client connected: %s", address)
                 task = asyncio.create_task(self._consumer(address))
                 task.add_done_callback(handle_task_result)
-                client = self._Client(
-                    tokens_for_producer={},
-                    inputs=asyncio.Queue(),
-                    task=task,
-                    websocket=None,
-                )
+                client = self._new_client(task=task)
                 self._clients[address] = client
-
-                # Send client welcome message
-                welcome = self._make_welcome()
-                try:
-                    await self._sock.send_multipart(
-                        [address, welcome.SerializeToString()]
-                    )
-                except (zmq.ZMQError, ValueError) as error:
-                    logging.error(
-                        f"Error '{error.msg}' when sending on ZeroMQ socket"
-                    )
-                    continue
-                except asyncio.CancelledError:
-                    if self._simulate_disconnection:
-                        continue
-                    raise
-                logger.debug("Sent welcome message to new client: %s", address)
 
             if raw_input == HELLO_MSG:
                 continue
@@ -229,7 +207,14 @@ class ZeroMQServer(GabrielServer):
                 logger.debug(
                     "Consumed input from client %s successfully", address
                 )
-                client.tokens_for_producer[from_client.input.producer_id] -= 1
+                if from_client.WhichOneof("message_type") == "registration":
+                    await self._sock.send_multipart(
+                        [address, self._make_registered().SerializeToString()]
+                    )
+                else:
+                    client.tokens_for_producer[
+                        from_client.input.producer_id
+                    ] -= 1
                 continue
 
             # Send error message

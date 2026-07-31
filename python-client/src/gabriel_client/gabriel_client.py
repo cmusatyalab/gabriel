@@ -7,12 +7,18 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine, Iterable
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from gabriel_protocol.gabriel_pb2 import FromClient, InputFrame, ToClient
+from google.protobuf.any_pb2 import Any as ProtoAny
 from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
+
+# Default time to wait for a Registered acknowledgement before retrying the
+# Registration message, used unless overridden via the
+# registration_retry_interval_seconds constructor argument.
+DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS = 2
 
 PRODUCER_TOKEN_COUNT = Gauge(
     "gabriel_producer_token_count",
@@ -234,15 +240,34 @@ class TokenPool:
 class GabrielClient(ABC):
     """Abstract base class for a Gabriel client."""
 
-    def __init__(self, prometheus_port: int):
+    def __init__(
+        self,
+        prometheus_port: int,
+        client_info: Optional[ProtoAny] = None,
+        registration_retry_interval_seconds: float = (
+            DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS
+        ),
+    ):
         """Initialize the Gabriel client.
 
         Args:
             prometheus_port (int): Port for Prometheus metrics.
+            client_info (google.protobuf.any_pb2.Any, optional):
+                Client-specific information sent to the server once per
+                session as part of this client's Registration message, made
+                available to engines alongside any input this client
+                subsequently sends. If omitted, no client_info is sent.
+            registration_retry_interval_seconds (float):
+                How long to wait for a Registered acknowledgement before
+                retrying the Registration message.
         """
         self._running = True
-        # Whether a welcome message has been received from the server
-        self._welcome_event = asyncio.Event()
+        # Whether a Registered message has been received from the server
+        self._registered_event = asyncio.Event()
+        # Set by a transport to signal that it has reconnected and this client
+        # must send a fresh Registration message, since the server treats a new
+        # connection as a new, unregistered client
+        self._reregistration_needed = asyncio.Event()
         self.input_producers = set()
         # The number of tokens per input source, as specified by the \
         # server
@@ -253,6 +278,10 @@ class GabrielClient(ABC):
         # sent to the server
         self._pending_results = {}
         self._prometheus_port = prometheus_port
+        self._client_info = client_info
+        self._registration_retry_interval_seconds = (
+            registration_retry_interval_seconds
+        )
 
     def launch(self) -> None:
         """Launch the client synchronously.
@@ -269,6 +298,74 @@ class GabrielClient(ABC):
     def stop(self) -> None:
         """Stop the client."""
         self._running = False
+
+    async def _wait_while_running(self, event: asyncio.Event) -> bool:
+        """Wait for `event`, waking up periodically to re-check `_running`.
+
+        A plain `await event.wait()` would block forever if the client is
+        stopped via `stop()` (which only sets a flag) rather than by
+        cancelling the awaiting task, since nothing would ever wake it up.
+
+        Returns False if the client stopped running while waiting, True if
+        `event` was set.
+        """
+        while self._running and not event.is_set():
+            try:
+                await asyncio.wait_for(
+                    event.wait(),
+                    timeout=self._registration_retry_interval_seconds,
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                continue
+        return self._running
+
+    def _build_registration_message(self) -> FromClient:
+        """Build this client's Registration message."""
+        from_client = FromClient()
+        if self._client_info is not None:
+            from_client.registration.client_info.CopyFrom(self._client_info)
+        else:
+            from_client.registration.SetInParent()
+        return from_client
+
+    async def _registration_handler(
+        self, send: Callable[[FromClient], Coroutine]
+    ) -> None:
+        """Send this client's Registration message, retrying until acked.
+
+        Re-sends the Registration message whenever a transport signals (via
+        `_reregistration_needed`) that it has reconnected, since the server
+        treats a new connection as a new, unregistered client.
+
+        Args:
+            send:
+                Coroutine function that writes a FromClient message to the
+                server over this client's transport.
+        """
+        while self._running:
+            message = self._build_registration_message()
+            await send(message)
+            while self._running and not self._registered_event.is_set():
+                try:
+                    await asyncio.wait_for(
+                        self._registered_event.wait(),
+                        timeout=self._registration_retry_interval_seconds,
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    logger.info(
+                        "No registration acknowledgement yet from server; "
+                        "retrying"
+                    )
+                    await send(message)
+
+            if not self._running:
+                return
+
+            if not await self._wait_while_running(self._reregistration_needed):
+                return
+
+            self._reregistration_needed.clear()
+            self._registered_event.clear()
 
     def record_send_metrics(self, from_client: FromClient) -> bool:
         """Record metrics related to sending of input to server."""

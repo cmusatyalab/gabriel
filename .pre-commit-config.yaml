@@ -28,6 +28,12 @@ repos:
 
   - repo: local
     hooks:
+      - id: python-compile
+        name: python compile check
+        entry: python3 scripts/check_python_compiles.py
+        language: system
+        types: [python]
+
       - id: go-fmt
         name: go fmt (go-client)
         entry: bash -c 'cd go-client && diff=$(gofmt -l .) && [ -z "$diff" ] || { echo "$diff"; echo "run gofmt -w on the above files"; exit 1; }'

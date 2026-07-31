@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from gabriel_protocol import gabriel_pb2
+from google.protobuf.any_pb2 import Any as ProtoAny
 
 
 @dataclass
@@ -19,8 +20,15 @@ class Engine(ABC):
     """Abstract class for cognitive engines."""
 
     @abstractmethod
-    def handle(self, input_frame: gabriel_pb2.InputFrame) -> Result:
+    def handle(
+        self, input_frame: gabriel_pb2.InputFrame, client_info: ProtoAny
+    ) -> Result:
         """Process a single gabriel_pb2.InputFrame().
+
+        Args:
+            input_frame: The input to process.
+            client_info: The Any registered by the producing client's
+                Registration message, or an empty Any if it registered none.
 
         Return an instance of Result.
         """

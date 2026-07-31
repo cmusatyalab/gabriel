@@ -78,20 +78,10 @@ class WebsocketServer(GabrielServer):
         address = websocket.remote_address
         logger.info("New Client connected: %s", address)
 
-        client = self._Client(
-            tokens_for_producer={},
-            inputs=asyncio.Queue(),
-            task=None,
-            websocket=websocket,
-        )
+        client = self._new_client(websocket=websocket)
         self._clients[address] = client
         write_lock = asyncio.Lock()
         self._write_locks[address] = write_lock
-
-        # Send client welcome message
-        welcome = self._make_welcome()
-        async with write_lock:
-            await websocket.send(welcome.SerializeToString())
 
         try:
             await self._consumer(websocket, client)
@@ -114,8 +104,16 @@ class WebsocketServer(GabrielServer):
                 client, address, from_client
             )
             if status == gabriel_pb2.StatusCode.SUCCESS:
-                # Deduct a token when you get a new input from the client
-                client.tokens_for_producer[from_client.input.producer_id] -= 1
+                if from_client.WhichOneof("message_type") == "registration":
+                    async with self._write_locks[address]:
+                        await websocket.send(
+                            self._make_registered().SerializeToString()
+                        )
+                else:
+                    # Deduct a token when you get a new input from the client
+                    client.tokens_for_producer[
+                        from_client.input.producer_id
+                    ] -= 1
                 continue
 
             # Send error message

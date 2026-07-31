@@ -1,0 +1,16 @@
+version: v2
+inputs:
+  - directory: protos
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: go
+    opt: module=github.com/cmusatyalab/gabriel/protocol/go
+  - remote: buf.build/grpc/go:v1.6.2
+    out: go
+    opt: module=github.com/cmusatyalab/gabriel/protocol/go
+  - remote: buf.build/protocolbuffers/python:v35.1
+    out: python/src
+  - remote: buf.build/protocolbuffers/pyi:v35.1
+    out: python/src
+  - remote: buf.build/grpc/python:v1.83.0
+    out: python/src

@@ -53,7 +53,7 @@ class InputFrame(_message.Message):
     def __init__(self, payload_type: _Optional[_Union[PayloadType, str]] = ..., string_payload: _Optional[str] = ..., byte_payload: _Optional[bytes] = ..., any_payload: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
 
 class FromClient(_message.Message):
-    __slots__ = ("input", "metadata")
+    __slots__ = ("input", "registration")
     class Input(_message.Message):
         __slots__ = ("frame_id", "producer_id", "target_engine_ids", "input_frame")
         FRAME_ID_FIELD_NUMBER: _ClassVar[int]
@@ -65,16 +65,16 @@ class FromClient(_message.Message):
         target_engine_ids: _containers.RepeatedScalarFieldContainer[str]
         input_frame: InputFrame
         def __init__(self, frame_id: _Optional[int] = ..., producer_id: _Optional[str] = ..., target_engine_ids: _Optional[_Iterable[str]] = ..., input_frame: _Optional[_Union[InputFrame, _Mapping]] = ...) -> None: ...
-    class Metadata(_message.Message):
+    class Registration(_message.Message):
         __slots__ = ("client_info",)
         CLIENT_INFO_FIELD_NUMBER: _ClassVar[int]
         client_info: _any_pb2.Any
         def __init__(self, client_info: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
     INPUT_FIELD_NUMBER: _ClassVar[int]
-    METADATA_FIELD_NUMBER: _ClassVar[int]
+    REGISTRATION_FIELD_NUMBER: _ClassVar[int]
     input: FromClient.Input
-    metadata: FromClient.Metadata
-    def __init__(self, input: _Optional[_Union[FromClient.Input, _Mapping]] = ..., metadata: _Optional[_Union[FromClient.Metadata, _Mapping]] = ...) -> None: ...
+    registration: FromClient.Registration
+    def __init__(self, input: _Optional[_Union[FromClient.Input, _Mapping]] = ..., registration: _Optional[_Union[FromClient.Registration, _Mapping]] = ...) -> None: ...
 
 class Status(_message.Message):
     __slots__ = ("code", "message")
@@ -101,15 +101,15 @@ class Result(_message.Message):
     def __init__(self, status: _Optional[_Union[Status, _Mapping]] = ..., string_result: _Optional[str] = ..., bytes_result: _Optional[bytes] = ..., any_result: _Optional[_Union[_any_pb2.Any, _Mapping]] = ..., target_engine_id: _Optional[str] = ..., frame_id: _Optional[int] = ...) -> None: ...
 
 class ToClient(_message.Message):
-    __slots__ = ("welcome", "result_wrapper", "control")
-    class Welcome(_message.Message):
+    __slots__ = ("registered", "result_wrapper", "engine_ids_update")
+    class Registered(_message.Message):
         __slots__ = ("num_tokens_per_producer", "engine_ids")
         NUM_TOKENS_PER_PRODUCER_FIELD_NUMBER: _ClassVar[int]
         ENGINE_IDS_FIELD_NUMBER: _ClassVar[int]
         num_tokens_per_producer: int
         engine_ids: _containers.RepeatedScalarFieldContainer[str]
         def __init__(self, num_tokens_per_producer: _Optional[int] = ..., engine_ids: _Optional[_Iterable[str]] = ...) -> None: ...
-    class Control(_message.Message):
+    class EngineIdsUpdate(_message.Message):
         __slots__ = ("engine_ids",)
         ENGINE_IDS_FIELD_NUMBER: _ClassVar[int]
         engine_ids: _containers.RepeatedScalarFieldContainer[str]
@@ -123,13 +123,13 @@ class ToClient(_message.Message):
         return_token: bool
         result: Result
         def __init__(self, producer_id: _Optional[str] = ..., return_token: _Optional[bool] = ..., result: _Optional[_Union[Result, _Mapping]] = ...) -> None: ...
-    WELCOME_FIELD_NUMBER: _ClassVar[int]
+    REGISTERED_FIELD_NUMBER: _ClassVar[int]
     RESULT_WRAPPER_FIELD_NUMBER: _ClassVar[int]
-    CONTROL_FIELD_NUMBER: _ClassVar[int]
-    welcome: ToClient.Welcome
+    ENGINE_IDS_UPDATE_FIELD_NUMBER: _ClassVar[int]
+    registered: ToClient.Registered
     result_wrapper: ToClient.ResultWrapper
-    control: ToClient.Control
-    def __init__(self, welcome: _Optional[_Union[ToClient.Welcome, _Mapping]] = ..., result_wrapper: _Optional[_Union[ToClient.ResultWrapper, _Mapping]] = ..., control: _Optional[_Union[ToClient.Control, _Mapping]] = ...) -> None: ...
+    engine_ids_update: ToClient.EngineIdsUpdate
+    def __init__(self, registered: _Optional[_Union[ToClient.Registered, _Mapping]] = ..., result_wrapper: _Optional[_Union[ToClient.ResultWrapper, _Mapping]] = ..., engine_ids_update: _Optional[_Union[ToClient.EngineIdsUpdate, _Mapping]] = ...) -> None: ...
 
 class FromEngine(_message.Message):
     __slots__ = ("register", "result")
@@ -147,7 +147,9 @@ class FromEngine(_message.Message):
     def __init__(self, register: _Optional[_Union[FromEngine.Register, _Mapping]] = ..., result: _Optional[_Union[Result, _Mapping]] = ...) -> None: ...
 
 class ToEngine(_message.Message):
-    __slots__ = ("input_frame",)
+    __slots__ = ("input_frame", "client_info")
     INPUT_FRAME_FIELD_NUMBER: _ClassVar[int]
+    CLIENT_INFO_FIELD_NUMBER: _ClassVar[int]
     input_frame: InputFrame
-    def __init__(self, input_frame: _Optional[_Union[InputFrame, _Mapping]] = ...) -> None: ...
+    client_info: _any_pb2.Any
+    def __init__(self, input_frame: _Optional[_Union[InputFrame, _Mapping]] = ..., client_info: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...

@@ -8,6 +8,7 @@ engine ids, and the ZeroMQ result-sink pipeline.
 import asyncio
 import contextlib
 import logging
+import time
 
 import pytest
 import zmq
@@ -17,11 +18,13 @@ from gabriel_protocol import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.result_manager import ZeroMQSink
+from google.protobuf import any_pb2, wrappers_pb2
 from helpers import (
     DEFAULT_SERVER_HOST,
     Engine,
     cancel_and_wait,
     get_consumer,
+    get_multiple_engine_consumer,
     wait_until,
 )
 
@@ -84,12 +87,12 @@ async def test_empty_input_frame(
     assert not response_state["received"]
 
 
-def bad_handle_none(self, input_frame):
+def bad_handle_none(self, input_frame, client_info):
     """An engine handler that returns None."""
     return None
 
 
-def bad_handle_status(self, input_frame):
+def bad_handle_status(self, input_frame, client_info):
     """An engine handler that returns a None status."""
     status = None
     return Result(status, "hello")
@@ -171,6 +174,167 @@ async def test_engine_return_bad_status(
     assert not response_state["received"]
 
 
+def bad_handle_raises(self, input_frame, client_info):
+    """An engine handler that always raises, simulating an engine crash."""
+    raise RuntimeError("Simulated engine crash")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "target_engines", [["Engine-0", "Engine-1", "Engine-2"]]
+)
+@pytest.mark.parametrize("num_engines", [3])
+async def test_all_target_engines_crashing_returns_token_once(
+    run_server,
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    target_engines,
+    caplog,
+    monkeypatch,
+    prometheus_client_port,
+):
+    """Single token should be returned if every targeted engine crashes.
+
+    Regression test: when all engines targeted by an input disconnect, the
+    server should release only one token back to the client.
+    """
+    monkeypatch.setattr(Engine, "handle", bad_handle_raises)
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        lambda x: x,
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await wait_until(
+        lambda: not (set(target_engines) & run_server.server._engine_ids),
+        timeout=5,
+    )
+
+    # A crashing handle() permanently disconnects all target engines, so the
+    # client will eventually raise a "not connected" error once it tries to
+    # target them again. What must NOT happen is the BoundedSemaphore being
+    # over-released.
+    try:
+        await asyncio.wait_for(task, timeout=5)
+    except (TimeoutError, asyncio.TimeoutError):
+        pass
+    except Exception as e:
+        assert "released too many times" not in str(e)
+        assert "BoundedSemaphore" not in str(e)
+
+    assert "released too many times" not in caplog.text
+
+    if not task.done():
+        await cancel_and_wait(task)
+
+
+def crash_second_engine_after_first_responds(self, input_frame, client_info):
+    """Engine-0 succeeds immediately; Engine-1 crashes shortly after.
+
+    The delay lets Engine-0's result reach the server (and claim the token
+    for the frame) before Engine-1 disconnects, so Engine-1's disconnect is
+    handled with the token already returned.
+    """
+    if self.engine_id == 1:
+        time.sleep(0.3)
+        raise RuntimeError("Simulated engine crash")
+    status = gabriel_pb2.Status()
+    status.code = gabriel_pb2.StatusCode.SUCCESS
+    return Result(status, "hello")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_engines", [["Engine-0", "Engine-1"]])
+@pytest.mark.parametrize("engine_ids", [[0, 1]])
+@pytest.mark.parametrize("num_engines", [2])
+@pytest.mark.parametrize("num_inputs_to_send", [1])
+async def test_engine_disconnect_after_token_returned_still_notifies_client(
+    run_server,
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    monkeypatch,
+    caplog,
+    prometheus_client_port,
+):
+    """Test client is notified of a disconnected targeted engine."""
+    monkeypatch.setattr(
+        Engine, "handle", crash_second_engine_after_first_responds
+    )
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_multiple_engine_consumer(response_state),
+        prometheus_client_port,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await wait_until(
+        lambda: "Engine-1" not in run_server.server._engine_ids, timeout=5
+    )
+    await wait_until(
+        lambda: "targeting engine Engine-1 caused error ENGINE_ERROR: "
+        "Engine Engine-1 disconnected" in caplog.text,
+        timeout=5,
+    )
+
+    assert response_state.get("Engine-0", 0) > 0
+    assert (
+        "targeting engine Engine-1 caused error ENGINE_ERROR: "
+        "Engine Engine-1 disconnected" in caplog.text
+    )
+
+    if not task.done():
+        await cancel_and_wait(task)
+
+
+@pytest.mark.asyncio
+async def test_client_info_propagated_to_engine(
+    run_engines,
+    input_producer,
+    server_frontend_port,
+    response_state,
+    monkeypatch,
+    prometheus_client_port,
+):
+    """Test that client_info set on the client reaches the engine."""
+    received_client_info = []
+
+    def capture_client_info_handle(self, input_frame, client_info):
+        received_client_info.append(client_info)
+        status = gabriel_pb2.Status()
+        status.code = gabriel_pb2.StatusCode.SUCCESS
+        return Result(status, "hello")
+
+    monkeypatch.setattr(Engine, "handle", capture_client_info_handle)
+
+    client_info = any_pb2.Any()
+    client_info.Pack(wrappers_pb2.StringValue(value="test-client-info"))
+
+    client = ZeroMQClient(
+        f"tcp://{DEFAULT_SERVER_HOST}:{server_frontend_port}",
+        input_producer,
+        get_consumer(response_state),
+        prometheus_client_port,
+        client_info=client_info,
+    )
+    task = asyncio.create_task(client.launch_async())
+
+    await wait_until(lambda: len(received_client_info) > 0)
+    await cancel_and_wait(task)
+
+    assert len(received_client_info) > 0
+    unpacked = wrappers_pb2.StringValue()
+    assert received_client_info[0].Unpack(unpacked)
+    assert unpacked.value == "test-client-info"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target_engines", [[]])
 async def test_target_no_engines(
@@ -200,6 +364,7 @@ async def test_target_no_engines(
 
 @pytest.mark.asyncio
 async def test_new_engine_connected(
+    run_server,
     run_engines,
     input_producer,
     server_frontend_port,
@@ -256,9 +421,9 @@ async def test_new_engine_connected(
     # immediately server-side, so disconnection is detected right away rather
     # than only after a heartbeat timeout.
     await wait_until(
-        lambda: "Engine-1 stream closed" in caplog.text, timeout=5
+        lambda: "Engine-1" not in run_server.server._engine_ids, timeout=5
     )
-    assert "Engine-1 stream closed" in caplog.text
+    assert "Engine-1" not in run_server.server._engine_ids
 
     # Wait for the client to be notified (via a control message) that Engine-1
     # is no longer connected before resuming input production, so the resumed
@@ -279,7 +444,7 @@ async def test_new_engine_connected(
     )
 
 
-def server_dropped_frame_handle(input_frame):
+def server_dropped_frame_handle(input_frame, client_info):
     """Engine handle method that returns server dropped frame error."""
     status = gabriel_pb2.Status()
     status.code = gabriel_pb2.StatusCode.SERVER_DROPPED_FRAME

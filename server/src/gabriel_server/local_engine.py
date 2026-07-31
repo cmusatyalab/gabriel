@@ -94,10 +94,14 @@ class LocalEngine:
         while True:
             from_client = gabriel_pb2.FromClient()
             from_client.ParseFromString(self.engine_conn.recv_bytes())
+            client_info = Any()
+            client_info_bytes = self.engine_conn.recv_bytes()
+            if client_info_bytes:
+                client_info.ParseFromString(client_info_bytes)
 
             input_frame = from_client.input.input_frame
 
-            result = engine.handle(input_frame)
+            result = engine.handle(input_frame, client_info)
             result_proto = gabriel_pb2.Result()
             result_proto.frame_id = from_client.input.frame_id
             result_proto.target_engine_id = self.engine_id
@@ -190,7 +194,7 @@ class _LocalServer:
         )
         self.engine_id = engine_id
 
-    async def _send_to_engine(self, from_client, address):
+    async def _send_to_engine(self, from_client, address, client_info):
         logger.debug("Received input from client %s", address)
         if self._input_queue.full():
             return (
@@ -198,7 +202,7 @@ class _LocalServer:
                 "Input queue is full, dropping input",
             )
 
-        self._input_queue.put_nowait((from_client, address))
+        self._input_queue.put_nowait((from_client, address, client_info))
         return (gabriel_pb2.StatusCode.SUCCESS, "")
 
     def launch(self, port_or_path, message_max_size, use_ipc=False):
@@ -225,11 +229,16 @@ class _LocalServer:
         await self._server.wait_for_start()
         loop = asyncio.get_running_loop()
         while self._server.is_running():
-            from_client, address = await self._input_queue.get()
+            from_client, address, client_info = await self._input_queue.get()
             await loop.run_in_executor(
                 None,
                 self._conn.send_bytes,
                 from_client.SerializeToString(),
+            )
+            await loop.run_in_executor(
+                None,
+                self._conn.send_bytes,
+                client_info.SerializeToString(),
             )
             result = gabriel_pb2.Result()
 

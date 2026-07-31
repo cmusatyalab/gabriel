@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
 	"github.com/rs/zerolog/log"
@@ -46,14 +47,14 @@ func (client *GrpcClient) consumerHandler(
 			Msg("received message from server")
 
 		switch x := toClient.MessageType.(type) {
-		case *gabrielpb.ToClient_Welcome_:
-			client.processWelcome(x.Welcome)
+		case *gabrielpb.ToClient_Registered_:
+			client.processRegistered(x.Registered)
 		case *gabrielpb.ToClient_ResultWrapper_:
 			client.processResult(x.ResultWrapper)
-		case *gabrielpb.ToClient_Control_:
-			log.Info().Msg("received control message from server")
+		case *gabrielpb.ToClient_EngineIdsUpdate_:
+			log.Info().Msg("received engine ids update from server")
 			engineIDs := make(map[string]struct{})
-			for _, engineID := range x.Control.EngineIds {
+			for _, engineID := range x.EngineIdsUpdate.EngineIds {
 				engineIDs[engineID] = struct{}{}
 			}
 			client.engineIDMu.Lock()
@@ -67,12 +68,13 @@ func (client *GrpcClient) consumerHandler(
 	}
 }
 
-// processWelcome processes the welcome message from the server.
-func (client *GrpcClient) processWelcome(welcome *gabrielpb.ToClient_Welcome) {
-	log.Info().Msg("received welcome from server")
-	client.numTokensPerProducer = int(welcome.NumTokensPerProducer)
+// processRegistered processes the server's acknowledgement of this client's
+// Registration message.
+func (client *GrpcClient) processRegistered(registered *gabrielpb.ToClient_Registered) {
+	log.Info().Msg("registered with server")
+	client.numTokensPerProducer = int(registered.NumTokensPerProducer)
 	client.engineIDMu.Lock()
-	for _, engineID := range welcome.EngineIds {
+	for _, engineID := range registered.EngineIds {
 		client.engineIDs[engineID] = struct{}{}
 	}
 	client.engineIDMu.Unlock()
@@ -91,9 +93,61 @@ func (client *GrpcClient) processWelcome(welcome *gabrielpb.ToClient_Welcome) {
 	client.connectedMu.Unlock()
 
 	log.Info().
-		Strs("engine_ids", welcome.EngineIds).
-		Int("num_tokens_per_producer", int(welcome.NumTokensPerProducer)).
+		Strs("engine_ids", registered.EngineIds).
+		Int("num_tokens_per_producer", int(registered.NumTokensPerProducer)).
 		Msg("available engines")
+}
+
+// registrationHandler sends the client's Registration message and retries it
+// on a fixed interval until the server acknowledges it with a Registered
+// message (observed via client.connected, set by processRegistered).
+func (client *GrpcClient) registrationHandler(
+	ctx context.Context,
+	sessCancel context.CancelFunc,
+	errCh chan error,
+	wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	registration := &gabrielpb.FromClient_Registration{}
+	if client.clientInfo != nil {
+		registration.ClientInfo = client.clientInfo
+	}
+	fromClient := &gabrielpb.FromClient{
+		MessageType: &gabrielpb.FromClient_Registration_{Registration: registration},
+	}
+
+	send := func() bool {
+		if err := client.sendMsg(fromClient); err != nil {
+			errCh <- fmt.Errorf("%w: error sending registration: %v", errDisconnected, err)
+			sessCancel()
+			return false
+		}
+		return true
+	}
+
+	if !send() {
+		return
+	}
+
+	ticker := time.NewTicker(client.registrationRetryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			client.connectedMu.Lock()
+			connected := client.connected
+			client.connectedMu.Unlock()
+			if connected {
+				return
+			}
+			log.Info().Msg("no registration acknowledgement yet; retrying")
+			if !send() {
+				return
+			}
+		}
+	}
 }
 
 // processResult processes results from the server.

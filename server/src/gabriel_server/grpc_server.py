@@ -181,19 +181,10 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
         address = context
         logger.info("New client connected: %s", context.peer())
 
-        client = self._Client(
-            tokens_for_producer={},
-            inputs=asyncio.Queue(),
-            task=None,
-            websocket=context,
-        )
+        client = self._new_client(websocket=context)
         self._clients[address] = client
         write_lock = asyncio.Lock()
         self._write_locks[address] = write_lock
-
-        # Send welcome message
-        async with write_lock:
-            await context.write(self._make_welcome())
 
         try:
             await self._consumer(request_iterator, context, client)
@@ -213,7 +204,13 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
                 client, address, from_client
             )
             if status == gabriel_pb2.StatusCode.SUCCESS:
-                client.tokens_for_producer[from_client.input.producer_id] -= 1
+                if from_client.WhichOneof("message_type") == "registration":
+                    async with self._write_locks[address]:
+                        await context.write(self._make_registered())
+                else:
+                    client.tokens_for_producer[
+                        from_client.input.producer_id
+                    ] -= 1
                 continue
 
             # Send error message

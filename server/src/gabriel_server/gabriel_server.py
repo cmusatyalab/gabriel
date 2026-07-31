@@ -16,6 +16,7 @@ from gabriel_protocol.gabriel_pb2 import (
     StatusCode,
     ToClient,
 )
+from google.protobuf.any_pb2 import Any
 
 from gabriel_server.result_manager import ResultManager
 
@@ -32,7 +33,7 @@ class GabrielServer(ABC):
     def __init__(
         self,
         num_tokens_per_producer: int,
-        engine_cb: Callable[[FromClient], ToClient.ResultWrapper],
+        engine_cb: Callable[[FromClient, str, Any], ToClient.ResultWrapper],
         engine_ids: set[str],
     ):
         """Initialize the Gabriel server.
@@ -49,8 +50,19 @@ class GabrielServer(ABC):
         # stores the tokens available for each producer. 'task' is an async
         # task that consumes inputs from 'inputs' for each client. 'websocket'
         # is the Websockets handler for this client if using Websockets.
+        # 'client_info' is a single-element list holding the client's
+        # registered client_info (an Any, or None before registration); a
+        # list is used so it can be mutated in place after the namedtuple is
+        # constructed.
         self._Client = namedtuple(
-            "_Client", ["tokens_for_producer", "inputs", "task", "websocket"]
+            "_Client",
+            [
+                "tokens_for_producer",
+                "inputs",
+                "task",
+                "websocket",
+                "client_info",
+            ],
         )
         self._num_tokens_per_producer = num_tokens_per_producer
         # The clients connected to the server
@@ -109,6 +121,18 @@ class GabrielServer(ABC):
     async def wait_for_start(self):
         """Waits for the Gabriel server to start."""
         await self._start_event.wait()
+
+    def _new_client(
+        self, task=None, websocket=None
+    ) -> "GabrielServer._Client":
+        """Construct a fresh, not-yet-registered _Client entry."""
+        return self._Client(
+            tokens_for_producer={},
+            inputs=asyncio.Queue(),
+            task=task,
+            websocket=websocket,
+            client_info=[None],
+        )
 
     async def send_result(
         self,
@@ -186,19 +210,34 @@ class GabrielServer(ABC):
     async def _engines_updated_cb(self):
         """Indicates that a new server connected or disconnected."""
         to_client = ToClient()
-        to_client.control.engine_ids.extend(self._engine_ids)
+        to_client.engine_ids_update.engine_ids.extend(self._engine_ids)
         msg = to_client.SerializeToString()
         for address in self._clients:
             await self._send_via_transport(address, msg)
 
     async def _consumer_helper(self, client, address, from_client):
-        """Send the input to the engine callback.
+        """Process a single message from a client.
 
-        Args:
-            client: The client that the input is from
+        Handles both message types a client can send: a Registration, which
+        is stored on `client` and acknowledged by the caller with a
+        Registered response, and an Input, which is forwarded to the engine
+        callback. Args:
+            client: The client that the message is from
             address: The identifier of the client
-            from_client: A FromClient protobuf message containing the input
+            from_client: A FromClient protobuf message
         """
+        if from_client.WhichOneof("message_type") == "registration":
+            client.client_info[0] = from_client.registration.client_info
+            logger.info(f"Client {address} registered")
+            return (StatusCode.SUCCESS, "")
+
+        if client.client_info[0] is None:
+            logger.error(f"Client {address} sent input before registering")
+            return (
+                StatusCode.UNSPECIFIED_ERROR,
+                "Client must register before sending input",
+            )
+
         producer_id = from_client.input.producer_id
 
         if producer_id not in client.tokens_for_producer:
@@ -214,15 +253,17 @@ class GabrielServer(ABC):
             return (StatusCode.NO_TOKENS, "No tokens for producer")
 
         logger.debug(f"Sending input from client {address} to engine")
-        return await self._engine_cb(from_client, address)
+        return await self._engine_cb(
+            from_client, address, client.client_info[0]
+        )
 
-    def _make_welcome(self) -> ToClient:
-        """Construct a welcome message to send to the client."""
+    def _make_registered(self) -> ToClient:
+        """Construct a Registered message."""
         to_client = ToClient()
-        to_client.welcome.num_tokens_per_producer = (
+        to_client.registered.num_tokens_per_producer = (
             self._num_tokens_per_producer
         )
-        to_client.welcome.engine_ids.extend(self._engine_ids)
+        to_client.registered.engine_ids.extend(self._engine_ids)
         return to_client
 
     @staticmethod

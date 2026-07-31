@@ -15,7 +15,7 @@ dependencies = [
     "grpcio",
     "prometheus-client",
     "opencv-python",
-    "protobuf>=6.0.0,<7.0.0",
+    "protobuf",
 ]
 
 authors = [

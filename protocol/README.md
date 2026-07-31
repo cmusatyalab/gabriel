@@ -2,7 +2,12 @@
 
 Protos are defined in `protos/gabriel.proto`.
 
-## Compiling changes
+## Generating Go and Python code
+
+Run `buf generate` from this directory to regenerate the Go and Python bindings in `go/` and
+`python/src/`. This requires the [buf CLI](https://buf.build/docs/installation).
+
+## Compiling Java changes
 
 1. Open this directory as a project in IntelliJ or Android Studio.
 2. Click the `Gradle` button in the top right.

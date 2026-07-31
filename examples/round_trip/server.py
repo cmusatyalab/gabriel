@@ -10,7 +10,7 @@ from gabriel_server import cognitive_engine, local_engine
 class DisplayEngine(cognitive_engine.Engine):
     """A simple cognitive engine that displays the input frame."""
 
-    def handle(self, input_frame):
+    def handle(self, input_frame, client_info):
         """Handles an input frame."""
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS

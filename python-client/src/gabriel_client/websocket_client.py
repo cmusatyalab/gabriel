@@ -10,6 +10,7 @@ import websockets.client
 from gabriel_protocol import gabriel_pb2
 
 from gabriel_client.gabriel_client import (
+    DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,
     GabrielClient,
     InputProducer,
     TokenPool,
@@ -38,6 +39,10 @@ class WebsocketClient(GabrielClient):
         input_producers: list[InputProducer],
         consumer: Callable[[gabriel_pb2.Result], None],
         prometheus_port: int = 8001,
+        client_info=None,
+        registration_retry_interval_seconds: float = (
+            DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS
+        ),
     ):
         """Initialize the client.
 
@@ -52,9 +57,20 @@ class WebsocketClient(GabrielClient):
             Callback for results from server
         prometheus_port (int):
             Port for Prometheus metrics.
+        client_info (optional):
+            Client metadata sent to the server during registration.
+        registration_retry_interval_seconds (float):
+            How long to wait before retrying registration with the
+            server.
 
         """
-        super().__init__(prometheus_port)
+        super().__init__(
+            prometheus_port,
+            client_info=client_info,
+            registration_retry_interval_seconds=(
+                registration_retry_interval_seconds
+            ),
+        )
         self.consumer = consumer
         self.input_producers = set(input_producers)
 
@@ -78,18 +94,24 @@ class WebsocketClient(GabrielClient):
                 for input_producer in self.input_producers
             ]
             tasks.append(consumer_task)
+            registration_task = asyncio.create_task(
+                self._registration_handler(self._send_raw)
+            )
+            all_tasks = tasks + [registration_task]
 
             try:
                 done, pending = await asyncio.wait(
-                    tasks, return_when=asyncio.FIRST_COMPLETED
+                    all_tasks, return_when=asyncio.FIRST_COMPLETED
                 )
             except asyncio.CancelledError:
-                for task in tasks:
+                for task in all_tasks:
                     task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+                await asyncio.gather(*all_tasks, return_exceptions=True)
                 raise
-            for task in pending:
-                task.cancel()
+            for task in all_tasks:
+                if task not in done:
+                    task.cancel()
+            await asyncio.gather(*all_tasks, return_exceptions=True)
             logger.info("Disconnected From Server")
 
     async def _consumer_handler(self):
@@ -103,21 +125,21 @@ class WebsocketClient(GabrielClient):
             to_client = gabriel_pb2.ToClient()
             to_client.ParseFromString(raw_input)
 
-            if to_client.HasField("welcome"):
-                self._process_welcome(to_client.welcome)
+            if to_client.HasField("registered"):
+                self._process_registered(to_client.registered)
             elif to_client.HasField("result_wrapper"):
                 self._process_response(to_client.result_wrapper)
-            elif to_client.HasField("control"):
-                logger.info("Received control message from server")
-                self._engine_ids = to_client.control.engine_ids
+            elif to_client.HasField("engine_ids_update"):
+                logger.info("Received engine ids update from server")
+                self._engine_ids = to_client.engine_ids_update.engine_ids
                 logger.info(f"Updating engine ids to: {self._engine_ids}")
             else:
                 raise Exception("Empty to_client message")
 
-    def _process_welcome(self, welcome):
-        self._num_tokens_per_producer = welcome.num_tokens_per_producer
-        self._engine_ids = welcome.engine_ids
-        self._welcome_event.set()
+    def _process_registered(self, registered):
+        self._num_tokens_per_producer = registered.num_tokens_per_producer
+        self._engine_ids = registered.engine_ids
+        self._registered_event.set()
 
     def _process_response(self, result_wrapper):
         result = result_wrapper.result
@@ -145,7 +167,8 @@ class WebsocketClient(GabrielClient):
                 this client
 
         """
-        await self._welcome_event.wait()
+        if not await self._wait_while_running(self._registered_event):
+            return
         token_pool = TokenPool(
             self._num_tokens_per_producer, producer.producer_id
         )
@@ -194,4 +217,8 @@ class WebsocketClient(GabrielClient):
     async def _send_from_client(self, from_client):
         self.record_send_metrics(from_client)
         # Removing this method will break measurement_client
+        await self._send_raw(from_client)
+
+    async def _send_raw(self, from_client):
+        """Send a message to the server without recording input metrics."""
         await self._websocket.send(from_client.SerializeToString())

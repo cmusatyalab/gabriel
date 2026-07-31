@@ -200,7 +200,9 @@ class EngineRunner:
                 logger.debug(f"{self.engine_id} received input from server")
 
                 try:
-                    frame_queue.put_nowait(to_engine.input_frame)
+                    frame_queue.put_nowait(
+                        (to_engine.input_frame, to_engine.client_info)
+                    )
                 except asyncio.QueueFull:
                     logger.error(f"{self.engine_id}: queue is full")
 
@@ -213,12 +215,12 @@ class EngineRunner:
 
         async def worker():
             while True:
-                input_frame = await frame_queue.get()
+                input_frame, client_info = await frame_queue.get()
                 try:
                     # Run the engine handle() in a separate thread, so we do
                     # not block reading from the stream
                     result_proto = await asyncio.to_thread(
-                        self._build_result_proto, input_frame
+                        self._build_result_proto, input_frame, client_info
                     )
                 except _EngineHandlerError as e:
                     async with write_lock:
@@ -257,13 +259,13 @@ class EngineRunner:
             if exc is not None:
                 raise exc
 
-    def _build_result_proto(self, input_frame):
+    def _build_result_proto(self, input_frame, client_info):
         """Run the engine's handle() and build the FromEngine result.
 
         Raises _EngineHandlerError, carrying an ENGINE_ERROR result proto, if
         the engine returns something malformed.
         """
-        result = self.engine.handle(input_frame)
+        result = self.engine.handle(input_frame, client_info)
 
         result_proto = gabriel_pb2.Result()
         result_proto.target_engine_id = self.engine_id

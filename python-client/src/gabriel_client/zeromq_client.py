@@ -13,6 +13,7 @@ from gabriel_protocol import gabriel_pb2
 from google.protobuf.message import DecodeError
 
 from gabriel_client.gabriel_client import (
+    DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,
     GabrielClient,
     InputProducer,
     TokenPool,
@@ -46,6 +47,10 @@ class ZeroMQClient(GabrielClient):
         input_producers: Iterable[InputProducer],
         consumer: Callable[[gabriel_pb2.Result], None],
         prometheus_port: int = 8001,
+        client_info=None,
+        registration_retry_interval_seconds: float = (
+            DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS
+        ),
     ):
         """Initialize the client.
 
@@ -61,9 +66,20 @@ class ZeroMQClient(GabrielClient):
             Callback for results from server
         prometheus_port (int):
             Port for Prometheus metrics.
+        client_info (optional):
+            Client metadata sent to the server during registration.
+        registration_retry_interval_seconds (float):
+            How long to wait before retrying registration with the
+            server.
 
         """
-        super().__init__(prometheus_port)
+        super().__init__(
+            prometheus_port,
+            client_info=client_info,
+            registration_retry_interval_seconds=(
+                registration_retry_interval_seconds
+            ),
+        )
         # Socket used for communicating with the server
         self._ctx = zmq.asyncio.Context()
         self._sock = self._ctx.socket(zmq.DEALER)
@@ -117,6 +133,9 @@ class ZeroMQClient(GabrielClient):
         ]
         tasks.append(asyncio.create_task(self._consumer_handler()))
         tasks.append(asyncio.create_task(self._heartbeat_loop()))
+        tasks.append(
+            asyncio.create_task(self._registration_handler(self._send_raw))
+        )
 
         try:
             await asyncio.gather(*tasks)
@@ -168,6 +187,9 @@ class ZeroMQClient(GabrielClient):
                 # Reset tokens for all producers
                 for token_pool in self._tokens.values():
                     token_pool.reset_tokens()
+                # The new socket has a fresh identity, so the server sees
+                # this as a brand new, unregistered client.
+                self._reregistration_needed.set()
 
             if raw_input == HEARTBEAT:
                 logger.debug("Received heartbeat from server")
@@ -183,15 +205,15 @@ class ZeroMQClient(GabrielClient):
                 logger.error(f"Failed to decode message from server: {e}")
                 continue
 
-            if to_client.HasField("welcome"):
-                logger.info("Received welcome from server")
-                self._process_welcome(to_client.welcome)
+            if to_client.HasField("registered"):
+                logger.info("Registered with server")
+                self._process_registered(to_client.registered)
             elif to_client.HasField("result_wrapper"):
                 logger.debug("Processing response from server")
                 self._process_response(to_client.result_wrapper)
-            elif to_client.HasField("control"):
-                logger.info("Received control message from server")
-                self._engine_ids = to_client.control.engine_ids
+            elif to_client.HasField("engine_ids_update"):
+                logger.info("Received engine ids update from server")
+                self._engine_ids = to_client.engine_ids_update.engine_ids
                 logger.info(f"Updating engine ids to: {self._engine_ids}")
             else:
                 logger.critical(
@@ -199,18 +221,18 @@ class ZeroMQClient(GabrielClient):
                 )
                 raise Exception("Empty to_client message")
 
-    def _process_welcome(self, welcome):
-        """Process a welcome message received from the server.
+    def _process_registered(self, registered):
+        """Process the server's acknowledgement of this client's Registration.
 
         Args:
-            welcome:
-                The gabriel_pb2.ToClient.Welcome message received from
+            registered:
+                The gabriel_pb2.ToClient.Registered message received from
                 the server
 
         """
-        self._num_tokens_per_producer = welcome.num_tokens_per_producer
-        self._engine_ids = welcome.engine_ids
-        self._welcome_event.set()
+        self._num_tokens_per_producer = registered.num_tokens_per_producer
+        self._engine_ids = registered.engine_ids
+        self._registered_event.set()
         logger.info(
             f"Available engines: {self._engine_ids}; "
             f"number of tokens per producer: {self._num_tokens_per_producer}"
@@ -271,7 +293,8 @@ class ZeroMQClient(GabrielClient):
                 this client
 
         """
-        await self._welcome_event.wait()
+        if not await self._wait_while_running(self._registered_event):
+            return
 
         # Async task used to producer an input
         producer_task = None
@@ -319,7 +342,8 @@ class ZeroMQClient(GabrielClient):
                     if producer_task is not None:
                         producer_task.cancel()
                         producer_task = None
-                    await self._connected.wait()
+                    if not await self._wait_while_running(self._connected):
+                        break
                     logger.debug("Resuming producer task")
 
                 if producer_task is None:
@@ -393,6 +417,10 @@ class ZeroMQClient(GabrielClient):
     async def send_to_server(self, from_client: gabriel_pb2.FromClient):
         """Send a frame to the server."""
         self.record_send_metrics(from_client)
+        await self._send_raw(from_client)
+
+    async def _send_raw(self, from_client: gabriel_pb2.FromClient):
+        """Send a message to the server without recording input metrics."""
         await self._sock.send(from_client.SerializeToString())
 
     async def _send_heartbeat(self, force=False):

@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // errDisconnected wraps errors that indicate the gRPC stream to the server was
@@ -29,8 +30,7 @@ type GrpcClient struct {
 	// serverEndpoint must be a valid gRPC target, e.g. "host:port" for TCP
 	// or "unix:///path/to/socket" for a Unix domain socket.
 	serverEndpoint string
-	// tlsCredentials, if set (e.g. via LoadTLSCredentials, passed via
-	// WithTLSCredentials), are used to secure the connection to the server.
+	// tlsCredentials, if set, are used to secure the connection to the server.
 	// If nil, an insecure (plaintext) connection is used.
 	tlsCredentials       credentials.TransportCredentials
 	reconnectInterval    time.Duration
@@ -48,6 +48,12 @@ type GrpcClient struct {
 	numTokensPerProducer int
 	engineIDs            map[string]struct{}
 	engineIDMu           sync.Mutex
+	// clientInfo, if set, is sent to the server once per session as part of
+	// the client's Registration message.
+	clientInfo *anypb.Any
+	// registrationRetryInterval is the fixed delay between attempts to
+	// register with the server at the start of each session.
+	registrationRetryInterval time.Duration
 }
 
 // NewGrpcClient creates a new GrpcClient with the given server endpoint and
@@ -60,12 +66,13 @@ func NewGrpcClient(
 	opts ...Option) *GrpcClient {
 
 	client := GrpcClient{
-		serverEndpoint:    serverEndpoint,
-		consumer:          consumer,
-		inputSources:      inputSources,
-		tokenPool:         make(map[string]*tokenPool),
-		engineIDs:         make(map[string]struct{}),
-		reconnectInterval: DefaultReconnectInterval,
+		serverEndpoint:            serverEndpoint,
+		consumer:                  consumer,
+		inputSources:              inputSources,
+		tokenPool:                 make(map[string]*tokenPool),
+		engineIDs:                 make(map[string]struct{}),
+		reconnectInterval:         DefaultReconnectInterval,
+		registrationRetryInterval: DefaultRegistrationRetryInterval,
 	}
 	client.connectedCond = sync.NewCond(&client.connectedMu)
 
@@ -103,7 +110,7 @@ func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 		defer client.conn.Close()
 
 		for {
-			fatalErr, disconnected := client.runSession(ctx, errCh)
+			fatalErr, disconnected := client.runSession(ctx)
 			if fatalErr != nil {
 				errCh <- fatalErr
 				return
@@ -185,8 +192,7 @@ func (client *GrpcClient) reconnect(ctx context.Context) error {
 // entirely, or disconnected=true if the session ended because the stream was
 // lost and should be retried.
 func (client *GrpcClient) runSession(
-	ctx context.Context,
-	errCh chan error) (fatalErr error, disconnected bool) {
+	ctx context.Context) (fatalErr error, disconnected bool) {
 	sessCtx, sessCancel := context.WithCancel(ctx)
 	defer sessCancel()
 
@@ -197,7 +203,7 @@ func (client *GrpcClient) runSession(
 	client.engineIDs = make(map[string]struct{})
 	client.engineIDMu.Unlock()
 
-	sessErrCh := make(chan error, len(client.inputSources)+1)
+	sessErrCh := make(chan error, len(client.inputSources)+2)
 	var wg sync.WaitGroup
 
 	for _, producer := range client.inputSources {
@@ -206,6 +212,8 @@ func (client *GrpcClient) runSession(
 	}
 	wg.Add(1)
 	go client.consumerHandler(sessCtx, sessCancel, sessErrCh, &wg)
+	wg.Add(1)
+	go client.registrationHandler(sessCtx, sessCancel, sessErrCh, &wg)
 
 	go func() {
 		wg.Wait()

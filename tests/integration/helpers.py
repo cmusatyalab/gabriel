@@ -140,10 +140,10 @@ class Engine(cognitive_engine.Engine, threading.Thread):
 
         logger.info(f"Engine {engine_id} initialized")
 
-    def handle(self, input_frame):
+    def handle(self, input_frame, client_info):
         """Process a single gabriel_pb2.InputFrame()."""
         if self.handle_method:
-            return self.handle_method(input_frame)
+            return self.handle_method(input_frame, client_info)
         logger.info(f"Engine {self.engine_id} received frame")
 
         assert (

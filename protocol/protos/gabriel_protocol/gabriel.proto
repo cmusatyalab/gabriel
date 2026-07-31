@@ -52,14 +52,18 @@ message FromClient {
     InputFrame input_frame = 4;
   }
 
-  message Metadata {
-    // Arbitrary information about the client.
-    google.protobuf.Any client_info = 5;
+  message Registration {
+    // Arbitrary client-specific information, made available to engines
+    // alongside any input the client subsequently sends.
+    google.protobuf.Any client_info = 1;
   }
 
   oneof message_type {
     Input input = 1;
-    Metadata metadata = 2;
+    // Sent immediately upon connecting, and retried until a Registered
+    // response is received. Must be acknowledged before the server will accept
+    // Input messages from this client.
+    Registration registration = 2;
   }
 }
 
@@ -102,14 +106,16 @@ message Result {
 }
 
 message ToClient {
-  message Welcome {
+  message Registered {
     // Number of tokens each producer should get.
     int32 num_tokens_per_producer = 1;
     // The engine ids that are connected to the server.
     repeated string engine_ids = 2;
   }
 
-  message Control {
+  // Sent whenever the set of engines connected to the server changes, so
+  // clients can keep their view of available engine ids up to date.
+  message EngineIdsUpdate {
     // The new set of engine ids connected to the server.
     repeated string engine_ids = 1;
   }
@@ -125,9 +131,11 @@ message ToClient {
   }
 
   oneof message_type {
-    Welcome welcome = 1;
+    // Sent in response to a client's Registration message; acknowledges
+    // that registration succeeded and provides session configuration.
+    Registered registered = 1;
     ResultWrapper result_wrapper = 2;
-    Control control = 3;
+    EngineIdsUpdate engine_ids_update = 3;
   }
 }
 
@@ -151,4 +159,8 @@ message ToEngine {
   oneof message_type {
     InputFrame input_frame = 1;
   }
+  // Client-specific information registered by the producer of this input,
+  // forwarded from the client's Registration message. Unset if the
+  // producing client did not register any.
+  google.protobuf.Any client_info = 2;
 }

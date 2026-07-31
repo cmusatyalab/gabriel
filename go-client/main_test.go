@@ -158,7 +158,7 @@ func startEngine(t *testing.T) string {
 }
 
 // waitForEngineRegistered polls the server (by opening a throwaway
-// ClientSession and inspecting the Welcome message's engine list) until
+// ClientSession and inspecting the Registered message's engine list) until
 // engineID is reported as connected, or timeout elapses. creds may be nil to
 // dial in plaintext (insecure).
 func waitForEngineRegistered(serverAddr, engineID string, creds credentials.TransportCredentials, timeout time.Duration) error {
@@ -176,9 +176,10 @@ func waitForEngineRegistered(serverAddr, engineID string, creds credentials.Tran
 	return fmt.Errorf("timed out after %s (last error: %v)", timeout, lastErr)
 }
 
-// probeEngineRegistered opens a short-lived ClientSession to the server and
-// reports whether its Welcome message lists engineID as connected. creds may
-// be nil to dial in plaintext (insecure).
+// probeEngineRegistered opens a short-lived ClientSession to the server,
+// sends a Registration message, and reports whether the resulting Registered
+// message lists engineID as connected. creds may be nil to dial in plaintext
+// (insecure).
 func probeEngineRegistered(serverAddr, engineID string, creds credentials.TransportCredentials) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -197,15 +198,23 @@ func probeEngineRegistered(serverAddr, engineID string, creds credentials.Transp
 		return false, fmt.Errorf("opening probe session: %w", err)
 	}
 
+	if err := stream.Send(&gabrielpb.FromClient{
+		MessageType: &gabrielpb.FromClient_Registration_{
+			Registration: &gabrielpb.FromClient_Registration{},
+		},
+	}); err != nil {
+		return false, fmt.Errorf("sending registration: %w", err)
+	}
+
 	msg, err := stream.Recv()
 	if err != nil {
-		return false, fmt.Errorf("receiving welcome: %w", err)
+		return false, fmt.Errorf("receiving registered: %w", err)
 	}
-	welcome := msg.GetWelcome()
-	if welcome == nil {
-		return false, fmt.Errorf("first message from server was not a welcome")
+	registered := msg.GetRegistered()
+	if registered == nil {
+		return false, fmt.Errorf("first message from server was not a registered ack")
 	}
-	return slices.Contains(welcome.EngineIds, engineID), nil
+	return slices.Contains(registered.EngineIds, engineID), nil
 }
 
 // resolvePythonInterpreter finds the Python interpreter to run the Gabriel

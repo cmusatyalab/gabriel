@@ -13,8 +13,8 @@ dependencies = [
     "websockets",
     "pyzmq",
     "prometheus_client",
-    "protobuf>=6.0.0",
     "grpcio",
+    "protobuf",
 ]
 
 authors = [

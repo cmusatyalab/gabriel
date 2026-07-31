@@ -13,7 +13,7 @@ from gabriel_server import cognitive_engine, local_engine
 class DisplayEngine(cognitive_engine.Engine):
     """A simple cognitive engine that displays the input frame."""
 
-    def handle(self, input_frame):
+    def handle(self, input_frame, client_info):
         """Handles an input frame."""
         to_server = yuv_pb2.ToServer()
         input_frame.any_payload.Unpack(to_server)

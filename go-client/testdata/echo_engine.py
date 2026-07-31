@@ -23,7 +23,7 @@ class EchoEngine(cognitive_engine.Engine):
         """Initializes the echo engine."""
         self._engine_id = engine_id
 
-    def handle(self, input_frame):
+    def handle(self, input_frame, client_info):
         """Handles an input frame by returning a fixed success result."""
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS

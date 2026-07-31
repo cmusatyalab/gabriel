@@ -20,7 +20,7 @@ from helpers import DEFAULT_SERVER_HOST, get_multiple_engine_consumer
 logger = logging.getLogger(__name__)
 
 
-def heterogenous_engine_handle(input_frame):
+def heterogenous_engine_handle(input_frame, client_info):
     """A handle method that sleeps different durations."""
     sleep_duration = random.choice([0.01, 0.02, 0.03])
     time.sleep(sleep_duration)

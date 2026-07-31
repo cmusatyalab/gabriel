@@ -20,10 +20,10 @@ class MeasurementClient(WebsocketClient):
         self._source_measurements = {}
         self._output_freq = output_freq
 
-    def _process_welcome(self, welcome):
-        super()._process_welcome(welcome)
+    def _process_registered(self, registered):
+        super()._process_registered(registered)
         start_time = time.time()
-        for source_name in welcome.sources_consumed:
+        for source_name in registered.sources_consumed:
             source_measurement = _SourceMeasurement(
                 start_time, self._output_freq
             )

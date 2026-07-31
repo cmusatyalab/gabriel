@@ -10,12 +10,20 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // DefaultReconnectInterval is the default fixed delay between attempts to
 // reestablish the gRPC stream after it is disconnected from the server, used
 // unless overridden with WithReconnectInterval.
 const DefaultReconnectInterval = 2 * time.Second
+
+// DefaultRegistrationRetryInterval is the default fixed delay between
+// attempts to register with the server (and receive a Registered
+// acknowledgement) at the start of each session, used unless overridden with
+// WithRegistrationRetryInterval.
+const DefaultRegistrationRetryInterval = 2 * time.Second
 
 // DefaultKeepaliveTime is the default interval between HTTP/2 keepalive pings
 // sent to the server when the connection would otherwise be idle, used unless
@@ -98,5 +106,28 @@ func WithReconnectInterval(interval time.Duration) Option {
 func WithDialOptions(dialOptions ...grpc.DialOption) Option {
 	return func(client *GrpcClient) {
 		client.dialOptions = append(client.dialOptions, dialOptions...)
+	}
+}
+
+// WithClientInfo configures client-specific information sent to the server
+// once per session as part of the client's Registration message, made
+// available to engines alongside any input the client subsequently sends. If
+// not provided, no client_info is sent.
+func WithClientInfo(clientInfo proto.Message) Option {
+	return func(client *GrpcClient) {
+		anyInfo, err := anypb.New(clientInfo)
+		if err != nil {
+			panic(fmt.Sprintf("gabrielclient: invalid client info: %v", err))
+		}
+		client.clientInfo = anyInfo
+	}
+}
+
+// WithRegistrationRetryInterval configures the fixed delay between attempts to
+// register with the server at the start of each session. If not provided,
+// DefaultRegistrationRetryInterval is used.
+func WithRegistrationRetryInterval(interval time.Duration) Option {
+	return func(client *GrpcClient) {
+		client.registrationRetryInterval = interval
 	}
 }

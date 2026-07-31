@@ -16,7 +16,7 @@ class DisplayEngine(cognitive_engine.Engine):
         """Initializes the display engine."""
         self._engine_id = engine_id
 
-    def handle(self, input_frame):
+    def handle(self, input_frame, client_info):
         """Handles an input frame."""
         status = gabriel_pb2.Status()
         status.code = gabriel_pb2.StatusCode.SUCCESS
