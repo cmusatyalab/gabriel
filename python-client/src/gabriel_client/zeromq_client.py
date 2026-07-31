@@ -395,7 +395,7 @@ class ZeroMQClient(GabrielClient):
                 logger.debug(
                     f"Sending input to server; producer={producer.producer_id}"
                 )
-                await self.send_to_server(from_client)
+                await self._send_to_server(from_client)
 
                 logger.debug(
                     "Semaphore for %s is %s",
@@ -407,7 +407,7 @@ class ZeroMQClient(GabrielClient):
                 producer_task.cancel()
                 asyncio.gather(producer_task, return_exceptions=True)
 
-    async def send_to_server(self, from_client: gabriel_pb2.FromClient):
+    async def _send_to_server(self, from_client: gabriel_pb2.FromClient):
         """Send a frame to the server."""
         self._record_send_metrics(from_client)
         await self._send_raw(from_client)

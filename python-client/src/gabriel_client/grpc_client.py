@@ -377,11 +377,11 @@ class GrpcClient(GabrielClient):
                 f"Sending input to server; producer={producer.producer_id}"
             )
             try:
-                await self.send_to_server(from_client)
+                await self._send_to_server(from_client)
             except (grpc.aio.AioRpcError, asyncio.InvalidStateError) as e:
                 raise _DisconnectedError(str(e)) from e
 
-    async def send_to_server(self, from_client: gabriel_pb2.FromClient):
+    async def _send_to_server(self, from_client: gabriel_pb2.FromClient):
         """Send a frame to the server."""
         self._record_send_metrics(from_client)
         await self._call.write(from_client)
