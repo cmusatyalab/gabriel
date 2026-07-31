@@ -14,7 +14,7 @@ from gabriel_server.network_engine.server_runner import ServerRunner, Transport
 
 DEFAULT_PORT = 9099
 DEFAULT_NUM_TOKENS = 2
-DEFAULT_LOG_LEVEL = "DEBUG"
+DEFAULT_LOG_LEVEL = "INFO"
 INPUT_QUEUE_MAXLEN = 60
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def main():
     parser.add_argument(
         "--transport",
         choices=[transport.value for transport in Transport],
-        default=Transport.ZEROMQ.value,
+        default=Transport.GRPC.value,
         help="Transport to use for client connections",
     )
 
