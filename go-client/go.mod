@@ -2,7 +2,7 @@ module github.com/cmusatyalab/gabriel/go-client
 
 go 1.25.5
 
-require github.com/cmusatyalab/gabriel/protocol/go v0.1.0
+require github.com/cmusatyalab/gabriel/protocol/go v0.2.0
 
 require (
 	golang.org/x/sync v0.22.0
