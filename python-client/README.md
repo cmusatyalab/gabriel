@@ -1,8 +1,10 @@
 # Gabriel Python Module
 
+Full documentation is available at [cmusatyalab.github.io/gabriel](https://cmusatyalab.github.io/gabriel/).
+
 ## Installation
 
-Requires Python 3.8 or later.
+Requires Python 3.10 or later.
 
 Run `pip install gabriel-client`
 
