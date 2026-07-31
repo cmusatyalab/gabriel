@@ -7,10 +7,43 @@ on:
       - "protocol/python/v*"
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: pip install build
+
+      - name: Build distribution
+        working-directory: protocol/python
+        run: python -m build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gabriel-protocol-dist
+          path: protocol/python/dist/
+
   publish:
-    uses: ./.github/workflows/publish-python-package.yml
-    with:
-      package-dir: protocol/python
-      artifact-name: gabriel-protocol-dist
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
     permissions:
       id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: gabriel-protocol-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
