@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gabriel-server"
-version = "5.0.0"
+version = "5.1.0"
 description = "Server for the Gabriel real-time AI orchestration framework"
 requires-python = ">=3.10"
 
 dependencies = [
-    "gabriel-protocol==5.0",
+    "gabriel-protocol==5.1",
     "websockets",
     "pyzmq",
     "prometheus_client",
