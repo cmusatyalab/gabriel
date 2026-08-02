@@ -49,9 +49,9 @@ func waitUntil(timeout, interval time.Duration, cond func() bool) bool {
 	}
 }
 
-// repeatingProducer returns a Producer that emits a text frame with the given
+// repeatingProducer returns a ProducerFunc that emits a text frame with the given
 // payload every interval until its context is canceled.
-func repeatingProducer(payload string, interval time.Duration) gabrielclient.Producer {
+func repeatingProducer(payload string, interval time.Duration) gabrielclient.ProducerFunc {
 	return func(ctx context.Context) <-chan *gabrielpb.InputFrame {
 		ch := make(chan *gabrielpb.InputFrame)
 		go func() {
@@ -117,12 +117,15 @@ func TestEndToEnd(t *testing.T) {
 		}()
 		return ch
 	}
-	producer := gabrielclient.NewInputSource("producer-1", producerFn, []string{"engine-0"})
+	producer := gabrielclient.NewInputProducer("producer-1", producerFn, []string{"engine-0"})
 	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
 	}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	t.Log("Launching client")
 	go grpcClient.Launch(t.Context())
@@ -138,11 +141,14 @@ func TestMultipleEngines(t *testing.T) {
 	engine1 := startEngine(t)
 	engine2 := startEngine(t)
 
-	producer := gabrielclient.NewInputSource(
+	producer := gabrielclient.NewInputProducer(
 		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0", engine1, engine2},
 	)
 	counts := &engineCounts{}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, counts.consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	go grpcClient.Launch(t.Context())
 
@@ -158,11 +164,14 @@ func TestMultipleEngines(t *testing.T) {
 // doesn't know about surfaces an error rather than silently hanging.
 func TestInvalidEngineTarget(t *testing.T) {
 	useTestLogger(t)
-	producer := gabrielclient.NewInputSource(
+	producer := gabrielclient.NewInputProducer(
 		"producer-1", repeatingProducer("hi", inputInterval), []string{"nonexistent-engine"},
 	)
 	consumer := func(result *gabrielpb.Result) {}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	errCh, err := grpcClient.Launch(t.Context())
 	if err != nil {
@@ -191,12 +200,15 @@ func TestEmptyInputFrame(t *testing.T) {
 		}()
 		return ch
 	}
-	producer := gabrielclient.NewInputSource("producer-1", emptyOnce, []string{"engine-0"})
+	producer := gabrielclient.NewInputProducer("producer-1", emptyOnce, []string{"engine-0"})
 	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
 	}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	go grpcClient.Launch(t.Context())
 	// Negative assertion: wait the full window since there's no condition to
@@ -214,11 +226,14 @@ func TestChangeTargetEngines(t *testing.T) {
 	useTestLogger(t)
 	engine1 := startEngine(t)
 
-	producer := gabrielclient.NewInputSource(
+	producer := gabrielclient.NewInputProducer(
 		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0"},
 	)
 	counts := &engineCounts{}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, counts.consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	go grpcClient.Launch(t.Context())
 
@@ -239,11 +254,14 @@ func TestAddRemoveTargetEngine(t *testing.T) {
 	useTestLogger(t)
 	engine1 := startEngine(t)
 
-	producer := gabrielclient.NewInputSource(
+	producer := gabrielclient.NewInputProducer(
 		"producer-1", repeatingProducer("hi", inputInterval), []string{"engine-0"},
 	)
 	counts := &engineCounts{}
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, counts.consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, counts.consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	go grpcClient.Launch(t.Context())
 
@@ -277,7 +295,7 @@ func TestAddRemoveTargetEngine(t *testing.T) {
 }
 
 // ExampleNewGrpcClient demonstrates the minimal setup for sending a single
-// input frame to a Gabriel server and receiving its result: an InputSource
+// input frame to a Gabriel server and receiving its result: an InputProducer
 // producing frames, a consumer callback handling results, and a GrpcClient
 // tying the two together.
 func ExampleNewGrpcClient() {
@@ -290,7 +308,7 @@ func ExampleNewGrpcClient() {
 		}
 		return ch
 	}
-	producer := gabrielclient.NewInputSource("producer-1", producerFn, []string{"engine-0"})
+	producer := gabrielclient.NewInputProducer("producer-1", producerFn, []string{"engine-0"})
 
 	done := make(chan struct{})
 	var once sync.Once
@@ -301,7 +319,10 @@ func ExampleNewGrpcClient() {
 		})
 	}
 
-	grpcClient := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputSource{producer}, consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err != nil {
+		panic(err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

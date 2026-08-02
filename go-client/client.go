@@ -3,6 +3,7 @@ package gabrielclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ type GrpcClient struct {
 	connected            bool
 	connectedMu          sync.Mutex
 	connectedCond        *sync.Cond
-	inputSources         []*InputSource
+	inputProducers       []*InputProducer
 	numTokensPerProducer int
 	engineIDs            map[string]struct{}
 	engineIDMu           sync.Mutex
@@ -61,14 +62,28 @@ type GrpcClient struct {
 // reconnect interval, can be configured via Option values.
 func NewGrpcClient(
 	serverEndpoint string,
-	inputSources []*InputSource,
+	inputProducers []*InputProducer,
 	consumer func(*gabrielpb.Result),
-	opts ...Option) *GrpcClient {
+	opts ...Option) (*GrpcClient, error) {
+
+	if serverEndpoint == "" {
+		return nil, errors.New("serverEndpoint must not be empty")
+	}
+	if consumer == nil {
+		return nil, errors.New("consumer must not be nil")
+	}
+	seenNames := make(map[string]struct{}, len(inputProducers))
+	for _, p := range inputProducers {
+		if _, ok := seenNames[p.Name]; ok {
+			return nil, fmt.Errorf("duplicate input producer name %q", p.Name)
+		}
+		seenNames[p.Name] = struct{}{}
+	}
 
 	client := GrpcClient{
 		serverEndpoint:            serverEndpoint,
 		consumer:                  consumer,
-		inputSources:              inputSources,
+		inputProducers:            inputProducers,
 		tokenPool:                 make(map[string]*tokenPool),
 		engineIDs:                 make(map[string]struct{}),
 		reconnectInterval:         DefaultReconnectInterval,
@@ -80,7 +95,7 @@ func NewGrpcClient(
 		opt(&client)
 	}
 
-	return &client
+	return &client, nil
 }
 
 func (client *GrpcClient) sendMsg(msg *gabrielpb.FromClient) error {
@@ -102,7 +117,7 @@ func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 		return nil, err
 	}
 
-	errCh := make(chan error, len(client.inputSources)+1)
+	errCh := make(chan error, len(client.inputProducers)+1)
 
 	go func() {
 		defer close(errCh)
@@ -131,8 +146,8 @@ func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 	return errCh, nil
 }
 
-// connect dials the Gabriel server and opens the ClientSession stream,
-// storing the resulting connection and stream on the client.
+// connect dials the Gabriel server and opens the ClientSession stream, storing
+// the resulting connection and stream on the client.
 func (client *GrpcClient) connect(ctx context.Context) error {
 	log.Info().Str("endpoint", client.serverEndpoint).Msg("connecting to server")
 	transportCredentials := client.tlsCredentials
@@ -203,10 +218,10 @@ func (client *GrpcClient) runSession(
 	client.engineIDs = make(map[string]struct{})
 	client.engineIDMu.Unlock()
 
-	sessErrCh := make(chan error, len(client.inputSources)+2)
+	sessErrCh := make(chan error, len(client.inputProducers)+2)
 	var wg sync.WaitGroup
 
-	for _, producer := range client.inputSources {
+	for _, producer := range client.inputProducers {
 		wg.Add(1)
 		go client.producerHandler(sessCtx, sessCancel, sessErrCh, &wg, producer)
 	}

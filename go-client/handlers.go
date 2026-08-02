@@ -42,7 +42,7 @@ func (client *GrpcClient) consumerHandler(
 			return
 		}
 
-		log.Info().
+		log.Debug().
 			Str("message", prototext.Format(toClient)).
 			Msg("received message from server")
 
@@ -79,7 +79,7 @@ func (client *GrpcClient) processRegistered(registered *gabrielpb.ToClient_Regis
 	}
 	client.engineIDMu.Unlock()
 
-	for _, p := range client.inputSources {
+	for _, p := range client.inputProducers {
 		client.tokenPool[p.Name] = &tokenPool{
 			sem:          semaphore.NewWeighted(int64(client.numTokensPerProducer)),
 			maxTokens:    client.numTokensPerProducer,
@@ -191,13 +191,13 @@ func (client *GrpcClient) processResult(resultWrapper *gabrielpb.ToClient_Result
 	}
 }
 
-// producerHandler handles input production for a single InputSource.
+// producerHandler handles input production for a single InputProducer.
 func (client *GrpcClient) producerHandler(
 	ctx context.Context,
 	sessCancel context.CancelFunc,
 	errCh chan error,
 	wg *sync.WaitGroup,
-	producer *InputSource) {
+	producer *InputProducer) {
 	logger := log.With().Str("producer", producer.Name).Logger()
 	defer wg.Done()
 

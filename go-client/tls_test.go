@@ -123,19 +123,22 @@ func TestTLS(t *testing.T) {
 		}()
 		return ch
 	}
-	producer := gabrielclient.NewInputSource("producer-1", producerFn, []string{"tls-engine-0"})
+	producer := gabrielclient.NewInputProducer("producer-1", producerFn, []string{"tls-engine-0"})
 
 	var receivedResponse atomic.Bool
 	consumer := func(result *gabrielpb.Result) {
 		receivedResponse.Store(true)
 	}
 
-	grpcClient := gabrielclient.NewGrpcClient(
+	grpcClient, err := gabrielclient.NewGrpcClient(
 		clientAddr,
-		[]*gabrielclient.InputSource{producer},
+		[]*gabrielclient.InputProducer{producer},
 		consumer,
 		gabrielclient.WithTLSCredentials(tlsCreds),
 	)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	t.Log("Launching TLS client")
 	go grpcClient.Launch(t.Context())
@@ -194,7 +197,7 @@ func TestTLSRejectsPlaintextClient(t *testing.T) {
 		t.Fatalf("gabriel server never became ready: %v", err)
 	}
 
-	producer := gabrielclient.NewInputSource(
+	producer := gabrielclient.NewInputProducer(
 		"producer-1",
 		func(ctx context.Context) <-chan *gabrielpb.InputFrame {
 			return make(chan *gabrielpb.InputFrame)
@@ -206,7 +209,10 @@ func TestTLSRejectsPlaintextClient(t *testing.T) {
 
 	// No TLSCredentials set: this client dials in plaintext against a TLS-only
 	// server, so it must never get past the handshake.
-	grpcClient := gabrielclient.NewGrpcClient(clientAddr, []*gabrielclient.InputSource{producer}, consumer)
+	grpcClient, err := gabrielclient.NewGrpcClient(clientAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err != nil {
+		t.Fatalf("creating client: %v", err)
+	}
 
 	// A plaintext connection attempt against a TLS-only server should fail
 	// somewhere. Either Launch itself fails to open the session (the
