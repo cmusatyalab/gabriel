@@ -8,8 +8,8 @@ You can find more details about Gabriel from our [design document](design), our
 ## Getting Started
 
 1. Create a Gabriel [server](server).
-2. Create a client using the [Python](python-client), [Go](go-client), or
-   [Android](android-client) client library.
+2. Create a client using the [Python](python-client) or [Go](go-client)
+   client library.
 3. Write a cognitive engine that connects to the server and processes frames
    from a client.
 

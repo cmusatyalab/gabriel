@@ -4,7 +4,7 @@ import logging
 
 import cv2
 import numpy as np
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 from gabriel_client.gabriel_client import InputProducer
 

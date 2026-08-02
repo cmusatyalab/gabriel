@@ -13,7 +13,7 @@ import pytest
 from gabriel_client.grpc_client import GrpcClient
 from gabriel_client.websocket_client import WebsocketClient
 from gabriel_client.zeromq_client import ZeroMQClient
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server.local_engine import LocalEngine
 from gabriel_server.network_engine.server_runner import Transport
 from helpers import (

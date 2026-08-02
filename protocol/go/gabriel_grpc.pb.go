@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: gabriel_protocol/gabriel.proto
+// source: gabriel_protocol/v1/gabriel.proto
 
 package gabrielpb
 
@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GabrielClientService_ClientSession_FullMethodName = "/gabriel.GabrielClientService/ClientSession"
+	GabrielClientService_ClientSession_FullMethodName = "/gabriel_protocol.v1.GabrielClientService/ClientSession"
 )
 
 // GabrielClientServiceClient is the client API for GabrielClientService service.
@@ -106,7 +106,7 @@ type GabrielClientService_ClientSessionServer = grpc.BidiStreamingServer[FromCli
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var GabrielClientService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gabriel.GabrielClientService",
+	ServiceName: "gabriel_protocol.v1.GabrielClientService",
 	HandlerType: (*GabrielClientServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -117,11 +117,11 @@ var GabrielClientService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "gabriel_protocol/gabriel.proto",
+	Metadata: "gabriel_protocol/v1/gabriel.proto",
 }
 
 const (
-	GabrielEngineService_EngineSession_FullMethodName = "/gabriel.GabrielEngineService/EngineSession"
+	GabrielEngineService_EngineSession_FullMethodName = "/gabriel_protocol.v1.GabrielEngineService/EngineSession"
 )
 
 // GabrielEngineServiceClient is the client API for GabrielEngineService service.
@@ -208,7 +208,7 @@ type GabrielEngineService_EngineSessionServer = grpc.BidiStreamingServer[FromEng
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var GabrielEngineService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "gabriel.GabrielEngineService",
+	ServiceName: "gabriel_protocol.v1.GabrielEngineService",
 	HandlerType: (*GabrielEngineServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
@@ -219,5 +219,5 @@ var GabrielEngineService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "gabriel_protocol/gabriel.proto",
+	Metadata: "gabriel_protocol/v1/gabriel.proto",
 }

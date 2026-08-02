@@ -8,9 +8,9 @@ from collections import deque, namedtuple
 from typing import Optional, Union
 
 import grpc
-from gabriel_protocol import gabriel_pb2, gabriel_pb2_grpc
-from gabriel_protocol.gabriel_pb2 import StatusCode
 from gabriel_protocol.tls_utils import build_server_credentials
+from gabriel_protocol.v1 import gabriel_pb2, gabriel_pb2_grpc
+from gabriel_protocol.v1.gabriel_pb2 import StatusCode
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from gabriel_server.grpc_server import GrpcServer

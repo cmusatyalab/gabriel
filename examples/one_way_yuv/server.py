@@ -6,7 +6,7 @@ import common
 import cv2
 import numpy as np
 import yuv_pb2
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server import cognitive_engine, local_engine
 
 

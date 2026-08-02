@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from google.protobuf.any_pb2 import Any as ProtoAny
 
 

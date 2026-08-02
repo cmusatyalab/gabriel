@@ -13,7 +13,7 @@ import time
 
 import pytest
 from gabriel_client.zeromq_client import ZeroMQClient
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server import cognitive_engine
 from helpers import DEFAULT_SERVER_HOST, get_multiple_engine_consumer
 

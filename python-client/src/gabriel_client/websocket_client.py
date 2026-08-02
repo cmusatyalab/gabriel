@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import websockets
 import websockets.client
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 from gabriel_client.gabriel_client import (
     DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,

@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Callable
 
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.websocket_client import WebsocketClient

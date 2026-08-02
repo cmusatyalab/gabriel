@@ -8,8 +8,8 @@ import logging
 import threading
 
 import grpc
-from gabriel_protocol import gabriel_pb2, gabriel_pb2_grpc
 from gabriel_protocol.tls_utils import build_channel_credentials
+from gabriel_protocol.v1 import gabriel_pb2, gabriel_pb2_grpc
 from google.protobuf.any_pb2 import Any
 
 from gabriel_server import cognitive_engine

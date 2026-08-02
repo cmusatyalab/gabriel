@@ -4,7 +4,7 @@ import asyncio
 
 from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.zeromq_client import ZeroMQClient
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 
 def consumer(result):

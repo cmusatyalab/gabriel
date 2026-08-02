@@ -6,7 +6,7 @@ import logging
 import pytest
 import pytest_asyncio
 from gabriel_client.gabriel_client import InputProducer
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server.network_engine import server_runner
 from gabriel_server.network_engine.server_runner import Transport
 from helpers import (

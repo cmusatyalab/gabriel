@@ -19,12 +19,6 @@ SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-path = "android-client/**"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "2024 Carnegie Mellon University"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
 path = "python-client/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2024 Carnegie Mellon University"

@@ -1,7 +1,7 @@
 """A Gabriel engine that displays the input frame."""
 
 import common
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.network_engine import engine_runner

@@ -7,7 +7,7 @@ import cv2
 from gabriel_client import push_source
 from gabriel_client.gabriel_client import InputProducer
 from gabriel_client.zeromq_client import ZeroMQClient
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 DEFAULT_NUM_SOURCES = 1
 ORG = (0, 120)

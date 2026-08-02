@@ -12,7 +12,7 @@ Data is processed by Cognitive Engines. Each cognitive engine is implemented in
 a separate class that inherits `cognitive_engine.Engine`. The `handle` method is
 called each time there is a new frame for the engine to process. `handle` gets
 passed an
-[`InputFrame`](https://github.com/cmusatyalab/gabriel/blob/main/protocol/protos/gabriel_protocol/gabriel.proto)
+[`InputFrame`](https://github.com/cmusatyalab/gabriel/blob/main/protocol/proto/gabriel_protocol/v1/gabriel.proto)
 and a `client_info` (the `Any` registered by the producing client's
 `Registration` message, or an empty `Any` if it registered none). It must
 return a `cognitive_engine.Result`, a dataclass with a `status`

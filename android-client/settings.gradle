@@ -1,3 +1,0 @@
-include ':camera'
-include ':client'
-include ':serverlist'

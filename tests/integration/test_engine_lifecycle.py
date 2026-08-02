@@ -14,7 +14,7 @@ import pytest
 import zmq
 import zmq.asyncio
 from gabriel_client.zeromq_client import ZeroMQClient
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server import cognitive_engine
 from gabriel_server.cognitive_engine import Result
 from gabriel_server.result_manager import ZeroMQSink

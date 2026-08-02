@@ -6,8 +6,8 @@ from collections.abc import Iterable
 from typing import Callable, Optional
 
 import grpc
-from gabriel_protocol import gabriel_pb2, gabriel_pb2_grpc
 from gabriel_protocol.tls_utils import build_channel_credentials
+from gabriel_protocol.v1 import gabriel_pb2, gabriel_pb2_grpc
 
 from gabriel_client.gabriel_client import (
     DEFAULT_REGISTRATION_RETRY_INTERVAL_SECONDS,

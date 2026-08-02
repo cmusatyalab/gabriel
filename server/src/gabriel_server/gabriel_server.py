@@ -10,7 +10,7 @@ from collections import namedtuple
 from collections.abc import Callable
 from typing import Union
 
-from gabriel_protocol.gabriel_pb2 import (
+from gabriel_protocol.v1.gabriel_pb2 import (
     FromClient,
     Result,
     StatusCode,

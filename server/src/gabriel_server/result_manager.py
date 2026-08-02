@@ -6,7 +6,7 @@ from typing import Union
 
 import zmq
 import zmq.asyncio
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine, Iterable
 from typing import Any, Optional, Union
 
-from gabriel_protocol.gabriel_pb2 import FromClient, InputFrame, ToClient
+from gabriel_protocol.v1.gabriel_pb2 import FromClient, InputFrame, ToClient
 from google.protobuf.any_pb2 import Any as ProtoAny
 from prometheus_client import Counter, Gauge, Histogram
 

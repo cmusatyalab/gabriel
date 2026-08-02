@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import zmq
 import zmq.asyncio
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from google.protobuf.message import DecodeError
 
 from gabriel_client.gabriel_client import (

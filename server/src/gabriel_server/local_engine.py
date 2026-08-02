@@ -8,7 +8,7 @@ import logging
 import multiprocessing
 from typing import Optional
 
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from google.protobuf.any_pb2 import Any
 
 from gabriel_server import cognitive_engine

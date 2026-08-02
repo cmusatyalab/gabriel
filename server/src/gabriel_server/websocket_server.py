@@ -5,7 +5,7 @@ import logging
 import socket
 
 import websockets
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from websockets.asyncio.server import serve, unix_serve
 
 from gabriel_server.gabriel_server import GabrielServer

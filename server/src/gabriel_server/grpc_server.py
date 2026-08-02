@@ -4,8 +4,8 @@ import asyncio
 import logging
 
 import grpc
-from gabriel_protocol import gabriel_pb2, gabriel_pb2_grpc
 from gabriel_protocol.tls_utils import build_server_credentials
+from gabriel_protocol.v1 import gabriel_pb2, gabriel_pb2_grpc
 
 from gabriel_server.gabriel_server import GabrielServer
 

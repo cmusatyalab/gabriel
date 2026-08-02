@@ -1,6 +1,6 @@
 """A Gabriel server that handles empty messages."""
 
-from gabriel_protocol import gabriel_pb2
+from gabriel_protocol.v1 import gabriel_pb2
 from gabriel_server import cognitive_engine, local_engine
 
 
