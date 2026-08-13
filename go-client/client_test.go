@@ -188,6 +188,21 @@ func TestInvalidEngineTarget(t *testing.T) {
 	}
 }
 
+// TestNewGrpcClientRejectsProducerWithNoTargetEngines checks that constructing
+// a client with a producer that targets no engines fails fast, rather than
+// silently sending frames the server will reject forever.
+func TestNewGrpcClientRejectsProducerWithNoTargetEngines(t *testing.T) {
+	useTestLogger(t)
+	producer := gabrielclient.NewInputProducer(
+		"producer-1", repeatingProducer("hi", inputInterval), nil,
+	)
+	consumer := func(result *gabrielpb.Result) {}
+	_, err := gabrielclient.NewGrpcClient(grpcServerAddr, []*gabrielclient.InputProducer{producer}, consumer)
+	if err == nil || !strings.Contains(err.Error(), "no target engines") {
+		t.Fatalf("expected an error about no target engines, got: %v", err)
+	}
+}
+
 // TestEmptyInputFrame checks that a producer emitting an empty frame does not
 // cause a response to be sent, nor bring the client down.
 func TestEmptyInputFrame(t *testing.T) {

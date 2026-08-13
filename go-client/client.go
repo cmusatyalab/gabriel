@@ -8,11 +8,24 @@ import (
 	"time"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/anypb"
+)
+
+// sessionIDMetadataKey and streamRoleMetadataKey are gRPC metadata keys the
+// client attaches when opening a ClientSession stream, so the server can
+// correlate a client's producer streams with its control stream.
+const (
+	sessionIDMetadataKey  = "session-id"
+	streamRoleMetadataKey = "stream-role"
+
+	streamRoleControl  = "control"
+	streamRoleProducer = "producer"
 )
 
 // errDisconnected wraps errors that indicate the gRPC stream to the server was
@@ -33,15 +46,21 @@ type GrpcClient struct {
 	serverEndpoint string
 	// tlsCredentials, if set, are used to secure the connection to the server.
 	// If nil, an insecure (plaintext) connection is used.
-	tlsCredentials       credentials.TransportCredentials
-	reconnectInterval    time.Duration
-	dialOptions          []grpc.DialOption
-	consumer             func(*gabrielpb.Result)
-	tokenPool            map[string]*tokenPool
-	fatalCancel          context.CancelFunc
-	conn                 *grpc.ClientConn
-	stream               grpc.BidiStreamingClient[gabrielpb.FromClient, gabrielpb.ToClient]
-	streamMu             sync.Mutex
+	tlsCredentials    credentials.TransportCredentials
+	reconnectInterval time.Duration
+	dialOptions       []grpc.DialOption
+	consumer          func(*gabrielpb.Result)
+	tokenPool         map[string]*tokenPool
+	fatalCancel       context.CancelFunc
+	conn              *grpc.ClientConn
+	// controlStream carries Registration, and receives Registered,
+	// ResultWrapper, and EngineIdsUpdate messages.
+	controlStream   grpc.BidiStreamingClient[gabrielpb.FromClient, gabrielpb.ToClient]
+	controlStreamMu sync.Mutex
+	// sessionID is generated fresh in connect and attached as metadata to the
+	// control stream and every producer stream opened against it, so the
+	// server can correlate them as belonging to the same client.
+	sessionID            string
 	connected            bool
 	connectedMu          sync.Mutex
 	connectedCond        *sync.Cond
@@ -78,6 +97,9 @@ func NewGrpcClient(
 			return nil, fmt.Errorf("duplicate input producer name %q", p.Name)
 		}
 		seenNames[p.Name] = struct{}{}
+		if len(p.TargetEngineIDs()) == 0 {
+			return nil, fmt.Errorf("input producer %q has no target engines", p.Name)
+		}
 	}
 
 	client := GrpcClient{
@@ -98,10 +120,12 @@ func NewGrpcClient(
 	return &client, nil
 }
 
-func (client *GrpcClient) sendMsg(msg *gabrielpb.FromClient) error {
-	client.streamMu.Lock()
-	defer client.streamMu.Unlock()
-	return client.stream.Send(msg)
+// sendControlMsg sends msg on the control stream. It is used by
+// registrationHandler.
+func (client *GrpcClient) sendControlMsg(msg *gabrielpb.FromClient) error {
+	client.controlStreamMu.Lock()
+	defer client.controlStreamMu.Unlock()
+	return client.controlStream.Send(msg)
 }
 
 // Launch starts the GrpcClient and connects to the Gabriel server. This
@@ -146,8 +170,10 @@ func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 	return errCh, nil
 }
 
-// connect dials the Gabriel server and opens the ClientSession stream, storing
-// the resulting connection and stream on the client.
+// connect dials the Gabriel server and opens the control ClientSession stream,
+// storing the resulting connection and stream on the client. It also generates
+// a fresh sessionID, used to correlate this control stream with the producer
+// streams opened against it later in runSession.
 func (client *GrpcClient) connect(ctx context.Context) error {
 	log.Info().Str("endpoint", client.serverEndpoint).Msg("connecting to server")
 	transportCredentials := client.tlsCredentials
@@ -167,7 +193,8 @@ func (client *GrpcClient) connect(ctx context.Context) error {
 		return err
 	}
 
-	stream, err := gabrielpb.NewGabrielClientServiceClient(conn).ClientSession(ctx)
+	sessionID := uuid.NewString()
+	stream, err := client.openStream(ctx, conn, sessionID, streamRoleControl)
 	if err != nil {
 		log.Err(err).Msg("error opening session with server")
 		conn.Close()
@@ -175,8 +202,22 @@ func (client *GrpcClient) connect(ctx context.Context) error {
 	}
 
 	client.conn = conn
-	client.stream = stream
+	client.sessionID = sessionID
+	client.controlStream = stream
 	return nil
+}
+
+// openStream opens a new ClientSession stream on conn, tagged with metadata
+// identifying it as belonging to sessionID with the given role
+// (streamRoleControl or streamRoleProducer).
+func (client *GrpcClient) openStream(
+	ctx context.Context, conn *grpc.ClientConn, sessionID, role string,
+) (grpc.BidiStreamingClient[gabrielpb.FromClient, gabrielpb.ToClient], error) {
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		sessionIDMetadataKey, sessionID,
+		streamRoleMetadataKey, role,
+	)
+	return gabrielpb.NewGabrielClientServiceClient(conn).ClientSession(ctx)
 }
 
 // reconnect waits client.reconnectInterval and then repeatedly attempts to
@@ -201,11 +242,11 @@ func (client *GrpcClient) reconnect(ctx context.Context) error {
 	}
 }
 
-// runSession runs a single gRPC stream session with the server. It resets
-// per-session state, starts the producer and consumer handlers, and waits for
-// them to finish. It returns a non-nil fatalErr if the client should stop
-// entirely, or disconnected=true if the session ended because the stream was
-// lost and should be retried.
+// runSession runs a client session with the server. It resets per-session
+// state, starts the producer and consumer handlers, and waits for them to
+// finish. It returns a non-nil fatalErr if the client should stop entirely, or
+// disconnected=true if the session ended because the stream was lost and
+// should be retried.
 func (client *GrpcClient) runSession(
 	ctx context.Context) (fatalErr error, disconnected bool) {
 	sessCtx, sessCancel := context.WithCancel(ctx)

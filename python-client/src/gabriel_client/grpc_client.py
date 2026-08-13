@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Iterable
 from typing import Callable, Optional
 
@@ -17,6 +18,16 @@ from gabriel_client.gabriel_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+# gRPC metadata keys attached when opening a ClientSession stream, so the
+# server can correlate a client's producer streams (one per InputProducer,
+# upload-only) with its control stream. Must match grpc_server.py's
+# SESSION_ID_METADATA_KEY/STREAM_ROLE_METADATA_KEY on the server, and the Go
+# client's equivalent constants in client.go.
+_SESSION_ID_METADATA_KEY = "session-id"
+_STREAM_ROLE_METADATA_KEY = "stream-role"
+_STREAM_ROLE_CONTROL = "control"
+_STREAM_ROLE_PRODUCER = "producer"
 
 # Default time to wait before attempting to reconnect after being
 # disconnected from the server. Overridden with the reconnect_interval_seconds
@@ -139,7 +150,14 @@ class GrpcClient(GabrielClient):
         # Whether the client is connected to the server
         self._connected = asyncio.Event()
         self._channel = None
+        self._stub = None
+        # self._call is the control stream, used for Registration/Registered,
+        # results, and engine ID updates.
         self._call = None
+        # Generated fresh in _run_session and attached as metadata to the
+        # control stream and every producer stream opened against it, so the
+        # server can correlate them as belonging to the same client.
+        self._session_id = None
 
     async def launch_async(self):
         """Launch async tasks for running the client.
@@ -183,8 +201,14 @@ class GrpcClient(GabrielClient):
                 self._server_endpoint, options=self._channel_options
             )
         )
-        stub = gabriel_pb2_grpc.GabrielClientServiceStub(self._channel)
-        self._call = stub.ClientSession()
+        self._stub = gabriel_pb2_grpc.GabrielClientServiceStub(self._channel)
+        self._session_id = str(uuid.uuid4())
+        self._call = self._stub.ClientSession(
+            metadata=(
+                (_SESSION_ID_METADATA_KEY, self._session_id),
+                (_STREAM_ROLE_METADATA_KEY, _STREAM_ROLE_CONTROL),
+            )
+        )
 
         tasks = [
             asyncio.create_task(self._producer_handler(input_source))
@@ -325,6 +349,14 @@ class GrpcClient(GabrielClient):
         if not await self._wait_while_running(self._registered_event):
             return
 
+        # Open a stream dedicated to this producer
+        call = self._stub.ClientSession(
+            metadata=(
+                (_SESSION_ID_METADATA_KEY, self._session_id),
+                (_STREAM_ROLE_METADATA_KEY, _STREAM_ROLE_PRODUCER),
+            )
+        )
+
         frame_id = 1
         producer_id = producer.producer_id
         token_pool = _TokenPool(self._num_tokens_per_producer, producer_id)
@@ -377,14 +409,14 @@ class GrpcClient(GabrielClient):
                 f"Sending input to server; producer={producer.producer_id}"
             )
             try:
-                await self._send_to_server(from_client)
+                await self._send_to_server(from_client, call)
             except (grpc.aio.AioRpcError, asyncio.InvalidStateError) as e:
                 raise _DisconnectedError(str(e)) from e
 
-    async def _send_to_server(self, from_client: gabriel_pb2.FromClient):
-        """Send a frame to the server."""
+    async def _send_to_server(self, from_client: gabriel_pb2.FromClient, call):
+        """Send a frame to the server on the given stream."""
         self._record_send_metrics(from_client)
-        await self._call.write(from_client)
+        await call.write(from_client)
 
     async def _send_registration(self, from_client: gabriel_pb2.FromClient):
         """Write a Registration message to the server.

@@ -16,11 +16,13 @@ import (
 	"time"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // grpcServerAddr is the address of the Gabriel gRPC server started by
@@ -193,7 +195,13 @@ func probeEngineRegistered(serverAddr, engineID string, creds credentials.Transp
 	}
 	defer conn.Close()
 
-	stream, err := gabrielpb.NewGabrielClientServiceClient(conn).ClientSession(ctx)
+	// A real client tags every ClientSession stream it opens with session-id
+	// and stream-role metadata
+	probeCtx := metadata.AppendToOutgoingContext(ctx,
+		"session-id", uuid.NewString(),
+		"stream-role", "control",
+	)
+	stream, err := gabrielpb.NewGabrielClientServiceClient(conn).ClientSession(probeCtx)
 	if err != nil {
 		return false, fmt.Errorf("opening probe session: %w", err)
 	}

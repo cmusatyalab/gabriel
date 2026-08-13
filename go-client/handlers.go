@@ -27,7 +27,7 @@ func (client *GrpcClient) consumerHandler(
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		toClient, err := client.stream.Recv()
+		toClient, err := client.controlStream.Recv()
 		if err == io.EOF {
 			errCh <- fmt.Errorf("%w: server closed the session", errDisconnected)
 			sessCancel()
@@ -117,7 +117,7 @@ func (client *GrpcClient) registrationHandler(
 	}
 
 	send := func() bool {
-		if err := client.sendMsg(fromClient); err != nil {
+		if err := client.sendControlMsg(fromClient); err != nil {
 			errCh <- fmt.Errorf("%w: error sending registration: %v", errDisconnected, err)
 			sessCancel()
 			return false
@@ -207,6 +207,15 @@ func (client *GrpcClient) producerHandler(
 	}
 	client.connectedMu.Unlock()
 
+	// Open a stream dedicated to this producer
+	stream, err := client.openStream(ctx, client.conn, client.sessionID, streamRoleProducer)
+	if err != nil {
+		errCh <- fmt.Errorf("%w: error opening producer stream: %v", errDisconnected, err)
+		logger.Err(err).Msg("error opening producer stream")
+		sessCancel()
+		return
+	}
+
 	tokenPool := client.tokenPool[producer.Name]
 
 	frameId := 1
@@ -276,7 +285,7 @@ func (client *GrpcClient) producerHandler(
 			Str("producer", producer.Name).
 			Strs("engines", targetEngines).
 			Msg("sending input to server")
-		if err := client.sendMsg(fromClient); err != nil {
+		if err := stream.Send(fromClient); err != nil {
 			errCh <- fmt.Errorf("%w: error sending message to server: %v", errDisconnected, err)
 			logger.Err(err).Msg("error sending message to server")
 			sessCancel()

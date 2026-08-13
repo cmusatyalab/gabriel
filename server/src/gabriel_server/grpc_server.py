@@ -11,6 +11,14 @@ from gabriel_server.gabriel_server import GabrielServer
 
 logger = logging.getLogger(__name__)
 
+# gRPC metadata keys a client attaches when opening a ClientSession stream, so
+# each client can have one control stream and multiple producer streams, one
+# per input producer
+SESSION_ID_METADATA_KEY = "session-id"
+STREAM_ROLE_METADATA_KEY = "stream-role"
+STREAM_ROLE_CONTROL = "control"
+STREAM_ROLE_PRODUCER = "producer"
+
 
 class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
     """A Gabriel server that uses gRPC for communication with clients."""
@@ -52,9 +60,10 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
         self._tls_key = tls_key
         self._tls_client_ca_cert = tls_client_ca_cert
         # gRPC doesn't allow concurrent writes on the same call, so use a lock
-        # to ensure that we do not interleave writes. The map is keyed on the
-        # gRPC context of the peer.
-        self._write_locks: dict[object, asyncio.Lock] = {}
+        # to ensure that we do not interleave writes. The map is keyed on a
+        # client's session id. A client's control stream is the only stream
+        # ever written back to, so this lock only ever guards that one stream.
+        self._write_locks: dict[str, asyncio.Lock] = {}
 
     async def launch_async(
         self, port_or_path, message_max_size, use_ipc=False
@@ -173,55 +182,104 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
         return self._is_running
 
     async def ClientSession(self, request_iterator, context):  # noqa: N802
-        """Handle a client's stream for its entire lifetime.
+        """Handle a client stream for its entire lifetime.
 
-        This is invoked directly by the gRPC framework once per client
-        connection, and also serves as this transport's `_client_handler`.
+        This is invoked directly by the gRPC framework once per stream a client
+        opens. A client opens one control stream plus one additional
+        upload-only stream per input producer, identified via the session-id
+        and stream-role metadata attached when the stream was opened. Splitting
+        producers across separate streams lets gRPC's HTTP/2 transport
+        interleave frames from different producers.
         """
-        address = context
-        logger.info("New client connected: %s", context.peer())
+        invocation_metadata = dict(context.invocation_metadata())
+        session_id = invocation_metadata.get(SESSION_ID_METADATA_KEY)
+        stream_role = invocation_metadata.get(STREAM_ROLE_METADATA_KEY)
+        if not session_id or stream_role not in (
+            STREAM_ROLE_CONTROL,
+            STREAM_ROLE_PRODUCER,
+        ):
+            await context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"stream must carry {SESSION_ID_METADATA_KEY} and a valid "
+                f"{STREAM_ROLE_METADATA_KEY} metadata",
+            )
+            return
 
+        if stream_role == STREAM_ROLE_PRODUCER:
+            await self._producer_stream(request_iterator, session_id)
+            return
+
+        logger.info("New client connected: %s", context.peer())
         client = self._new_client(websocket=context)
-        self._clients[address] = client
+        self._clients[session_id] = client
         write_lock = asyncio.Lock()
-        self._write_locks[address] = write_lock
+        self._write_locks[session_id] = write_lock
 
         try:
-            await self._consumer(request_iterator, context, client)
+            await self._consumer(request_iterator, context, session_id, client)
         finally:
-            del self._clients[address]
-            del self._write_locks[address]
+            del self._clients[session_id]
+            del self._write_locks[session_id]
             logger.info(f"Client disconnected: {context.peer()}")
 
     _client_handler = ClientSession
 
-    async def _consumer(self, request_iterator, context, client):
-        address = context
+    async def _consumer(self, request_iterator, context, session_id, client):
+        """Consume a client's control stream, which carries Registration."""
         async for from_client in request_iterator:
             logger.debug(f"Received input from {context.peer()}")
-
-            status, status_msg = await self._consumer_helper(
-                client, address, from_client
+            await self._handle_from_client(
+                from_client, context, session_id, client
             )
-            if status == gabriel_pb2.StatusCode.SUCCESS:
-                if from_client.WhichOneof("message_type") == "registration":
-                    async with self._write_locks[address]:
-                        await context.write(self._make_registered())
-                else:
-                    client.tokens_for_producer[
-                        from_client.input.producer_id
-                    ] -= 1
-                continue
 
-            # Send error message
+    async def _producer_stream(self, request_iterator, session_id):
+        """Consume a single input producer's upload-only stream.
+
+        Errors and results for input received here are still sent back over the
+        client's control stream (via client.websocket).
+        """
+        async for from_client in request_iterator:
+            client = self._clients.get(session_id)
+            if client is None:
+                logger.error(
+                    "Producer stream for unknown or already-closed session "
+                    f"{session_id}"
+                )
+                return
+            logger.debug(f"Received input from producer stream {session_id}")
+            await self._handle_from_client(
+                from_client, client.websocket, session_id, client
+            )
+
+    async def _handle_from_client(
+        self, from_client, context, session_id, client
+    ):
+        """Process one FromClient message and send back a response, if any."""
+        status, status_msg = await self._consumer_helper(
+            client, session_id, from_client
+        )
+        if status == gabriel_pb2.StatusCode.SUCCESS:
+            if from_client.WhichOneof("message_type") == "registration":
+                response = self._make_registered()
+            else:
+                client.tokens_for_producer[from_client.input.producer_id] -= 1
+                return
+        else:
             status_name = gabriel_pb2.StatusCode.Name(status)
             logger.error(
-                f"Sending error message to client {context.peer()}. "
+                f"Sending error message to client {session_id}. "
                 f"{status_name}: {status_msg}"
             )
-            err_msg = self._make_error_response(
+            response = self._make_error_response(
                 from_client, status, status_msg
             )
 
-            async with self._write_locks[address]:
-                await context.write(err_msg)
+        write_lock = self._write_locks.get(session_id)
+        if write_lock is None:
+            logger.info(
+                f"Dropping response for session {session_id}: "
+                "control stream already disconnected"
+            )
+            return
+        async with write_lock:
+            await context.write(response)
