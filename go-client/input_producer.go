@@ -3,6 +3,7 @@ package gabrielclient
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
 	"golang.org/x/sync/semaphore"
@@ -116,21 +117,49 @@ func (p *InputProducer) TargetEngineIDs() []string {
 	return engineIDs
 }
 
-// tokenPool manages the tokens for a single InputProducer.
+// tokenPool manages the tokens for a single InputProducer. remaining mirrors
+// the semaphore's available weight for the gabriel_producer_token_count
+// metric, since semaphore.Weighted exposes no way to query it directly.
 type tokenPool struct {
 	sem          *semaphore.Weighted
 	maxTokens    int
 	producerName string
+	remaining    atomic.Int64
+}
+
+// newTokenPool creates a tokenPool with maxTokens available, and initializes
+// its gabriel_producer_token_count gauge.
+func newTokenPool(maxTokens int, producerName string) *tokenPool {
+	pool := &tokenPool{
+		sem:          semaphore.NewWeighted(int64(maxTokens)),
+		maxTokens:    maxTokens,
+		producerName: producerName,
+	}
+	pool.remaining.Store(int64(maxTokens))
+	producerTokenCount.WithLabelValues(producerName).Set(float64(maxTokens))
+	return pool
 }
 
 func (pool *tokenPool) ResetTokens() {
 	pool.sem = semaphore.NewWeighted(int64(pool.maxTokens))
+	pool.remaining.Store(int64(pool.maxTokens))
+	producerTokenCount.WithLabelValues(pool.producerName).
+		Set(float64(pool.maxTokens))
 }
 
 func (pool *tokenPool) GetToken(ctx context.Context) error {
-	return pool.sem.Acquire(ctx, 1)
+	if err := pool.sem.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	remaining := pool.remaining.Add(-1)
+	producerTokenCount.WithLabelValues(pool.producerName).
+		Set(float64(remaining))
+	return nil
 }
 
 func (pool *tokenPool) ReturnToken() {
 	pool.sem.Release(1)
+	remaining := pool.remaining.Add(1)
+	producerTokenCount.WithLabelValues(pool.producerName).
+		Set(float64(remaining))
 }

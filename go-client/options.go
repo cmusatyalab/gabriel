@@ -131,3 +131,13 @@ func WithRegistrationRetryInterval(interval time.Duration) Option {
 		client.registrationRetryInterval = interval
 	}
 }
+
+// WithPrometheusPort configures the client to serve Prometheus metrics (input
+// counts, token counts, and end-to-end input processing latency, all labeled
+// by producer_id) on a "/metrics" HTTP endpoint at the given port, for the
+// lifetime of the client. If not provided, no metrics endpoint is served.
+func WithPrometheusPort(port int) Option {
+	return func(client *GrpcClient) {
+		client.prometheusPort = port
+	}
+}

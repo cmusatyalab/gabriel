@@ -9,7 +9,6 @@ import (
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
@@ -80,11 +79,7 @@ func (client *GrpcClient) processRegistered(registered *gabrielpb.ToClient_Regis
 	client.engineIDMu.Unlock()
 
 	for _, p := range client.inputProducers {
-		client.tokenPool[p.Name] = &tokenPool{
-			sem:          semaphore.NewWeighted(int64(client.numTokensPerProducer)),
-			maxTokens:    client.numTokensPerProducer,
-			producerName: p.Name,
-		}
+		client.tokenPool[p.Name] = newTokenPool(client.numTokensPerProducer, p.Name)
 	}
 
 	client.connectedMu.Lock()
@@ -157,6 +152,8 @@ func (client *GrpcClient) processResult(resultWrapper *gabrielpb.ToClient_Result
 	code := resultStatus.Code
 	msg := resultStatus.Message
 	log.Debug().Str("engine_id", result.TargetEngineId).Msg("processing result from engine")
+
+	client.pendingResults.recordResponse(resultWrapper.ProducerId, result.FrameId)
 
 	switch code {
 	case gabrielpb.StatusCode_SUCCESS:
@@ -291,5 +288,6 @@ func (client *GrpcClient) producerHandler(
 			sessCancel()
 			return
 		}
+		client.pendingResults.recordSend(producer.Name, input.FrameId)
 	}
 }

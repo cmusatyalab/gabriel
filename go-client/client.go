@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	gabrielpb "github.com/cmusatyalab/gabriel/protocol/go"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -74,6 +76,12 @@ type GrpcClient struct {
 	// registrationRetryInterval is the fixed delay between attempts to
 	// register with the server at the start of each session.
 	registrationRetryInterval time.Duration
+	// prometheusPort, if non-zero, is the port a "/metrics" HTTP endpoint is
+	// served on for the client's lifetime.
+	prometheusPort int
+	// pendingResults tracks in-flight inputs for the input processing
+	// latency metric.
+	pendingResults *pendingResults
 }
 
 // NewGrpcClient creates a new GrpcClient with the given server endpoint and
@@ -110,6 +118,7 @@ func NewGrpcClient(
 		engineIDs:                 make(map[string]struct{}),
 		reconnectInterval:         DefaultReconnectInterval,
 		registrationRetryInterval: DefaultRegistrationRetryInterval,
+		pendingResults:            newPendingResults(),
 	}
 	client.connectedCond = sync.NewCond(&client.connectedMu)
 
@@ -135,6 +144,8 @@ func (client *GrpcClient) sendControlMsg(msg *gabrielpb.FromClient) error {
 func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	client.fatalCancel = cancel
+
+	client.startMetricsServer(ctx)
 
 	if err := client.connect(ctx); err != nil {
 		cancel()
@@ -168,6 +179,42 @@ func (client *GrpcClient) Launch(ctx context.Context) (<-chan error, error) {
 	}()
 
 	return errCh, nil
+}
+
+// startMetricsServer serves Prometheus metrics on client.prometheusPort for
+// the lifetime of ctx, if a port was configured via WithPrometheusPort.
+func (client *GrpcClient) startMetricsServer(ctx context.Context) {
+	if client.prometheusPort == 0 {
+		return
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", client.prometheusPort),
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(
+			context.Background(), 5*time.Second,
+		)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Err(err).Msg("error shutting down metrics server")
+		}
+	}()
+
+	go func() {
+		log.Info().
+			Int("port", client.prometheusPort).
+			Msg("serving Prometheus metrics")
+		if err := server.ListenAndServe(); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			log.Err(err).Msg("metrics server failed")
+		}
+	}()
 }
 
 // connect dials the Gabriel server and opens the control ClientSession stream,

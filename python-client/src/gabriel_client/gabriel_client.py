@@ -279,8 +279,9 @@ class GabrielClient(ABC):
         self._num_tokens_per_producer = None
         # Mapping from source id to tokens
         self._tokens = {}
-        # Mapping from frame ids to the timestamp at which the input was
-        # sent to the server
+        # Mapping from (producer_id, frame_id) to the timestamp at which the
+        # input was sent to the server. frame_id alone isn't unique across
+        # producers, since each producer numbers its own frames starting at 1.
         self._pending_results = {}
         self._prometheus_port = prometheus_port
         self._client_info = client_info
@@ -378,7 +379,7 @@ class GabrielClient(ABC):
         CLIENT_INPUTS_SENT_TOTAL.labels(producer_id=producer_id).inc()
 
         frame_id = from_client.input.frame_id
-        self._pending_results[frame_id] = time.monotonic()
+        self._pending_results[(producer_id, frame_id)] = time.monotonic()
 
     def _record_response_latency(self, result_wrapper: ToClient.ResultWrapper):
         """Record the response latency for input."""
@@ -386,7 +387,9 @@ class GabrielClient(ABC):
         result = result_wrapper.result
         frame_id = result.frame_id
 
-        send_time = self._pending_results[frame_id]
+        send_time = self._pending_results.pop((producer_id, frame_id), None)
+        if send_time is None:
+            return
         latency = time.monotonic() - send_time
 
         CLIENT_INPUT_PROCESSING_LATENCY.labels(
