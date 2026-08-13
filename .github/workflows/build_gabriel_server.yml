@@ -8,7 +8,11 @@ on:
       - 'server/**'
       - 'protocol/python/**'
 jobs:
+  integration-test:
+    uses: ./.github/workflows/integration_test.yml
+
   build-and-push:
+    needs: integration-test
     uses: ./.github/workflows/deploy-docker-img.yml
     with:
       name: gabriel-server

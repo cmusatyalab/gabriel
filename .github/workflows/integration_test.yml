@@ -6,6 +6,9 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Lets other workflows (e.g. build_gabriel_server.yml) require this to pass
+  # before running, via `uses: ./.github/workflows/integration_test.yml`.
+  workflow_call: {}
 
 jobs:
   integration-test:
