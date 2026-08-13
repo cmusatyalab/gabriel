@@ -31,6 +31,7 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
         tls_cert=None,
         tls_key=None,
         tls_client_ca_cert=None,
+        http2_stream_window_bytes=None,
     ):
         """Initialize the gRPC server.
 
@@ -52,6 +53,13 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
             tls_client_ca_cert:
                 Optional path to a PEM CA certificate used to verify client
                 certificates. Providing this enables mutual TLS.
+            http2_stream_window_bytes:
+                Optional override for the HTTP/2 per-stream flow-control
+                window (grpc.http2.lookahead_bytes), in bytes. Governs how
+                much a client can have in flight on a single stream to this
+                server before it must wait for an ACK; raising it can reduce
+                stalls on bandwidth-constrained/high-latency links. Defaults
+                to gRPC's own default (64KiB) if not given.
         """
         super().__init__(num_tokens_per_producer, engine_cb, engine_ids)
         self._is_running = False
@@ -59,6 +67,7 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
         self._tls_cert = tls_cert
         self._tls_key = tls_key
         self._tls_client_ca_cert = tls_client_ca_cert
+        self._http2_stream_window_bytes = http2_stream_window_bytes
         # gRPC doesn't allow concurrent writes on the same call, so use a lock
         # to ensure that we do not interleave writes. The map is keyed on a
         # client's session id. A client's control stream is the only stream
@@ -95,6 +104,13 @@ class GrpcServer(GabrielServer, gabriel_pb2_grpc.GabrielClientServiceServicer):
             ("grpc.http2.min_ping_interval_without_data_ms", 5_000),
             ("grpc.http2.max_pings_without_data", 0),
         ]
+        if self._http2_stream_window_bytes is not None:
+            options.append(
+                (
+                    "grpc.http2.lookahead_bytes",
+                    self._http2_stream_window_bytes,
+                )
+            )
         if self._message_max_size is not None:
             options.append(
                 ("grpc.max_send_message_length", self._message_max_size)

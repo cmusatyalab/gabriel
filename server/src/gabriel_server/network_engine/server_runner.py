@@ -113,6 +113,7 @@ class ServerRunner:
         tls_cert: Optional[str] = None,
         tls_key: Optional[str] = None,
         tls_client_ca_cert: Optional[str] = None,
+        http2_stream_window_bytes: Optional[int] = None,
     ):
         """Initialize the server runner.
 
@@ -156,6 +157,10 @@ class ServerRunner:
             tls_client_ca_cert (str, optional):
                 Path to a PEM CA certificate used to verify client/engine
                 certificates. Providing this enables mutual TLS.
+            http2_stream_window_bytes (int, optional):
+                Override for the HTTP/2 per-stream flow-control window used
+                by the client-facing gRPC server. Only applies when
+                client_transport is Transport.GRPC.
         """
         self.client_endpoint = client_endpoint
         self.engine_endpoint = engine_endpoint
@@ -169,6 +174,7 @@ class ServerRunner:
         self.tls_cert = tls_cert
         self.tls_key = tls_key
         self.tls_client_ca_cert = tls_client_ca_cert
+        self.http2_stream_window_bytes = http2_stream_window_bytes
 
     def run(self):
         """Run the Gabriel server."""
@@ -194,6 +200,7 @@ class ServerRunner:
             self.tls_cert,
             self.tls_key,
             self.tls_client_ca_cert,
+            self.http2_stream_window_bytes,
         )
         self.server = server.server
         try:
@@ -222,6 +229,7 @@ class _Server(gabriel_pb2_grpc.GabrielEngineServiceServicer):
         tls_cert=None,
         tls_key=None,
         tls_client_ca_cert=None,
+        http2_stream_window_bytes=None,
     ):
         self._engine_endpoint = engine_endpoint
         self._use_engine_ipc = use_engine_ipc
@@ -239,6 +247,7 @@ class _Server(gabriel_pb2_grpc.GabrielEngineServiceServicer):
                 "tls_cert": tls_cert,
                 "tls_key": tls_key,
                 "tls_client_ca_cert": tls_client_ca_cert,
+                "http2_stream_window_bytes": http2_stream_window_bytes,
             }
         # The server used to service Gabriel clients
         self.server = _TRANSPORT_CLASSES[client_transport](

@@ -106,6 +106,15 @@ def main():
         help="Port for Prometheus metrics",
     )
 
+    parser.add_argument(
+        "--http2-stream-window-bytes",
+        type=int,
+        default=None,
+        help="Override the HTTP/2 per-stream flow-control window (bytes) "
+        "for client connections. Only applies to the gRPC transport. "
+        "Defaults to gRPC's own default (64KiB) if not given.",
+    )
+
     args, _ = parser.parse_known_args()
 
     logging.basicConfig(
@@ -149,6 +158,7 @@ def main():
         tls_cert=args.tls_cert,
         tls_key=args.tls_key,
         tls_client_ca_cert=args.tls_client_ca_cert,
+        http2_stream_window_bytes=args.http2_stream_window_bytes,
     )
     server_runner.run()
 
