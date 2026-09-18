@@ -1,1 +1,0 @@
-"""Gabriel protocol module."""
