@@ -1,6 +1,10 @@
 #ifndef GABRIEL_H
 #define GABRIEL_H
 
+#include <stddef.h>
+
+#include "gabriel/errors.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,11 +23,18 @@ typedef struct GabrielClient GabrielClient;
 typedef struct GabrielServer GabrielServer;
 
 /* Connects to a Gabriel server at `address`, with `num_tokens` as
- * this client's flow-control budget. */
-GabrielClient *gabriel_new_client(const char *address, int num_tokens);
+ * this client's flow-control budget and `shm_size` as the requested
+ * shared memory size for a "unix://" address (ignored for "tcp://";
+ * pass 0 for the transport's default). `error`, if non-NULL, is set
+ * to the specific reason on failure (LIGHTNING_OK on success); pass
+ * NULL if you don't need it. */
+GabrielClient *gabriel_new_client(const char *address, int num_tokens,
+                                   size_t shm_size, lightning_error_t *error);
 
-/* Starts a Gabriel server listening at `address`. */
-GabrielServer *gabriel_new_server(const char *address);
+/* Starts a Gabriel server listening at `address`. `error` follows the
+ * same convention as gabriel_new_client()'s. */
+GabrielServer *gabriel_new_server(const char *address,
+                                   lightning_error_t *error);
 
 #ifdef __cplusplus
 } /* extern "C" */

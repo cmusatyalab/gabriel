@@ -1,6 +1,10 @@
 add_library(gabriel
     src/gabriel.c
     src/lightning.c
+    src/shmem.c
+    src/tcp.c
+    src/unix.c
+    src/utils.c
 )
 add_library(gabriel::gabriel ALIAS gabriel)
 
