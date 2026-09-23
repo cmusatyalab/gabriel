@@ -35,31 +35,31 @@ repos:
         types: [python]
 
       - id: go-fmt
-        name: go fmt (go-client)
-        entry: bash -c 'cd go-client && diff=$(gofmt -l .) && [ -z "$diff" ] || { echo "$diff"; echo "run gofmt -w on the above files"; exit 1; }'
+        name: go fmt
+        entry: bash -c 'diff=$(gofmt -l go examples/go) && [ -z "$diff" ] || { echo "$diff"; echo "run gofmt -w on the above files"; exit 1; }'
         language: system
-        files: ^go-client/.*\.go$
+        files: \.go$
         pass_filenames: false
 
       - id: go-vet
-        name: go vet (go-client)
-        entry: bash -c 'cd go-client && go vet ./...'
+        name: go vet
+        entry: bash -c 'go vet ./...'
         language: system
-        files: ^go-client/.*\.go$
+        files: \.go$
         pass_filenames: false
 
       - id: go-build
-        name: go build (go-client)
-        entry: bash -c 'cd go-client && go build ./...'
+        name: go build
+        entry: bash -c 'go build ./...'
         language: system
-        files: ^go-client/.*\.go$
+        files: \.go$
         pass_filenames: false
 
       - id: go-test
-        name: go test (go-client)
-        entry: bash -c 'cd go-client && go test ./...'
+        name: go test
+        entry: bash -c 'go test ./...'
         language: system
-        files: ^go-client/.*\.go$
+        files: \.go$
         pass_filenames: false
 
 #  - repo: https://github.com/fsfe/reuse-tool

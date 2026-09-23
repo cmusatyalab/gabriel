@@ -1,0 +1,14 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "gabriel"
+version = "0.1.0"
+description = "Python bindings for the gabriel C library"
+requires-python = ">=3.9"
+
+[tool.scikit-build]
+# Non-standard layout (python/src/gabriel instead of src/gabriel), so
+# it must be spelled out rather than relying on auto-detection.
+wheel.packages = ["python/src/gabriel"]
