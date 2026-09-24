@@ -18,11 +18,11 @@ extern "C" {
 
 typedef enum {
   LIGHTNING_OK = 0,
-  LIGHTNING_ERR_DROPPED,     /* send: no consumer could take the frame */
+  LIGHTNING_ERR_DROPPED,     /* no consumer could take the frame so it was dropped */
   LIGHTNING_ERR_TOO_LARGE,   /* data_size > max_send_size */
   LIGHTNING_ERR_BROKEN_PIPE, /* the peer disconnected */
   LIGHTNING_ERR_INVALID,     /* bad address/argument, or reply before recv */
-  LIGHTNING_ERR_FULL,        /* add_target: already at 31 targets */
+  LIGHTNING_ERR_FULL,        /* already at maximum of 31 targets */
   LIGHTNING_ERR_CLOSED,      /* the handle was destroyed */
   LIGHTNING_ERR_INTERNAL,    /* internal failure catch-all */
 } lightning_error_t;
@@ -35,7 +35,7 @@ typedef enum {
 
 /* A received frame (from lightning_recv()) or reply (from
  * lightning_recv_reply()). The source_* fields describe the sender.
- * Everything is owned by the message; free it with
+ * Everything is owned by the message, freed with
  * lightning_message_free(). */
 typedef struct lightning_message_t {
   const char *source_name; /* sender's source_name */
@@ -130,10 +130,10 @@ lightning_message_t *lightning_recv_reply(lightning_producer_t *producer,
 /* ---- Consumer ---- */
 
 /* Creates a consumer bound at `address` ("tcp://host:port",
- * "unix://path" or "shm://path"; the last two are equivalent and
- * accept both buffered and unbuffered producers). `max_send_size` is
+ * "unix://path" or "shm://path"). The last two are equivalent and
+ * accept both buffered and unbuffered producers. `max_send_size` is
  * the largest reply this consumer sends. `reply_chunk_count` is the
- * number of shared memory reply chunks (0 for a default; ignored for
+ * number of shared memory reply chunks (0 for a default, ignored for
  * tcp://). `host_name` may be NULL. Returns NULL and sets `error` (if
  * non-NULL) on failure. */
 lightning_consumer_t *lightning_create_consumer(const char *source_name,

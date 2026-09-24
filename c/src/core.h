@@ -21,7 +21,7 @@ typedef struct transport {
   uint8_t mode; /* MODE_BUFFERED or MODE_UNBUFFERED */
 
   /* Producer: offers a just-sent frame to this consumer. Buffered
-   * pushes it if the consumer has a token; unbuffered hands out the
+   * pushes it if the consumer has a token, unbuffered hands out the
    * newest published frame if it has one (`data` is unused). Returns
    * -1 if the connection broke. */
   int (*offer)(lightning_producer_t *p, pconn_t *c, const uint8_t *data,
