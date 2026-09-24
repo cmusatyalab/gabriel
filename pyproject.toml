@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "gabriel"
 version = "0.1.0"
-description = "Python bindings for the gabriel C library"
+description = "Python bindings for Gabriel, built on the Lightning C library"
 requires-python = ">=3.9"
 
 [tool.scikit-build]

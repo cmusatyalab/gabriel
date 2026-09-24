@@ -1,9 +1,8 @@
 #include <iostream>
 
-#include <gabriel/gabriel.h>
+#include <lightning/lightning.h>
 
 int main() {
-  std::cout << "gabriel version: " << gabriel_version() << "\n";
-  std::cout << "2 + 3 = " << gabriel_add(2, 3) << "\n";
+  std::cout << "lightning version: " << lightning_version() << "\n";
   return 0;
 }

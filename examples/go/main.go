@@ -8,6 +8,5 @@ import (
 )
 
 func main() {
-	fmt.Println("gabriel version:", gabriel.Version())
-	fmt.Println("2 + 3 =", gabriel.Add(2, 3))
+	fmt.Println("lightning version:", gabriel.LightningVersion())
 }

@@ -1,33 +1,24 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#include <gabriel/gabriel.h>
+#include <lightning/lightning.h>
 
-static PyObject *py_version(PyObject *self, PyObject *args) {
+static PyObject *py_lightning_version(PyObject *self, PyObject *args) {
   (void)self;
   (void)args;
-  return PyUnicode_FromString(gabriel_version());
-}
-
-static PyObject *py_add(PyObject *self, PyObject *args) {
-  (void)self;
-  int a, b;
-  if (!PyArg_ParseTuple(args, "ii", &a, &b)) {
-    return NULL;
-  }
-  return PyLong_FromLong(gabriel_add(a, b));
+  return PyUnicode_FromString(lightning_version());
 }
 
 static PyMethodDef methods[] = {
-    {"version", py_version, METH_NOARGS, "Return the gabriel library version."},
-    {"add", py_add, METH_VARARGS, "Placeholder binding, replace with real functionality."},
+    {"lightning_version", py_lightning_version, METH_NOARGS,
+     "Return the version of the underlying Lightning C library."},
     {NULL, NULL, 0, NULL},
 };
 
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "_gabriel",
-    "Low-level CPython extension wrapping the gabriel C library.",
+    "Low-level CPython extension wrapping the Lightning C library.",
     -1,
     methods,
 };

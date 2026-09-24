@@ -1,4 +1,3 @@
-from gabriel import add, version
+from gabriel import lightning_version
 
-print("gabriel version:", version())
-print("2 + 3 =", add(2, 3))
+print("lightning version:", lightning_version())

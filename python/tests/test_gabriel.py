@@ -1,10 +1,6 @@
-from gabriel import add, version
+from gabriel import lightning_version
 
 
-def test_version():
-    assert isinstance(version(), str)
-    assert version()
-
-
-def test_add():
-    assert add(2, 3) == 5
+def test_lightning_version():
+    assert isinstance(lightning_version(), str)
+    assert lightning_version()
