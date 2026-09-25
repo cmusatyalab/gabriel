@@ -1,11 +1,11 @@
 # Lightning
 
-Lightning is the underlying communication mechanism for Gabriel. It is a token-based flow control producer-consumer system. A producer fans frames out to any number of consumers, and each consumer fans frames in from any number of producers and replies to them.
+Lightning is the underlying communication mechanism for Gabriel. It is a token-based flow control producer-consumer system. A producer fans frames out to any number of consumers, and each consumer fans frames in from any number of producers and replies to them. Whenever a consumer asks for a frame, it gets the newest one available from each producer.
 
 Every connection runs in one of two modes, chosen by its address prefix. A single producer or consumer can mix both.
 
 - **Buffered** (`tcp://` or `unix://`) sends the data over the socket. Frames are pushed to a consumer as long as it has a token, so several can be in flight at once. This hides network latency: the producer never waits for a reply before sending the next frame.
-- **Unbuffered** (`shm://`) uses a Unix Domain Socket for signaling and blazingly fast shared memory for the data. A consumer is handed a frame only when it is ready for one (when it returns a token), and it always gets the newest frame. Nothing queues up, which is ideal locally where a round trip is nearly free.
+- **Unbuffered** (`shm://`) uses a Unix Domain Socket for signaling and shared memory for the data. Each frame is written once into the producer's shared memory pool, and a consumer is handed the newest frame whenever it has a token. Nothing queues up, which is ideal locally where a round trip is nearly free.
 
 ## Building and testing
 
@@ -16,11 +16,21 @@ go test ./go/                                 # Go bindings (cgo builds the C so
 pip install . && pytest python/tests          # Python bindings
 ```
 
-Set `LIGHTNING_LOG=1` when running `test_lightning` to print Lightning's internal log. The C library is Linux-only (it uses `memfd_create`, `eventfd` and `fallocate`).
+Set `LIGHTNING_LOG=1` when running `test_lightning` to print Lightning's internal log. The C library is Linux-only (it uses `memfd_create` and `eventfd`).
 
 ## Scope
 
 The C library (and its C ABI) is Lightning only. It contains no references to Gabriel. The Gabriel client and server logic is written in Go/Python on top of the Lightning ABI.
+
+## Code layout
+
+| File                 | What's in it                                                                 |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `c/include/lightning/lightning.h` | The public API.                                                 |
+| `c/src/internal.h`, `c/src/common.c` | Helpers: logging, addresses, socket I/O, shared memory, the wire protocol, the handshake, messages. |
+| `c/src/producer.c`   | The producer: target table, reader and connector threads, the shared memory pool's bookkeeping. |
+| `c/src/consumer.c`   | The consumer: accept thread, the receive loop, replies.                      |
+| `c/tests/test_lightning.c` | Tests.                                                                  |
 
 ## Addresses
 
@@ -32,48 +42,45 @@ The C library (and its C ABI) is Lightning only. It contains no references to Ga
 
 A producer's targets choose the mode of each connection. A consumer binds either a `tcp://` address or a Unix socket path (`unix://path` and `shm://path` are equivalent when binding). A consumer bound to a Unix socket accepts both buffered and unbuffered producers, and each producer declares its mode in the handshake. A consumer bound to `tcp://` only accepts buffered producers.
 
-Internally, each connection holds a pointer to a small table of operations (handshake, send frame, read message, send reply, teardown) implemented once for buffered and once for unbuffered. The producer and consumer logic above them is shared.
-
 ## Concepts
 
 ### Producers and consumers
-A producer connects to a set of consumer addresses (targets) that can change at runtime, at most 31 at once, and fans each frame out to its consumers. Frames are pushed to buffered consumers and pulled by unbuffered consumers (see Dispatch). A consumer binds a single address, accepts any number of producers in a background thread, and reads from them round-robin (fan-in). A consumer replies to frames; replies travel back to the producer that sent the frame.
+A producer connects to a set of consumer addresses (targets) that can change at runtime, at most `LIGHTNING_MAX_TARGETS` (31) at once, and fans each frame out to them. A consumer binds a single address, accepts any number of producers, and takes frames from them in turn (round-robin). A consumer replies to each frame; the reply travels back to the producer that sent it.
 
 ### Tokens (per consumer)
 A producer keeps a separate token bucket for every consumer, each holding up to `max_tokens` tokens. Handing a frame to a consumer takes one token from its bucket, so a slow consumer only throttles itself.
 
-A consumer returns exactly one token for every frame it receives:
-- `TOKEN_ACCEPT`, carried by the reply to that frame (`lightning_reply`).
-- `TOKEN_DROP`, sent automatically by `lightning_recv` for each frame it discards as stale.
+Every frame a consumer is handed owes the producer exactly one token back:
+- A **REPLY** returns it (`lightning_reply`). Each frame takes exactly one reply; a second one is rejected.
+- A **DROP** returns it without a reply. The consumer sends one automatically for a frame that was superseded by a newer one before `lightning_recv` returned it, and for the previous frame if `lightning_recv` is called again without replying to it.
 
-A returned token refills that consumer's bucket (up to `max_tokens`) only if its `seq_num` is greater than the highest `seq_num` that has returned a token from that consumer. This prevents double counting of tokens for a single frame.
+So tokens can't leak: every frame is either replied to or dropped. When a consumer disconnects, the producer reclaims its tokens anyway, and the consumer starts with a full bucket when it reconnects.
 
-Tokens are always reclaimed by the producer when a consumer disconnects: the bucket is reset to `max_tokens` when the consumer reconnects, and for an unbuffered consumer its bit is cleared on every chunk.
+### Newest frame wins
+`lightning_recv` always returns the newest frame from the producer whose turn it is:
+- **At the consumer:** it reads every frame that has arrived from that producer, keeps the newest, and DROPs the older ones.
+- **At the producer (unbuffered only):** a consumer is only ever handed the newest published frame, and only when it has a token. Frames published while it was busy are skipped.
+
+"Newest" means newest *that has arrived*. Over TCP, a frame still in transit isn't visible yet, so recv returns the newest complete one; guaranteeing the producer's actual newest frame would need a round trip per frame.
 
 ### Dispatch
-**Buffered consumers (push).** On `lightning_send`, the frame is written to the socket of every connected buffered consumer that has a token. A buffered consumer without a token is skipped for that frame.
+**Buffered consumers (push).** `lightning_send` writes the frame to the socket of every connected buffered consumer that has a token. One without a token is skipped for that frame.
 
-**Unbuffered consumers (pull).** The producer tracks, for each unbuffered consumer, the highest `seq_num` it has been handed (`last_seq`), and whether it is **waiting** (it has a token but no newer frame existed when it last asked for one).
-- On `lightning_send`, the frame is written to a shared memory chunk and handed to every waiting consumer (taking one token from each, and clearing its waiting flag). Consumers that aren't waiting are not sent the frame at this point.
-- On a returned token (`TOKEN_ACCEPT` or `TOKEN_DROP`), the producer immediately hands that consumer the newest frame with `seq_num > last_seq`. If no such frame exists yet, the consumer is marked waiting and gets the next frame sent.
-- On (re)connect, the consumer starts with a full bucket, marked waiting, and gets the next frame sent. It is never handed a frame generated before it connected.
+**Unbuffered consumers (pull).** `lightning_send` writes the frame once into a chunk of the shared memory pool and makes it the producer's `latest` frame. A consumer is handed `latest` when:
+- `lightning_send` publishes it and the consumer has a token, or
+- the consumer returns a token (REPLY or DROP) and hasn't been handed `latest` yet.
 
-Because an unbuffered consumer only gets a chunk right before it calls `lightning_recv` again, it holds that chunk only for as long as it takes to copy it out. This means a pool of `max_tokens` chunks is rarely exhausted, and frames almost never queue up (so stale drops only happen with `max_tokens > 1`).
-
-Both `lightning_send` and the producer's reader thread hand out frames, so each consumer's dispatch state and socket writes are protected by a per-consumer lock.
+A consumer that connects is never handed a frame published before it connected; it gets the next one sent.
 
 ### Dynamic targets
 Targets can be given at creation and added or removed at any time with `lightning_add_target` / `lightning_remove_target`, from any thread, while `lightning_send` and `lightning_recv_reply` are running.
 
 - **Adding** tries to connect once, synchronously, so a target whose consumer is already up is usable as soon as the call returns. If the consumer isn't reachable yet, the target is still added and is retried in the background (see Reconnection).
-- **Removing** closes the connection, reclaims the target's tokens, frees its bit slot and stops reconnecting. Replies already received from that consumer are still delivered by `lightning_recv_reply`.
-- **Bit slots:** every target is given one of 31 bit slots when it is added, and the slot is freed when it is removed. Unbuffered consumers use it as their bit in the chunk headers. Before a slot is reused, its bit is cleared on every chunk.
-- **Disconnect vs remove:** a disconnected target is still a target, and the producer keeps reconnecting to it. Only removal frees its slot, and only removing the last `shm://` target releases the chunk pool's memory (see Unbuffered connections).
+- **Removing** closes the connection, reclaims the target's tokens and held chunks, and stops reconnecting. Replies already received from that consumer are still delivered by `lightning_recv_reply`.
+- **Disconnect vs remove:** a disconnected target is still a target, and the producer keeps reconnecting to it. Only removal stops that.
 
-### Sequence numbers and staleness
-Every frame carries a `uint32_t seq_num`, which must increase monotonically with each send for a given producer (skipping values, for example on a dropped send, is fine). Staleness is measured in sequence numbers, not timestamps, so no clock synchronization is required between hosts.
-
-Each producer sets `stale_seqs` at creation, which should be chosen based on the producer's generation frequency (for example, a 30 FPS producer that tolerates ~100 ms of queueing would use `stale_seqs = 3`). It is sent to the consumer during the handshake. When a consumer reads from a producer, it drains every frame already waiting from that producer. A frame is stale if `seq_num + stale_seqs <= newest_seq_num` from that producer. Stale frames are discarded and a `TOKEN_DROP` is returned for each. `stale_seqs = 0` disables staleness dropping.
+### Sequence numbers
+Every frame carries the `uint32_t seq_num` given to `lightning_send`, and its reply carries it back, so the caller can match replies to frames. Lightning doesn't interpret it: which frame is newest is tracked internally, in the order frames were sent.
 
 ### Identity
 Every producer and consumer has an identity made up of:
@@ -85,15 +92,15 @@ Every producer and consumer has an identity made up of:
 All four are exchanged during the handshake and exposed on every received `lightning_message_t`.
 
 ### Sizes
-`max_send_size` always means the maximum data size of messages sent **by the side that sets it**: frames for a producer, replies for a consumer. Each side tells the other its `max_send_size` during the handshake, so buffers on the receiving side can be sized. Sending more than `max_send_size` bytes returns `LIGHTNING_ERR_TOO_LARGE`.
+`max_send_size` always means the maximum data size of messages sent **by the side that sets it**: frames for a producer, replies for a consumer. Each side tells the other its `max_send_size` during the handshake, so the receiving side can reject anything larger. Sending more than `max_send_size` bytes returns `LIGHTNING_ERR_TOO_LARGE`.
 
 ### Reconnection
-A consumer always restarts at the same address. If a producer loses a connection to a target (broken pipe or a similar error), it drops that consumer and, until the target is removed, keeps retrying the same target address in the background with capped exponential backoff. Once it reconnects, a fresh handshake is done and the consumer starts with a full bucket.
+A consumer always restarts at the same address. If a producer loses a connection to a target (broken pipe or a similar error), it drops that consumer and, until the target is removed, keeps retrying the same target address in the background with capped exponential backoff (50 ms doubling up to 1 s). Once it reconnects, a fresh handshake is done and the consumer starts with a full bucket.
 
 ### Threading
-- Producer: `lightning_send`, `lightning_recv_reply`, `lightning_add_target` and `lightning_remove_target` may all be called concurrently from different threads (typically one sending thread and one receiving thread). Concurrent calls to `lightning_send` are serialized.
-- Consumer: `lightning_recv` and `lightning_reply` must be called from the same thread. `lightning_reply` always targets the producer of the most recent frame returned by `lightning_recv`.
-- `lightning_destroy_*` may be called from any thread. Any call blocked on that producer or consumer returns with `LIGHTNING_ERR_CLOSED`. After destroy returns, the handle must not be used.
+- **Producer:** `lightning_send`, `lightning_recv_reply`, `lightning_add_target` and `lightning_remove_target` may all be called concurrently from different threads (typically one sending thread and one receiving thread). Concurrent calls to `lightning_send` are serialized. Internally, a **reader thread** handles everything consumers send back, and a **connector thread** retries unreachable targets.
+- **Consumer:** `lightning_recv` and `lightning_reply` must be called from the same thread. Internally, an **accept thread** accepts and handshakes new producers; it has to be separate because a connecting producer waits for the consumer's half of the handshake, while your thread may be busy with a frame.
+- `lightning_destroy_*` may be called from any thread. Any call blocked on that producer or consumer returns `LIGHTNING_ERR_CLOSED`. After destroy returns, the handle must not be used.
 
 ## API
 
@@ -101,12 +108,12 @@ A consumer always restarts at the same address. If a producer loses a connection
 Registers a callback that receives Lightning's internal diagnostic messages (connections, disconnects, handshake failures), with `user_data` passed through unchanged. Lightning is silent by default, and passing NULL stops logging. The callback may be called from Lightning's background threads. Set it once at startup, before other calls.
 
 ### const char* lightning_version(void)
-Returns the library version string, for example `"0.1.0"`.
+Returns the library version string, for example `"0.2.0"`.
 
-### lightning_producer_t* lightning_create_producer(uint32_t max_tokens, uint64_t max_send_size, uint32_t stale_seqs, const char* source_name, const char* host_name, const char** targets, lightning_error_t* error)
+### lightning_producer_t* lightning_create_producer(uint32_t max_tokens, uint64_t max_send_size, const char* source_name, const char* host_name, const char** targets, lightning_error_t* error)
 Creates a producer with name `source_name`. `targets` is an optional NULL-terminated list of initial targets (any mix of `tcp://`, `unix://` and `shm://`, at most 31), and each is added as if by `lightning_add_target`. Pass NULL to start with no targets. `max_tokens` is the size of each consumer's token bucket. `host_name` may be NULL.
 
-A shared memory chunk pool is created up front (see Unbuffered connections). It only reserves address space; no memory is used until a frame is written for an `shm://` target. A background reader thread is started that receives replies and tokens from every consumer and dispatches frames to unbuffered consumers as their tokens return, and a background connector thread retries unreachable targets.
+Creating a producer also creates its shared memory pool (see Unbuffered connections) and starts the reader and connector threads.
 
 ### lightning_error_t lightning_add_target(lightning_producer_t* producer, const char* address)
 Adds a target (see Dynamic targets). Returns `LIGHTNING_OK` whether or not the consumer was reachable, `LIGHTNING_ERR_INVALID` if the address is malformed or is already a target, and `LIGHTNING_ERR_FULL` if the producer already has 31 targets.
@@ -115,83 +122,77 @@ Adds a target (see Dynamic targets). Returns `LIGHTNING_OK` whether or not the c
 Removes a target (see Dynamic targets). `address` must match the string it was added with. Returns `LIGHTNING_ERR_INVALID` if it isn't a target.
 
 ### void lightning_destroy_producer(lightning_producer_t* producer)
-Stops the background threads, closes all connections, unmaps the chunk pool, and frees the producer.
+Stops the background threads, closes all connections, unmaps the pool, and frees the producer.
 
 ### lightning_error_t lightning_send(lightning_producer_t* producer, const uint8_t* data, uint64_t data_size, uint32_t seq_num)
-Sends the frame to every connected buffered consumer with a token. If the producer currently has any `shm://` targets, it also publishes the frame to the chunk pool and hands it to every waiting unbuffered consumer (see Dispatch). A failure on one connection drops that consumer (see Reconnection) and does not fail the send for the others.
+Sends a frame (see Dispatch): publishes it to the pool if any unbuffered consumer is connected, and pushes it to every buffered consumer with a token. A failure on one connection drops that consumer (see Reconnection) and does not fail the send for the others.
 
-Returns `LIGHTNING_OK` if the frame was sent to at least one buffered consumer or published to the chunk pool. A published frame counts even if no unbuffered consumer is waiting, since one can still pull it later. Returns `LIGHTNING_ERR_DROPPED` otherwise (no buffered consumer had a token, and there are no `shm://` targets or no chunk is free). Returns `LIGHTNING_ERR_TOO_LARGE` if `data_size > max_send_size`.
+Returns `LIGHTNING_OK` if the frame was published or pushed to at least one consumer. A published frame counts even if no unbuffered consumer had a token, since they'll be handed it (or something newer) when their tokens return. Returns `LIGHTNING_ERR_DROPPED` otherwise, and `LIGHTNING_ERR_TOO_LARGE` if `data_size > max_send_size`.
 
 ### lightning_message_t* lightning_recv_reply(lightning_producer_t* producer, lightning_error_t* error)
-Blocks until a reply from any consumer is available, then returns it. The `source_*` fields describe the consumer that sent it, and `seq_num` is the frame the reply answers. Token-only messages (`TOKEN_DROP`) are handled internally by the reader thread and are never returned. Returns NULL and populates `error` on failure.
+Blocks until a reply from any consumer is available, then returns it. The `source_*` fields describe the consumer that sent it, and `seq_num` is the frame the reply answers. By the time a reply is returned, its token is already back in the consumer's bucket. Returns NULL and populates `error` on failure.
 
-### lightning_consumer_t* lightning_create_consumer(const char* source_name, const char* host_name, uint64_t max_send_size, const char* address, uint32_t reply_chunk_count, lightning_error_t* error)
-Creates a consumer with name `source_name`, binds at `address`, and starts a thread that accepts connections. `max_send_size` is the maximum size of the replies this consumer sends. `host_name` may be NULL. `reply_chunk_count` is the number of reply chunks for unbuffered producers; it is ignored for a `tcp://` address, and 0 picks a default. For a Unix socket address, the reply area is created up front the same way as the producer's chunk pool, and its memory is released whenever no unbuffered producers are connected.
+### lightning_consumer_t* lightning_create_consumer(const char* source_name, const char* host_name, uint64_t max_send_size, const char* address, lightning_error_t* error)
+Creates a consumer with name `source_name`, binds at `address`, and starts the accept thread. `max_send_size` is the maximum size of the replies this consumer sends. `host_name` may be NULL.
 
 ### void lightning_destroy_consumer(lightning_consumer_t* consumer)
-Stops the accept thread, closes all connections, unmaps the reply area and all producer pools, removes the socket file for a Unix socket address, and frees the consumer.
+Stops the accept thread, closes all connections, removes the socket file for a Unix socket address, and frees the consumer.
 
 ### lightning_message_t* lightning_recv(lightning_consumer_t* consumer, lightning_error_t* error)
-Blocks until a frame is available from any producer, then returns it. Producers are served round-robin regardless of mode, and the call waits with `poll`/`epoll` (no busy-waiting). When a producer is served, every frame already waiting from it is drained, stale frames are discarded with a `TOKEN_DROP` each (see Staleness), and the oldest non-stale frame is returned (the rest stay queued for the next time that producer is served). The returned message always owns its own copy of the data. Returns NULL and populates `error` if the recv fails for any reason. A producer that disconnects is removed silently, and its queued frames are discarded.
+Blocks until a frame is available from any producer, then returns it. Producers take turns (round-robin), and from each you get the newest frame that has arrived (see Newest frame wins). If the previous frame was never replied to, its token is returned (DROP) first. The returned message owns its own copy of the data. Returns NULL and populates `error` if the recv fails for any reason. A producer that disconnects is removed silently.
 
-### lightning_error_t lightning_reply(lightning_consumer_t* consumer, const uint8_t* data, uint64_t data_size, uint32_t seq_num)
-Sends a reply, along with a `TOKEN_ACCEPT` token, to the producer of the frame most recently returned by `lightning_recv`. `seq_num` should equal that frame's `seq_num`. Returns `LIGHTNING_ERR_BROKEN_PIPE` if that producer has disconnected, `LIGHTNING_ERR_TOO_LARGE` if `data_size > max_send_size`, and `LIGHTNING_ERR_INVALID` if `lightning_recv` has not returned a frame yet.
+### lightning_error_t lightning_reply(lightning_consumer_t* consumer, const uint8_t* data, uint64_t data_size)
+Replies to the frame most recently returned by `lightning_recv`, which returns its token to the producer. Returns `LIGHTNING_ERR_INVALID` if there is no frame to reply to (nothing received yet, or already replied), `LIGHTNING_ERR_TOO_LARGE` if `data_size > max_send_size` (the frame can still be replied to), and `LIGHTNING_ERR_BROKEN_PIPE` if its producer has disconnected.
 
 ### void lightning_message_free(lightning_message_t* msg)
 Frees a message returned by `lightning_recv` or `lightning_recv_reply`. Safe to call with NULL.
 
-## Connection implementations (internal)
+## Connection internals
 
-### Handshake (both modes)
-The producer sends the consumer its mode (buffered or unbuffered), identity (`source_name`, `source_id`, `host_name`), `max_send_size`, and `stale_seqs`. The consumer replies with an ACK, its own identity, and its `max_send_size`. Each side records the other's IP from the socket, if available. A consumer rejects an unbuffered handshake on a `tcp://` connection.
+### Wire protocol
+Every message on a socket starts with a 32-byte big-endian header, `{type, seq, chunk, data_size, payload_size}`, followed by `payload_size` bytes of payload:
 
-### Buffered connections
-Frames, replies and tokens are all written directly to the socket as length-prefixed messages.
+| Type    | Direction           | Meaning                                                                 |
+| ------- | ------------------- | ----------------------------------------------------------------------- |
+| `FRAME` | producer → consumer | A frame. Buffered: the data is the payload. Unbuffered: no payload; `chunk` says where the data is in the pool. |
+| `REPLY` | consumer → producer | A reply (always the payload, in both modes), returning the frame's token. `chunk` echoes the frame's. |
+| `DROP`  | consumer → producer | Returns a frame's token without a reply. `chunk` echoes the frame's.    |
 
-### Unbuffered connections
-Frame and reply data live in shared memory, and only chunk indices, sequence numbers and tokens go over the socket.
+Sockets are read without blocking, one message at a time, so a producer sending a large frame slowly over TCP never blocks a thread that serves other sockets.
 
-In the handshake, the producer additionally sends the consumer's bit index (its target's bit slot) and its chunk pool's memfd (via `SCM_RIGHTS`), and the consumer additionally sends its reply area's memfd.
+### Handshake
+The producer sends a hello: magic, version, mode (buffered or unbuffered), identity, `max_send_size`, and the pool's layout (chunk count and stride). For `shm://` it also passes the pool's memfd over the socket (`SCM_RIGHTS`). The consumer answers with its own hello, with `ack` set to accept (or 0 to reject, for example an unbuffered producer on a TCP consumer). Both sides apply a 2-second timeout to the handshake.
 
-**Producer chunk pool.** One pool per producer, shared by all of its unbuffered consumers, with `max_tokens` chunks that each fit `max_send_size` bytes. The pool is a memfd that is created and mapped once, when the producer is created, so its address never changes while `lightning_send` or the reader thread use it. Pages are only backed by memory once they are written. When the last `shm://` target is removed, the producer punches a hole over the whole memfd (`fallocate(FALLOC_FL_PUNCH_HOLE)`), which returns its memory to the kernel while keeping the mapping valid. Adding an `shm://` target later reuses the same pool. Each chunk has a 64-bit atomic header:
-- 31 bits: a mask of the consumers that have been handed the frame but haven't finished reading it (bit `i` belongs to the target in bit slot `i`).
-- 1 bit: the producer's write lock.
-- 32 bits: the frame's sequence number.
+### Unbuffered connections: the shared memory pool
+Each producer has one pool, shared by all of its unbuffered consumers. It is a memfd divided into equal chunks, each big enough for one frame. The producer maps it read-write; consumers map it **read-only**.
 
-The sequence number is read from this header, not from the frame content, so it is read atomically with the lock and the mask. A chunk is free when its lock is clear and its mask is 0. A chunk with mask 0 still holds a valid frame that can be handed out until it is reused, so the writer always reuses the free chunk with the oldest `seq_num`, which keeps the newest frames available.
+**Size.** The pool has `max_tokens × 31 + 2` chunks: enough for every consumer to hold `max_tokens` different chunks, plus `latest`, plus one being written, so a send never has to drop for lack of a chunk. This only reserves address space. Pages get memory when written, and because a send always reuses the **lowest-index** free chunk, only the handful of chunks in use at the same time ever get memory (about three for one consumer).
 
-- **Writing:** `lightning_send` takes the oldest free chunk by setting its write lock, writes the frame, and then publishes it with a single atomic store that sets the sequence number and clears the lock. If no chunk is free, the frame is not published.
-- **Handing out:** handing a frame to consumer `i` is a compare-and-swap on the header from `(mask, lock = 0, seq = S)` to `(mask | bit_i, 0, S)`, followed by sending the chunk index and `seq_num` over the socket. If the CAS fails (the writer took the chunk to reuse it), the producer rescans for the newest frame.
-- **Reading:** the consumer checks that the header's sequence number matches the one it was sent, copies the frame out, and then clears its bit (release ordering). Stale frames have their bit cleared without being copied. Once a consumer's bit is set, the chunk cannot be reused until the consumer clears it, so a consumer can never read a torn frame. As defense in depth, the header is checked again after the copy (seqlock style). If the producer reclaimed the chunk in the meantime, which only happens once it considers the connection dead, the frame is discarded instead of being returned torn.
+**Bookkeeping.** All of it lives in the producer's own memory under one mutex (`state_mu`), with no atomics in shared memory:
+- `refs[i]`: how many consumers hold chunk `i` (plus one while `lightning_send` is writing it).
+- `latest`: the chunk with the newest frame. It is never overwritten, even when no one holds it, so there is always a newest frame to hand out.
+- `gens[i]`: an internal counter of publishes, used to tell whether a consumer has already been handed the newest frame.
+- Per consumer: its tokens, the generation it was last handed, and the list of chunks it holds.
 
-**Consumer reply area.** One area per consumer, shared by all of its unbuffered producers, with `reply_chunk_count` chunks that each fit `max_send_size` bytes. It is created and mapped once, when the consumer is created, and its memory is released with the same hole-punching trick whenever the last unbuffered producer disconnects. Each chunk has a 64-bit atomic header:
-- 32 bits: the sequence number of the frame that generated the reply.
-- 32 bits: the owner, which is 0 when the chunk is free, or otherwise the internal ID of the producer connection the reply was sent to.
+A chunk is **free** when `refs[i] == 0 && i != latest`.
 
-`lightning_reply` writes the reply to a free chunk (setting its owner) and sends the chunk index, along with a `TOKEN_ACCEPT` token, to the producer. If no chunks are free, it waits (with a short sleep and backoff) until the producer frees one, so replies are never lost. The producer's reader thread copies each reply out, checks that the header didn't change during the copy, and then frees the chunk, so a consumer is never blocked by a producer that is slow to call `lightning_recv_reply`. If a producer disconnects (broken pipe), every reply chunk it owns is freed, so a dead producer can never hold chunks forever.
+**The four operations:**
+1. **Send:** claim the lowest free chunk (`refs = 1`), copy the frame in *without* the lock, then under the lock drop the writer's hold, make it `latest`, and hand it to every unbuffered consumer that has a token.
+2. **Hand out** (`dispatch`): if the consumer has a token and hasn't been handed `latest`, write a FRAME with `chunk = latest`, then `refs[latest]++`, add it to the consumer's held list, and take a token.
+3. **Token returned** (REPLY or DROP, in the reader thread): remove the echoed chunk from the consumer's held list (a chunk it doesn't hold is a protocol error), `refs--`, give the token back, and hand out `latest` if the consumer hasn't had it.
+4. **Consumer gone** (disconnect or removal): release every chunk in its held list.
 
-### consumer_accept(lightning_consumer_t* consumer)
-Runs in the consumer's accept thread. Blocks until a new connection comes in, runs the handshake, picks the buffered or unbuffered implementation based on the mode the producer declared, and hands the resulting producer connection to `lightning_recv`'s thread through a mutex-protected list. Only that thread ever frees a producer connection. For an unbuffered producer, it also maps the producer's chunk pool (unmapped when that producer is removed). An eventfd wakes a blocked `lightning_recv` so it can start polling the new connection. When a send, recv, or reply fails with broken pipe or a similar error, that producer is removed from the list.
-
-### producer_connect(lightning_producer_t* producer, uint32_t target_index)
-Connects to (or reconnects to) a single target using the implementation its prefix selects, and runs the handshake with a timeout. It is called once by `lightning_add_target` and then by the connector thread's retry loop. For an unbuffered target, on a disconnect and before reconnecting, the producer atomically clears bit `target_index` on every chunk so those chunks can be reused.
+**Why it's safe without atomics.** A consumer only learns about a chunk from a FRAME message, which is written after the copy has finished and the lock has been released. The socket send and receive are system calls, which order the copy before the consumer's read. After that, the chunk can't be reused until the consumer returns its token, which it only does after it has copied the data out in `lightning_recv`.
 
 ## Message Definitions
 
 ```c
-typedef enum {
-  LIGHTNING_TOKEN_NONE = 0,
-  LIGHTNING_TOKEN_ACCEPT = 1,
-  LIGHTNING_TOKEN_DROP = 2,
-} lightning_token_t;
-
 typedef struct lightning_message_t {
   const char *source_name;  /* sender's source_name */
   uint64_t source_id;       /* sender's random unique ID */
   const char *source_ip;    /* sender's IP, "" if unavailable (Unix socket) */
   const char *source_host;  /* sender's host_name, "" if not set */
   uint32_t seq_num;         /* frame seq_num (or the frame a reply answers) */
-  lightning_token_t token;  /* ACCEPT on replies, NONE on frames */
   uint64_t data_size;
   uint8_t *data;
 } lightning_message_t;
@@ -202,11 +203,11 @@ typedef struct lightning_message_t {
 ```c
 typedef enum {
   LIGHTNING_OK = 0,
-  LIGHTNING_ERR_DROPPED,      /* send: no consumer could take the frame */
+  LIGHTNING_ERR_DROPPED,      /* no consumer could take the frame so it was dropped */
   LIGHTNING_ERR_TOO_LARGE,    /* data_size > max_send_size */
   LIGHTNING_ERR_BROKEN_PIPE,  /* the peer disconnected */
-  LIGHTNING_ERR_INVALID,      /* bad address/argument, or reply before recv */
-  LIGHTNING_ERR_FULL,         /* add_target: already at 31 targets */
+  LIGHTNING_ERR_INVALID,      /* bad address/argument, or no frame to reply to */
+  LIGHTNING_ERR_FULL,         /* already at LIGHTNING_MAX_TARGETS targets */
   LIGHTNING_ERR_CLOSED,       /* the handle was destroyed */
   LIGHTNING_ERR_INTERNAL,     /* internal failure catch-all */
 } lightning_error_t;

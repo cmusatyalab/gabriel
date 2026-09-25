@@ -7,160 +7,130 @@
 extern "C" {
 #endif
 
-/* Lightning is a token-based flow control producer-consumer transport.
- * A producer fans frames out to any number of consumers (targets), and
- * a consumer fans frames in from any number of producers and replies
- * to them. Each connection is buffered ("tcp://host:port" or
- * "unix://path": data over the socket, pushed while a token is
- * available) or unbuffered ("shm://path": data in shared memory, the
- * newest frame pulled whenever the consumer returns a token). See
- * README.md for the full semantics. */
+/* Lightning is a token-based flow control peer to peer producer consumer
+ * library. Tokens are used to pace out data so that the producer doesn't
+ * transmit frames that won't be consumed. To this end, producers used AIMD
+ * to dynamically adjust token counts to drop signals. Producers can also
+ * be configured to not use tokens by setting `token_gated` to false on
+ * creation.
+ *
+ * Lightning supports two different types of connections:
+ *
+ * 1. buffered [address prefixed by tcp:/unix:] sends a frame to all consumers
+ * by queueing it into the socket, so long as a token is available. Consumers
+ * receive every frame that is sent as long as the connection is alive.
+ *
+ * 2. unbuffered [address prefixed by tcp:/unix:/shm:] sends a frame to all consumers
+ * through a socket or shared memory exchange, so long as a token is available. 
+ * Consumers only receive the newest frame available, older frames are dropped.
+ *
+ * Consumers are expected to reply() to every recv() call with a token. */
 
+/* Maximum consumers for a single producer, which sizes the producer's shared
+ * memory pool for unbuffered connections. */
+#define LIGHTNING_MAX_CONSUMERS 32
+
+/* Default message size for a lightning_message_t data array. */
+#define LIGHTNING_DEFAULT_MSG_SIZE 4000u /* 4 kilobytes */
+
+/* --- Declarations --- */
+
+/* Log levels for log callback. */
 typedef enum {
-  LIGHTNING_OK = 0,
-  LIGHTNING_ERR_DROPPED,     /* no consumer could take the frame so it was dropped */
-  LIGHTNING_ERR_TOO_LARGE,   /* data_size > max_send_size */
-  LIGHTNING_ERR_BROKEN_PIPE, /* the peer disconnected */
-  LIGHTNING_ERR_INVALID,     /* bad address/argument, or reply before recv */
-  LIGHTNING_ERR_FULL,        /* already at maximum of 31 targets */
-  LIGHTNING_ERR_CLOSED,      /* the handle was destroyed */
-  LIGHTNING_ERR_INTERNAL,    /* internal failure catch-all */
+    LIGHTNING_LOG_DEBUG,
+    LIGHTNING_LOG_INFO,
+    LIGHTNING_LOG_WARN,
+    LIGHTNING_LOG_ERROR,
+} lightning_log_level_t;
+ 
+/* Log callback function declaration. */
+typedef void (*lightning_log_fn)(lightning_log_level_t level,
+        const char *message, void *user_data);
+
+/* Error messages for lightning functions. */
+typedef enum {
+    LIGHTNING_OK = 0,            /* no error */
+    LIGHTNING_ERR_DROPPED,       /* not enough tokens to send, backpressure signal */
+    LIGHTNING_ERR_SIZE_EXCEEDED, /* data_size is too large for producer max_send_size */
+    LIGHTNING_ERR_BROKEN_PIPE,   /* peer is disconnected */
+    LIGHTNING_ERR_INVALID,       /* bad argument */
+    LIGHTNING_ERR_FULL,          /* at LIGHTNING_MAX_CONSUMERS consumers */
+    LIGHTNING_ERR_INTERNAL,      /* internal failure */
 } lightning_error_t;
 
-typedef enum {
-  LIGHTNING_TOKEN_NONE = 0,
-  LIGHTNING_TOKEN_ACCEPT = 1,
-  LIGHTNING_TOKEN_DROP = 2,
-} lightning_token_t;
-
-/* A received frame (from lightning_recv()) or reply (from
- * lightning_recv_reply()). The source_* fields describe the sender.
- * Everything is owned by the message, freed with
- * lightning_message_free(). */
+/* Basic message exchange type. */
 typedef struct lightning_message_t {
-  const char *source_name; /* sender's source_name */
-  uint64_t source_id;      /* sender's random unique ID */
-  const char *source_ip;   /* sender's IP, "" if unavailable (Unix socket) */
-  const char *source_host; /* sender's host_name, "" if not set */
-  uint32_t seq_num;        /* frame seq_num (or the frame a reply answers) */
-  lightning_token_t token; /* ACCEPT on replies, NONE on frames */
-  uint64_t data_size;
-  uint8_t *data;
+    const char *source_name; /* source name of the sender */
+    const char *source_ip;   /* source IP address of the sender */
+    const char *host_name;   /* source host name (machine name) of the sender */
+    uint64_t source_id;      /* lightning generated UUID for the source */
+    uint32_t seq_num;        /* frame sequence number, strictly increasing */
+    uint64_t data_size;      /* size of data array */
+    uint8_t *data;           /* data array pointer */
 } lightning_message_t;
 
+/* Forward declarations of producer and consumer types. */
 typedef struct lightning_producer_t lightning_producer_t;
 typedef struct lightning_consumer_t lightning_consumer_t;
 
-/* Maximum number of targets a producer can have at once. */
-#define LIGHTNING_MAX_TARGETS 31
+/* --- API --- */
 
-/* ---- General ---- */
-
-typedef enum {
-  LIGHTNING_LOG_DEBUG,
-  LIGHTNING_LOG_INFO,
-  LIGHTNING_LOG_WARN,
-  LIGHTNING_LOG_ERROR,
-} lightning_log_level_t;
-
-typedef void (*lightning_log_fn)(lightning_log_level_t level,
-                                 const char *message, void *user_data);
-
-/* Registers `fn` to receive Lightning's internal diagnostic messages
- * (handshake failures, dropped connections, etc.), with `user_data`
- * passed through unchanged on every call. Lightning is silent by
- * default. Pass NULL to stop logging. `fn` may be called from
- * Lightning's background threads.
- *
- * Not safe to call concurrently with other Lightning calls; intended
- * to be set once during startup. */
-void lightning_set_log_callback(lightning_log_fn fn, void *user_data);
-
-/* Returns the library version string, e.g. "0.1.0". */
+/* Returns the library version string. */
 const char *lightning_version(void);
 
-/* Frees a message returned by lightning_recv() or
- * lightning_recv_reply(). Safe to call with NULL. */
-void lightning_message_free(lightning_message_t *msg);
+/* Sets the log callback for all lightning functions. This is not threadsafe
+ * with other lightning calls, and should be set *before* calling any other
+ * lightning functions. */
+void lightning_set_log_callback(lightning_log_fn fn, void *user_cb);
 
-/* ---- Producer ---- */
+/* Creates a producer. token_gated` controls whether the producer uses the
+ * token mechanism to send (or ignore tokens). max_tokens` is the size of the 
+ * producer's token bucket. `max_send_size` is the maximum size of a send payload. 
+ * This defaults to LIGHTNING_DEFAULT_MSG_SIZE if 0. Returns NULL and sets `error`
+ * on failure. */
+lightning_producer_t *lightning_create_producer(bool token_gated, uint32_t max_tokens,
+        uint64_t max_send_size, lightning_error_t *error);
 
-/* Creates a producer. `targets` is an optional NULL-terminated list of
- * initial targets, each added as if by lightning_add_target(); pass
- * NULL to start with none. `max_tokens` is the size of each consumer's
- * token bucket, `max_send_size` the largest frame this producer sends,
- * and `stale_seqs` how many seq_nums behind the newest a frame must be
- * to count as stale (0 disables). `host_name` may be NULL. Returns NULL
- * and sets `error` (if non-NULL) on failure. */
-lightning_producer_t *lightning_create_producer(
-    uint32_t max_tokens, uint64_t max_send_size, uint32_t stale_seqs,
-    const char *source_name, const char *host_name, const char **targets,
-    lightning_error_t *error);
+/* Adds a consumer to a producer's consumer list. Returns LIGHTNING_ERR_FULL if
+ * there are LIGHTNING_MAX_CONSUMERS consumers already. */
+lightning_error_t lightning_add_consumer_to_producer(lightning_producer_t *producer,
+        const char *consumer_address);
 
-/* Stops the background threads, closes all connections, and frees the
- * producer. Calls blocked on it on other threads return
- * LIGHTNING_ERR_CLOSED. */
-void lightning_destroy_producer(lightning_producer_t *producer);
+/* Removes a consumer to a producer's consumer list. Returns LIGHTNING_ERR_INVALID if
+ * the consumer does not exist. */
+lightning_error_t lightning_remove_consumer_from_producer(lightning_producer_t *producer,
+        const char *consumer_address);
 
-/* Adds a target. Tries to connect once synchronously; if the consumer
- * isn't reachable, the target is still added and retried in the
- * background. Returns LIGHTNING_ERR_INVALID for a malformed or
- * duplicate address, LIGHTNING_ERR_FULL at LIGHTNING_MAX_TARGETS. */
-lightning_error_t lightning_add_target(lightning_producer_t *producer,
-                                       const char *address);
+/* Produces a frame and and sends it to all available consumers. If `token_gated`, will
+ * drop frames if no token is available. `seq_num` should strictly increase for each call. */
+lightning_error_t lightning_produce(lightning_producer_t *producer, const uint8_t *data,
+        uint64_t data_size, uint32_t seq_num);
 
-/* Removes a target added with the same `address` string. Returns
- * LIGHTNING_ERR_INVALID if it isn't a target. */
-lightning_error_t lightning_remove_target(lightning_producer_t *producer,
-                                          const char *address);
+/* Creates a consumer bound at `address`. If tcp:, only uses the port. If unix: or shm:, 
+ * creates a Unix Domain Socket at that path. `max_send_size` is the maximum size of the
+ * send payload (defaults to LIGHTNING_DEFAULT_MSG_SIZE if set to 0). `buffered` sets the
+ * consumer to queue frames rather than drop until the most recent frame. Returns NULL and 
+ * sets `error` on failure. Note: shm: addresses are incompatible with `buffered` connections
+ * and will cause LIGHTNING_ERR_INVALID. */
+lightning_consumer_t *lightning_create_consumer(const char *address, uint64_t max_send_size,
+        bool buffered, lightning_error_t *error);
 
-/* Sends a frame to every buffered consumer with a token, and publishes
- * it for unbuffered consumers. `seq_num` must increase with each send.
- * Returns LIGHTNING_ERR_DROPPED if nobody could take it,
- * LIGHTNING_ERR_TOO_LARGE if data_size > max_send_size. */
-lightning_error_t lightning_send(lightning_producer_t *producer,
-                                 const uint8_t *data, uint64_t data_size,
-                                 uint32_t seq_num);
-
-/* Blocks until a reply from any consumer is available and returns it.
+/* Consumes a message from the next available producer round-robin. This is guaranteed to
+ * be the latest frame received by that producer if the producer has set `buffered` to `false`.
  * Returns NULL and sets `error` on failure. */
-lightning_message_t *lightning_recv_reply(lightning_producer_t *producer,
-                                          lightning_error_t *error);
+lightning_message_t *lightning_consume(lightning_consumer_t *consumer, lightning_error_t *error);
 
-/* ---- Consumer ---- */
+/* Replies to the frame most recently returned by lightning_consume(), which returns
+ * its token to the producer. Each frame should generate exactly one reply. Multiple calls
+ * for a single lightning_consume() or a call without first calling consume will return
+ * LIGHTNING_ERR_INVALID. */
+lightning_error_t lightning_reply(lightning_consumer_t *consumer, const uint8_t *data,
+        uint64_t data_size);
 
-/* Creates a consumer bound at `address` ("tcp://host:port",
- * "unix://path" or "shm://path"). The last two are equivalent and
- * accept both buffered and unbuffered producers. `max_send_size` is
- * the largest reply this consumer sends. `reply_chunk_count` is the
- * number of shared memory reply chunks (0 for a default, ignored for
- * tcp://). `host_name` may be NULL. Returns NULL and sets `error` (if
- * non-NULL) on failure. */
-lightning_consumer_t *lightning_create_consumer(const char *source_name,
-                                                const char *host_name,
-                                                uint64_t max_send_size,
-                                                const char *address,
-                                                uint32_t reply_chunk_count,
-                                                lightning_error_t *error);
-
-/* Stops the accept thread, closes all connections, removes the socket
- * file for a Unix socket address, and frees the consumer. Calls
- * blocked on it on other threads return LIGHTNING_ERR_CLOSED. */
-void lightning_destroy_consumer(lightning_consumer_t *consumer);
-
-/* Blocks until a frame from any producer is available (round-robin
- * across producers, stale frames dropped) and returns it. Returns NULL
- * and sets `error` on failure. Must be called from the same thread as
- * lightning_reply(). */
-lightning_message_t *lightning_recv(lightning_consumer_t *consumer,
-                                    lightning_error_t *error);
-
-/* Replies to the producer of the frame most recently returned by
- * lightning_recv(), returning its token. `seq_num` should be that
- * frame's seq_num. */
-lightning_error_t lightning_reply(lightning_consumer_t *consumer,
-                                  const uint8_t *data, uint64_t data_size,
-                                  uint32_t seq_num);
+/* Cleanup methods. */
+void lightning_free_message(lightning_message_t *message);
+void lightning_free_producer(lightning_producer_t *producer);
+void lightning_free_consumer(lightning_consumer_t *consumer);
 
 #ifdef __cplusplus
 } /* extern "C" */

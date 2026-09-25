@@ -117,7 +117,7 @@ static bool recv_expect(lightning_consumer_t *c, uint32_t seq, size_t len) {
     return false;
   }
   bool ok = err == LIGHTNING_OK && m->seq_num == seq && m->data_size == len &&
-            m->token == LIGHTNING_TOKEN_NONE && check_fill(m->data, len, seq);
+            check_fill(m->data, len, seq);
   if (!ok) {
     fprintf(stderr, "    got seq %u size %llu, want seq %u size %zu\n",
             m->seq_num, (unsigned long long)m->data_size, seq, len);
@@ -135,7 +135,7 @@ static bool reply_expect(lightning_producer_t *p, uint32_t seq,
     fprintf(stderr, "    recv_reply failed: %d\n", err);
     return false;
   }
-  bool ok = m->seq_num == seq && m->token == LIGHTNING_TOKEN_ACCEPT &&
+  bool ok = m->seq_num == seq &&
             (name == NULL || strcmp(m->source_name, name) == 0);
   if (!ok) {
     fprintf(stderr, "    got reply seq %u from '%s', want seq %u\n",
@@ -168,22 +168,34 @@ static void async_recv_start(async_recv_t *a, lightning_consumer_t *c) {
   pthread_create(&a->thread, NULL, async_recv_main, a);
 }
 
-/* ---- Tests ---- */
+/* Keeps sending (seq, seq+1, ...) every 20 ms until the async recv gets
+ * a frame or 5 s pass. Returns true if it got one. */
+static bool send_until_received(lightning_producer_t *p, async_recv_t *ar,
+                                uint32_t seq) {
+  double deadline = now_s() + 5;
+  while (!atomic_load(&ar->done) && now_s() < deadline) {
+    send_seq(p, seq++, 8);
+    sleep_ms(20);
+  }
+  return atomic_load(&ar->done);
+}
+
+/* ---- Basics ---- */
 
 static void roundtrip(const char *scheme) {
   char addr[128];
   make_addr(addr, sizeof(addr), scheme);
   lightning_error_t err;
   lightning_consumer_t *c =
-      lightning_create_consumer("cons", "cons-host", 1024, addr, 0, &err);
+      lightning_create_consumer("cons", "cons-host", 1024, addr, &err);
   CHECK(c != NULL);
   const char *targets[] = {addr, NULL};
-  lightning_producer_t *p = lightning_create_producer(
-      2, 4096, 0, "prod", "prod-host", targets, &err);
+  lightning_producer_t *p =
+      lightning_create_producer(2, 4096, "prod", "prod-host", targets, &err);
   CHECK(p != NULL);
   CHECK_EQ(err, LIGHTNING_OK);
 
-  /* Enough rounds to reuse every chunk and reply chunk many times. */
+  /* Enough rounds to cycle through chunks many times. */
   for (uint32_t seq = 1; seq <= 50; seq++) {
     size_t len = (seq * 97) % 4096;
     CHECK_EQ(send_seq(p, seq, len), LIGHTNING_OK);
@@ -193,7 +205,6 @@ static void roundtrip(const char *scheme) {
     CHECK_EQ(m->seq_num, seq);
     CHECK_EQ(m->data_size, len);
     CHECK(check_fill(m->data, len, seq));
-    CHECK_EQ(m->token, LIGHTNING_TOKEN_NONE);
     CHECK(strcmp(m->source_name, "prod") == 0);
     CHECK(strcmp(m->source_host, "prod-host") == 0);
     CHECK(strcmp(m->source_ip,
@@ -203,13 +214,11 @@ static void roundtrip(const char *scheme) {
 
     char reply[32];
     int n = snprintf(reply, sizeof(reply), "ack %u", seq);
-    CHECK_EQ(lightning_reply(c, (uint8_t *)reply, (uint64_t)n, seq),
-             LIGHTNING_OK);
+    CHECK_EQ(lightning_reply(c, (uint8_t *)reply, (uint64_t)n), LIGHTNING_OK);
 
     lightning_message_t *r = lightning_recv_reply(p, &err);
     CHECK(r != NULL);
     CHECK_EQ(r->seq_num, seq);
-    CHECK_EQ(r->token, LIGHTNING_TOKEN_ACCEPT);
     CHECK_EQ(r->data_size, n);
     CHECK(memcmp(r->data, reply, (size_t)n) == 0);
     CHECK(strcmp(r->source_name, "cons") == 0);
@@ -229,12 +238,11 @@ static void test_empty_frames(void) {
   for (int i = 0; i < 2; i++) {
     char addr[128];
     make_addr(addr, sizeof(addr), schemes[i]);
-    lightning_consumer_t *c =
-        lightning_create_consumer("c", NULL, 16, addr, 0, NULL);
+    lightning_consumer_t *c = lightning_create_consumer("c", NULL, 16, addr, NULL);
     CHECK(c != NULL);
     const char *targets[] = {addr, NULL};
     lightning_producer_t *p =
-        lightning_create_producer(1, 16, 0, "p", NULL, targets, NULL);
+        lightning_create_producer(1, 16, "p", NULL, targets, NULL);
     CHECK(p != NULL);
     CHECK_EQ(lightning_send(p, NULL, 0, 1), LIGHTNING_OK);
     lightning_message_t *m = lightning_recv(c, NULL);
@@ -242,74 +250,162 @@ static void test_empty_frames(void) {
     CHECK_EQ(m->data_size, 0);
     CHECK(strcmp(m->source_host, "") == 0);
     lightning_message_free(m);
-    CHECK_EQ(lightning_reply(c, NULL, 0, 1), LIGHTNING_OK);
+    CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
     CHECK(reply_expect(p, 1, "c"));
     lightning_destroy_producer(p);
     lightning_destroy_consumer(c);
   }
 }
 
-static void test_buffered_tokens(void) {
+static void test_errors(void) {
+  lightning_error_t err;
+  CHECK(lightning_create_consumer("c", NULL, 64, "foo://bar", &err) == NULL);
+  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
+  CHECK(lightning_create_consumer("c", NULL, 64, "tcp://nope:1", &err) == NULL);
+  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
+  const char *bad[] = {"tcp://127.0.0.1", NULL};
+  CHECK(lightning_create_producer(1, 64, "p", NULL, bad, &err) == NULL);
+  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
+  CHECK(lightning_create_producer(0, 64, "p", NULL, NULL, &err) == NULL);
+  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
+
   char addr[128];
   make_addr(addr, sizeof(addr), "unix");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 8, addr, NULL);
   CHECK(c != NULL);
   const char *targets[] = {addr, NULL};
   lightning_producer_t *p =
-      lightning_create_producer(2, 64, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
+  CHECK(p != NULL);
+
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_ERR_INVALID); /* no frame */
+  CHECK_EQ(send_seq(p, 1, 65), LIGHTNING_ERR_TOO_LARGE);
+  CHECK_EQ(send_seq(p, 1, 64), LIGHTNING_OK);
+  CHECK(recv_expect(c, 1, 64));
+  uint8_t big[9] = {0};
+  /* Too large leaves the frame waiting for a reply, so a smaller one works. */
+  CHECK_EQ(lightning_reply(c, big, 9), LIGHTNING_ERR_TOO_LARGE);
+  CHECK_EQ(lightning_reply(c, big, 8), LIGHTNING_OK);
+  CHECK(reply_expect(p, 1, "c"));
+
+  /* The producer goes away: replying to it is a broken pipe (or, if the
+   * disconnect hasn't been noticed yet, a write into a closing socket). */
+  CHECK_EQ(send_seq(p, 2, 8), LIGHTNING_OK);
+  CHECK(recv_expect(c, 2, 8));
+  lightning_destroy_producer(p);
+  sleep_ms(50);
+  lightning_error_t rc = lightning_reply(c, NULL, 0);
+  CHECK(rc == LIGHTNING_ERR_BROKEN_PIPE || rc == LIGHTNING_OK);
+  lightning_destroy_consumer(c);
+}
+
+/* ---- Tokens and replies ---- */
+
+static void test_buffered_tokens(void) {
+  char addr[128];
+  make_addr(addr, sizeof(addr), "unix");
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
+  CHECK(c != NULL);
+  const char *targets[] = {addr, NULL};
+  lightning_producer_t *p =
+      lightning_create_producer(2, 64, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 2, 8), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 3, 8), LIGHTNING_ERR_DROPPED); /* bucket empty */
 
-  CHECK(recv_expect(c, 1, 8));
-  CHECK_EQ(lightning_reply(c, NULL, 0, 1), LIGHTNING_OK);
-  CHECK(reply_expect(p, 1, "c")); /* its token is back once we have it */
+  CHECK(recv_expect(c, 2, 8)); /* newest wins; 1 is dropped */
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  /* The DROP for 1 went out before the reply for 2, so once the reply is
+   * here both tokens are back. */
+  CHECK(reply_expect(p, 2, "c"));
   CHECK_EQ(send_seq(p, 4, 8), LIGHTNING_OK);
-  CHECK_EQ(send_seq(p, 5, 8), LIGHTNING_ERR_DROPPED);
-
-  /* A repeated token for an already-counted frame isn't counted twice. */
-  CHECK(recv_expect(c, 2, 8));
-  CHECK_EQ(lightning_reply(c, NULL, 0, 2), LIGHTNING_OK);
-  CHECK_EQ(lightning_reply(c, NULL, 0, 2), LIGHTNING_OK);
-  CHECK(reply_expect(p, 2, "c"));
-  CHECK(reply_expect(p, 2, "c"));
-  CHECK_EQ(send_seq(p, 6, 8), LIGHTNING_OK);
-  CHECK_EQ(send_seq(p, 7, 8), LIGHTNING_ERR_DROPPED);
+  CHECK_EQ(send_seq(p, 5, 8), LIGHTNING_OK);
+  CHECK_EQ(send_seq(p, 6, 8), LIGHTNING_ERR_DROPPED);
 
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
 }
 
+static void test_one_reply_per_frame(void) {
+  char addr[128];
+  make_addr(addr, sizeof(addr), "shm");
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
+  CHECK(c != NULL);
+  const char *targets[] = {addr, NULL};
+  lightning_producer_t *p =
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
+  CHECK(p != NULL);
+
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_ERR_INVALID);
+  CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_OK);
+  CHECK(recv_expect(c, 1, 8));
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_ERR_INVALID);
+  CHECK(reply_expect(p, 1, "c"));
+  lightning_destroy_producer(p);
+  lightning_destroy_consumer(c);
+}
+
+/* Calling recv again without replying returns the old frame's token. */
+static void unreplied(const char *scheme) {
+  char addr[128];
+  make_addr(addr, sizeof(addr), scheme);
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
+  CHECK(c != NULL);
+  const char *targets[] = {addr, NULL};
+  lightning_producer_t *p =
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
+  CHECK(p != NULL);
+
+  CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_OK);
+  CHECK(recv_expect(c, 1, 8)); /* holds the only token; never replied */
+  async_recv_t ar;
+  async_recv_start(&ar, c); /* returns frame 1's token first */
+  bool got = send_until_received(p, &ar, 2);
+  if (!got) {
+    lightning_destroy_consumer(c);
+  }
+  pthread_join(ar.thread, NULL);
+  CHECK(got);
+  CHECK(ar.msg != NULL && ar.msg->seq_num >= 2);
+  lightning_message_free(ar.msg);
+  lightning_destroy_producer(p);
+  lightning_destroy_consumer(c);
+}
+
+static void test_unreplied_buffered(void) { unreplied("unix"); }
+static void test_unreplied_shm(void) { unreplied("shm"); }
+
 static void test_per_consumer_tokens(void) {
   char a_addr[128], b_addr[128];
   make_addr(a_addr, sizeof(a_addr), "unix");
   make_addr(b_addr, sizeof(b_addr), "tcp");
-  lightning_consumer_t *a = lightning_create_consumer("a", NULL, 64, a_addr, 0, NULL);
-  lightning_consumer_t *b = lightning_create_consumer("b", NULL, 64, b_addr, 0, NULL);
+  lightning_consumer_t *a = lightning_create_consumer("a", NULL, 64, a_addr, NULL);
+  lightning_consumer_t *b = lightning_create_consumer("b", NULL, 64, b_addr, NULL);
   CHECK(a != NULL && b != NULL);
   const char *targets[] = {a_addr, b_addr, NULL};
   lightning_producer_t *p =
-      lightning_create_producer(1, 64, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_OK); /* both get 1 */
   CHECK(recv_expect(a, 1, 8));
-  CHECK_EQ(lightning_reply(a, NULL, 0, 1), LIGHTNING_OK);
+  CHECK_EQ(lightning_reply(a, NULL, 0), LIGHTNING_OK);
   CHECK(reply_expect(p, 1, "a"));
 
   /* b is slow (hasn't replied): it's skipped, but a keeps going. */
   for (uint32_t seq = 2; seq <= 5; seq++) {
     CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
     CHECK(recv_expect(a, seq, 8));
-    CHECK_EQ(lightning_reply(a, NULL, 0, seq), LIGHTNING_OK);
+    CHECK_EQ(lightning_reply(a, NULL, 0), LIGHTNING_OK);
     CHECK(reply_expect(p, seq, "a"));
   }
 
   /* b only ever got frame 1; once it replies, it gets the next send. */
   CHECK(recv_expect(b, 1, 8));
-  CHECK_EQ(lightning_reply(b, NULL, 0, 1), LIGHTNING_OK);
+  CHECK_EQ(lightning_reply(b, NULL, 0), LIGHTNING_OK);
   CHECK(reply_expect(p, 1, "b"));
   CHECK_EQ(send_seq(p, 6, 8), LIGHTNING_OK);
   CHECK(recv_expect(b, 6, 8));
@@ -320,85 +416,97 @@ static void test_per_consumer_tokens(void) {
   lightning_destroy_consumer(b);
 }
 
-static void test_shm_newest_frame(void) {
+/* ---- Newest frame wins ---- */
+
+static void test_newest_wins_buffered(void) {
   char addr[128];
-  make_addr(addr, sizeof(addr), "shm");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  make_addr(addr, sizeof(addr), "unix");
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(c != NULL);
   const char *targets[] = {addr, NULL};
-  /* One token, so the pool has exactly one chunk. */
   lightning_producer_t *p =
-      lightning_create_producer(1, 64, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(5, 64, "p", NULL, targets, NULL);
+  CHECK(p != NULL);
+
+  for (uint32_t seq = 1; seq <= 5; seq++) {
+    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
+  }
+  CHECK(recv_expect(c, 5, 8)); /* 1..4 arrived first but are dropped */
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK(reply_expect(p, 5, "c"));
+
+  /* The dropped frames' tokens came back too: the bucket is full. */
+  for (uint32_t seq = 6; seq <= 10; seq++) {
+    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
+  }
+  CHECK_EQ(send_seq(p, 11, 8), LIGHTNING_ERR_DROPPED);
+
+  lightning_destroy_producer(p);
+  lightning_destroy_consumer(c);
+}
+
+static void test_newest_wins_shm(void) {
+  char addr[128];
+  make_addr(addr, sizeof(addr), "shm");
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
+  CHECK(c != NULL);
+  const char *targets[] = {addr, NULL};
+  lightning_producer_t *p =
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   CHECK_EQ(send_seq(p, 1, 16), LIGHTNING_OK); /* handed to c */
-  /* c holds the only chunk until it reads frame 1, so this is dropped. */
-  CHECK_EQ(send_seq(p, 2, 16), LIGHTNING_ERR_DROPPED);
   CHECK(recv_expect(c, 1, 16));
 
-  /* While c works on frame 1 (no token), frames overwrite each other. */
+  /* c is busy with frame 1 (no token): these are published, not handed. */
+  CHECK_EQ(send_seq(p, 2, 16), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 3, 16), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 4, 16), LIGHTNING_OK);
-  CHECK_EQ(send_seq(p, 5, 16), LIGHTNING_OK);
 
-  /* Replying returns the token, and c is handed the newest frame. */
-  CHECK_EQ(lightning_reply(c, NULL, 0, 1), LIGHTNING_OK);
-  CHECK(recv_expect(c, 5, 16));
+  /* Replying returns the token, and c is handed the newest: 4, never 2
+   * or 3. */
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK(recv_expect(c, 4, 16));
   CHECK(reply_expect(p, 1, "c"));
 
-  /* Nothing newer than 5: c waits and gets the next send directly. */
-  CHECK_EQ(lightning_reply(c, NULL, 0, 5), LIGHTNING_OK);
-  CHECK(reply_expect(p, 5, "c"));
-  CHECK_EQ(send_seq(p, 6, 16), LIGHTNING_OK);
-  CHECK(recv_expect(c, 6, 16));
+  /* Nothing newer than 4: c waits, and gets the next send directly. */
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK(reply_expect(p, 4, "c"));
+  CHECK_EQ(send_seq(p, 5, 16), LIGHTNING_OK);
+  CHECK(recv_expect(c, 5, 16));
 
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
 }
 
-static void test_shm_newest_of_many(void) {
+static void test_newest_wins_shm_many_tokens(void) {
   char addr[128];
   make_addr(addr, sizeof(addr), "shm");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(c != NULL);
   const char *targets[] = {addr, NULL};
   lightning_producer_t *p =
-      lightning_create_producer(3, 64, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(3, 64, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
-  /* c uses up its 3 tokens, and reads (releases) all 3 chunks. */
+  /* With 3 tokens, c is handed all three before it asks for one; recv
+   * still returns the newest and drops the other two. */
   for (uint32_t seq = 1; seq <= 3; seq++) {
     CHECK_EQ(send_seq(p, seq, 16), LIGHTNING_OK);
   }
-  for (uint32_t seq = 1; seq <= 3; seq++) {
-    CHECK(recv_expect(c, seq, 16));
-  }
-  /* The pool now holds 3 frames c hasn't been handed. Each reply must
-   * hand it the newest one it hasn't seen, never an older one. */
-  for (uint32_t seq = 4; seq <= 6; seq++) {
-    CHECK_EQ(send_seq(p, seq, 16), LIGHTNING_OK);
-  }
-  CHECK_EQ(lightning_reply(c, NULL, 0, 1), LIGHTNING_OK);
-  CHECK(recv_expect(c, 6, 16));
-  /* Nothing newer than 6 exists, so these just refill the bucket. */
-  CHECK_EQ(lightning_reply(c, NULL, 0, 2), LIGHTNING_OK);
-  CHECK_EQ(lightning_reply(c, NULL, 0, 3), LIGHTNING_OK);
-  CHECK_EQ(lightning_reply(c, NULL, 0, 6), LIGHTNING_OK);
-  for (uint32_t seq = 1; seq <= 3; seq++) {
-    CHECK(reply_expect(p, seq, "c"));
-  }
-  CHECK(reply_expect(p, 6, "c"));
-  /* Full bucket again: the next 3 sends are each handed right away. */
-  for (uint32_t seq = 7; seq <= 9; seq++) {
-    CHECK_EQ(send_seq(p, seq, 16), LIGHTNING_OK);
-  }
-  for (uint32_t seq = 7; seq <= 9; seq++) {
-    CHECK(recv_expect(c, seq, 16));
-  }
+  CHECK(recv_expect(c, 3, 16));
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK(reply_expect(p, 3, "c"));
+
+  /* All three tokens are back, so the next frame is handed right away. */
+  CHECK_EQ(send_seq(p, 4, 16), LIGHTNING_OK);
+  CHECK(recv_expect(c, 4, 16));
 
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
 }
+
+/* ---- Shared memory pool ---- */
 
 /* Blocks allocated to the Lightning memfd of exactly `size` bytes
  * (found through /proc/self/fd), or -1 if there is none. */
@@ -427,128 +535,74 @@ static long long memfd_blocks(off_t size) {
   return blocks;
 }
 
-static void test_shm_pool_memory_released(void) {
+static void test_pool_uses_few_chunks(void) {
   char addr[128];
   make_addr(addr, sizeof(addr), "shm");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(c != NULL);
-  /* A distinctive pool size: 3 chunks of (64-byte header + 256 KiB). */
-  const uint64_t max_send = 256 * 1024;
-  const off_t pool_size = 3 * (64 + (off_t)max_send);
+  const char *targets[] = {addr, NULL};
+  const uint64_t chunk = 256 * 1024;
   lightning_producer_t *p =
-      lightning_create_producer(3, max_send, 0, "p", NULL, NULL, NULL);
+      lightning_create_producer(1, chunk, "p", NULL, targets, NULL);
   CHECK(p != NULL);
-  CHECK_EQ(memfd_blocks(pool_size), 0); /* reserved, not backed */
+  /* The pool reserves 1 * 31 + 2 chunks. */
+  const off_t pool_size = (off_t)chunk * (LIGHTNING_MAX_TARGETS + 2);
+  CHECK_EQ(memfd_blocks(pool_size), 0); /* reserved, not yet backed */
 
-  CHECK_EQ(lightning_add_target(p, addr), LIGHTNING_OK);
   static uint8_t frame[256 * 1024];
-  for (uint32_t seq = 1; seq <= 3; seq++) {
+  for (uint32_t seq = 1; seq <= 100; seq++) {
     fill(frame, sizeof(frame), seq);
     CHECK_EQ(lightning_send(p, frame, sizeof(frame), seq), LIGHTNING_OK);
+    lightning_message_t *m = lightning_recv(c, NULL);
+    CHECK(m != NULL);
+    CHECK_EQ(m->seq_num, seq);
+    CHECK(check_fill(m->data, sizeof(frame), seq));
+    lightning_message_free(m);
+    CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+    CHECK(reply_expect(p, seq, "c"));
   }
-  CHECK(memfd_blocks(pool_size) > 0);
-
-  CHECK_EQ(lightning_remove_target(p, addr), LIGHTNING_OK);
-  CHECK_EQ(memfd_blocks(pool_size), 0); /* handed back to the kernel */
-
-  /* And the pool still works after being released. */
-  CHECK_EQ(lightning_add_target(p, addr), LIGHTNING_OK);
-  fill(frame, sizeof(frame), 10);
-  CHECK_EQ(lightning_send(p, frame, sizeof(frame), 10), LIGHTNING_OK);
-  lightning_message_t *m = NULL;
-  /* Frames 1..3 went to the removed connection, which c discards. */
-  m = lightning_recv(c, NULL);
-  CHECK(m != NULL);
-  CHECK_EQ(m->seq_num, 10);
-  CHECK(check_fill(m->data, sizeof(frame), 10));
-  lightning_message_free(m);
+  /* Reusing the lowest free chunk means only a few of the 33 ever get
+   * memory, however many frames go through. */
+  long long blocks = memfd_blocks(pool_size);
+  CHECK(blocks > 0);
+  CHECK(blocks <= (long long)(3 * chunk / 512));
 
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
 }
 
-static void test_staleness(void) {
+/* A consumer that disappears while holding a chunk must not keep it
+ * held: after more add/remove cycles than the pool has chunks, sends
+ * still succeed. */
+static void test_remove_releases_chunks(void) {
   char addr[128];
-  make_addr(addr, sizeof(addr), "unix");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  make_addr(addr, sizeof(addr), "shm");
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(c != NULL);
-  const char *targets[] = {addr, NULL};
   lightning_producer_t *p =
-      lightning_create_producer(5, 64, 2, "p", NULL, targets, NULL);
+      lightning_create_producer(1, 64, "p", NULL, NULL, NULL);
   CHECK(p != NULL);
-
-  for (uint32_t seq = 1; seq <= 5; seq++) {
-    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
+  for (uint32_t seq = 1; seq <= LIGHTNING_MAX_TARGETS + 10; seq++) {
+    CHECK_EQ(lightning_add_target(p, addr), LIGHTNING_OK);
+    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK); /* handed and held */
+    CHECK_EQ(lightning_remove_target(p, addr), LIGHTNING_OK);
   }
-  /* 1..3 are at least 2 behind 5, so they're dropped. */
-  CHECK(recv_expect(c, 4, 8));
-  CHECK_EQ(lightning_reply(c, NULL, 0, 4), LIGHTNING_OK);
-  CHECK(recv_expect(c, 5, 8));
-  CHECK_EQ(lightning_reply(c, NULL, 0, 5), LIGHTNING_OK);
-  CHECK(reply_expect(p, 4, "c"));
-  CHECK(reply_expect(p, 5, "c"));
-
-  /* The dropped frames' tokens came back too: the bucket is full. */
-  for (uint32_t seq = 6; seq <= 10; seq++) {
-    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
-  }
-  CHECK_EQ(send_seq(p, 11, 8), LIGHTNING_ERR_DROPPED);
-
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
 }
 
-static void test_errors(void) {
-  lightning_error_t err;
-  CHECK(lightning_create_consumer("c", NULL, 64, "foo://bar", 0, &err) == NULL);
-  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
-  CHECK(lightning_create_consumer("c", NULL, 64, "tcp://nope:1", 0, &err) ==
-        NULL);
-  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
-  const char *bad[] = {"tcp://127.0.0.1", NULL};
-  CHECK(lightning_create_producer(1, 64, 0, "p", NULL, bad, &err) == NULL);
-  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
-  CHECK(lightning_create_producer(0, 64, 0, "p", NULL, NULL, &err) == NULL);
-  CHECK_EQ(err, LIGHTNING_ERR_INVALID);
-
-  char addr[128];
-  make_addr(addr, sizeof(addr), "unix");
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 8, addr, 0, NULL);
-  CHECK(c != NULL);
-  const char *targets[] = {addr, NULL};
-  lightning_producer_t *p =
-      lightning_create_producer(1, 64, 0, "p", NULL, targets, NULL);
-  CHECK(p != NULL);
-
-  CHECK_EQ(lightning_reply(c, NULL, 0, 1), LIGHTNING_ERR_INVALID);
-  CHECK_EQ(send_seq(p, 1, 65), LIGHTNING_ERR_TOO_LARGE);
-  CHECK_EQ(send_seq(p, 1, 64), LIGHTNING_OK);
-  CHECK(recv_expect(c, 1, 64));
-  uint8_t big[9] = {0};
-  CHECK_EQ(lightning_reply(c, big, 9, 1), LIGHTNING_ERR_TOO_LARGE);
-  CHECK_EQ(lightning_reply(c, big, 8, 1), LIGHTNING_OK);
-  CHECK(reply_expect(p, 1, "c"));
-
-  /* The producer goes away: replying to it is a broken pipe. */
-  CHECK_EQ(send_seq(p, 2, 8), LIGHTNING_OK);
-  CHECK(recv_expect(c, 2, 8));
-  lightning_destroy_producer(p);
-  sleep_ms(50);
-  lightning_error_t rc = lightning_reply(c, NULL, 0, 2);
-  CHECK(rc == LIGHTNING_ERR_BROKEN_PIPE || rc == LIGHTNING_OK);
-  lightning_destroy_consumer(c);
-}
+/* ---- Targets and topology ---- */
 
 static void test_dynamic_targets(void) {
   char a[128], b[128];
   make_addr(a, sizeof(a), "unix");
   make_addr(b, sizeof(b), "shm");
-  lightning_consumer_t *ca = lightning_create_consumer("a", NULL, 64, a, 0, NULL);
-  lightning_consumer_t *cb = lightning_create_consumer("b", NULL, 64, b, 0, NULL);
+  lightning_consumer_t *ca = lightning_create_consumer("a", NULL, 64, a, NULL);
+  lightning_consumer_t *cb = lightning_create_consumer("b", NULL, 64, b, NULL);
   CHECK(ca != NULL && cb != NULL);
 
   lightning_producer_t *p =
-      lightning_create_producer(2, 64, 0, "p", NULL, NULL, NULL);
+      lightning_create_producer(2, 64, "p", NULL, NULL, NULL);
   CHECK(p != NULL);
   CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_ERR_DROPPED); /* no targets */
 
@@ -557,7 +611,7 @@ static void test_dynamic_targets(void) {
   CHECK_EQ(lightning_add_target(p, "bogus"), LIGHTNING_ERR_INVALID);
   CHECK_EQ(send_seq(p, 2, 8), LIGHTNING_OK);
   CHECK(recv_expect(ca, 2, 8));
-  CHECK_EQ(lightning_reply(ca, NULL, 0, 2), LIGHTNING_OK);
+  CHECK_EQ(lightning_reply(ca, NULL, 0), LIGHTNING_OK);
   CHECK(reply_expect(p, 2, "a"));
 
   CHECK_EQ(lightning_add_target(p, b), LIGHTNING_OK);
@@ -572,15 +626,12 @@ static void test_dynamic_targets(void) {
   CHECK_EQ(lightning_remove_target(p, b), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 4, 8), LIGHTNING_ERR_DROPPED); /* no targets again */
 
-  /* Re-adding the unbuffered target reuses the (released) pool. */
+  /* Re-added targets work again, on fresh connections. */
   CHECK_EQ(lightning_add_target(p, b), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 5, 8), LIGHTNING_OK);
   CHECK(recv_expect(cb, 5, 8));
-  CHECK_EQ(lightning_reply(cb, NULL, 0, 5), LIGHTNING_OK);
+  CHECK_EQ(lightning_reply(cb, NULL, 0), LIGHTNING_OK);
   CHECK(reply_expect(p, 5, "b"));
-
-  /* Re-adding a buffered target works too, on a fresh connection with a
-   * full bucket. */
   CHECK_EQ(lightning_add_target(p, a), LIGHTNING_OK);
   CHECK_EQ(send_seq(p, 6, 8), LIGHTNING_OK);
   CHECK(recv_expect(ca, 6, 8));
@@ -593,7 +644,7 @@ static void test_dynamic_targets(void) {
 
 static void test_target_limit(void) {
   lightning_producer_t *p =
-      lightning_create_producer(1, 64, 0, "p", NULL, NULL, NULL);
+      lightning_create_producer(1, 64, "p", NULL, NULL, NULL);
   CHECK(p != NULL);
   char addrs[LIGHTNING_MAX_TARGETS + 1][128];
   /* Nobody listens on these; they're added anyway and retried. */
@@ -612,19 +663,15 @@ static void test_target_limit(void) {
   /* A target whose consumer shows up later is connected in the
    * background. */
   lightning_consumer_t *c =
-      lightning_create_consumer("late", NULL, 64, addrs[0], 0, NULL);
+      lightning_create_consumer("late", NULL, 64, addrs[0], NULL);
   CHECK(c != NULL);
   async_recv_t ar;
   async_recv_start(&ar, c);
-  double deadline = now_s() + 5;
-  for (uint32_t seq = 1; !atomic_load(&ar.done) && now_s() < deadline; seq++) {
-    send_seq(p, seq, 8);
-    sleep_ms(20);
-  }
+  bool got = send_until_received(p, &ar, 1);
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
   pthread_join(ar.thread, NULL);
-  CHECK(ar.msg != NULL);
+  CHECK(got);
   CHECK(strcmp(ar.msg->source_name, "p") == 0);
   lightning_message_free(ar.msg);
 }
@@ -636,12 +683,12 @@ static void test_mixed_targets(void) {
   lightning_consumer_t *cs[3];
   for (int i = 0; i < 3; i++) {
     make_addr(addrs[i], sizeof(addrs[i]), schemes[i]);
-    cs[i] = lightning_create_consumer(names[i], NULL, 64, addrs[i], 0, NULL);
+    cs[i] = lightning_create_consumer(names[i], NULL, 64, addrs[i], NULL);
     CHECK(cs[i] != NULL);
   }
   const char *targets[] = {addrs[0], addrs[1], addrs[2], NULL};
   lightning_producer_t *p =
-      lightning_create_producer(2, 1024, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(2, 1024, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   for (uint32_t seq = 1; seq <= 30; seq++) {
@@ -649,7 +696,7 @@ static void test_mixed_targets(void) {
     for (int i = 0; i < 3; i++) {
       CHECK(recv_expect(cs[i], seq, 1000));
       CHECK_EQ(lightning_reply(cs[i], (const uint8_t *)names[i],
-                               strlen(names[i]), seq),
+                               strlen(names[i])),
                LIGHTNING_OK);
     }
     bool seen[3] = {false, false, false};
@@ -681,41 +728,38 @@ static void test_fan_in(void) {
   make_addr(unix_addr, sizeof(unix_addr), "unix");
   rescheme(shm_addr, sizeof(shm_addr), unix_addr, "shm");
   lightning_consumer_t *c =
-      lightning_create_consumer("c", NULL, 64, unix_addr, 0, NULL);
+      lightning_create_consumer("c", NULL, 64, unix_addr, NULL);
   CHECK(c != NULL);
   const char *t1[] = {unix_addr, NULL};
   const char *t2[] = {shm_addr, NULL};
   lightning_producer_t *p1 =
-      lightning_create_producer(10, 64, 0, "same", "one", t1, NULL);
+      lightning_create_producer(1, 64, "same", "one", t1, NULL);
   lightning_producer_t *p2 =
-      lightning_create_producer(10, 64, 0, "same", "two", t2, NULL);
+      lightning_create_producer(1, 64, "same", "two", t2, NULL);
   CHECK(p1 != NULL && p2 != NULL);
 
-  for (uint32_t seq = 1; seq <= 10; seq++) {
-    CHECK_EQ(send_seq(p1, seq, 8), LIGHTNING_OK);
-    CHECK_EQ(send_seq(p2, 100 + seq, 8), LIGHTNING_OK);
-  }
-
-  /* Round-robin: sources alternate while both have frames queued, and
-   * each reply goes back to the producer of the frame just received. */
-  uint64_t prev_id = 0;
-  uint32_t next[2] = {1, 101};
-  for (int i = 0; i < 20; i++) {
-    lightning_message_t *m = lightning_recv(c, NULL);
-    CHECK(m != NULL);
-    CHECK(m->source_id != prev_id);
-    prev_id = m->source_id;
-    CHECK(strcmp(m->source_name, "same") == 0);
-    int which = strcmp(m->source_host, "one") == 0 ? 0 : 1;
-    CHECK_EQ(m->seq_num, next[which]);
-    next[which]++;
-    CHECK(check_fill(m->data, 8, m->seq_num));
-    CHECK_EQ(lightning_reply(c, NULL, 0, m->seq_num), LIGHTNING_OK);
-    lightning_message_free(m);
-  }
-  for (uint32_t seq = 1; seq <= 10; seq++) {
-    CHECK(reply_expect(p1, seq, "c"));
-    CHECK(reply_expect(p2, 100 + seq, "c"));
+  /* Each round both producers send; the consumer gets one frame from
+   * each, and each reply goes back to the producer it answers. */
+  for (uint32_t round = 1; round <= 10; round++) {
+    CHECK_EQ(send_seq(p1, round, 8), LIGHTNING_OK);
+    CHECK_EQ(send_seq(p2, 100 + round, 8), LIGHTNING_OK);
+    uint64_t first_id = 0;
+    bool got[2] = {false, false};
+    for (int i = 0; i < 2; i++) {
+      lightning_message_t *m = lightning_recv(c, NULL);
+      CHECK(m != NULL);
+      CHECK(strcmp(m->source_name, "same") == 0);
+      CHECK(m->source_id != first_id); /* two different producers */
+      first_id = m->source_id;
+      int which = strcmp(m->source_host, "one") == 0 ? 0 : 1;
+      CHECK_EQ(m->seq_num, which == 0 ? round : 100 + round);
+      got[which] = true;
+      lightning_message_free(m);
+      CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+    }
+    CHECK(got[0] && got[1]);
+    CHECK(reply_expect(p1, round, "c"));
+    CHECK(reply_expect(p2, 100 + round, "c"));
   }
   lightning_destroy_producer(p1);
   lightning_destroy_producer(p2);
@@ -723,45 +767,41 @@ static void test_fan_in(void) {
 }
 
 /* The consumer dies holding the producer's only token (and, for shm://,
- * its only chunk), then restarts at the same address. The producer
- * must reconnect and reclaim both. */
+ * a chunk), then restarts at the same address. The producer must
+ * reconnect and start again with a full bucket. */
 static void reconnect(const char *scheme) {
   char addr[128];
   make_addr(addr, sizeof(addr), scheme);
-  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  lightning_consumer_t *c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(c != NULL);
   const char *targets[] = {addr, NULL};
   lightning_producer_t *p =
-      lightning_create_producer(1, 64, 0, "p", NULL, targets, NULL);
+      lightning_create_producer(1, 64, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   CHECK_EQ(send_seq(p, 1, 8), LIGHTNING_OK);
   lightning_destroy_consumer(c); /* never read or replied to frame 1 */
-  c = lightning_create_consumer("c2", NULL, 64, addr, 0, NULL);
+  c = lightning_create_consumer("c2", NULL, 64, addr, NULL);
   CHECK(c != NULL);
 
   async_recv_t ar;
   async_recv_start(&ar, c);
-  double deadline = now_s() + 5;
-  uint32_t seq = 2;
-  while (!atomic_load(&ar.done) && now_s() < deadline) {
-    send_seq(p, seq++, 8);
-    sleep_ms(20);
-  }
-  if (!atomic_load(&ar.done)) {
+  bool got = send_until_received(p, &ar, 2);
+  if (!got) {
     lightning_destroy_consumer(c); /* wakes the recv */
-    pthread_join(ar.thread, NULL);
+  }
+  pthread_join(ar.thread, NULL);
+  if (!got) {
     lightning_destroy_producer(p);
     CHECK(!"consumer never received a frame after restarting");
   }
-  pthread_join(ar.thread, NULL);
   CHECK(ar.msg != NULL);
-  uint32_t got = ar.msg->seq_num;
-  CHECK(got >= 2);
-  CHECK(check_fill(ar.msg->data, 8, got));
+  uint32_t seq = ar.msg->seq_num;
+  CHECK(seq >= 2);
+  CHECK(check_fill(ar.msg->data, 8, seq));
   lightning_message_free(ar.msg);
-  CHECK_EQ(lightning_reply(c, NULL, 0, got), LIGHTNING_OK);
-  CHECK(reply_expect(p, got, "c2"));
+  CHECK_EQ(lightning_reply(c, NULL, 0), LIGHTNING_OK);
+  CHECK(reply_expect(p, seq, "c2"));
 
   lightning_destroy_producer(p);
   lightning_destroy_consumer(c);
@@ -795,10 +835,10 @@ static void test_destroy_wakes_blocked_calls(void) {
   make_addr(addr, sizeof(addr), "unix");
   blocked_t b;
   memset(&b, 0, sizeof(b));
-  b.c = lightning_create_consumer("c", NULL, 64, addr, 0, NULL);
+  b.c = lightning_create_consumer("c", NULL, 64, addr, NULL);
   CHECK(b.c != NULL);
   const char *targets[] = {addr, NULL};
-  b.p = lightning_create_producer(1, 64, 0, "p", NULL, targets, NULL);
+  b.p = lightning_create_producer(1, 64, "p", NULL, targets, NULL);
   CHECK(b.p != NULL);
 
   pthread_t t1, t2;
@@ -819,39 +859,6 @@ static void test_destroy_wakes_blocked_calls(void) {
   CHECK_EQ(b.err, LIGHTNING_ERR_CLOSED);
 }
 
-static void test_small_reply_area(void) {
-  char addr[128];
-  make_addr(addr, sizeof(addr), "shm");
-  /* One reply chunk: each reply waits for the previous to be copied. */
-  lightning_consumer_t *c =
-      lightning_create_consumer("c", NULL, 4096, addr, 1, NULL);
-  CHECK(c != NULL);
-  const char *targets[] = {addr, NULL};
-  lightning_producer_t *p =
-      lightning_create_producer(4, 64, 0, "p", NULL, targets, NULL);
-  CHECK(p != NULL);
-
-  for (uint32_t seq = 1; seq <= 4; seq++) {
-    CHECK_EQ(send_seq(p, seq, 8), LIGHTNING_OK);
-  }
-  uint8_t reply[4096];
-  for (uint32_t seq = 1; seq <= 4; seq++) {
-    CHECK(recv_expect(c, seq, 8));
-    fill(reply, sizeof(reply), seq + 1000);
-    CHECK_EQ(lightning_reply(c, reply, sizeof(reply), seq), LIGHTNING_OK);
-  }
-  for (uint32_t seq = 1; seq <= 4; seq++) {
-    lightning_message_t *r = lightning_recv_reply(p, NULL);
-    CHECK(r != NULL);
-    CHECK_EQ(r->seq_num, seq);
-    CHECK_EQ(r->data_size, sizeof(reply));
-    CHECK(check_fill(r->data, sizeof(reply), seq + 1000));
-    lightning_message_free(r);
-  }
-  lightning_destroy_producer(p);
-  lightning_destroy_consumer(c);
-}
-
 /* ---- Stress: concurrent send/recv/reply with integrity checks ---- */
 
 #define STRESS_FRAME 65536
@@ -859,6 +866,7 @@ static void test_small_reply_area(void) {
 
 typedef struct {
   lightning_consumer_t *c;
+  bool slow; /* sometimes sleeps before replying */
   pthread_t thread;
   atomic_int received;
   atomic_int bad;
@@ -885,12 +893,12 @@ static void *stress_consumer_main(void *arg) {
     atomic_fetch_add(&s->received, 1);
     /* Vary how long "processing" takes. */
     rng = rng * 1103515245u + 12345u;
-    if ((rng >> 16) % 4 == 0) {
+    if (s->slow && (rng >> 16) % 4 == 0) {
       usleep((rng >> 8) % 500);
     }
     uint8_t reply[64];
     fill(reply, sizeof(reply), m->seq_num);
-    lightning_reply(s->c, reply, sizeof(reply), m->seq_num);
+    lightning_reply(s->c, reply, sizeof(reply));
     lightning_message_free(m);
   }
 }
@@ -916,8 +924,11 @@ static void *stress_replies_main(void *arg) {
   }
 }
 
-static void test_stress(void) {
-  const char *schemes[] = {"shm", "shm", "unix", "tcp"};
+/* Sends STRESS_FRAMES frames to four consumers of the given schemes
+ * that reply from their own threads, and checks every frame and reply
+ * arrives intact and in order. */
+static void stress(const char *const schemes[4], uint32_t max_tokens,
+                   bool slow) {
   enum { N = 4 };
   char addrs[N][128];
   stress_consumer_t cs[N];
@@ -925,13 +936,14 @@ static void test_stress(void) {
   for (int i = 0; i < N; i++) {
     make_addr(addrs[i], sizeof(addrs[i]), schemes[i]);
     memset(&cs[i], 0, sizeof(cs[i]));
-    cs[i].c = lightning_create_consumer("c", NULL, 64, addrs[i], 2, NULL);
+    cs[i].slow = slow;
+    cs[i].c = lightning_create_consumer("c", NULL, 64, addrs[i], NULL);
     CHECK(cs[i].c != NULL);
     targets[i] = addrs[i];
   }
   targets[N] = NULL;
-  lightning_producer_t *p =
-      lightning_create_producer(3, STRESS_FRAME, 2, "p", NULL, targets, NULL);
+  lightning_producer_t *p = lightning_create_producer(
+      max_tokens, STRESS_FRAME, "p", NULL, targets, NULL);
   CHECK(p != NULL);
 
   stress_replies_t sr;
@@ -951,7 +963,7 @@ static void test_stress(void) {
     if (lightning_send(p, frame, STRESS_FRAME, seq) == LIGHTNING_OK) {
       sent++;
     }
-    if (seq % 16 == 0) {
+    if (slow && seq % 16 == 0) {
       usleep(100);
     }
   }
@@ -982,6 +994,21 @@ static void test_stress(void) {
   CHECK(atomic_load(&sr.replies) <= total);
 }
 
+/* All connection types, slow consumers with several tokens each. */
+static void test_stress(void) {
+  static const char *const schemes[4] = {"shm", "shm", "unix", "tcp"};
+  stress(schemes, 3, true);
+}
+
+/* Unbuffered only, one token, consumers that reply instantly: returned
+ * tokens (which hand out the newest chunk) constantly race with sends
+ * writing new chunks. A chunk handed out while it's being written would
+ * show up as a corrupted frame. */
+static void test_stress_shm_race(void) {
+  static const char *const schemes[4] = {"shm", "shm", "shm", "shm"};
+  stress(schemes, 1, false);
+}
+
 /* ---- Main ---- */
 
 typedef struct {
@@ -994,13 +1021,17 @@ static const test_t kTests[] = {
     {"roundtrip_tcp", test_roundtrip_tcp},
     {"roundtrip_shm", test_roundtrip_shm},
     {"empty_frames", test_empty_frames},
-    {"buffered_tokens", test_buffered_tokens},
-    {"per_consumer_tokens", test_per_consumer_tokens},
-    {"shm_newest_frame", test_shm_newest_frame},
-    {"shm_newest_of_many", test_shm_newest_of_many},
-    {"shm_pool_memory_released", test_shm_pool_memory_released},
-    {"staleness", test_staleness},
     {"errors", test_errors},
+    {"buffered_tokens", test_buffered_tokens},
+    {"one_reply_per_frame", test_one_reply_per_frame},
+    {"unreplied_buffered", test_unreplied_buffered},
+    {"unreplied_shm", test_unreplied_shm},
+    {"per_consumer_tokens", test_per_consumer_tokens},
+    {"newest_wins_buffered", test_newest_wins_buffered},
+    {"newest_wins_shm", test_newest_wins_shm},
+    {"newest_wins_shm_many_tokens", test_newest_wins_shm_many_tokens},
+    {"pool_uses_few_chunks", test_pool_uses_few_chunks},
+    {"remove_releases_chunks", test_remove_releases_chunks},
     {"dynamic_targets", test_dynamic_targets},
     {"target_limit", test_target_limit},
     {"mixed_targets", test_mixed_targets},
@@ -1009,8 +1040,8 @@ static const test_t kTests[] = {
     {"reconnect_tcp", test_reconnect_tcp},
     {"reconnect_shm", test_reconnect_shm},
     {"destroy_wakes_blocked_calls", test_destroy_wakes_blocked_calls},
-    {"small_reply_area", test_small_reply_area},
     {"stress", test_stress},
+    {"stress_shm_race", test_stress_shm_race},
 };
 
 static bool selected(int argc, char **argv, const char *name) {

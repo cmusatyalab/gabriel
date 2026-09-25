@@ -4,8 +4,6 @@ add_library(lightning
     src/common.c
     src/consumer.c
     src/producer.c
-    src/transport_buffered.c
-    src/transport_unbuffered.c
 )
 add_library(lightning::lightning ALIAS lightning)
 
