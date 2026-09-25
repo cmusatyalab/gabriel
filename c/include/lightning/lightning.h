@@ -1,6 +1,7 @@
 #ifndef LIGHTNING_H
 #define LIGHTNING_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
