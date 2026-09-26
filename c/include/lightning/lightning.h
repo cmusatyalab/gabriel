@@ -12,8 +12,7 @@ extern "C" {
  * library. Tokens are used to pace out data so that the producer doesn't
  * transmit frames that won't be consumed. To this end, producers used AIMD
  * to dynamically adjust token counts to drop signals. Producers can also
- * be configured to not use tokens by setting `token_gated` to false on
- * creation.
+ * be configured to not use tokens by setting `max_tokens` to 0 on creation.
  *
  * Lightning supports two different types of connections:
  *
@@ -33,6 +32,9 @@ extern "C" {
 
 /* Default message size for a lightning_message_t data array. */
 #define LIGHTNING_DEFAULT_MSG_SIZE 4000u /* 4 kilobytes */
+
+/* Maximum number of tokens a producer can have. */
+#define MAX_TOKENS 100u
 
 /* --- Declarations --- */
 
@@ -84,13 +86,12 @@ const char *lightning_version(void);
  * lightning functions. */
 void lightning_set_log_callback(lightning_log_fn fn, void *user_cb);
 
-/* Creates a producer. token_gated` controls whether the producer uses the
- * token mechanism to send (or ignore tokens). max_tokens` is the size of the 
- * producer's token bucket. `max_send_size` is the maximum size of a send payload. 
- * This defaults to LIGHTNING_DEFAULT_MSG_SIZE if 0. Returns NULL and sets `error`
- * on failure. */
-lightning_producer_t *lightning_create_producer(bool token_gated, uint32_t max_tokens,
-        uint64_t max_send_size, lightning_error_t *error);
+/* Creates a producer. `max_tokens` is the size of the producer's token bucket, which
+ * must be less than MAX_TOKENS. A `max_tokens` of 0 ignores token gating. `max_send_size`
+ * is the maximum size of a send payload. This defaults to LIGHTNING_DEFAULT_MSG_SIZE
+ * if 0. Returns NULL and sets `error` on failure. */
+lightning_producer_t *lightning_create_producer(uint32_t max_tokens, uint64_t max_send_size,
+        lightning_error_t *error);
 
 /* Adds a consumer to a producer's consumer list. Returns LIGHTNING_ERR_FULL if
  * there are LIGHTNING_MAX_CONSUMERS consumers already. */
@@ -106,6 +107,9 @@ lightning_error_t lightning_remove_consumer_from_producer(lightning_producer_t *
  * drop frames if no token is available. `seq_num` should strictly increase for each call. */
 lightning_error_t lightning_produce(lightning_producer_t *producer, const uint8_t *data,
         uint64_t data_size, uint32_t seq_num);
+
+/* Reads a reply sent by a consumer. Returns NULL and sets `error` on failure. */
+lightning_message_t *lightning_read_reply(lightning_producer_t *producer, lightning_error_t *error);
 
 /* Creates a consumer bound at `address`. If tcp:, only uses the port. If unix: or shm:, 
  * creates a Unix Domain Socket at that path. `max_send_size` is the maximum size of the
@@ -125,7 +129,7 @@ lightning_message_t *lightning_consume(lightning_consumer_t *consumer, lightning
  * its token to the producer. Each frame should generate exactly one reply. Multiple calls
  * for a single lightning_consume() or a call without first calling consume will return
  * LIGHTNING_ERR_INVALID. */
-lightning_error_t lightning_reply(lightning_consumer_t *consumer, const uint8_t *data,
+lightning_error_t lightning_send_reply(lightning_consumer_t *consumer, const uint8_t *data,
         uint64_t data_size);
 
 /* Cleanup methods. */
