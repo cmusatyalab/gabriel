@@ -1,12 +1,18 @@
-/* Lightning constants. */
+/* Gabriel protocol constants. */
 
-#ifndef LIGHTNING_CONSTANTS_H
-#define LIGHTNING_CONSTANTS_H
+#ifndef GABRIEL_CONSTANTS_H
+#define GABRIEL_CONSTANTS_H
+
+/* Address prefixes. */
+#define GABRIEL_TCP_PREFIX "tcp://"
+#define GABRIEL_UNIX_PREFIX "unix://"
+#define GABRIEL_SHM_PREFIX "shm://"
 
 /* Handshake and connection constants. */
-#define LIGHTNING_CONNECT_TIMEOUT_MS 1000u   /* connection timeout */
-#define LIGHTNING_HANDSHAKE_TIMEOUT_MS 2000u /* handshake timeout */
-#define LIGHTNING_BACKOFF_MIN_MS 50u         /* minimum backoff time for reconnect */
-#define LIGHTNING_BACKOFF_MAX_MS 1000u       /* maximum backoff time for reconnect */
+#define GABRIEL_BACKOFF_STEP_S 2u       /* size of each backoff step */
+#define GABRIEL_BACKOFF_MAX_S 32u       /* maximum backoff time for reconnect */
+
+/* Shared memory chunk constants. */
+#define GABRIEL_DEFAULT_CHUNK_COUNT 5u
 
 #endif

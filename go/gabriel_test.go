@@ -2,8 +2,8 @@ package gabriel
 
 import "testing"
 
-func TestLightningVersion(t *testing.T) {
-	if LightningVersion() == "" {
-		t.Fatal("LightningVersion() returned an empty string")
+func TestVersion(t *testing.T) {
+	if Version() == "" {
+		t.Fatal("Version() returned an empty string")
 	}
 }

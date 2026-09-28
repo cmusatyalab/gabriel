@@ -1,5 +1,5 @@
-"""Python bindings for Gabriel, built on the Lightning C library."""
+"""Python bindings for Gabriel, built on the Gabriel C library."""
 
-from gabriel._gabriel import lightning_version
+from gabriel._gabriel import version
 
-__all__ = ["lightning_version"]
+__all__ = ["version"]

@@ -1,8 +1,8 @@
 #include <iostream>
 
-#include <lightning/lightning.h>
+#include <gabriel/gabriel.h>
 
 int main() {
-  std::cout << "lightning version: " << lightning_version() << "\n";
+  std::cout << "gabriel version: " << gabriel_version() << "\n";
   return 0;
 }

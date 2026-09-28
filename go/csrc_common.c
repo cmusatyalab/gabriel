@@ -1,4 +1,4 @@
-// These csrc_*.c files let cgo compile the canonical Lightning C
+// These csrc_*.c files let cgo compile the canonical Gabriel C
 // sources directly as part of `go build`, so consumers never need a
 // prebuilt .so/.a. The single source of truth stays in ../c/src;
 // nothing is duplicated.

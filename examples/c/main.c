@@ -1,8 +1,8 @@
 #include <stdio.h>
 
-#include <lightning/lightning.h>
+#include <gabriel/gabriel.h>
 
 int main(void) {
-  printf("lightning version: %s\n", lightning_version());
+  printf("gabriel version: %s\n", gabriel_version());
   return 0;
 }

@@ -1,3 +1,3 @@
-from gabriel import lightning_version
+from gabriel import version
 
-print("lightning version:", lightning_version())
+print("gabriel version:", version())

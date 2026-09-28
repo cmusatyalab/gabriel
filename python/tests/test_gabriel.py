@@ -1,6 +1,6 @@
-from gabriel import lightning_version
+from gabriel import version
 
 
-def test_lightning_version():
-    assert isinstance(lightning_version(), str)
-    assert lightning_version()
+def test_version():
+    assert isinstance(version(), str)
+    assert version()

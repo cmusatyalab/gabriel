@@ -1,16 +1,16 @@
 // Package gabriel provides Go bindings for Gabriel, built on the
-// Lightning C transport library.
+// Gabriel C library.
 package gabriel
 
 /*
 #cgo CFLAGS: -D_GNU_SOURCE -I${SRCDIR}/../c/include
 #cgo LDFLAGS: -lpthread
-#include <lightning/lightning.h>
+#include <gabriel/gabriel.h>
 */
 import "C"
 
-// LightningVersion returns the version string of the underlying
-// Lightning C library.
-func LightningVersion() string {
-	return C.GoString(C.lightning_version())
+// Version returns the version string of the underlying Gabriel C
+// library.
+func Version() string {
+	return C.GoString(C.gabriel_version())
 }

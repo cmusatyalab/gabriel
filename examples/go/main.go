@@ -8,5 +8,5 @@ import (
 )
 
 func main() {
-	fmt.Println("lightning version:", gabriel.LightningVersion())
+	fmt.Println("gabriel version:", gabriel.Version())
 }
