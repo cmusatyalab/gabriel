@@ -63,15 +63,17 @@ typedef enum {
     GABRIEL_TOKEN_DROP,       /* frame was dropped, provides one token */
 } gabriel_token_t;
 
-/* Basic message exchange type. */
+/* Basic message exchange type. `metadata`/`data` are always read-only:
+ * callers that need to keep either past the call that handed them the
+ * message (e.g. gabriel_read_reply()) must copy it themselves. */
 typedef struct gabriel_message_t {
     uint64_t seq_num;               /* frame sequence number, strictly increasing */
     char source[GABRIEL_MAX_NAME];  /* message source, set by producers and consumers */
     gabriel_token_t token;          /* token sent back by consumer */
     uint64_t offset;                /* offset pointer into the shared memory chunk, if applicable */
-    uint8_t *metadata;              /* pointer to metadata (usually a result) */
+    const uint8_t *metadata;        /* pointer to metadata (usually a result) */
     uint64_t metadata_size;         /* size of metadata array */
-    uint8_t *data;                  /* pointer to data */
+    const uint8_t *data;            /* pointer to data */
     uint64_t data_size;             /* size of data array */
 } gabriel_message_t;
 

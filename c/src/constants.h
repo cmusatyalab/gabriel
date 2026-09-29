@@ -11,6 +11,7 @@
 /* Handshake and connection constants. */
 #define GABRIEL_BACKOFF_STEP_S 2u       /* size of each backoff step */
 #define GABRIEL_BACKOFF_MAX_S 32u       /* maximum backoff time for reconnect */
+#define GABRIEL_RECV_TIMEOUT_S 1u       /* SO_RCVTIMEO applied to every consumer socket */
 
 /* Shared memory chunk constants. */
 #define GABRIEL_DEFAULT_CHUNK_COUNT 5u

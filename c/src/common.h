@@ -21,6 +21,14 @@ bool recv_all(int fd, void *buf, size_t len);
  * false on failure. */
 bool send_fd(int sock, int fd);
 
+/* Higher level message to send a gabriel_message_t over a socket. 
+ * Returns an error on failure. */
+gabriel_error_t send_message(int fd, gabriel_message_t *message);
+
+/* Higher level message to receive a gabriel_message_t over a socket. 
+ * Sets error and returns NULL on failure. */
+gabriel_message_t *recv_message(int fd, gabriel_error_t *error);
+
 /* Sets *error to value if error is non-NULL. */
 void set_error(gabriel_error_t *error, gabriel_error_t value);
 

@@ -1,6 +1,7 @@
 find_package(Threads REQUIRED)
 
 add_library(gabriel
+    src/common.c
     src/gabriel.c
     src/producer.c
     src/version.c
@@ -35,11 +36,7 @@ install(TARGETS gabriel
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-if(GABRIEL_BUILD_TESTS)
-    add_executable(test_gabriel tests/test_lightning.c)
-    target_link_libraries(test_gabriel PRIVATE gabriel::gabriel)
-    target_compile_definitions(test_gabriel PRIVATE _GNU_SOURCE)
-    target_compile_options(test_gabriel PRIVATE -Wall -Wextra)
-    set_target_properties(test_gabriel PROPERTIES C_STANDARD 11)
-    add_test(NAME gabriel COMMAND test_gabriel)
-endif()
+# No test suite yet - the old one (tests/test_lightning.c) tested a
+# pre-rename API that no longer exists and was removed. Wire a real
+# test_gabriel executable back up here, gated on GABRIEL_BUILD_TESTS
+# (still declared in the top-level CMakeLists.txt), once one exists.

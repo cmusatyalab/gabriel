@@ -56,11 +56,41 @@ gabriel_error_t gabriel_remove_consumer_from_producer(gabriel_producer_t *produc
         const char *consumer_address);
 
 /* Produces a frame and and sends it to all available consumers. If `token_gated`, will
- * drop frames if no token is available. `seq_num` should strictly increase for each call. */
-gabriel_error_t gabriel_produce(gabriel_producer_t *producer, const uint8_t *data,
-        uint64_t data_size, uint64_t seq_num);
+ * drop frames if no token is available. `seq_num` should strictly increase for each call.
+ * `metadata`/`metadata_size` is optional out-of-band data (e.g. a result) carried
+ * alongside `data`/`data_size`. */
+gabriel_error_t gabriel_produce(gabriel_producer_t *producer, const uint8_t *metadata,
+        uint64_t metadata_size, const uint8_t *data, uint64_t data_size, uint64_t seq_num);
 
-/* Reads a reply sent by a consumer. Returns NULL and sets `error` on failure. */
+/* Checks for one reply and returns it if one is ready. This is a
+ * non-blocking, poll-style call - it checks, doesn't wait, and returns
+ * immediately either way, so it is meant to be called again by the
+ * caller (immediately, or after a short sleep) rather than blocked on.
+ *
+ * How it picks which consumer to check, and what happens if that
+ * consumer's connection turns out to be broken, differs by the
+ * producer's mode:
+ *
+ * - FANOUT: searches forward from wherever the last call left off for
+ *   the next consumer that is connected. If that consumer's connection
+ *   is broken, a reconnect is started for it in the background and
+ *   GABRIEL_ERR_AGAIN is returned (as if it simply had nothing ready) -
+ *   the search just moves past it on the next call, the same as any
+ *   other consumer with nothing pending.
+ * - SEQUENTIAL: only ever checks the one consumer at the current
+ *   position (no searching). If that consumer's connection is broken,
+ *   a reconnect is started for it in the background, the position is
+ *   reset to the beginning, and GABRIEL_ERR_INTERNAL is returned rather
+ *   than GABRIEL_ERR_AGAIN, since - unlike FANOUT - there is no other
+ *   consumer to fall back to this call.
+ *
+ * Returns NULL and sets `error` to:
+ *   GABRIEL_ERR_INVALID     no consumers are attached to this producer.
+ *   GABRIEL_ERR_CONNECTING  the consumer to check isn't connected yet
+ *                           (FANOUT: none currently are).
+ *   GABRIEL_ERR_AGAIN       nothing is ready right now; try again.
+ *   GABRIEL_ERR_INTERNAL    (SEQUENTIAL only) the connection broke.
+ * On success, returns the reply and leaves `error` set to GABRIEL_OK. */
 gabriel_message_t *gabriel_read_reply(gabriel_producer_t *producer, gabriel_error_t *error);
 
 /* Creates a consumer. `name` is the name used to populate the `source_name` field for this
