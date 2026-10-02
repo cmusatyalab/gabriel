@@ -1,0 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["rust"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
