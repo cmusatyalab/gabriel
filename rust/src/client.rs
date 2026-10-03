@@ -4,8 +4,8 @@ mod receiver;
 use std::{sync::mpsc, thread::JoinHandle};
 
 use crate::{
-    client::receiver::{Command, InputReceiver, InputSink},
     Error, Result,
+    client::receiver::{Command, InputReceiver, InputSink},
 };
 
 /// Bridges local producers to a remote server.
@@ -100,9 +100,9 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::{
-        client::receiver::ReceivedInput,
-        test_util::{publish, unique, FLOW, INPUT_LEN, MAX_INPUT_SIZE, TIMEOUT},
         Client, Error, Producer,
+        client::receiver::ReceivedInput,
+        test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, TIMEOUT, publish, unique},
     };
 
     const REMOTE_SERVER_ADDR: &str = "127.0.0.1:4433";
