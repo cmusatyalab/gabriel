@@ -5,7 +5,7 @@ use iceoryx2::prelude::*;
 use iceoryx2::service::port_factory::{event, publish_subscribe};
 
 use crate::envelope::Envelope;
-use crate::{naming, Error, Result};
+use crate::{Error, Result, naming};
 
 /// Payload of a producer's input service.
 pub(crate) type InputPayload = [u8];

@@ -1,7 +1,7 @@
 //! Producer: publishes inputs into shared memory for engines to consume.
 
 use crate::envelope::{Envelope, MAX_FLOW_NAME};
-use crate::{services, Error, Result};
+use crate::{Error, Result, services};
 use iceoryx2::port::notifier::Notifier;
 use iceoryx2::port::publisher::Publisher;
 use iceoryx2::prelude::*;

@@ -1,7 +1,7 @@
 use crate::{
+    Error, Result,
     envelope::Envelope,
     services::{self, InputPayload},
-    Error, Result,
 };
 use iceoryx2::{
     port::{listener::Listener, subscriber::Subscriber},
@@ -275,32 +275,13 @@ impl ProducerPorts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Producer;
-    use uuid::Uuid;
-
-    /// Long enough for a published input to arrive, short enough to keep tests fast.
-    const TIMEOUT: Duration = Duration::from_millis(200);
-    const MAX_INPUT_SIZE: usize = 16;
-    const INPUT_LEN: usize = 4;
-    const FLOW: &str = "flow";
-
-    /// iceoryx2 services are shared machine-wide, so every test uses fresh names to stay isolated
-    /// from parallel tests and other test runs.
-    fn unique(prefix: &str) -> String {
-        format!("{prefix}-{}", Uuid::new_v4())
-    }
+    use crate::{
+        Producer,
+        test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, TIMEOUT, publish, unique},
+    };
 
     fn receiver() -> InputReceiver {
         InputReceiver::new(&unique("client")).unwrap()
-    }
-
-    /// Publishes an input of `INPUT_LEN` bytes, all set to `value`.
-    fn publish(producer: &mut Producer, value: u8) {
-        let buf = producer.new_input().unwrap();
-        for byte in &mut buf[..INPUT_LEN] {
-            byte.write(value);
-        }
-        producer.publish_input(INPUT_LEN, FLOW).unwrap();
     }
 
     #[test]
@@ -399,7 +380,7 @@ mod tests {
                 reply,
             })
             .unwrap();
-        reply_rx.recv().unwrap().unwrap(); // the producer is attached once this returns
+        reply_rx.recv().unwrap().unwrap();
 
         publish(&mut producer, 7);
         let input = input_rx.recv_timeout(TIMEOUT).unwrap();
