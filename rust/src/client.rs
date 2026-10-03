@@ -4,8 +4,8 @@ mod receiver;
 use std::{sync::mpsc, thread::JoinHandle};
 
 use crate::{
-    Error, Result,
     client::receiver::{Command, InputReceiver, InputSink},
+    Error, Result,
 };
 
 /// Bridges local producers to a remote server.
@@ -86,8 +86,8 @@ impl Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
-        // Dropping the only command sender disconnects the channel, which makes the receive
-        // thread return from its loop. Then wait for it to finish.
+        // Dropping the only command sender disconnects the channel, which makes the receive thread
+        // return from its loop. Then wait for it to finish.
         drop(self.commands.take());
         if let Some(thread) = self.receive_thread.take() {
             let _ = thread.join();
@@ -100,9 +100,9 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::{
-        Client, Error, Producer,
         client::receiver::ReceivedInput,
-        test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, TIMEOUT, publish, unique},
+        test_util::{publish, unique, FLOW, INPUT_LEN, MAX_INPUT_SIZE, TIMEOUT},
+        Client, Error, Producer,
     };
 
     const REMOTE_SERVER_ADDR: &str = "127.0.0.1:4433";
