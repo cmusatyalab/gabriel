@@ -56,9 +56,6 @@ struct Ticket {
 /// comes back when the input finishes, not over time as in a rate-limiting token bucket.
 #[derive(Debug)]
 pub(crate) struct TokenPool {
-    producer: String,
-    session: u64,
-    next_seq: u64,
     capacity: usize,
     available: usize,
     ticket_timeout: Duration,
@@ -68,18 +65,10 @@ pub(crate) struct TokenPool {
 }
 
 impl TokenPool {
-    /// Creates a pool with `capacity` tokens for `producer`. A ticket returns its token after
-    /// `ticket_timeout` at the latest.
-    pub(crate) fn new(
-        producer: &str,
-        session: u64,
-        capacity: usize,
-        ticket_timeout: Duration,
-    ) -> Self {
+    /// Creates a pool with `capacity` tokens. A ticket returns its token after `ticket_timeout` at
+    /// the latest.
+    pub(crate) fn new(capacity: usize, ticket_timeout: Duration) -> Self {
         Self {
-            producer: String::from(producer),
-            session,
-            next_seq: 1,
             capacity,
             available: capacity,
             ticket_timeout,
@@ -93,27 +82,15 @@ impl TokenPool {
         self.available > 0
     }
 
-    /// Returns the sequence number for the next input.
-    fn next_seq(&mut self) -> u64 {
-        let next_seq = self.next_seq;
-        self.next_seq += 1;
-        next_seq
-    }
-
-    /// Takes a token and opens a ticket for a new input. Returns the input's id, or `None` if no
-    /// token is available.
-    pub(crate) fn admit(&mut self, now: Instant) -> Option<InputId> {
-        if !self.has_tokens() {
-            return None;
+    /// Takes a token and opens a ticket for `input`, whose id its producer chose. Returns whether
+    /// the input was admitted: not if no token is available, or if `input` already has a ticket.
+    pub(crate) fn admit(&mut self, input: InputId, now: Instant) -> bool {
+        if !self.has_tokens() || self.tickets.contains_key(&input) {
+            return false;
         }
         self.available -= 1;
-        let input_id = InputId {
-            producer: self.producer.clone(),
-            session: self.session,
-            seq: self.next_seq(),
-        };
         self.tickets.insert(
-            input_id.clone(),
+            input,
             Ticket {
                 open: HashSet::new(),
                 token_held: true,
@@ -121,7 +98,7 @@ impl TokenPool {
             },
         );
         self.check_invariant();
-        Some(input_id)
+        true
     }
 
     /// Records the offers the client made for `input` on its own edges right after admitting it.
@@ -264,14 +241,23 @@ mod tests {
     }
 
     fn pool(capacity: usize) -> TokenPool {
-        TokenPool::new(PRODUCER, SESSION, capacity, TICKET_TIMEOUT)
+        TokenPool::new(capacity, TICKET_TIMEOUT)
     }
 
-    /// Admits one input into `pool` and records `offers` for it.
+    /// An input id, as its producer would choose it, distinct for each `seq`.
+    fn input_id(seq: u64) -> InputId {
+        InputId {
+            producer: String::from(PRODUCER),
+            session: SESSION,
+            seq,
+        }
+    }
+
+    /// Admits the input `input_id(1)` into `pool` and records `offers` for it.
     fn admit_with(pool: &mut TokenPool, now: Instant, offers: &[OfferId]) -> InputId {
-        let input = pool.admit(now).unwrap();
-        pool.add_offers(&input, offers.iter().copied()).unwrap();
-        input
+        assert!(pool.admit(input_id(1), now));
+        pool.add_offers(&input_id(1), offers.iter().copied()).unwrap();
+        input_id(1)
     }
 
     const RETURNED: Verdict = Verdict::Applied {
@@ -286,22 +272,21 @@ mod tests {
         let now = Instant::now();
         let mut pool = pool(TWO_TOKENS);
 
-        assert!(pool.admit(now).is_some());
-        assert!(pool.admit(now).is_some());
-        assert_eq!(pool.admit(now), None);
+        assert!(pool.admit(input_id(1), now));
+        assert!(pool.admit(input_id(2), now));
+        assert!(!pool.admit(input_id(3), now));
         pool.check_invariant();
     }
 
     #[test]
-    fn admitted_inputs_get_distinct_ids() {
+    fn admitting_the_same_input_twice_is_rejected() {
         let now = Instant::now();
         let mut pool = pool(TWO_TOKENS);
 
-        let first = pool.admit(now).unwrap();
-        let second = pool.admit(now).unwrap();
-
-        assert_ne!(first, second);
-        assert_eq!(first.producer, PRODUCER);
+        assert!(pool.admit(input_id(1), now));
+        assert!(!pool.admit(input_id(1), now));
+        assert!(pool.has_tokens());
+        pool.check_invariant();
     }
 
     #[test]
@@ -352,8 +337,8 @@ mod tests {
         pool.check_invariant();
 
         // Exactly one token is available: one input can be admitted, not two.
-        assert!(pool.admit(now).is_some());
-        assert_eq!(pool.admit(now), None);
+        assert!(pool.admit(input_id(2), now));
+        assert!(!pool.admit(input_id(3), now));
     }
 
     #[test]

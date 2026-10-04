@@ -14,7 +14,10 @@ use uuid::Uuid;
 /// Publishes inputs. An input is written in place into a loaned shared memory buffer
 /// ([`Producer::new_input`]) and then sent ([`Producer::publish_input`]).
 pub struct Producer {
-    id: String,
+    /// Chosen randomly when the producer starts, so input ids never repeat across restarts.
+    session: u64,
+    /// Sequence number of the next input.
+    next_seq: u64,
     max_input_size: usize,
     node: Node<ipc::Service>,
     publisher: Publisher<ipc::Service, [u8], Envelope>,
@@ -43,9 +46,10 @@ impl Producer {
             .create()
             .map_err(|e| Error::Internal(format!("failed to create notifier: {e}")))?;
 
-        let id = Uuid::new_v4();
+        let (session, _) = Uuid::new_v4().as_u64_pair();
         Ok(Self {
-            id: format!("{name}-{id}"),
+            session,
+            next_seq: 1,
             max_input_size,
             node,
             publisher,
@@ -79,9 +83,12 @@ impl Producer {
             Error::InvalidArgument(String::from("no pending input; call new_input first"))
         })?;
         *sample.user_header_mut() = Envelope {
+            session: self.session,
+            seq: self.next_seq,
             len: len as u64,
             flow,
         };
+        self.next_seq += 1;
 
         // SAFETY: the caller has written the first `len` bytes. Subscribers
         // only read `..envelope.len`, so the uninitialized tail is never read.

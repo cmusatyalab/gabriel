@@ -1,6 +1,7 @@
 use crate::{
     Error, Result,
     envelope::Envelope,
+    routing::ids::InputId,
     services::{self, InputPayload},
 };
 use iceoryx2::{
@@ -22,7 +23,8 @@ pub(super) struct InputReceiver {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ReceivedInput {
-    pub(super) producer: String,
+    /// The id the producer gave the input.
+    pub(super) id: InputId,
     pub(super) flow: String,
     pub(super) data: Vec<u8>,
 }
@@ -197,12 +199,8 @@ impl InputReceiver {
         // latest input for that producer.
         let on_event = |id: WaitSetAttachmentId<ipc::Service>| {
             if let Some((producer_name, ports)) = attachment_id_to_ports.get(&id) {
-                match ports.drain_newest() {
-                    Ok(Some((flow, data))) => inputs.push(ReceivedInput {
-                        producer: producer_name.to_string(),
-                        flow,
-                        data,
-                    }),
+                match ports.drain_newest(producer_name) {
+                    Ok(Some(input)) => inputs.push(input),
                     Ok(None) => (),
                     Err(e) => {
                         error = Some(e);
@@ -237,9 +235,9 @@ struct ProducerPorts {
 }
 
 impl ProducerPorts {
-    /// Consumes every pending notification and input, returning a copy of the newest input (older
-    /// ones are stale and dropped).
-    fn drain_newest(&self) -> Result<Option<(String, Vec<u8>)>> {
+    /// Consumes every pending notification and input of `producer`, returning a copy of the newest
+    /// input (older ones are stale and dropped).
+    fn drain_newest(&self, producer: &str) -> Result<Option<ReceivedInput>> {
         // Without this the waitset keeps reporting the same notifications.
         self.listener
             .try_wait(|_| {})
@@ -268,7 +266,15 @@ impl ProducerPorts {
             ))
         })?;
 
-        Ok(Some((header.flow.to_string(), data.to_vec())))
+        Ok(Some(ReceivedInput {
+            id: InputId {
+                producer: producer.to_string(),
+                session: header.session,
+                seq: header.seq,
+            },
+            flow: header.flow.to_string(),
+            data: data.to_vec(),
+        }))
     }
 }
 
@@ -312,21 +318,19 @@ mod tests {
         publish(&mut producer_a, 2);
         publish(&mut producer_b, 9);
 
-        let mut inputs = receiver.wait_for_input(TIMEOUT).unwrap();
-        inputs.sort_by(|a, b| a.producer.cmp(&b.producer));
+        // Sessions are random, so compare everything else: producer, sequence number, flow, data.
+        let mut inputs: Vec<_> = receiver
+            .wait_for_input(TIMEOUT)
+            .unwrap()
+            .into_iter()
+            .map(|input| (input.id.producer, input.id.seq, input.flow, input.data))
+            .collect();
+        inputs.sort();
         let mut expected = vec![
-            ReceivedInput {
-                producer: name_a,
-                flow: FLOW.to_string(),
-                data: vec![2; INPUT_LEN],
-            },
-            ReceivedInput {
-                producer: name_b,
-                flow: FLOW.to_string(),
-                data: vec![9; INPUT_LEN],
-            },
+            (name_a, 2, FLOW.to_string(), vec![2; INPUT_LEN]),
+            (name_b, 1, FLOW.to_string(), vec![9; INPUT_LEN]),
         ];
-        expected.sort_by(|a, b| a.producer.cmp(&b.producer));
+        expected.sort();
         assert_eq!(inputs, expected);
     }
 
