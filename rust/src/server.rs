@@ -1,5 +1,7 @@
 //! Server: accepts inputs from clients and dispatches them to engines.
 
+mod dispatch;
+
 use crate::Result;
 
 /// Dispatches inputs to a dynamic set of engines.
