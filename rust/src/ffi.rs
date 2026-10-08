@@ -5,7 +5,6 @@ use std::ffi::{CStr, c_char};
 
 use iceoryx2_bb_container::string::String as _;
 
-use crate::engine::Part;
 use crate::{Client, Engine, Error, Producer, Result, Server};
 
 /// Status code returned by every C ABI function.
@@ -51,6 +50,18 @@ unsafe fn str_arg<'a>(ptr: *const c_char) -> Result<&'a str> {
     unsafe { CStr::from_ptr(ptr) }
         .to_str()
         .map_err(|e| Error::InvalidArgument(format!("string is not valid UTF-8: {e}")))
+}
+
+/// Like [`str_arg`], but null means no string.
+///
+/// # Safety
+/// As for [`str_arg`].
+unsafe fn opt_str_arg<'a>(ptr: *const c_char) -> Result<Option<&'a str>> {
+    if ptr.is_null() {
+        return Ok(None);
+    }
+    // SAFETY: non-null, and valid per the caller's contract.
+    unsafe { str_arg(ptr) }.map(Some)
 }
 
 /// Borrows an opaque handle mutably.
@@ -258,9 +269,10 @@ pub struct InputIdView {
 #[repr(C)]
 pub struct InputView {
     id: InputIdView,
-    /// One part, unless an upstream engine emitted several.
-    parts: *const Part,
-    n_parts: usize,
+    /// How to read `buf`; "" if the input has no convention.
+    payload_type: *const c_char,
+    buf: *const u8,
+    len: usize,
 }
 
 /// Borrows `len` bytes at `ptr`; `ptr` may be null when `len` is 0.
@@ -278,15 +290,24 @@ unsafe fn bytes_arg<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8]> {
     Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
 }
 
+/// `result_type` names how to read this engine's results, e.g. a protobuf message name. It may be
+/// NULL.
+///
 /// # Safety
-/// String arguments must be NUL-terminated; `engine` must be valid for writes.
+/// String arguments must be NUL-terminated (`result_type` may be null); `engine` must be valid
+/// for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_engine_create(
     name: *const c_char,
+    result_type: *const c_char,
     max_output_size: usize,
     engine: *mut *mut Engine,
 ) -> Status {
-    unsafe { create_handle(engine, || Engine::new(str_arg(name)?, max_output_size)) }
+    unsafe {
+        create_handle(engine, || {
+            Engine::new(str_arg(name)?, opt_str_arg(result_type)?, max_output_size)
+        })
+    }
 }
 
 /// # Safety
@@ -318,8 +339,9 @@ pub unsafe extern "C" fn gabriel_engine_poll_input(
                     session: polled.id.session,
                     seq: polled.id.seq,
                 },
-                parts: polled.parts.as_ptr(),
-                n_parts: polled.parts.len(),
+                payload_type: polled.payload_type.as_c_str(),
+                buf: polled.data.as_ptr(),
+                len: polled.data.len(),
             };
             // SAFETY: `input` is non-null and writable per the caller's contract.
             unsafe { input.write(view) };
@@ -354,7 +376,7 @@ pub unsafe extern "C" fn gabriel_engine_pass(
     Status::from(unsafe { (|| handle_arg(engine)?.pass(bytes_arg(result, result_len)?))() })
 }
 
-/// Loans the buffer for the next emitted part. Fill it, then call `gabriel_engine_add_output`.
+/// Loans a buffer for a new input. Fill it, then call `gabriel_engine_emit`.
 ///
 /// # Safety
 /// `engine` must be a live handle; `buf` must be valid for writes.
@@ -373,27 +395,28 @@ pub unsafe extern "C" fn gabriel_engine_new_output(
     Status::from(result)
 }
 
-/// Adds the first `len` bytes of the loaned buffer as the next part.
+/// Emit: forward the first `output_len` bytes of the loaned buffer as a new input along every
+/// outgoing input edge. `output_type` names how to read it; it may be NULL.
 ///
 /// # Safety
-/// `engine` must be a live handle.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_engine_add_output(engine: *mut Engine, len: usize) -> Status {
-    Status::from(unsafe { handle_arg(engine) }.and_then(|engine| engine.add_output(len)))
-}
-
-/// Emit: forward the added parts along every outgoing input edge, as one input with several
-/// parts.
-///
-/// # Safety
-/// As for [`gabriel_engine_stop`].
+/// As for [`gabriel_engine_stop`]; `output_type` must be NUL-terminated or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_engine_emit(
     engine: *mut Engine,
+    output_type: *const c_char,
+    output_len: usize,
     result: *const u8,
     result_len: usize,
 ) -> Status {
-    Status::from(unsafe { (|| handle_arg(engine)?.emit(bytes_arg(result, result_len)?))() })
+    Status::from(unsafe {
+        (|| {
+            handle_arg(engine)?.emit(
+                opt_str_arg(output_type)?.unwrap_or_default(),
+                output_len,
+                bytes_arg(result, result_len)?,
+            )
+        })()
+    })
 }
 
 #[cfg(test)]

@@ -16,7 +16,6 @@ include = ["Status"]
 "Engine" = "gabriel_engine_t"
 "InputIdView" = "gabriel_input_id_t"
 "InputView" = "gabriel_input_t"
-"Part" = "gabriel_part_t"
 
 [enum]
 rename_variants = "QualifiedScreamingSnakeCase"

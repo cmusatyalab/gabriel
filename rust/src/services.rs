@@ -11,8 +11,15 @@ use crate::{Error, Result, naming};
 /// Payload of a producer's input service.
 pub(crate) type InputPayload = [u8];
 
-/// Payload of an engine's input service: the bytes of the input's parts, one after another.
+/// Payload of an engine's input service: the input's bytes, which its payload type explains.
 pub(crate) type EngineInputPayload = [u8];
+
+/// Inputs a server may have delivered to one engine without an outcome yet. The server holds every
+/// other sent input itself, and delivers it when an outcome frees a place. So this bound does not
+/// grow with the number of edges, flows or clients that feed the engine, and the service never has
+/// to be resized while it runs. The engine works on one input at a time, so a small number only
+/// keeps the next input ready.
+pub(crate) const ENGINE_INPUT_BUFFER_SIZE: usize = 4;
 
 /// Payload of an engine's event service: the event's result bytes, if it has any.
 pub(crate) type EventPayload = [u8];
@@ -27,12 +34,13 @@ const EVENT_SUBSCRIBERS: usize = 16;
 /// reports `Lost`.
 const EVENT_BUFFER_SIZE: usize = 256;
 
-/// Payload of an engine's outcome service: the emitted parts, then the result bytes.
+/// Payload of an engine's outcome service: the engine's new output, then the result bytes.
 pub(crate) type OutcomePayload = [u8];
 
-/// Outcomes an engine can have waiting for its server. An engine reports one outcome per input,
-/// so this bounds the inputs it can hold at once. Outcomes are never dropped.
-const OUTCOME_BUFFER_SIZE: usize = 64;
+/// Outcomes an engine can have waiting for its server. An engine reports one outcome per
+/// delivered input, and the server delivers at most `ENGINE_INPUT_BUFFER_SIZE` inputs without an
+/// outcome, so the buffer never fills. Outcomes are never dropped.
+const OUTCOME_BUFFER_SIZE: usize = ENGINE_INPUT_BUFFER_SIZE;
 
 /// Opens (or creates) the input service of the producer `name`.
 pub(crate) fn open_producer_input(
@@ -62,7 +70,9 @@ pub(crate) fn open_producer_ready(
 }
 
 /// Opens (or creates) the input service of the engine `name`. Each sample is one offered input:
-/// the header says which offer and input it is, and the payload holds its parts.
+/// the header says which offer and input it is, and the payload holds its bytes. It has one
+/// publisher, the server, and one subscriber, the engine. A delivered input is never dropped,
+/// because its offer would then never end.
 pub(crate) fn open_engine_input(
     node: &Node<ipc::Service>,
     name: &str,
@@ -70,6 +80,10 @@ pub(crate) fn open_engine_input(
     node.service_builder(&naming::engine_service(name)?)
         .publish_subscribe::<EngineInputPayload>()
         .user_header::<InputHeader>()
+        .max_publishers(1)
+        .max_subscribers(1)
+        .subscriber_max_buffer_size(ENGINE_INPUT_BUFFER_SIZE)
+        .enable_safe_overflow(false)
         .open_or_create()
         .map_err(|e| Error::Internal(format!("failed to open input of engine {name:?}: {e}")))
 }
@@ -114,7 +128,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ipc::types::{EngineName, EventKind, Forward, PayloadType},
+        ipc::types::{EngineName, EventKind, FlowName, Forward, PayloadType},
         routing::ids::{EdgeId, InputId, OfferId, ProducerName},
         test_util::unique,
     };
@@ -150,7 +164,6 @@ mod tests {
             offer,
             id,
             payload_type: PayloadType::new(),
-            part_lengths: [PAYLOAD.len() as u32].as_slice().try_into().unwrap(),
         };
         let sample = sample.write_from_slice(&PAYLOAD);
         sample.send().unwrap();
@@ -158,10 +171,6 @@ mod tests {
         let received = subscriber.receive().unwrap().unwrap();
         assert_eq!(received.user_header().offer, offer);
         assert_eq!(received.user_header().id, id);
-        assert_eq!(
-            received.user_header().part_lengths.as_slice(),
-            &[PAYLOAD.len() as u32]
-        );
         assert_eq!(received.payload(), &PAYLOAD);
     }
 
@@ -187,8 +196,17 @@ mod tests {
             seq: SEQ,
         };
         let engine = EngineName::try_from("detector").unwrap();
-        let record =
-            EventRecord::result(offer, id, engine, Forward::Pass, &[], PayloadType::new()).unwrap();
+        let flow = FlowName::try_from("tracking").unwrap();
+        let record = EventRecord::result(
+            offer,
+            id,
+            engine,
+            flow,
+            Forward::Pass,
+            &[],
+            PayloadType::new(),
+        )
+        .unwrap();
 
         let mut sample = publisher.loan_slice_uninit(RESULT.len()).unwrap();
         *sample.user_header_mut() = record;
@@ -202,10 +220,10 @@ mod tests {
     }
 
     #[test]
-    fn engine_outcome_carries_its_record_result_and_parts() {
+    fn engine_outcome_carries_its_record_output_and_result() {
         const RESULT: [u8; 2] = [9, 8];
-        const PART: [u8; 3] = [1, 2, 3];
-        let payload: Vec<u8> = PART.iter().chain(&RESULT).copied().collect();
+        const OUTPUT: [u8; 3] = [1, 2, 3];
+        let payload: Vec<u8> = OUTPUT.iter().chain(&RESULT).copied().collect();
         let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
         let service = open_engine_outcome(&node, &unique("engine")).unwrap();
         let publisher = service
@@ -228,8 +246,9 @@ mod tests {
             offer,
             id,
             PayloadType::new(),
+            PayloadType::new(),
+            OUTPUT.len() as u32,
             RESULT.len() as u32,
-            &[PART.len() as u32],
         )
         .unwrap();
 
@@ -241,7 +260,7 @@ mod tests {
         let header = received.user_header();
         assert_eq!(header.forward, Forward::Emit);
         assert_eq!(header.result_len as usize, RESULT.len());
-        assert_eq!(header.part_lengths.as_slice(), &[PART.len() as u32]);
+        assert_eq!(header.output_len as usize, OUTPUT.len());
         assert_eq!(received.payload(), payload.as_slice());
     }
 }

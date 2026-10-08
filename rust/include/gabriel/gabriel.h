@@ -25,11 +25,6 @@
 #define MAX_ENGINE_NAME 64
 
 /**
- * Maximum number of parts in one input, when an engine emits several payloads (e.g. tiles).
- */
-#define MAX_PARTS 16
-
-/**
  * Maximum number of offers one event creates: one per target engine of a crossing, or one per
  * outgoing edge after a pass.
  */
@@ -84,23 +79,16 @@ typedef struct {
 } gabriel_input_id_t;
 
 /**
- * One part of an input: a view into shared memory, valid until the engine reports its outcome.
- */
-typedef struct {
-  const uint8_t *buf;
-  size_t len;
-} gabriel_part_t;
-
-/**
  * An input handed to an engine. Stays valid until the engine reports its outcome.
  */
 typedef struct {
   gabriel_input_id_t id;
   /**
-   * One part, unless an upstream engine emitted several.
+   * How to read `buf`; "" if the input has no convention.
    */
-  const gabriel_part_t *parts;
-  size_t n_parts;
+  const char *payload_type;
+  const uint8_t *buf;
+  size_t len;
 } gabriel_input_t;
 
 #ifdef __cplusplus
@@ -203,10 +191,15 @@ gabriel_status_t gabriel_server_add_engine(const char *name, gabriel_server_t *s
 gabriel_status_t gabriel_server_remove_engine(const char *name, gabriel_server_t *server);
 
 /**
+ * `result_type` names how to read this engine's results, e.g. a protobuf message name. It may be
+ * NULL.
+ *
  * # Safety
- * String arguments must be NUL-terminated; `engine` must be valid for writes.
+ * String arguments must be NUL-terminated (`result_type` may be null); `engine` must be valid
+ * for writes.
  */
 gabriel_status_t gabriel_engine_create(const char *name,
+                                       const char *result_type,
                                        size_t max_output_size,
                                        gabriel_engine_t **engine);
 
@@ -247,7 +240,7 @@ gabriel_status_t gabriel_engine_pass(gabriel_engine_t *engine,
                                      size_t result_len);
 
 /**
- * Loans the buffer for the next emitted part. Fill it, then call `gabriel_engine_add_output`.
+ * Loans a buffer for a new input. Fill it, then call `gabriel_engine_emit`.
  *
  * # Safety
  * `engine` must be a live handle; `buf` must be valid for writes.
@@ -255,21 +248,15 @@ gabriel_status_t gabriel_engine_pass(gabriel_engine_t *engine,
 gabriel_status_t gabriel_engine_new_output(gabriel_engine_t *engine, uint8_t **buf);
 
 /**
- * Adds the first `len` bytes of the loaned buffer as the next part.
+ * Emit: forward the first `output_len` bytes of the loaned buffer as a new input along every
+ * outgoing input edge. `output_type` names how to read it; it may be NULL.
  *
  * # Safety
- * `engine` must be a live handle.
- */
-gabriel_status_t gabriel_engine_add_output(gabriel_engine_t *engine, size_t len);
-
-/**
- * Emit: forward the added parts along every outgoing input edge, as one input with several
- * parts.
- *
- * # Safety
- * As for [`gabriel_engine_stop`].
+ * As for [`gabriel_engine_stop`]; `output_type` must be NUL-terminated or null.
  */
 gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
+                                     const char *output_type,
+                                     size_t output_len,
                                      const uint8_t *result,
                                      size_t result_len);
 
