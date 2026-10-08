@@ -251,7 +251,7 @@ impl<T> TokenPool<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::routing::ids::EdgeId;
+    use crate::routing::ids::{EdgeId, ProducerName};
 
     const PRODUCER: &str = "camera";
     const SESSION: u64 = 1;
@@ -291,7 +291,7 @@ mod tests {
     /// An input id, as its producer would choose it, distinct for each `seq`.
     fn input_id(seq: u64) -> InputId {
         InputId {
-            producer: String::from(PRODUCER),
+            producer: ProducerName::try_from(PRODUCER).unwrap(),
             session: SESSION,
             seq,
         }

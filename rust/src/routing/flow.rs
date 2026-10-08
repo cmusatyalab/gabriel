@@ -5,7 +5,7 @@ use std::{
 
 use crate::routing::{
     edge::{EdgeAction, EdgeState},
-    ids::{EdgeId, InputId, NodeId, OfferId},
+    ids::{EdgeId, InputId, NodeId, OfferId, ProducerName},
     tokens::{OfferEnd, TokenPool, Verdict},
 };
 
@@ -14,7 +14,7 @@ use crate::{Error, Result};
 /// Where a client-owned edge starts.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum EdgeSource {
-    Producer(String),
+    Producer(ProducerName),
     Engine(NodeId),
 }
 
@@ -49,7 +49,7 @@ pub(crate) enum RouterAction<T> {
 #[derive(Debug)]
 pub(crate) struct FlowRouter<T> {
     session: u64,
-    producers: HashMap<String, ProducerState<T>>,
+    producers: HashMap<ProducerName, ProducerState<T>>,
     edges: HashMap<EdgeId, ClientEdge>,
     /// The client's edges leaving each producer and engine.
     outgoing: HashMap<EdgeSource, Vec<EdgeId>>,
@@ -82,7 +82,9 @@ impl<T: Clone> FlowRouter<T> {
                 "producer name is empty",
             )));
         }
-        if self.producers.contains_key(name) {
+        let name = ProducerName::try_from(name)
+            .map_err(|_| Error::InvalidArgument(format!("producer name {name:?} is too long")))?;
+        if self.producers.contains_key(&name) {
             return Err(Error::InvalidArgument(format!(
                 "producer {name:?} already exists"
             )));
@@ -96,7 +98,7 @@ impl<T: Clone> FlowRouter<T> {
             pool: TokenPool::new(tokens, ticket_timeout),
             waiting: None,
         };
-        self.producers.insert(String::from(name), producer);
+        self.producers.insert(name, producer);
         Ok(())
     }
 
@@ -139,30 +141,26 @@ impl<T: Clone> FlowRouter<T> {
         self.actions.pop_front()
     }
 
-    /// A producer's newest input. Replaces the input waiting, if any, and tries to admit it.
-    pub(crate) fn input_ready(
-        &mut self,
-        producer_name: &str,
-        id: InputId,
-        input: T,
-        now: Instant,
-    ) -> Result<()> {
-        let Some(producer) = self.producers.get_mut(producer_name) else {
+    /// The newest input of the producer `id.producer`. Replaces the input waiting, if any, and
+    /// tries to admit it.
+    pub(crate) fn input_ready(&mut self, id: InputId, input: T, now: Instant) -> Result<()> {
+        let producer_name = id.producer;
+        let Some(producer) = self.producers.get_mut(&producer_name) else {
             return Err(Error::InvalidArgument(format!(
                 "producer {producer_name:?} does not exist"
             )));
         };
         producer.waiting = Some((id, input));
-        self.try_admit(producer_name, now);
+        self.try_admit(&producer_name, now);
         Ok(())
     }
 
     /// Admits the producer's waiting input if the producer has a token and one of its edges can
     /// send right away, then offers it to each of the producer's edges.
-    fn try_admit(&mut self, producer_name: &str, now: Instant) {
+    fn try_admit(&mut self, producer_name: &ProducerName, now: Instant) {
         let edges = self
             .outgoing
-            .get(&EdgeSource::Producer(producer_name.to_string()))
+            .get(&EdgeSource::Producer(*producer_name))
             .cloned()
             .unwrap_or_default();
         let can_send = edges
@@ -178,7 +176,7 @@ impl<T: Clone> FlowRouter<T> {
         let Some((id, input)) = producer.waiting.take() else {
             return;
         };
-        let admitted = producer.pool.admit(id.clone(), input, now);
+        let admitted = producer.pool.admit(id, input, now);
         debug_assert!(admitted, "a producer's input ids are unique");
 
         let offers: Vec<OfferId> = edges
@@ -188,7 +186,7 @@ impl<T: Clone> FlowRouter<T> {
                     .get_mut(edge)
                     .expect("edge was added")
                     .state
-                    .offer(id.clone(), now)
+                    .offer(id, now)
             })
             .collect();
         let producer = self
@@ -295,7 +293,7 @@ impl<T: Clone> FlowRouter<T> {
                             .get_mut(&edge)
                             .expect("edge was added")
                             .state
-                            .offer(id.clone(), now);
+                            .offer(*id, now);
                         children.push(new_offer);
                     }
                 }
@@ -320,9 +318,9 @@ impl<T: Clone> FlowRouter<T> {
     /// Tries to admit the waiting input of every producer. Called whenever a token or an edge slot
     /// may have been freed.
     fn try_admit_all(&mut self, now: Instant) {
-        let names: Vec<String> = self.producers.keys().cloned().collect();
-        for name in names {
-            self.try_admit(&name, now);
+        let names: Vec<ProducerName> = self.producers.keys().copied().collect();
+        for name in &names {
+            self.try_admit(name, now);
         }
     }
 
@@ -360,10 +358,14 @@ mod tests {
     /// Shorter than `TIMEOUT`, so a ticket's deadline comes before its edges' timeouts.
     const SHORT_TICKET_TIMEOUT: Duration = Duration::from_millis(500);
 
+    fn producer() -> ProducerName {
+        ProducerName::try_from(PRODUCER).unwrap()
+    }
+
     /// The id the camera gives its `seq`th frame.
     fn input_id(seq: u64) -> InputId {
         InputId {
-            producer: String::from(PRODUCER),
+            producer: producer(),
             session: PRODUCER_SESSION,
             seq,
         }
@@ -378,7 +380,7 @@ mod tests {
             router
                 .add_edge(
                     edge,
-                    EdgeSource::Producer(String::from(PRODUCER)),
+                    EdgeSource::Producer(producer()),
                     engine,
                     capacity,
                     TIMEOUT,
@@ -438,7 +440,7 @@ mod tests {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE), (SLOW, SLOW_ENGINE, ONE)]);
 
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
 
         assert_eq!(sends(&mut router), vec![(FAST.0, 1, 10), (SLOW.0, 1, 10)]);
     }
@@ -448,8 +450,8 @@ mod tests {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, TWO)]);
 
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
 
         assert_eq!(sends(&mut router), vec![(FAST.0, 1, 10)]);
     }
@@ -458,13 +460,13 @@ mod tests {
     fn newer_input_replaces_the_waiting_one() {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, TWO)]);
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
 
-        router.input_ready(PRODUCER, input_id(3), 30, now).unwrap();
+        router.input_ready(input_id(3), 30, now).unwrap();
 
         assert_eq!(sends(&mut router), vec![(FAST.0, 1, 10)]);
-        let waiting = &router.producers[PRODUCER].waiting;
+        let waiting = &router.producers[&producer()].waiting;
         assert_eq!(waiting, &Some((input_id(3), 30)));
     }
 
@@ -473,11 +475,11 @@ mod tests {
         let now = Instant::now();
         let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
 
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
 
         assert_eq!(sends(&mut router), vec![(FAST.0, 1, 10)]);
-        assert!(router.producers[PRODUCER].pool.has_tokens());
+        assert!(router.producers[&producer()].pool.has_tokens());
     }
 
     #[test]
@@ -485,7 +487,12 @@ mod tests {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE)]);
 
-        let result = router.input_ready("unknown", input_id(1), 10, now);
+        let unknown_id = InputId {
+            producer: ProducerName::try_from("unknown").unwrap(),
+            ..input_id(1)
+        };
+
+        let result = router.input_ready(unknown_id, 10, now);
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
@@ -494,8 +501,8 @@ mod tests {
     fn early_discard_returns_the_token_at_the_filter() {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE)]);
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
         let [(_, offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -524,7 +531,7 @@ mod tests {
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -537,7 +544,7 @@ mod tests {
                 token_returned: false
             }
         );
-        assert!(!router.producers[PRODUCER].pool.has_tokens());
+        assert!(!router.producers[&producer()].pool.has_tokens());
         assert_eq!(sends(&mut router), vec![(UPLINK.0, 1, 10)]);
     }
 
@@ -554,7 +561,7 @@ mod tests {
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -571,7 +578,7 @@ mod tests {
                 token_returned: true
             }
         );
-        assert!(router.producers[PRODUCER].pool.has_tokens());
+        assert!(router.producers[&producer()].pool.has_tokens());
     }
 
     #[test]
@@ -587,7 +594,7 @@ mod tests {
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -604,8 +611,8 @@ mod tests {
     fn slow_branch_only_processes_inputs_the_fast_branch_got() {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE), (SLOW, SLOW_ENGINE, ONE)]);
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
         let [(_, fast_offer), (_, slow_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send per edge");
         };
@@ -630,7 +637,7 @@ mod tests {
                 token_returned: false
             }
         );
-        assert!(!router.producers[PRODUCER].pool.has_tokens());
+        assert!(!router.producers[&producer()].pool.has_tokens());
         assert_eq!(sends(&mut router), vec![(SLOW.0, 2, 20)]);
     }
 
@@ -647,7 +654,7 @@ mod tests {
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -672,8 +679,8 @@ mod tests {
     fn edge_timeout_returns_the_token_and_admits_the_waiting_input() {
         let now = Instant::now();
         let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE)]);
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
         assert_eq!(sends(&mut router), vec![(FAST.0, 1, 10)]);
 
         router.expire(now + TIMEOUT);
@@ -694,7 +701,7 @@ mod tests {
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
@@ -721,14 +728,14 @@ mod tests {
         router
             .add_edge(
                 FAST,
-                EdgeSource::Producer(String::from(PRODUCER)),
+                EdgeSource::Producer(producer()),
                 FAST_ENGINE,
                 TWO,
                 TIMEOUT,
             )
             .unwrap();
-        router.input_ready(PRODUCER, input_id(1), 10, now).unwrap();
-        router.input_ready(PRODUCER, input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
         let [(_, offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };

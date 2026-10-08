@@ -15,6 +15,32 @@
 #define MAX_FLOW_NAME 64
 
 /**
+ * Maximum length of a payload type name, e.g. a protobuf full name.
+ */
+#define MAX_PAYLOAD_TYPE_NAME 64
+
+/**
+ * Maximum length of an engine name.
+ */
+#define MAX_ENGINE_NAME 64
+
+/**
+ * Maximum number of parts in one input, when an engine emits several payloads (e.g. tiles).
+ */
+#define MAX_PARTS 16
+
+/**
+ * Maximum number of offers one event creates: one per target engine of a crossing, or one per
+ * outgoing edge after a pass.
+ */
+#define MAX_CHILDREN 16
+
+/**
+ * Maximum length of a producer name.
+ */
+#define MAX_PRODUCER_NAME 64
+
+/**
  * Status code returned by every C ABI function.
  */
 typedef enum {
@@ -31,7 +57,8 @@ typedef enum {
 typedef struct gabriel_client_t gabriel_client_t;
 
 /**
- * Processes inputs and replies with results of at most `max_result_size` bytes.
+ * Processes one input at a time and reports exactly one outcome for it: [`Engine::stop`],
+ * [`Engine::pass`], or [`Engine::emit`].
  */
 typedef struct gabriel_engine_t gabriel_engine_t;
 
@@ -45,6 +72,36 @@ typedef struct gabriel_producer_t gabriel_producer_t;
  * Dispatches inputs to a dynamic set of engines.
  */
 typedef struct gabriel_server_t gabriel_server_t;
+
+/**
+ * Identifies one input of a producer. `producer` stays valid until the engine reports its
+ * outcome.
+ */
+typedef struct {
+  const char *producer;
+  uint64_t session;
+  uint64_t seq;
+} gabriel_input_id_t;
+
+/**
+ * One part of an input: a view into shared memory, valid until the engine reports its outcome.
+ */
+typedef struct {
+  const uint8_t *buf;
+  size_t len;
+} gabriel_part_t;
+
+/**
+ * An input handed to an engine. Stays valid until the engine reports its outcome.
+ */
+typedef struct {
+  gabriel_input_id_t id;
+  /**
+   * One part, unless an upstream engine emitted several.
+   */
+  const gabriel_part_t *parts;
+  size_t n_parts;
+} gabriel_input_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -150,7 +207,7 @@ gabriel_status_t gabriel_server_remove_engine(const char *name, gabriel_server_t
  * String arguments must be NUL-terminated; `engine` must be valid for writes.
  */
 gabriel_status_t gabriel_engine_create(const char *name,
-                                       size_t max_result_size,
+                                       size_t max_output_size,
                                        gabriel_engine_t **engine);
 
 /**
@@ -160,32 +217,61 @@ gabriel_status_t gabriel_engine_create(const char *name,
 gabriel_status_t gabriel_engine_destroy(gabriel_engine_t *engine);
 
 /**
- * Polls for the next input. `*buf`, `*len` and `*producer` stay valid until
- * `gabriel_input_release`. Returns `ERR_AGAIN` if nothing is available.
+ * Returns `ERR_AGAIN` if no input is available. The input stays valid until the engine reports
+ * its outcome.
  *
  * # Safety
- * `engine` must be a live handle; the out-pointers must be valid for writes.
+ * `engine` must be a live handle; `input` must be valid for writes.
  */
-gabriel_status_t gabriel_input_poll(gabriel_engine_t *engine,
-                                    const uint8_t **buf,
-                                    size_t *len,
-                                    const char **producer);
+gabriel_status_t gabriel_engine_poll_input(gabriel_engine_t *engine, gabriel_input_t *input);
 
 /**
+ * Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).
+ *
+ * # Safety
+ * `engine` must be a live handle; `result` must point to `result_len` readable bytes, or be
+ * null when `result_len` is 0.
+ */
+gabriel_status_t gabriel_engine_stop(gabriel_engine_t *engine,
+                                     const uint8_t *result,
+                                     size_t result_len);
+
+/**
+ * Pass: forward the input unchanged along every outgoing input edge.
+ *
+ * # Safety
+ * As for [`gabriel_engine_stop`].
+ */
+gabriel_status_t gabriel_engine_pass(gabriel_engine_t *engine,
+                                     const uint8_t *result,
+                                     size_t result_len);
+
+/**
+ * Loans the buffer for the next emitted part. Fill it, then call `gabriel_engine_add_output`.
+ *
+ * # Safety
+ * `engine` must be a live handle; `buf` must be valid for writes.
+ */
+gabriel_status_t gabriel_engine_new_output(gabriel_engine_t *engine, uint8_t **buf);
+
+/**
+ * Adds the first `len` bytes of the loaned buffer as the next part.
+ *
  * # Safety
  * `engine` must be a live handle.
  */
-gabriel_status_t gabriel_input_release(gabriel_engine_t *engine);
+gabriel_status_t gabriel_engine_add_output(gabriel_engine_t *engine, size_t len);
 
 /**
+ * Emit: forward the added parts along every outgoing input edge, as one input with several
+ * parts.
+ *
  * # Safety
- * `engine` must be a live handle; `producer` must be NUL-terminated; `buf`
- * must point to `len` readable bytes (or be null when `len` is 0).
+ * As for [`gabriel_engine_stop`].
  */
-gabriel_status_t gabriel_publish_result(gabriel_engine_t *engine,
-                                        const char *producer,
-                                        uint8_t *buf,
-                                        size_t len);
+gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
+                                     const uint8_t *result,
+                                     size_t result_len);
 
 #ifdef __cplusplus
 }  // extern "C"

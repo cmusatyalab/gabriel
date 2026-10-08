@@ -131,7 +131,7 @@ mod tests {
 
         let input = input_rx.recv_timeout(TIMEOUT).unwrap();
 
-        assert_eq!(input.id.producer, producer_name);
+        assert_eq!(input.id.producer.to_string(), producer_name);
         assert_eq!(input.id.seq, 1);
         assert_eq!(input.flow, FLOW);
         assert_eq!(input.data, vec![7; INPUT_LEN]);

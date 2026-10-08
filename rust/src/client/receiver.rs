@@ -8,6 +8,7 @@ use iceoryx2::{
     port::{listener::Listener, subscriber::Subscriber},
     prelude::*,
 };
+use iceoryx2_bb_container::string::StaticString;
 use std::{
     collections::HashMap,
     sync::mpsc::{self, TryRecvError},
@@ -268,7 +269,11 @@ impl ProducerPorts {
 
         Ok(Some(ReceivedInput {
             id: InputId {
-                producer: producer.to_string(),
+                producer: StaticString::from_bytes(producer.as_bytes()).or_else(|e| {
+                    Err(Error::Internal(format!(
+                        "error converting {producer} to static string"
+                    )))
+                })?,
                 session: header.session,
                 seq: header.seq,
             },
@@ -323,7 +328,14 @@ mod tests {
             .wait_for_input(TIMEOUT)
             .unwrap()
             .into_iter()
-            .map(|input| (input.id.producer, input.id.seq, input.flow, input.data))
+            .map(|input| {
+                (
+                    input.id.producer.to_string(),
+                    input.id.seq,
+                    input.flow,
+                    input.data,
+                )
+            })
             .collect();
         inputs.sort();
         let mut expected = vec![

@@ -3,6 +3,9 @@
 
 use std::ffi::{CStr, c_char};
 
+use iceoryx2_bb_container::string::String as _;
+
+use crate::engine::Part;
 use crate::{Client, Engine, Error, Producer, Result, Server};
 
 /// Status code returned by every C ABI function.
@@ -242,15 +245,48 @@ pub unsafe extern "C" fn gabriel_server_remove_engine(
 
 // --- Engine ---
 
+/// Identifies one input of a producer. `producer` stays valid until the engine reports its
+/// outcome.
+#[repr(C)]
+pub struct InputIdView {
+    producer: *const c_char,
+    session: u64,
+    seq: u64,
+}
+
+/// An input handed to an engine. Stays valid until the engine reports its outcome.
+#[repr(C)]
+pub struct InputView {
+    id: InputIdView,
+    /// One part, unless an upstream engine emitted several.
+    parts: *const Part,
+    n_parts: usize,
+}
+
+/// Borrows `len` bytes at `ptr`; `ptr` may be null when `len` is 0.
+///
+/// # Safety
+/// `ptr` must be null or point to `len` readable bytes that outlive `'a`.
+unsafe fn bytes_arg<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8]> {
+    if len == 0 {
+        return Ok(&[]);
+    }
+    if ptr.is_null() {
+        return Err(Error::InvalidArgument("null buffer".into()));
+    }
+    // SAFETY: non-null and `len` readable bytes per the caller's contract.
+    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
 /// # Safety
 /// String arguments must be NUL-terminated; `engine` must be valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_engine_create(
     name: *const c_char,
-    max_result_size: usize,
+    max_output_size: usize,
     engine: *mut *mut Engine,
 ) -> Status {
-    unsafe { create_handle(engine, || Engine::new(str_arg(name)?, max_result_size)) }
+    unsafe { create_handle(engine, || Engine::new(str_arg(name)?, max_output_size)) }
 }
 
 /// # Safety
@@ -260,60 +296,104 @@ pub unsafe extern "C" fn gabriel_engine_destroy(engine: *mut Engine) -> Status {
     unsafe { destroy_handle(engine) }
 }
 
-/// Polls for the next input. `*buf`, `*len` and `*producer` stay valid until
-/// `gabriel_input_release`. Returns `ERR_AGAIN` if nothing is available.
+/// Returns `ERR_AGAIN` if no input is available. The input stays valid until the engine reports
+/// its outcome.
 ///
 /// # Safety
-/// `engine` must be a live handle; the out-pointers must be valid for writes.
+/// `engine` must be a live handle; `input` must be valid for writes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_input_poll(
+pub unsafe extern "C" fn gabriel_engine_poll_input(
     engine: *mut Engine,
-    buf: *mut *const u8,
-    len: *mut usize,
-    producer: *mut *const c_char,
+    input: *mut InputView,
 ) -> Status {
-    if buf.is_null() || len.is_null() || producer.is_null() {
+    if input.is_null() {
         return Status::ErrInvalid;
     }
     let result = unsafe { handle_arg(engine) }
         .and_then(Engine::poll_input)
-        .map(|input| unsafe {
-            *buf = input.data.as_ptr();
-            *len = input.data.len();
-            *producer = input.producer.as_ptr();
+        .map(|polled| {
+            let view = InputView {
+                id: InputIdView {
+                    producer: polled.id.producer.as_c_str(),
+                    session: polled.id.session,
+                    seq: polled.id.seq,
+                },
+                parts: polled.parts.as_ptr(),
+                n_parts: polled.parts.len(),
+            };
+            // SAFETY: `input` is non-null and writable per the caller's contract.
+            unsafe { input.write(view) };
         });
     Status::from(result)
 }
 
+/// Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).
+///
+/// # Safety
+/// `engine` must be a live handle; `result` must point to `result_len` readable bytes, or be
+/// null when `result_len` is 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_stop(
+    engine: *mut Engine,
+    result: *const u8,
+    result_len: usize,
+) -> Status {
+    Status::from(unsafe { (|| handle_arg(engine)?.stop(bytes_arg(result, result_len)?))() })
+}
+
+/// Pass: forward the input unchanged along every outgoing input edge.
+///
+/// # Safety
+/// As for [`gabriel_engine_stop`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_pass(
+    engine: *mut Engine,
+    result: *const u8,
+    result_len: usize,
+) -> Status {
+    Status::from(unsafe { (|| handle_arg(engine)?.pass(bytes_arg(result, result_len)?))() })
+}
+
+/// Loans the buffer for the next emitted part. Fill it, then call `gabriel_engine_add_output`.
+///
+/// # Safety
+/// `engine` must be a live handle; `buf` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_new_output(
+    engine: *mut Engine,
+    buf: *mut *mut u8,
+) -> Status {
+    if buf.is_null() {
+        return Status::ErrInvalid;
+    }
+    let result = unsafe { handle_arg(engine) }
+        .and_then(Engine::new_output)
+        // SAFETY: `buf` is non-null and writable per the caller's contract.
+        .map(|output| unsafe { *buf = output.as_mut_ptr().cast() });
+    Status::from(result)
+}
+
+/// Adds the first `len` bytes of the loaned buffer as the next part.
+///
 /// # Safety
 /// `engine` must be a live handle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_input_release(engine: *mut Engine) -> Status {
-    Status::from(unsafe { handle_arg(engine) }.and_then(Engine::release_input))
+pub unsafe extern "C" fn gabriel_engine_add_output(engine: *mut Engine, len: usize) -> Status {
+    Status::from(unsafe { handle_arg(engine) }.and_then(|engine| engine.add_output(len)))
 }
 
+/// Emit: forward the added parts along every outgoing input edge, as one input with several
+/// parts.
+///
 /// # Safety
-/// `engine` must be a live handle; `producer` must be NUL-terminated; `buf`
-/// must point to `len` readable bytes (or be null when `len` is 0).
+/// As for [`gabriel_engine_stop`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_publish_result(
+pub unsafe extern "C" fn gabriel_engine_emit(
     engine: *mut Engine,
-    producer: *const c_char,
-    buf: *mut u8,
-    len: usize,
+    result: *const u8,
+    result_len: usize,
 ) -> Status {
-    let result = if buf.is_null() && len > 0 {
-        Err(Error::InvalidArgument("null buffer".into()))
-    } else {
-        let data: &[u8] = if len == 0 {
-            &[]
-        } else {
-            // SAFETY: `buf` is non-null and points to `len` bytes per the contract.
-            unsafe { std::slice::from_raw_parts(buf, len) }
-        };
-        unsafe { (|| handle_arg(engine)?.publish_result(str_arg(producer)?, data))() }
-    };
-    Status::from(result)
+    Status::from(unsafe { (|| handle_arg(engine)?.emit(bytes_arg(result, result_len)?))() })
 }
 
 #[cfg(test)]

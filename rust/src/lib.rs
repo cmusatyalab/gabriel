@@ -19,6 +19,7 @@ pub use producer::Producer;
 pub use server::Server;
 
 mod envelope;
+mod ipc;
 mod routing;
 mod services;
 #[cfg(test)]

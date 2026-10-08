@@ -16,6 +16,10 @@ const PRODUCER: &str = "producer";
 const ENGINE: &str = "engine";
 /// Service carrying a component's inputs.
 const INPUT: &str = "input";
+/// Service carrying a component's events.
+const EVENTS: &str = "events";
+/// Service carrying an engine's outcomes to its server.
+const OUTCOME: &str = "outcome";
 /// Event signalled when a producer has published a new input.
 const READY: &str = "ready";
 
@@ -32,6 +36,16 @@ pub fn producer_ready_service(name: &str) -> Result<ServiceName> {
 /// Service name of the engine `name`'s input.
 pub fn engine_service(name: &str) -> Result<ServiceName> {
     service(ENGINE, name, INPUT)
+}
+
+/// Service name of the engine `name`'s events.
+pub fn engine_events_service(name: &str) -> Result<ServiceName> {
+    service(ENGINE, name, EVENTS)
+}
+
+/// Service name of the engine `name`'s outcomes.
+pub fn engine_outcome_service(name: &str) -> Result<ServiceName> {
+    service(ENGINE, name, OUTCOME)
 }
 
 fn service(kind: &str, name: &str, suffix: &str) -> Result<ServiceName> {
@@ -70,6 +84,22 @@ mod tests {
         assert_eq!(
             engine_service("yolo").unwrap().as_str(),
             "gabriel/engine/yolo/input"
+        );
+    }
+
+    #[test]
+    fn engine_events_name() {
+        assert_eq!(
+            engine_events_service("yolo").unwrap().as_str(),
+            "gabriel/engine/yolo/events"
+        );
+    }
+
+    #[test]
+    fn engine_outcome_name() {
+        assert_eq!(
+            engine_outcome_service("yolo").unwrap().as_str(),
+            "gabriel/engine/yolo/outcome"
         );
     }
 
