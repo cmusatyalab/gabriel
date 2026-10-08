@@ -10,10 +10,10 @@ use crate::routing::ids::{EdgeId, OfferId};
 pub(crate) enum EdgeAction<T> {
     /// Send `input` to the edge's engine.
     Send { offer: OfferId, input: T },
-    /// Report that this offer was skipped.
-    Skipped { offer: OfferId },
+    /// Report that this offer was replaced in the pending slot and never sent.
+    Skipped { offer: OfferId, input: T },
     /// Report that this offer's deadline passed.
-    TimedOut { offer: OfferId },
+    TimedOut { offer: OfferId, input: T },
 }
 
 /// A sent offer the engine has not finished yet.
@@ -88,10 +88,12 @@ impl<T: Clone> EdgeState<T> {
         };
         if self.has_spare_capacity() {
             self.send_input_with_offer(offer_id, input, now);
-        } else if let Some((skipped, _)) = self.pending.replace((offer_id, input)) {
-            self.actions
-                .push_back(EdgeAction::Skipped { offer: skipped });
-        };
+        } else if let Some((skipped, skipped_input)) = self.pending.replace((offer_id, input)) {
+            self.actions.push_back(EdgeAction::Skipped {
+                offer: skipped,
+                input: skipped_input,
+            });
+        }
         offer_id
     }
 
@@ -105,15 +107,19 @@ impl<T: Clone> EdgeState<T> {
 
     /// Ends every sent offer whose deadline has passed.
     pub(crate) fn expire(&mut self, now: Instant) {
-        let expired_offers = self
+        let expired = self
             .in_flight
             .extract_if(|_, sent| sent.deadline <= now)
-            .map(|(offer, _)| offer)
+            .map(|(_, sent)| sent)
             .collect::<Vec<_>>();
-        for &offer in &expired_offers {
-            self.actions.push_back(EdgeAction::TimedOut { offer });
+        let any_expired = !expired.is_empty();
+        for sent in expired {
+            self.actions.push_back(EdgeAction::TimedOut {
+                offer: sent.offer,
+                input: sent.input,
+            });
         }
-        if !expired_offers.is_empty() {
+        if any_expired {
             self.send_pending(now);
         }
     }
@@ -183,7 +189,10 @@ mod tests {
                     offer: first,
                     input: FRAME
                 },
-                EdgeAction::Skipped { offer: second },
+                EdgeAction::Skipped {
+                    offer: second,
+                    input: SECOND_FRAME
+                },
             ]
         );
     }
@@ -262,7 +271,10 @@ mod tests {
         assert_eq!(
             actions(&mut edge),
             vec![
-                EdgeAction::TimedOut { offer: first },
+                EdgeAction::TimedOut {
+                    offer: first,
+                    input: FRAME
+                },
                 EdgeAction::Send {
                     offer: second,
                     input: SECOND_FRAME

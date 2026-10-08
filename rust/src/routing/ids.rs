@@ -17,3 +17,7 @@ pub(crate) struct OfferId {
     pub(crate) edge: EdgeId,
     pub(crate) seq: u64,
 }
+
+/// Identifies a node within a flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct NodeId(pub(crate) u32);
