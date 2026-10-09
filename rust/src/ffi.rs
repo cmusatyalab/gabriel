@@ -1,7 +1,10 @@
 //! C ABI. Every function returns a [`Status`]; handles are opaque pointers
 //! created by `*_create` and freed by `*_destroy`.
 
-use std::ffi::{CStr, c_char};
+use std::{
+    ffi::{CStr, c_char},
+    time::Duration,
+};
 
 use iceoryx2_bb_container::string::String as _;
 
@@ -216,15 +219,22 @@ pub unsafe extern "C" fn gabriel_client_remove_flow(
 
 // --- Server ---
 
+/// `bind_addr` is the network address to accept remote clients on, or NULL for a local server.
+///
 /// # Safety
-/// String arguments must be NUL-terminated; `server` must be valid for writes.
+/// String arguments must be NUL-terminated (`bind_addr` may be null); `server` must be valid for
+/// writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_create(
     name: *const c_char,
     bind_addr: *const c_char,
     server: *mut *mut Server,
 ) -> Status {
-    unsafe { create_handle(server, || Server::new(str_arg(name)?, str_arg(bind_addr)?)) }
+    unsafe {
+        create_handle(server, || {
+            Server::new(str_arg(name)?, opt_str_arg(bind_addr)?)
+        })
+    }
 }
 
 /// # Safety
@@ -315,6 +325,17 @@ pub unsafe extern "C" fn gabriel_engine_create(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_engine_destroy(engine: *mut Engine) -> Status {
     unsafe { destroy_handle(engine) }
+}
+
+/// Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch
+/// the input with `gabriel_engine_poll_input`, which may still return `ERR_AGAIN`.
+///
+/// # Safety
+/// `engine` must be a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_wait(engine: *mut Engine, timeout_ms: u32) -> Status {
+    let timeout = Duration::from_millis(u64::from(timeout_ms));
+    Status::from(unsafe { handle_arg(engine) }.and_then(|engine| engine.wait(timeout)))
 }
 
 /// Returns `ERR_AGAIN` if no input is available. The input stays valid until the engine reports

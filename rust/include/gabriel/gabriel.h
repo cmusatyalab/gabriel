@@ -64,7 +64,7 @@ typedef struct gabriel_engine_t gabriel_engine_t;
 typedef struct gabriel_producer_t gabriel_producer_t;
 
 /**
- * Dispatches inputs to a dynamic set of engines.
+ * Delivers the inputs of the flows installed on it to a dynamic set of engines.
  */
 typedef struct gabriel_server_t gabriel_server_t;
 
@@ -165,8 +165,11 @@ gabriel_status_t gabriel_client_add_flow(const char *name,
 gabriel_status_t gabriel_client_remove_flow(const char *name, gabriel_client_t *client);
 
 /**
+ * `bind_addr` is the network address to accept remote clients on, or NULL for a local server.
+ *
  * # Safety
- * String arguments must be NUL-terminated; `server` must be valid for writes.
+ * String arguments must be NUL-terminated (`bind_addr` may be null); `server` must be valid for
+ * writes.
  */
 gabriel_status_t gabriel_server_create(const char *name,
                                        const char *bind_addr,
@@ -208,6 +211,15 @@ gabriel_status_t gabriel_engine_create(const char *name,
  * `engine` must be null or a live handle that is not used afterwards.
  */
 gabriel_status_t gabriel_engine_destroy(gabriel_engine_t *engine);
+
+/**
+ * Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch
+ * the input with `gabriel_engine_poll_input`, which may still return `ERR_AGAIN`.
+ *
+ * # Safety
+ * `engine` must be a live handle.
+ */
+gabriel_status_t gabriel_engine_wait(gabriel_engine_t *engine, uint32_t timeout_ms);
 
 /**
  * Returns `ERR_AGAIN` if no input is available. The input stays valid until the engine reports

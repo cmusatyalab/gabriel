@@ -496,6 +496,14 @@ impl<T: Clone> ServerRouter<T> {
         Ok(())
     }
 
+    /// Whether the engine `engine` holds inputs whose outcomes have not arrived.
+    pub(crate) fn holds_inputs(&self, engine: &str) -> bool {
+        engine_name(engine)
+            .ok()
+            .and_then(|engine| self.engines.get(&engine))
+            .is_some_and(|state| !state.delivered.is_empty())
+    }
+
     /// Ends the delivered offer `offer` with `TimedOut`, unless it already ended or its flow was
     /// removed.
     fn lose(&mut self, offer: OfferId, now: Instant) {
@@ -1308,6 +1316,21 @@ mod tests {
             .outcome(DETECTOR, &stop(first, 1), None, None, now)
             .unwrap();
         assert!(steps(&mut router).is_empty());
+    }
+
+    #[test]
+    fn engine_holds_inputs_from_delivery_to_outcome() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        assert!(!router.holds_inputs(DETECTOR));
+
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        assert!(router.holds_inputs(DETECTOR));
+
+        router
+            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .unwrap();
+        assert!(!router.holds_inputs(DETECTOR));
     }
 
     #[test]

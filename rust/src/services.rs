@@ -1,6 +1,7 @@
 //! iceoryx2 services that connect Gabriel's local components. Every side of a service opens it
 //! through here, so they always agree on its types.
 
+use iceoryx2::port::{BackpressureAction, BackpressureInfo};
 use iceoryx2::prelude::*;
 use iceoryx2::service::port_factory::{event, publish_subscribe};
 
@@ -112,6 +113,51 @@ pub(crate) fn open_engine_outcome(
         .map_err(|e| Error::Internal(format!("failed to open outcome of engine {name:?}: {e}")))
 }
 
+/// Backpressure handler for the engine's input and outcome publishers. Their buffers must never
+/// fill, because the server bounds what it delivers. If a bug breaks that bound, iceoryx2 would
+/// by default wait until the receiver makes room, which hangs the sender. This handler drops the
+/// sample and makes the send fail instead, so the bug becomes an error.
+pub(crate) fn fail_when_full(_: &BackpressureInfo) -> BackpressureAction {
+    BackpressureAction::DiscardDataAndFail
+}
+
+/// Opens (or creates) the event the server of the engine `name` signals after delivering an
+/// input, so the engine can wait for inputs instead of polling.
+pub(crate) fn open_engine_input_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    open_ready(node, &naming::engine_input_ready_service(name)?, name)
+}
+
+/// Opens (or creates) the event the engine `name` signals after reporting an outcome, so its
+/// server wakes up as soon as the engine is free.
+pub(crate) fn open_engine_outcome_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    open_ready(node, &naming::engine_outcome_ready_service(name)?, name)
+}
+
+/// Opens (or creates) an event between an engine and its server: one side signals, the other
+/// listens.
+fn open_ready(
+    node: &Node<ipc::Service>,
+    service: &ServiceName,
+    engine: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    node.service_builder(service)
+        .event()
+        .max_notifiers(1)
+        .max_listeners(1)
+        .open_or_create()
+        .map_err(|e| {
+            Error::Internal(format!(
+                "failed to open {service} of engine {engine:?}: {e}"
+            ))
+        })
+}
+
 /// Opens (or creates) the event service of the engine `name`: every event about its inputs, in
 /// order. A subscriber that falls behind loses the oldest events, not the newest.
 pub(crate) fn open_engine_events(
@@ -179,6 +225,30 @@ mod tests {
         assert_eq!(received.user_header().offer, offer);
         assert_eq!(received.user_header().id, id);
         assert_eq!(received.payload(), &PAYLOAD);
+    }
+
+    #[test]
+    fn full_engine_input_fails_the_send_instead_of_waiting() {
+        let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
+        let service = open_engine_input(&node, &unique("engine")).unwrap();
+        let publisher = service
+            .publisher_builder()
+            .initial_max_slice_len(PAYLOAD.len())
+            .set_backpressure_handler(fail_when_full)
+            .create()
+            .unwrap();
+        let _subscriber = service.subscriber_builder().create().unwrap();
+        let send = || {
+            let mut sample = publisher.loan_slice_uninit(PAYLOAD.len()).unwrap();
+            *sample.user_header_mut() = InputHeader::default();
+            sample.write_from_slice(&PAYLOAD).send()
+        };
+
+        for _ in 0..ENGINE_INPUT_BUFFER_SIZE {
+            assert_eq!(send().unwrap(), 1);
+        }
+
+        assert!(send().is_err());
     }
 
     #[test]

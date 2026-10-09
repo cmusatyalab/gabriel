@@ -1,15 +1,17 @@
 //! Engine: takes inputs from its server and reports one outcome for each.
 
-use std::mem::MaybeUninit;
+use std::{mem::MaybeUninit, time::Duration};
 
-use iceoryx2::port::{publisher::Publisher, subscriber::Subscriber};
+use iceoryx2::port::{
+    listener::Listener, notifier::Notifier, publisher::Publisher, subscriber::Subscriber,
+};
 use iceoryx2::prelude::*;
 use iceoryx2::sample::Sample;
 use iceoryx2::sample_mut_uninit::SampleMutUninit;
 
 use crate::ipc::types::{InputHeader, OutcomeRecord, PayloadType, payload_type};
 use crate::routing::ids::{InputId, OfferId};
-use crate::{Error, Result, services};
+use crate::{Error, Result, naming, services};
 
 /// An input held by the engine until it reports its outcome.
 #[derive(Debug)]
@@ -32,7 +34,11 @@ pub struct Engine {
     #[allow(dead_code)] // keeps the services alive
     node: Node<ipc::Service>,
     inputs: Subscriber<ipc::Service, [u8], InputHeader>,
+    /// Signalled by the server after each input it delivers.
+    input_ready: Listener<ipc::Service>,
     outcomes: Publisher<ipc::Service, [u8], OutcomeRecord>,
+    /// Signalled after each outcome, so the server delivers the next input right away.
+    outcome_ready: Notifier<ipc::Service>,
     /// The input being processed, until its outcome is reported.
     current: Option<Sample<ipc::Service, [u8], InputHeader>>,
     /// The output being written, until it is emitted.
@@ -45,28 +51,69 @@ impl Engine {
     /// most `max_output_size` bytes.
     pub fn new(name: &str, result_type: Option<&str>, max_output_size: usize) -> Result<Self> {
         let result_type = payload_type(result_type.unwrap_or_default())?;
+        // The server tells that the engine's process stopped by this node.
         let node = NodeBuilder::new()
+            .name(&naming::engine_node(name)?)
             .create::<ipc::Service>()
             .map_err(|e| Error::Internal(format!("failed to create node: {e}")))?;
         let inputs = services::open_engine_input(&node, name)?
             .subscriber_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create subscriber: {e}")))?;
+        let input_ready = services::open_engine_input_ready(&node, name)?
+            .listener_builder()
+            .create()
+            .map_err(|e| Error::Internal(format!("failed to create listener: {e}")))?;
         let outcomes = services::open_engine_outcome(&node, name)?
             .publisher_builder()
             .max_loaned_samples(1)
             .initial_max_slice_len(max_output_size)
+            .set_backpressure_handler(services::fail_when_full)
             .create()
             .map_err(|e| Error::Internal(format!("failed to create publisher: {e}")))?;
+        let outcome_ready = services::open_engine_outcome_ready(&node, name)?
+            .notifier_builder()
+            .create()
+            .map_err(|e| Error::Internal(format!("failed to create notifier: {e}")))?;
         Ok(Self {
             result_type,
             max_output_size,
             node,
             inputs,
+            input_ready,
             outcomes,
+            outcome_ready,
             current: None,
             output: None,
         })
+    }
+
+    /// Waits until an input is ready, or `timeout` passes, and returns [`Error::Again`] then. The
+    /// input itself comes from [`Engine::poll_input`]. A wake-up without an input is possible,
+    /// so a caller polls in a loop.
+    pub fn wait(&self, timeout: Duration) -> Result<()> {
+        let failed = |e| Error::Internal(format!("failed to wait for an input: {e}"));
+        // Notifications for inputs that are already here would wake the next wait for nothing.
+        self.input_ready.try_wait(|_| {}).map_err(failed)?;
+        let has_input = || {
+            self.inputs
+                .has_samples()
+                .map_err(|e| Error::Internal(format!("failed to check for an input: {e}")))
+        };
+        if has_input()? {
+            return Ok(());
+        }
+        // The server signals after it delivers, so an input that arrived since the check above
+        // ends this wait at once.
+        let notifications = self
+            .input_ready
+            .timed_wait(|_| {}, timeout)
+            .map_err(failed)?;
+        if notifications > 0 || has_input()? {
+            Ok(())
+        } else {
+            Err(Error::Again)
+        }
     }
 
     /// Returns the next input, or [`Error::Again`] if none is available. The input stays valid
@@ -185,14 +232,19 @@ impl Engine {
         Ok((header.offer, header.id))
     }
 
-    /// Sends the outcome and releases the input it answers.
+    /// Sends the outcome, releases the input it answers, and wakes the server.
     fn send(&mut self, sample: Output) -> Result<()> {
+        // The input is released even if the send fails: the outcome is gone either way, and the
+        // engine must be able to take its next input.
+        self.current = None;
         // SAFETY: the caller wrote the header and the payload bytes the header describes. The
         // server only reads those, never the rest of the slice.
         unsafe { sample.assume_init() }
             .send()
             .map_err(|e| Error::Internal(format!("failed to send outcome: {e}")))?;
-        self.current = None;
+        self.outcome_ready
+            .notify()
+            .map_err(|e| Error::Internal(format!("failed to notify the server: {e}")))?;
         Ok(())
     }
 }
@@ -205,7 +257,6 @@ fn as_uninit(bytes: &[u8]) -> &[MaybeUninit<u8>] {
 
 #[cfg(test)]
 mod tests {
-    use iceoryx2::port::{publisher::Publisher, subscriber::Subscriber};
     use iceoryx2_bb_container::string::String as _;
 
     use super::*;
@@ -222,12 +273,16 @@ mod tests {
     const RESULT_TYPE: &str = "test.v1.Score";
     const OUTPUT_TYPE: &str = "test.v1.Tile";
     const FRAME_TYPE: &str = "test.v1.Frame";
+    /// Long enough for a notification within one process, short enough to keep tests fast.
+    const WAIT_TIMEOUT: Duration = Duration::from_millis(100);
 
     /// An engine, and the server side of its services.
     struct Fixture {
         engine: Engine,
         inputs: Publisher<ipc::Service, [u8], InputHeader>,
+        input_ready: Notifier<ipc::Service>,
         outcomes: Subscriber<ipc::Service, [u8], OutcomeRecord>,
+        outcome_ready: Listener<ipc::Service>,
     }
 
     impl Fixture {
@@ -240,19 +295,37 @@ mod tests {
                 .initial_max_slice_len(FRAME.len())
                 .create()
                 .unwrap();
+            let input_ready = services::open_engine_input_ready(&engine.node, &name)
+                .unwrap()
+                .notifier_builder()
+                .create()
+                .unwrap();
             let outcomes = services::open_engine_outcome(&engine.node, &name)
                 .unwrap()
                 .subscriber_builder()
                 .create()
                 .unwrap();
+            let outcome_ready = services::open_engine_outcome_ready(&engine.node, &name)
+                .unwrap()
+                .listener_builder()
+                .create()
+                .unwrap();
             Self {
                 engine,
                 inputs,
+                input_ready,
                 outcomes,
+                outcome_ready,
             }
         }
 
-        /// Offers the engine an input, `FRAME`.
+        /// Delivers the engine an input, `FRAME`, and signals it, as its server does.
+        fn deliver_frame(&self) {
+            self.offer_frame();
+            self.input_ready.notify().unwrap();
+        }
+
+        /// Writes an input, `FRAME`, into the engine's input service without signalling it.
         fn offer_frame(&self) {
             let header = InputHeader {
                 offer: OfferId {
@@ -278,6 +351,64 @@ mod tests {
         let mut fixture = Fixture::new();
 
         assert!(matches!(fixture.engine.poll_input(), Err(Error::Again)));
+    }
+
+    #[test]
+    fn wait_without_an_input_times_out() {
+        let fixture = Fixture::new();
+
+        assert!(matches!(
+            fixture.engine.wait(WAIT_TIMEOUT),
+            Err(Error::Again)
+        ));
+    }
+
+    #[test]
+    fn wait_returns_for_a_delivered_input() {
+        let mut fixture = Fixture::new();
+        fixture.deliver_frame();
+
+        fixture.engine.wait(WAIT_TIMEOUT).unwrap();
+
+        assert_eq!(fixture.engine.poll_input().unwrap().data, FRAME);
+    }
+
+    #[test]
+    fn wait_returns_for_an_input_that_is_already_here() {
+        let fixture = Fixture::new();
+        fixture.offer_frame();
+
+        fixture.engine.wait(WAIT_TIMEOUT).unwrap();
+    }
+
+    #[test]
+    fn notifications_of_taken_inputs_do_not_wake_the_next_wait() {
+        let mut fixture = Fixture::new();
+        fixture.deliver_frame();
+        fixture.engine.wait(WAIT_TIMEOUT).unwrap();
+        fixture.engine.poll_input().unwrap();
+        fixture.engine.stop(&[]).unwrap();
+        fixture.input_ready.notify().unwrap();
+
+        assert!(matches!(
+            fixture.engine.wait(WAIT_TIMEOUT),
+            Err(Error::Again)
+        ));
+    }
+
+    #[test]
+    fn outcome_wakes_the_server() {
+        let mut fixture = Fixture::new();
+        fixture.deliver_frame();
+        fixture.engine.poll_input().unwrap();
+
+        fixture.engine.stop(&[]).unwrap();
+
+        let notifications = fixture
+            .outcome_ready
+            .timed_wait(|_| {}, WAIT_TIMEOUT)
+            .unwrap();
+        assert!(notifications > 0);
     }
 
     #[test]
