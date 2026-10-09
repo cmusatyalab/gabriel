@@ -20,10 +20,12 @@ pub(crate) type EngineInputPayload = [u8];
 /// while it runs. It is larger than the delivery limit only as a safety margin.
 pub(crate) const ENGINE_INPUT_BUFFER_SIZE: usize = 4;
 
-/// Inputs the server gives an engine before their outcomes arrive: one to work on, and one ready
-/// for when it finishes. Newer inputs wait at the server, where a newer one replaces an older one,
-/// so the engine never works on a stale input.
-pub(crate) const ENGINE_DELIVERY_LIMIT: usize = 2;
+/// Inputs the server gives an engine before their outcomes arrive: only the one it works on. Every
+/// other input waits at the server, where a newer one replaces an older one, so when the engine
+/// finishes it starts on the newest input there is. An input given to the engine ahead of time could
+/// not be replaced, and would be one processing time old when the engine started on it. The cost
+/// is a short idle gap after each outcome, while the server delivers the next input.
+pub(crate) const ENGINE_DELIVERY_LIMIT: usize = 1;
 const _: () = assert!(ENGINE_DELIVERY_LIMIT <= ENGINE_INPUT_BUFFER_SIZE);
 
 /// Payload of an engine's event service: the event's result bytes, if it has any.
