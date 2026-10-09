@@ -116,7 +116,8 @@ struct EngineState {
     /// The edges with a pending input, in the order they get their next turn.
     turns: VecDeque<EdgeKey>,
     /// Inputs delivered to the engine whose outcome has not arrived. An input counts here even
-    /// after its offer timed out, because it still takes a place in the engine's input buffer.
+    /// after its offer timed out, because it still takes a place in the engine's input buffer. It
+    /// leaves when its outcome arrives, or when the server learns that no outcome will come.
     delivered: HashSet<OfferId>,
 }
 
@@ -367,7 +368,8 @@ impl<T: Clone> ServerRouter<T> {
     /// The outcome frees the engine's place, ends its offer, and forwards the input on the
     /// server's edges leaving the engine. An outcome for an offer that already ended, e.g. after
     /// a timeout, is still reported, but forwards nothing. An outcome for an input that was not
-    /// delivered to this engine, or was already answered, is ignored.
+    /// delivered to this engine, or was already answered, is ignored. An `Emit` without an output
+    /// is an error, and its input is lost, as in [`ServerRouter::input_lost`].
     pub(crate) fn outcome(
         &mut self,
         engine: &str,
@@ -377,16 +379,18 @@ impl<T: Clone> ServerRouter<T> {
         now: Instant,
     ) -> Result<()> {
         let engine = engine_name(engine)?;
+        if outcome.forward == Forward::Emit && output.is_none() {
+            // The engine answered, but there is nothing to forward: the input is lost.
+            self.lose_input(&engine, outcome.offer, now)?;
+            return Err(Error::InvalidArgument(String::from(
+                "an emit needs an output",
+            )));
+        }
         let Some(engine_state) = self.engines.get_mut(&engine) else {
             return Err(Error::InvalidArgument(format!(
                 "engine {engine:?} does not exist"
             )));
         };
-        if outcome.forward == Forward::Emit && output.is_none() {
-            return Err(Error::InvalidArgument(String::from(
-                "an emit needs an output",
-            )));
-        }
         let offer = outcome.offer;
         if !engine_state.delivered.remove(&offer) {
             return Ok(());
@@ -441,6 +445,67 @@ impl<T: Clone> ServerRouter<T> {
         }
         self.settle(now);
         Ok(())
+    }
+
+    /// The input `offer`, delivered to the engine `engine`, will get no outcome: it did not reach
+    /// the engine, or its outcome could not be read. Frees its place in the engine, and ends its
+    /// offer with `TimedOut` if the offer has not ended yet. Does nothing for an input that was
+    /// not delivered to this engine, or that was already answered.
+    pub(crate) fn input_lost(&mut self, engine: &str, offer: OfferId, now: Instant) -> Result<()> {
+        let engine = engine_name(engine)?;
+        self.lose_input(&engine, offer, now)
+    }
+
+    fn lose_input(&mut self, engine: &EngineName, offer: OfferId, now: Instant) -> Result<()> {
+        let Some(engine_state) = self.engines.get_mut(engine) else {
+            return Err(Error::InvalidArgument(format!(
+                "engine {engine:?} does not exist"
+            )));
+        };
+        if engine_state.delivered.remove(&offer) {
+            self.lose(offer, now);
+            self.settle(now);
+        }
+        Ok(())
+    }
+
+    /// The engine `engine` stopped, e.g. its process died, so it will answer none of its inputs.
+    /// The inputs delivered to it end with `TimedOut` and free their places, and the inputs
+    /// pending for it end with `Skipped`. The engine stays registered and its flows stay
+    /// installed, so an engine started again under the same name picks up new inputs.
+    pub(crate) fn engine_lost(&mut self, engine: &str, now: Instant) -> Result<()> {
+        let engine = engine_name(engine)?;
+        let Some(engine_state) = self.engines.get_mut(&engine) else {
+            return Err(Error::InvalidArgument(format!(
+                "engine {engine:?} does not exist"
+            )));
+        };
+        engine_state.turns.clear();
+        let delivered: Vec<OfferId> = engine_state.delivered.drain().collect();
+        for offer in delivered {
+            self.lose(offer, now);
+        }
+        for flow in self.flows.values_mut() {
+            for edge in flow.edges.values_mut() {
+                if flow.nodes[&edge.to] == engine {
+                    edge.state.skip_pending();
+                }
+            }
+        }
+        self.settle(now);
+        Ok(())
+    }
+
+    /// Ends the delivered offer `offer` with `TimedOut`, unless it already ended or its flow was
+    /// removed.
+    fn lose(&mut self, offer: OfferId, now: Instant) {
+        if let Some(edge) = self
+            .flows
+            .get_mut(&offer.session)
+            .and_then(|flow| flow.edges.get_mut(&offer.edge))
+        {
+            edge.state.lose(offer, now);
+        }
     }
 
     /// Ends every delivered offer whose deadline passed. The server calls this periodically.
@@ -1155,6 +1220,107 @@ mod tests {
             .unwrap();
         let second = only_delivery(&steps(&mut router));
         assert_eq!(second.seq, first.seq + 1);
+    }
+
+    #[test]
+    fn lost_input_times_out_and_frees_its_place() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        accept(&mut router, session, CROSSING, 2, now);
+
+        router.input_lost(DETECTOR, first, now).unwrap();
+        let steps = steps(&mut router);
+
+        assert_eq!(
+            client_kinds(&steps),
+            vec![EventKind::TimedOut, EventKind::Sent]
+        );
+        assert_eq!(only_delivery(&steps).seq, first.seq + 1);
+    }
+
+    #[test]
+    fn outcome_after_the_input_was_lost_is_ignored() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        router.input_lost(DETECTOR, offer, now).unwrap();
+        steps(&mut router);
+
+        router
+            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .unwrap();
+
+        assert!(steps(&mut router).is_empty());
+    }
+
+    #[test]
+    fn input_lost_at_another_engine_keeps_its_place() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+
+        router.input_lost(TRACKER, offer, now).unwrap();
+
+        assert!(steps(&mut router).is_empty());
+        let waiting = accept(&mut router, session, CROSSING, 2, now);
+        assert!(delivered(&waiting).is_empty());
+    }
+
+    #[test]
+    fn emit_without_an_output_loses_the_input() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        let emit = OutcomeRecord::emit(
+            offer,
+            input_id(1),
+            PayloadType::new(),
+            PayloadType::new(),
+            OUTPUT,
+            0,
+        )
+        .unwrap();
+
+        let result = router.outcome(DETECTOR, &emit, None, None, now);
+
+        assert!(matches!(result, Err(Error::InvalidArgument(_))));
+        assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::TimedOut]);
+        let next = accept(&mut router, session, CROSSING, 2, now);
+        assert_eq!(delivered(&next).len(), ONE);
+    }
+
+    #[test]
+    fn lost_engine_ends_its_delivered_and_pending_inputs() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        accept(&mut router, session, CROSSING, 2, now);
+
+        router.engine_lost(DETECTOR, now).unwrap();
+
+        assert_eq!(
+            client_kinds(&steps(&mut router)),
+            vec![EventKind::TimedOut, EventKind::Skipped]
+        );
+        // An outcome the dead engine sent before it died changes nothing.
+        router
+            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .unwrap();
+        assert!(steps(&mut router).is_empty());
+    }
+
+    #[test]
+    fn engine_started_again_gets_new_inputs() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        accept(&mut router, session, CROSSING, 1, now);
+        router.engine_lost(DETECTOR, now).unwrap();
+        steps(&mut router);
+
+        let next = accept(&mut router, session, CROSSING, 2, now);
+
+        assert_eq!(delivered(&next).len(), ONE);
     }
 
     #[test]

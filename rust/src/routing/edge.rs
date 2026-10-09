@@ -133,6 +133,27 @@ impl<T: Clone> EdgeState<T> {
         Some(removed_input)
     }
 
+    /// Ends a sent offer that its engine will never answer, e.g. because the input did not reach
+    /// the engine, and reports it as timed out without waiting for its deadline. Does nothing if
+    /// the offer is not in flight.
+    pub(crate) fn lose(&mut self, offer: OfferId, now: Instant) {
+        let Some(sent) = self.in_flight.remove(&offer) else {
+            return;
+        };
+        self.actions.push_back(EdgeAction::TimedOut {
+            offer,
+            input: sent.input,
+        });
+        self.send_pending(now);
+    }
+
+    /// Drops the pending offer, if any, and reports it as skipped.
+    pub(crate) fn skip_pending(&mut self) {
+        if let Some((offer, input)) = self.pending.take() {
+            self.actions.push_back(EdgeAction::Skipped { offer, input });
+        }
+    }
+
     /// Ends every sent offer whose deadline has passed.
     pub(crate) fn expire(&mut self, now: Instant) {
         let expired = self
@@ -365,6 +386,51 @@ mod tests {
 
         assert!(actions(&mut edge).is_empty());
         assert!(edge.has_pending());
+    }
+
+    #[test]
+    fn lost_offer_times_out_at_once_and_frees_its_capacity() {
+        let now = Instant::now();
+        let mut edge = EdgeState::new(EDGE, SESSION, 1, TIMEOUT);
+        let first = edge.offer(FRAME, now);
+        let second = edge.offer(SECOND_FRAME, now);
+        actions(&mut edge);
+
+        edge.lose(first, now);
+
+        assert_eq!(
+            actions(&mut edge),
+            vec![
+                EdgeAction::TimedOut {
+                    offer: first,
+                    input: FRAME
+                },
+                EdgeAction::Send {
+                    offer: second,
+                    input: SECOND_FRAME
+                },
+            ]
+        );
+        edge.lose(first, now);
+        assert!(actions(&mut edge).is_empty());
+    }
+
+    #[test]
+    fn skipping_the_pending_offer_reports_it() {
+        let now = Instant::now();
+        let mut edge = EdgeState::pulled(EDGE, SESSION, TIMEOUT);
+        let first = edge.offer(FRAME, now);
+
+        edge.skip_pending();
+
+        assert_eq!(
+            actions(&mut edge),
+            vec![EdgeAction::Skipped {
+                offer: first,
+                input: FRAME
+            }]
+        );
+        assert!(!edge.has_pending());
     }
 
     #[test]
