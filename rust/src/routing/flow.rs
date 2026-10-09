@@ -53,6 +53,9 @@ pub(crate) struct FlowRouter<T> {
     edges: HashMap<EdgeId, ClientEdge>,
     /// The client's edges leaving each producer and engine.
     outgoing: HashMap<EdgeSource, Vec<EdgeId>>,
+    /// The crossing offer each server offer was created from, while that crossing still holds
+    /// capacity on its edge.
+    crossing_of: HashMap<OfferId, OfferId>,
     actions: VecDeque<RouterAction<T>>,
 }
 
@@ -65,6 +68,7 @@ impl<T: Clone> FlowRouter<T> {
             producers: HashMap::new(),
             edges: HashMap::new(),
             outgoing: HashMap::new(),
+            crossing_of: HashMap::new(),
             actions: VecDeque::new(),
         }
     }
@@ -230,6 +234,10 @@ impl<T: Clone> FlowRouter<T> {
                         producer.pool.end_offer(&id, offer, OfferEnd::Skipped, now);
                     }
                     EdgeAction::TimedOut { offer, input: id } => {
+                        // A crossing that times out after `Accepted` no longer holds capacity, so
+                        // its children's ends must not free it again. Its offer already ended in
+                        // the pool, which drops this event.
+                        self.crossing_of.retain(|_, crossing| *crossing != offer);
                         let producer = self
                             .producers
                             .get_mut(&id.producer)
@@ -249,6 +257,8 @@ impl<T: Clone> FlowRouter<T> {
     ///
     /// Otherwise the offer's edge is freed, and if the engine passed the input on, the input is
     /// offered on the client's edges leaving that engine, unless the ticket is past its deadline.
+    /// A crossing is the exception: `Accepted` only means the server received the input, so the
+    /// crossing keeps its capacity until the first of its children ends, or until it times out.
     /// Then the ticket is updated, and inputs that were waiting for a token or an edge are
     /// admitted. The returned verdict says whether the event was applied and whether the token
     /// came back.
@@ -267,12 +277,29 @@ impl<T: Clone> FlowRouter<T> {
             // The offer already ended: a late result after a timeout, or a duplicate event.
             return producer.pool.classify_stale(offer, &end);
         }
-        // Inform the edge that this offer has ended.
-        // TODO: for a crossing, `Accepted` only means the server received the input. Its capacity
-        // should be freed when the first of its targets finishes (design doc, "Crossings"), not
-        // here; otherwise the client sends the next input while the remote engines are still busy.
-        if let Some(edge) = self.edges.get_mut(&offer.edge) {
-            edge.state.end(offer, now);
+        match &end {
+            // The crossing holds its capacity until one of its children ends, so the client sends
+            // the next input only when a target engine is done with this one. A crossing with no
+            // children has nothing to wait for, and is freed below.
+            OfferEnd::Accepted { children } if !children.is_empty() => {
+                for &child in children {
+                    self.crossing_of.insert(child, offer);
+                }
+            }
+            _ => {
+                // The first child of a crossing to end frees the crossing, and its siblings no
+                // longer refer to it.
+                let freed = match self.crossing_of.remove(&offer) {
+                    Some(crossing) => {
+                        self.crossing_of.retain(|_, other| *other != crossing);
+                        crossing
+                    }
+                    None => offer,
+                };
+                if let Some(edge) = self.edges.get_mut(&freed.edge) {
+                    edge.state.end(freed, now);
+                }
+            }
         }
         let end = match end {
             OfferEnd::Result {
@@ -357,6 +384,11 @@ mod tests {
     const UPLINK: EdgeId = EdgeId(3);
     /// Shorter than `TIMEOUT`, so a ticket's deadline comes before its edges' timeouts.
     const SHORT_TICKET_TIMEOUT: Duration = Duration::from_millis(500);
+    /// The session of the server that receives the crossing in these tests.
+    const SERVER_SESSION: u64 = 9;
+    /// The server's edges to the crossing's two target engines.
+    const FIRST_TARGET: EdgeId = EdgeId(10);
+    const SECOND_TARGET: EdgeId = EdgeId(11);
 
     fn producer() -> ProducerName {
         ProducerName::try_from(PRODUCER).unwrap()
@@ -433,6 +465,117 @@ mod tests {
             forwarded: true,
             children: Vec::new(),
         }
+    }
+
+    /// The offer the server created for the `seq`th input it received on the target edge `edge`.
+    fn server_offer(edge: EdgeId, seq: u64) -> OfferId {
+        OfferId {
+            session: SERVER_SESSION,
+            edge,
+            seq,
+        }
+    }
+
+    /// The server received the crossing offer of the `seq`th input and offered it to both targets.
+    fn accepted(seq: u64) -> OfferEnd {
+        OfferEnd::Accepted {
+            children: vec![
+                server_offer(FIRST_TARGET, seq),
+                server_offer(SECOND_TARGET, seq),
+            ],
+        }
+    }
+
+    #[test]
+    fn crossing_keeps_its_capacity_until_its_first_child_ends() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+
+        // The server has the input, but neither target has finished it: input 2 waits.
+        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.input_ready(input_id(2), 20, now).unwrap();
+        assert_eq!(sends(&mut router), vec![]);
+
+        // The first target finishes: the crossing is free, and input 2 is sent.
+        let first = router.end_offer(
+            &input_id(1),
+            server_offer(FIRST_TARGET, 1),
+            stopped(FAST_ENGINE),
+            now,
+        );
+        assert_eq!(
+            first,
+            Verdict::Applied {
+                token_returned: true
+            }
+        );
+        assert_eq!(sends(&mut router), vec![(FAST.0, 2, 20)]);
+
+        // The second target finishes too. Input 2's crossing still holds the capacity, so input
+        // 3 waits.
+        router.end_offer(
+            &input_id(1),
+            server_offer(SECOND_TARGET, 1),
+            stopped(SLOW_ENGINE),
+            now,
+        );
+        router.input_ready(input_id(3), 30, now).unwrap();
+        assert_eq!(sends(&mut router), vec![]);
+    }
+
+    #[test]
+    fn crossing_timeout_after_accepted_frees_its_capacity_once() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.input_ready(input_id(2), 20, now).unwrap();
+
+        // No target finishes in time: the crossing times out, and input 2 is sent.
+        router.expire(now + TIMEOUT);
+        assert_eq!(sends(&mut router), vec![(FAST.0, 2, 20)]);
+
+        // A target finishes input 1 afterwards. Its offer is still open, so the event is applied,
+        // but it must not free the capacity that input 2's crossing holds.
+        let late = router.end_offer(
+            &input_id(1),
+            server_offer(FIRST_TARGET, 1),
+            stopped(FAST_ENGINE),
+            now + TIMEOUT,
+        );
+        assert_eq!(
+            late,
+            Verdict::Applied {
+                token_returned: false
+            }
+        );
+        router.input_ready(input_id(3), 30, now + TIMEOUT).unwrap();
+        assert_eq!(sends(&mut router), vec![]);
+    }
+
+    #[test]
+    fn crossing_accepted_with_no_children_is_freed_right_away() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+
+        let no_children = OfferEnd::Accepted {
+            children: Vec::new(),
+        };
+        router.end_offer(&input_id(1), crossing, no_children, now);
+
+        assert_eq!(sends(&mut router), vec![(FAST.0, 2, 20)]);
     }
 
     #[test]
