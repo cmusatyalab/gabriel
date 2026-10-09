@@ -14,12 +14,17 @@ pub(crate) type InputPayload = [u8];
 /// Payload of an engine's input service: the input's bytes, which its payload type explains.
 pub(crate) type EngineInputPayload = [u8];
 
-/// Inputs a server may have delivered to one engine without an outcome yet. The server holds every
-/// other sent input itself, and delivers it when an outcome frees a place. So this bound does not
-/// grow with the number of edges, flows or clients that feed the engine, and the service never has
-/// to be resized while it runs. The engine works on one input at a time, so a small number only
-/// keeps the next input ready.
+/// Inputs an engine's input service can hold. The server delivers at most `ENGINE_DELIVERY_LIMIT`
+/// inputs without an outcome, and holds the others itself, so this bound does not grow with the
+/// number of edges, flows or clients that feed the engine, and the service never has to be resized
+/// while it runs. It is larger than the delivery limit only as a safety margin.
 pub(crate) const ENGINE_INPUT_BUFFER_SIZE: usize = 4;
+
+/// Inputs the server gives an engine before their outcomes arrive: one to work on, and one ready
+/// for when it finishes. Newer inputs wait at the server, where a newer one replaces an older one,
+/// so the engine never works on a stale input.
+pub(crate) const ENGINE_DELIVERY_LIMIT: usize = 2;
+const _: () = assert!(ENGINE_DELIVERY_LIMIT <= ENGINE_INPUT_BUFFER_SIZE);
 
 /// Payload of an engine's event service: the event's result bytes, if it has any.
 pub(crate) type EventPayload = [u8];
@@ -38,7 +43,7 @@ const EVENT_BUFFER_SIZE: usize = 256;
 pub(crate) type OutcomePayload = [u8];
 
 /// Outcomes an engine can have waiting for its server. An engine reports one outcome per
-/// delivered input, and the server delivers at most `ENGINE_INPUT_BUFFER_SIZE` inputs without an
+/// delivered input, and the server delivers at most `ENGINE_DELIVERY_LIMIT` inputs without an
 /// outcome, so the buffer never fills. Outcomes are never dropped.
 const OUTCOME_BUFFER_SIZE: usize = ENGINE_INPUT_BUFFER_SIZE;
 

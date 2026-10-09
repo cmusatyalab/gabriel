@@ -2,6 +2,10 @@
 //! engines, and the delivery of inputs to each engine. Like the client's router, it does no I/O and
 //! reads no clock. The server calls in with what happened, and carries out the actions it queues.
 //!
+//! Delivery is pulled by the engines: an edge holds its newest input in its pending slot, where a
+//! newer input replaces it, until its engine has room. The engine's edges then take turns. So an
+//! engine always gets the newest input of each edge, however many edges feed it.
+//!
 //! The router is generic over `T`, the data of an input or a result as the server keeps it, e.g. a
 //! reference-counted buffer and its payload type. It only stores, clones and hands back `T`.
 
@@ -20,7 +24,7 @@ use crate::{
 };
 
 /// An edge whose offers this server makes: between two of its engines, or from a crossing to one
-/// of its engines.
+/// of its engines. It has no capacity of its own: the engine at its end pulls its inputs.
 #[derive(Debug, Clone)]
 pub(crate) struct EdgeSpec {
     pub(crate) id: EdgeId,
@@ -28,7 +32,7 @@ pub(crate) struct EdgeSpec {
     pub(crate) from: NodeId,
     /// The engine at the end of the edge, on this server.
     pub(crate) to: NodeId,
-    pub(crate) capacity: usize,
+    /// How long the engine may take to answer an input it was given.
     pub(crate) timeout: Duration,
 }
 
@@ -77,7 +81,7 @@ pub(crate) enum ServerAction<T> {
     },
 }
 
-/// An input kept on an edge, so the server can forward it after `Pass`.
+/// An input kept on an edge, so the server can deliver it, and forward it after `Pass`.
 #[derive(Debug, Clone)]
 struct Kept<T> {
     id: InputId,
@@ -106,80 +110,14 @@ struct FlowState<T> {
 /// Identifies an edge across flows: `(session, edge)`.
 type EdgeKey = (u64, EdgeId);
 
-/// An input that an edge sent, waiting at the server until its engine has room.
-#[derive(Debug)]
-struct Waiting<T> {
-    offer: OfferId,
-    id: InputId,
-    data: T,
-}
-
-/// The inputs waiting for one engine, and the ones delivered to it.
-#[derive(Debug)]
-struct EngineState<T> {
-    /// One queue per edge, so that one busy edge cannot starve the others.
-    queues: HashMap<EdgeKey, VecDeque<Waiting<T>>>,
-    /// The edges with waiting inputs, in the order they get their next turn.
+/// Which edges an engine takes its next inputs from, and which inputs it holds.
+#[derive(Debug, Default)]
+struct EngineState {
+    /// The edges with a pending input, in the order they get their next turn.
     turns: VecDeque<EdgeKey>,
     /// Inputs delivered to the engine whose outcome has not arrived. An input counts here even
     /// after its offer timed out, because it still takes a place in the engine's input buffer.
     delivered: HashSet<OfferId>,
-}
-
-impl<T> Default for EngineState<T> {
-    fn default() -> Self {
-        Self {
-            queues: HashMap::new(),
-            turns: VecDeque::new(),
-            delivered: HashSet::new(),
-        }
-    }
-}
-
-impl<T> EngineState<T> {
-    fn enqueue(&mut self, key: EdgeKey, waiting: Waiting<T>) {
-        let queue = self.queues.entry(key).or_default();
-        if queue.is_empty() {
-            self.turns.push_back(key);
-        }
-        queue.push_back(waiting);
-    }
-
-    /// The next input to deliver, taking the edges in turn.
-    fn next_waiting(&mut self) -> Option<Waiting<T>> {
-        let key = self.turns.pop_front()?;
-        let queue = self
-            .queues
-            .get_mut(&key)
-            .expect("an edge in turns has a queue");
-        let waiting = queue
-            .pop_front()
-            .expect("an edge in turns has a waiting input");
-        if queue.is_empty() {
-            self.queues.remove(&key);
-        } else {
-            self.turns.push_back(key);
-        }
-        Some(waiting)
-    }
-
-    /// Removes the input of `offer` if it is still waiting, so it is never delivered.
-    fn withdraw(&mut self, key: EdgeKey, offer: OfferId) {
-        let Some(queue) = self.queues.get_mut(&key) else {
-            return;
-        };
-        queue.retain(|waiting| waiting.offer != offer);
-        if queue.is_empty() {
-            self.queues.remove(&key);
-            self.turns.retain(|turn| *turn != key);
-        }
-    }
-
-    /// Drops every waiting input of the flow `session`.
-    fn forget_flow(&mut self, session: u64) {
-        self.queues.retain(|(s, _), _| *s != session);
-        self.turns.retain(|(s, _)| *s != session);
-    }
 }
 
 /// Routing of every flow installed on one server.
@@ -188,7 +126,7 @@ pub(crate) struct ServerRouter<T> {
     next_session: u64,
     /// The most inputs delivered to one engine whose outcomes have not arrived.
     delivery_limit: usize,
-    engines: HashMap<EngineName, EngineState<T>>,
+    engines: HashMap<EngineName, EngineState>,
     /// Installed flows, by the session of their offer ids.
     flows: HashMap<u64, FlowState<T>>,
     actions: VecDeque<ServerAction<T>>,
@@ -261,7 +199,7 @@ impl<T: Clone> ServerRouter<T> {
                 .insert(*node, engine_name(name).expect("checked"));
         }
         let new_edge = |edge: &EdgeSpec| ServerEdge {
-            state: EdgeState::new(edge.id, session, edge.capacity, edge.timeout),
+            state: EdgeState::pulled(edge.id, session, edge.timeout),
             to: edge.to,
         };
         for edge in &spec.edges {
@@ -304,26 +242,21 @@ impl<T: Clone> ServerRouter<T> {
                 Err(Error::InvalidArgument(format!("edge {id:?} appears twice")))
             }
         };
-        let check_edge = |edge: &EdgeSpec| {
-            if edge.capacity == 0 {
-                return Err(Error::InvalidArgument(format!(
-                    "edge {:?} needs a capacity of at least 1",
-                    edge.id
-                )));
-            }
-            if !nodes.contains(&edge.to) {
-                return Err(Error::InvalidArgument(format!(
+        let ends_here = |edge: &EdgeSpec| {
+            if nodes.contains(&edge.to) {
+                Ok(())
+            } else {
+                Err(Error::InvalidArgument(format!(
                     "edge {:?} ends at {:?}, which is not an engine of this server",
                     edge.id, edge.to
-                )));
+                )))
             }
-            Ok(())
         };
 
         let mut outgoing: HashMap<NodeId, usize> = HashMap::new();
         for edge in &spec.edges {
             unique(edge.id)?;
-            check_edge(edge)?;
+            ends_here(edge)?;
             if !nodes.contains(&edge.from) {
                 return Err(Error::InvalidArgument(format!(
                     "edge {:?} starts at {:?}, which is not an engine of this server",
@@ -348,14 +281,14 @@ impl<T: Clone> ServerRouter<T> {
             }
             for target in &crossing.targets {
                 unique(target.id)?;
-                check_edge(target)?;
+                ends_here(target)?;
             }
         }
         Ok(flow)
     }
 
-    /// Removes the flow `session`. Its waiting inputs are dropped. Inputs already delivered keep
-    /// their place in their engine until their outcomes arrive.
+    /// Removes the flow `session`. Its pending inputs are dropped. Inputs already delivered keep
+    /// their places in their engines until their outcomes arrive.
     pub(crate) fn remove_flow(&mut self, session: u64) -> Result<()> {
         if self.flows.remove(&session).is_none() {
             return Err(Error::InvalidArgument(format!(
@@ -363,7 +296,7 @@ impl<T: Clone> ServerRouter<T> {
             )));
         }
         for engine in self.engines.values_mut() {
-            engine.forget_flow(session);
+            engine.turns.retain(|(s, _)| *s != session);
         }
         Ok(())
     }
@@ -388,7 +321,7 @@ impl<T: Clone> ServerRouter<T> {
                 "flow {session} is not installed"
             )));
         };
-        let Some(targets) = flow.crossings.get(&offer.edge) else {
+        let Some(targets) = flow.crossings.get(&offer.edge).cloned() else {
             return Err(Error::InvalidArgument(format!(
                 "edge {:?} is not a crossing of flow {session}",
                 offer.edge
@@ -397,15 +330,12 @@ impl<T: Clone> ServerRouter<T> {
 
         let mut children = Vec::with_capacity(targets.len());
         for target in targets {
-            let edge = flow.edges.get_mut(target).expect("crossing targets exist");
-            let child = edge.state.offer(
-                Kept {
-                    id,
-                    data: data.clone(),
-                },
-                now,
-            );
-            children.push((flow.nodes[&edge.to], child));
+            let kept = Kept {
+                id,
+                data: data.clone(),
+            };
+            let child = offer_on(flow, &mut self.engines, session, target, kept, now);
+            children.push((flow.nodes[&flow.edges[&target].to], child));
         }
 
         // The client learns about every child at once; each engine's subscribers only about
@@ -427,8 +357,7 @@ impl<T: Clone> ServerRouter<T> {
             });
         }
 
-        self.drain_edge_actions();
-        self.deliver();
+        self.settle(now);
         Ok(())
     }
 
@@ -437,7 +366,8 @@ impl<T: Clone> ServerRouter<T> {
     ///
     /// The outcome frees the engine's place, ends its offer, and forwards the input on the
     /// server's edges leaving the engine. An outcome for an offer that already ended, e.g. after
-    /// a timeout, is still reported, but forwards nothing.
+    /// a timeout, is still reported, but forwards nothing. An outcome for an input that was not
+    /// delivered to this engine, or was already answered, is ignored.
     pub(crate) fn outcome(
         &mut self,
         engine: &str,
@@ -458,17 +388,16 @@ impl<T: Clone> ServerRouter<T> {
             )));
         }
         let offer = outcome.offer;
-        engine_state.delivered.remove(&offer);
+        if !engine_state.delivered.remove(&offer) {
+            return Ok(());
+        }
 
         // The flow may have been removed while the engine worked on the input.
         if let Some(flow) = self.flows.get_mut(&offer.session) {
-            let Some(edge) = flow.edges.get_mut(&offer.edge) else {
-                self.deliver();
-                return Err(Error::InvalidArgument(format!(
-                    "edge {:?} is not in flow {}",
-                    offer.edge, offer.session
-                )));
-            };
+            let edge = flow
+                .edges
+                .get_mut(&offer.edge)
+                .expect("a delivered offer's edge exists while its flow does");
             let node = edge.to;
             let kept = edge.state.end(offer, now);
 
@@ -480,13 +409,18 @@ impl<T: Clone> ServerRouter<T> {
                     Forward::Emit => output,
                 };
                 if let Some(data) = forwarded {
-                    for next in flow.outgoing.get(&node).into_iter().flatten() {
-                        let child = flow.edges.get_mut(next).expect("outgoing edges exist");
-                        children.push(child.state.offer(
-                            Kept {
-                                id: outcome.id,
-                                data: data.clone(),
-                            },
+                    let next_edges = flow.outgoing.get(&node).cloned().unwrap_or_default();
+                    for next in next_edges {
+                        let kept = Kept {
+                            id: outcome.id,
+                            data: data.clone(),
+                        };
+                        children.push(offer_on(
+                            flow,
+                            &mut self.engines,
+                            offer.session,
+                            next,
+                            kept,
                             now,
                         ));
                     }
@@ -504,77 +438,103 @@ impl<T: Clone> ServerRouter<T> {
             )
             .expect("install bounds the outgoing edges of an engine");
             publish(&mut self.actions, offer.session, record, result);
-            self.drain_edge_actions();
         }
-        self.deliver();
+        self.settle(now);
         Ok(())
     }
 
-    /// Ends every offer whose deadline passed. The server calls this periodically.
+    /// Ends every delivered offer whose deadline passed. The server calls this periodically.
+    /// Pending offers have no deadline: they wait until their engine has room, or a newer input
+    /// replaces them.
     pub(crate) fn tick(&mut self, now: Instant) {
         for flow in self.flows.values_mut() {
             for edge in flow.edges.values_mut() {
                 edge.state.expire(now);
             }
         }
-        self.drain_edge_actions();
-        self.deliver();
+        self.settle(now);
     }
 
-    /// Turns the edges' queued actions into events, and queues sent inputs at their engines.
-    fn drain_edge_actions(&mut self) {
-        for (&session, flow) in &mut self.flows {
-            for (&edge_id, edge) in &mut flow.edges {
-                let engine = flow.nodes[&edge.to];
-                let engine_state = self
-                    .engines
-                    .get_mut(&engine)
-                    .expect("installed flows use registered engines");
-                let key = (session, edge_id);
-                while let Some(action) = edge.state.poll_action() {
-                    let record = match action {
-                        EdgeAction::Send { offer, input } => {
-                            engine_state.enqueue(
-                                key,
-                                Waiting {
-                                    offer,
-                                    id: input.id,
-                                    data: input.data,
-                                },
-                            );
-                            EventRecord::sent(offer, input.id, engine, flow.name)
-                        }
-                        EdgeAction::Skipped { offer, input } => {
-                            EventRecord::skipped(offer, input.id, engine, flow.name)
-                        }
-                        EdgeAction::TimedOut { offer, input } => {
-                            engine_state.withdraw(key, offer);
-                            EventRecord::timed_out(offer, input.id, engine, flow.name)
-                        }
-                    };
-                    publish(&mut self.actions, session, record, None);
+    /// Reports what the edges did, delivers inputs to every engine with room, and reports those
+    /// deliveries.
+    fn settle(&mut self, now: Instant) {
+        self.drain_edge_actions();
+        self.deliver(now);
+        self.drain_edge_actions();
+    }
+
+    /// Pulls pending inputs into every engine with room, taking the engine's edges in turn.
+    fn deliver(&mut self, now: Instant) {
+        for state in self.engines.values_mut() {
+            while state.delivered.len() < self.delivery_limit {
+                let Some((session, edge)) = state.turns.pop_front() else {
+                    break;
+                };
+                let pulled = self
+                    .flows
+                    .get_mut(&session)
+                    .and_then(|flow| flow.edges.get_mut(&edge))
+                    .and_then(|edge| edge.state.pull(now));
+                if let Some(offer) = pulled {
+                    state.delivered.insert(offer);
                 }
             }
         }
     }
 
-    /// Delivers waiting inputs to every engine with room.
-    fn deliver(&mut self) {
-        for (&engine, state) in &mut self.engines {
-            while state.delivered.len() < self.delivery_limit {
-                let Some(waiting) = state.next_waiting() else {
-                    break;
-                };
-                state.delivered.insert(waiting.offer);
-                self.actions.push_back(ServerAction::Deliver {
-                    engine,
-                    offer: waiting.offer,
-                    id: waiting.id,
-                    data: waiting.data,
-                });
+    /// Turns the edges' queued actions into events, and sends become deliveries.
+    fn drain_edge_actions(&mut self) {
+        for (&session, flow) in &mut self.flows {
+            for edge in flow.edges.values_mut() {
+                let engine = flow.nodes[&edge.to];
+                while let Some(action) = edge.state.poll_action() {
+                    match action {
+                        EdgeAction::Send { offer, input } => {
+                            let record = EventRecord::sent(offer, input.id, engine, flow.name);
+                            publish(&mut self.actions, session, record, None);
+                            self.actions.push_back(ServerAction::Deliver {
+                                engine,
+                                offer,
+                                id: input.id,
+                                data: input.data,
+                            });
+                        }
+                        EdgeAction::Skipped { offer, input } => {
+                            let record = EventRecord::skipped(offer, input.id, engine, flow.name);
+                            publish(&mut self.actions, session, record, None);
+                        }
+                        EdgeAction::TimedOut { offer, input } => {
+                            let record = EventRecord::timed_out(offer, input.id, engine, flow.name);
+                            publish(&mut self.actions, session, record, None);
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+/// Offers `kept` on the edge `edge` of `flow`, whose session is `session`. An edge that had no
+/// pending input joins the turns of its engine.
+fn offer_on<T: Clone>(
+    flow: &mut FlowState<T>,
+    engines: &mut HashMap<EngineName, EngineState>,
+    session: u64,
+    edge: EdgeId,
+    kept: Kept<T>,
+    now: Instant,
+) -> OfferId {
+    let state = flow.edges.get_mut(&edge).expect("the flow's edges exist");
+    let joins_turns = !state.state.has_pending();
+    let offer = state.state.offer(kept, now);
+    if joins_turns {
+        engines
+            .get_mut(&flow.nodes[&state.to])
+            .expect("installed flows use registered engines")
+            .turns
+            .push_back((session, edge));
+    }
+    offer
 }
 
 /// Queues `record` for the client of the flow `session` and for the engine's subscribers.
@@ -620,9 +580,8 @@ mod tests {
 
     const FIRST_SESSION: u64 = 100;
     const CLIENT_SESSION: u64 = 7;
-    const DELIVERY_LIMIT: usize = 4;
     const ONE: usize = 1;
-    const THREE: usize = 3;
+    const TWO: usize = 2;
     const TIMEOUT: Duration = Duration::from_secs(1);
     const FLOW: &str = "tracking";
     const DETECTOR: &str = "detector";
@@ -687,11 +646,15 @@ mod tests {
     }
 
     /// The offers delivered to engines, in order.
-    fn delivered(steps: &[Step]) -> Vec<(String, OfferId)> {
+    fn delivered(steps: &[Step]) -> Vec<(String, OfferId, u32)> {
         steps
             .iter()
             .filter_map(|step| match step {
-                Step::Deliver { engine, offer, .. } => Some((engine.clone(), *offer)),
+                Step::Deliver {
+                    engine,
+                    offer,
+                    data,
+                } => Some((engine.clone(), *offer, *data)),
                 _ => None,
             })
             .collect()
@@ -725,30 +688,33 @@ mod tests {
         }
     }
 
-    fn edge(id: EdgeId, from: NodeId, to: NodeId, capacity: usize) -> EdgeSpec {
+    fn edge(id: EdgeId, from: NodeId, to: NodeId) -> EdgeSpec {
         EdgeSpec {
             id,
             from,
             to,
-            capacity,
             timeout: TIMEOUT,
         }
     }
 
-    /// A flow where the client feeds the detector over a crossing with capacity
-    /// `crossing_capacity`, and the detector feeds the tracker.
-    fn spec(crossing_capacity: usize) -> InstallFlow {
+    fn crossing(id: EdgeId, target: EdgeId) -> CrossingSpec {
+        CrossingSpec {
+            id,
+            targets: vec![edge(target, SOURCE, DETECTOR_NODE)],
+        }
+    }
+
+    /// A flow where the client feeds the detector over a crossing, and the detector feeds the
+    /// tracker.
+    fn spec() -> InstallFlow {
         InstallFlow {
             flow: String::from(FLOW),
             engines: vec![
                 (DETECTOR_NODE, String::from(DETECTOR)),
                 (TRACKER_NODE, String::from(TRACKER)),
             ],
-            edges: vec![edge(TO_TRACKER, DETECTOR_NODE, TRACKER_NODE, ONE)],
-            crossings: vec![CrossingSpec {
-                id: CROSSING,
-                targets: vec![edge(TO_DETECTOR, SOURCE, DETECTOR_NODE, crossing_capacity)],
-            }],
+            edges: vec![edge(TO_TRACKER, DETECTOR_NODE, TRACKER_NODE)],
+            crossings: vec![crossing(CROSSING, TO_DETECTOR)],
         }
     }
 
@@ -759,11 +725,32 @@ mod tests {
         router
     }
 
-    /// A router with `spec(crossing_capacity)` installed, and the flow's session.
-    fn installed(delivery_limit: usize, crossing_capacity: usize) -> (ServerRouter<u32>, u64) {
+    /// A router with `spec()` installed, and the flow's session.
+    fn installed(delivery_limit: usize) -> (ServerRouter<u32>, u64) {
         let mut router = router(delivery_limit);
-        let session = router.install(spec(crossing_capacity)).unwrap();
+        let session = router.install(spec()).unwrap();
         (router, session)
+    }
+
+    /// Sends input `seq`, with `data`, on `crossing`, and returns what the router did.
+    fn accept_data(
+        router: &mut ServerRouter<u32>,
+        session: u64,
+        crossing: EdgeId,
+        seq: u64,
+        data: u32,
+        now: Instant,
+    ) -> Vec<Step> {
+        router
+            .accept(
+                session,
+                client_offer(crossing, seq),
+                input_id(seq),
+                data,
+                now,
+            )
+            .unwrap();
+        steps(router)
     }
 
     /// Sends input `seq` on `crossing`, and returns what the router did.
@@ -774,20 +761,11 @@ mod tests {
         seq: u64,
         now: Instant,
     ) -> Vec<Step> {
-        router
-            .accept(
-                session,
-                client_offer(crossing, seq),
-                input_id(seq),
-                FRAME,
-                now,
-            )
-            .unwrap();
-        steps(router)
+        accept_data(router, session, crossing, seq, FRAME, now)
     }
 
     fn only_delivery(steps: &[Step]) -> OfferId {
-        let [(_, offer)] = delivered(steps)[..] else {
+        let [(_, offer, _)] = delivered(steps)[..] else {
             panic!("expected one delivery, got {steps:?}");
         };
         offer
@@ -803,18 +781,18 @@ mod tests {
 
     #[test]
     fn install_rejects_an_unregistered_engine() {
-        let mut router = ServerRouter::<u32>::new(FIRST_SESSION, DELIVERY_LIMIT);
+        let mut router = ServerRouter::<u32>::new(FIRST_SESSION, ONE);
         router.add_engine(DETECTOR).unwrap();
 
-        let result = router.install(spec(ONE));
+        let result = router.install(spec());
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
 
     #[test]
     fn install_rejects_a_repeated_edge_id() {
-        let mut router = router(DELIVERY_LIMIT);
-        let mut spec = spec(ONE);
+        let mut router = router(ONE);
+        let mut spec = spec();
         spec.edges[0].id = TO_DETECTOR;
 
         let result = router.install(spec);
@@ -824,8 +802,8 @@ mod tests {
 
     #[test]
     fn install_rejects_an_edge_to_an_engine_elsewhere() {
-        let mut router = router(DELIVERY_LIMIT);
-        let mut spec = spec(ONE);
+        let mut router = router(ONE);
+        let mut spec = spec();
         spec.edges[0].to = SOURCE;
 
         let result = router.install(spec);
@@ -835,10 +813,10 @@ mod tests {
 
     #[test]
     fn each_install_gets_a_new_session() {
-        let mut router = router(DELIVERY_LIMIT);
+        let mut router = router(ONE);
 
-        let first = router.install(spec(ONE)).unwrap();
-        let second = router.install(spec(ONE)).unwrap();
+        let first = router.install(spec()).unwrap();
+        let second = router.install(spec()).unwrap();
 
         assert_eq!(first, FIRST_SESSION);
         assert_ne!(first, second);
@@ -846,7 +824,7 @@ mod tests {
 
     #[test]
     fn engine_used_by_a_flow_cannot_be_removed() {
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
 
         assert!(router.remove_engine(DETECTOR).is_err());
         router.remove_flow(session).unwrap();
@@ -856,7 +834,7 @@ mod tests {
     #[test]
     fn accepted_input_is_reported_then_delivered() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
 
         let steps = accept(&mut router, session, CROSSING, 1, now);
 
@@ -896,7 +874,7 @@ mod tests {
     #[test]
     fn unknown_crossing_is_rejected() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
 
         let result = router.accept(
             session,
@@ -912,7 +890,7 @@ mod tests {
     #[test]
     fn pass_forwards_on_the_server_edge_after_reporting_the_result() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
@@ -921,17 +899,16 @@ mod tests {
         let steps = steps(&mut router);
 
         let deliveries = delivered(&steps);
-        let [(engine, child)] = &deliveries[..] else {
+        let [(engine, child, _)] = &deliveries[..] else {
             panic!("expected one delivery, got {steps:?}");
         };
-        let child = *child;
         assert_eq!(engine, TRACKER);
         assert_eq!(child.edge, TO_TRACKER);
         assert_eq!(
             steps[0],
             Step::Client {
                 kind: EventKind::Result,
-                children: vec![child],
+                children: vec![*child],
             }
         );
         assert_eq!(
@@ -943,7 +920,7 @@ mod tests {
     #[test]
     fn emit_forwards_the_new_output() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         let emit = OutcomeRecord::emit(
             offer,
@@ -960,16 +937,19 @@ mod tests {
             .unwrap();
         let steps = steps(&mut router);
 
-        assert!(steps.iter().any(|step| matches!(
-            step,
-            Step::Deliver { engine, data: OUTPUT, .. } if engine == TRACKER
-        )));
+        assert_eq!(
+            delivered(&steps)
+                .into_iter()
+                .map(|(engine, _, data)| (engine, data))
+                .collect::<Vec<_>>(),
+            vec![(String::from(TRACKER), OUTPUT)]
+        );
     }
 
     #[test]
     fn emit_without_an_output_is_rejected() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         let emit = OutcomeRecord::emit(
             offer,
@@ -989,7 +969,7 @@ mod tests {
     #[test]
     fn stop_forwards_nothing() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
@@ -1002,25 +982,54 @@ mod tests {
     }
 
     #[test]
-    fn full_crossing_target_skips_the_older_waiting_input() {
+    fn busy_engine_gets_the_newest_input_of_an_edge() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
-        accept(&mut router, session, CROSSING, 1, now);
-        accept(&mut router, session, CROSSING, 2, now);
+        let (mut router, session) = installed(ONE);
+        let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        accept_data(&mut router, session, CROSSING, 2, FRAME, now);
 
-        let steps = accept(&mut router, session, CROSSING, 3, now);
-
+        let replaced = accept_data(&mut router, session, CROSSING, 3, OUTPUT, now);
         assert_eq!(
-            client_kinds(&steps),
+            client_kinds(&replaced),
             vec![EventKind::Accepted, EventKind::Skipped]
         );
-        assert!(delivered(&steps).is_empty());
+        assert!(delivered(&replaced).is_empty());
+
+        router
+            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .unwrap();
+        let [(_, _, data)] = delivered(&steps(&mut router))[..] else {
+            panic!("expected one delivery");
+        };
+        assert_eq!(data, OUTPUT);
+    }
+
+    #[test]
+    fn engine_holds_up_to_the_delivery_limit() {
+        let now = Instant::now();
+        let mut router = router(TWO);
+        let mut spec = spec();
+        spec.crossings
+            .push(crossing(OTHER_CROSSING, OTHER_TO_DETECTOR));
+        let session = router.install(spec).unwrap();
+
+        accept(&mut router, session, CROSSING, 1, now);
+        accept(&mut router, session, OTHER_CROSSING, 2, now);
+        let third = accept(&mut router, session, CROSSING, 3, now);
+
+        assert_eq!(
+            router.engines[&engine_name(DETECTOR).unwrap()]
+                .delivered
+                .len(),
+            TWO
+        );
+        assert!(delivered(&third).is_empty());
     }
 
     #[test]
     fn late_outcome_is_reported_but_forwards_nothing() {
         let now = Instant::now();
-        let (mut router, session) = installed(DELIVERY_LIMIT, ONE);
+        let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         router.tick(now + TIMEOUT);
         assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::TimedOut]);
@@ -1041,9 +1050,43 @@ mod tests {
     }
 
     #[test]
-    fn inputs_beyond_the_delivery_limit_wait_at_the_server() {
+    fn duplicate_outcome_is_ignored() {
         let now = Instant::now();
-        let (mut router, session) = installed(ONE, THREE);
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        router
+            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .unwrap();
+        steps(&mut router);
+
+        router
+            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .unwrap();
+
+        assert!(steps(&mut router).is_empty());
+    }
+
+    #[test]
+    fn outcome_for_another_engines_input_is_ignored() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+
+        router
+            .outcome(TRACKER, &stop(offer, 1), None, None, now)
+            .unwrap();
+        assert!(steps(&mut router).is_empty());
+
+        router
+            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .unwrap();
+        assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::Result]);
+    }
+
+    #[test]
+    fn pending_input_waits_while_the_engine_is_full() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
         let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         let waiting = accept(&mut router, session, CROSSING, 2, now);
@@ -1060,21 +1103,20 @@ mod tests {
     fn edges_take_turns_at_a_busy_engine() {
         let now = Instant::now();
         let mut router = router(ONE);
-        let mut spec = spec(THREE);
-        spec.crossings.push(CrossingSpec {
-            id: OTHER_CROSSING,
-            targets: vec![edge(OTHER_TO_DETECTOR, SOURCE, DETECTOR_NODE, THREE)],
-        });
+        let mut spec = spec();
+        spec.crossings
+            .push(crossing(OTHER_CROSSING, OTHER_TO_DETECTOR));
         let session = router.install(spec).unwrap();
         let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         accept(&mut router, session, CROSSING, 2, now);
-        accept(&mut router, session, CROSSING, 3, now);
-        accept(&mut router, session, OTHER_CROSSING, 4, now);
+        accept(&mut router, session, OTHER_CROSSING, 3, now);
 
         router
             .outcome(DETECTOR, &stop(first, 1), None, None, now)
             .unwrap();
         let second = only_delivery(&steps(&mut router));
+        // The first edge is pending again before the other edge got its turn.
+        accept(&mut router, session, CROSSING, 4, now);
         router
             .outcome(DETECTOR, &stop(second, 2), None, None, now)
             .unwrap();
@@ -1085,25 +1127,22 @@ mod tests {
     }
 
     #[test]
-    fn waiting_input_that_times_out_is_never_delivered() {
+    fn pending_input_does_not_time_out() {
         let now = Instant::now();
-        let (mut router, session) = installed(ONE, THREE);
-        let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        let (mut router, session) = installed(ONE);
+        accept(&mut router, session, CROSSING, 1, now);
         accept(&mut router, session, CROSSING, 2, now);
+
         router.tick(now + TIMEOUT);
-        steps(&mut router);
 
-        router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now + TIMEOUT)
-            .unwrap();
-
-        assert!(delivered(&steps(&mut router)).is_empty());
+        // Only the delivered input times out; the pending one keeps waiting.
+        assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::TimedOut]);
     }
 
     #[test]
     fn timed_out_input_keeps_its_place_until_its_outcome() {
         let now = Instant::now();
-        let (mut router, session) = installed(ONE, THREE);
+        let (mut router, session) = installed(ONE);
         let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         router.tick(now + TIMEOUT);
         steps(&mut router);
@@ -1119,13 +1158,13 @@ mod tests {
     }
 
     #[test]
-    fn removing_a_flow_drops_its_waiting_inputs_but_frees_places_on_outcome() {
+    fn removing_a_flow_drops_its_pending_inputs_but_frees_places_on_outcome() {
         let now = Instant::now();
-        let (mut router, session) = installed(ONE, THREE);
+        let (mut router, session) = installed(ONE);
         let first = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         accept(&mut router, session, CROSSING, 2, now);
         router.remove_flow(session).unwrap();
-        let other = router.install(spec(THREE)).unwrap();
+        let other = router.install(spec()).unwrap();
         let waiting = accept(&mut router, other, CROSSING, 3, now);
         assert!(delivered(&waiting).is_empty());
 

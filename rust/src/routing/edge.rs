@@ -30,7 +30,9 @@ pub(crate) struct EdgeState<T> {
     id: EdgeId,
     session: u64,
     next_seq: u64,
-    capacity: usize,
+    /// The most offers in flight. `None` if the owner decides when the pending offer is sent,
+    /// with [`EdgeState::pull`].
+    capacity: Option<usize>,
     timeout: Duration,
     in_flight: HashMap<OfferId, Sent<T>>,
     pending: Option<(OfferId, T)>,
@@ -38,8 +40,20 @@ pub(crate) struct EdgeState<T> {
 }
 
 impl<T: Clone> EdgeState<T> {
+    /// Creates an edge that sends an offer as soon as fewer than `capacity` are in flight. Each
+    /// sent offer times out after `timeout`.
     pub(crate) fn new(id: EdgeId, session: u64, capacity: usize, timeout: Duration) -> Self {
         assert!(capacity > 0);
+        Self::with_capacity(id, session, Some(capacity), timeout)
+    }
+
+    /// Creates an edge that keeps every offer pending until its owner pulls it, e.g. when the
+    /// engine at its end has room. Each sent offer times out after `timeout`.
+    pub(crate) fn pulled(id: EdgeId, session: u64, timeout: Duration) -> Self {
+        Self::with_capacity(id, session, None, timeout)
+    }
+
+    fn with_capacity(id: EdgeId, session: u64, capacity: Option<usize>, timeout: Duration) -> Self {
         Self {
             id,
             session,
@@ -52,9 +66,22 @@ impl<T: Clone> EdgeState<T> {
         }
     }
 
-    /// Whether an offer made now would be sent right away.
+    /// Whether an offer made now would be sent right away. Never for a pulled edge.
     pub(crate) fn has_spare_capacity(&self) -> bool {
-        self.in_flight.len() < self.capacity
+        self.capacity
+            .is_some_and(|capacity| self.in_flight.len() < capacity)
+    }
+
+    /// Whether an offer is waiting to be sent.
+    pub(crate) fn has_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// Sends the pending offer, if any, whatever the capacity, and returns its id.
+    pub(crate) fn pull(&mut self, now: Instant) -> Option<OfferId> {
+        let (offer, input) = self.pending.take()?;
+        self.send_input_with_offer(offer, input, now);
+        Some(offer)
     }
 
     fn next_seq(&mut self) -> u64 {
@@ -73,9 +100,10 @@ impl<T: Clone> EdgeState<T> {
         self.in_flight.insert(offer, sent_input);
     }
 
+    /// Sends the pending offer if the edge has room for it.
     fn send_pending(&mut self, now: Instant) {
-        if let Some((offer, input)) = self.pending.take() {
-            self.send_input_with_offer(offer, input, now);
+        if self.has_spare_capacity() {
+            self.pull(now);
         }
     }
 
@@ -295,6 +323,48 @@ mod tests {
 
         assert!(actions(&mut edge).is_empty());
         assert_eq!(edge.end(first, now), Some(FRAME));
+    }
+
+    #[test]
+    fn pulled_edge_keeps_only_the_newest_offer_until_pulled() {
+        let now = Instant::now();
+        let mut edge = EdgeState::pulled(EDGE, SESSION, TIMEOUT);
+
+        let first = edge.offer(FRAME, now);
+        let second = edge.offer(SECOND_FRAME, now);
+
+        assert_eq!(
+            actions(&mut edge),
+            vec![EdgeAction::Skipped {
+                offer: first,
+                input: FRAME
+            }]
+        );
+        assert_eq!(edge.pull(now), Some(second));
+        assert_eq!(
+            actions(&mut edge),
+            vec![EdgeAction::Send {
+                offer: second,
+                input: SECOND_FRAME
+            }]
+        );
+        assert_eq!(edge.pull(now), None);
+    }
+
+    #[test]
+    fn ending_an_offer_on_a_pulled_edge_does_not_send_the_pending_one() {
+        let now = Instant::now();
+        let mut edge = EdgeState::pulled(EDGE, SESSION, TIMEOUT);
+        edge.offer(FRAME, now);
+        let first = edge.pull(now).unwrap();
+        edge.offer(SECOND_FRAME, now);
+        actions(&mut edge);
+
+        assert_eq!(edge.end(first, now), Some(FRAME));
+        edge.expire(now + TIMEOUT);
+
+        assert!(actions(&mut edge).is_empty());
+        assert!(edge.has_pending());
     }
 
     #[test]
