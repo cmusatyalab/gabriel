@@ -151,8 +151,8 @@ gabriel_status_t gabriel_client_add_producer(const char *name, gabriel_client_t 
 gabriel_status_t gabriel_client_remove_producer(const char *name, gabriel_client_t *client);
 
 /**
- * Returns `GABRIEL_STATUS_T_ERR_INVALID` for now, because the text format of `spec` is not
- * decided yet. From Rust, flows can already be added with a `FlowSpec`.
+ * Adds the flow `name`. `spec` describes it in TOML, as a list of edges; see the `spec` module
+ * of the Rust API for an example.
  *
  * # Safety
  * String arguments must be NUL-terminated; `client` must be a live handle.

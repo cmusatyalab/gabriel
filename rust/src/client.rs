@@ -196,6 +196,37 @@ mod tests {
     }
 
     #[test]
+    fn flow_from_a_toml_spec_reaches_its_engine() {
+        let mut fixture = Fixture::new();
+        let detector_name = unique("detector");
+        let mut detector = fixture.engine(&detector_name);
+        let spec: FlowSpec = format!(
+            r#"
+            [[producers]]
+            name = "{producer}"
+            tokens = 1
+
+            [[engines]]
+            name = "{detector_name}"
+            location = "local"
+
+            [[edges]]
+            from = "{producer}"
+            to = "{detector_name}"
+            timeout = "5s"
+            "#,
+            producer = fixture.producer_name,
+        )
+        .parse()
+        .unwrap();
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+
+        assert_eq!(next_input(&mut detector), 7);
+    }
+
+    #[test]
     fn result_returns_the_token_for_the_newest_input() {
         let mut fixture = Fixture::new();
         let detector_name = unique("detector");

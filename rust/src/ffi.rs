@@ -8,7 +8,7 @@ use std::{
 
 use iceoryx2_bb_container::string::String as _;
 
-use crate::{Client, Engine, Error, Producer, Result, Server};
+use crate::{Client, Engine, Error, FlowSpec, Producer, Result, Server};
 
 /// Status code returned by every C ABI function.
 #[repr(C)]
@@ -196,8 +196,8 @@ pub unsafe extern "C" fn gabriel_client_remove_producer(
     Status::from(unsafe { (|| handle_arg(client)?.remove_producer(str_arg(name)?))() })
 }
 
-/// Returns `GABRIEL_STATUS_T_ERR_INVALID` for now, because the text format of `spec` is not
-/// decided yet. From Rust, flows can already be added with a `FlowSpec`.
+/// Adds the flow `name`. `spec` describes it in TOML, as a list of edges; see the `spec` module
+/// of the Rust API for an example.
 ///
 /// # Safety
 /// String arguments must be NUL-terminated; `client` must be a live handle.
@@ -209,10 +209,8 @@ pub unsafe extern "C" fn gabriel_client_add_flow(
 ) -> Status {
     Status::from(unsafe {
         (|| {
-            let (_client, _name, _spec) = (handle_arg(client)?, str_arg(name)?, str_arg(spec)?);
-            Err(Error::InvalidArgument(String::from(
-                "flow specs cannot be read from C yet: their text format is not decided",
-            )))
+            let spec: FlowSpec = str_arg(spec)?.parse()?;
+            handle_arg(client)?.add_flow(str_arg(name)?, &spec)
         })()
     })
 }
@@ -452,9 +450,10 @@ pub unsafe extern "C" fn gabriel_engine_emit(
 
 #[cfg(test)]
 mod tests {
-    use std::ptr;
+    use std::{ffi::CString, ptr};
 
     use super::*;
+    use crate::test_util::unique;
 
     #[test]
     fn destroy_null_is_ok() {
@@ -468,6 +467,23 @@ mod tests {
     fn create_rejects_null_out_pointer() {
         let status = unsafe { gabriel_producer_create(c"p".as_ptr(), 0, ptr::null_mut()) };
         assert_eq!(status, Status::ErrInvalid);
+    }
+
+    #[test]
+    fn add_flow_rejects_a_malformed_spec() {
+        let name = CString::new(unique("client")).unwrap();
+        let server = CString::new(unique("server")).unwrap();
+        let mut client = ptr::null_mut();
+        let created = unsafe {
+            gabriel_client_create(name.as_ptr(), server.as_ptr(), c"".as_ptr(), &mut client)
+        };
+        assert_eq!(created, Status::Ok);
+
+        let status =
+            unsafe { gabriel_client_add_flow(c"flow".as_ptr(), c"[[edges]".as_ptr(), client) };
+
+        assert_eq!(status, Status::ErrInvalid);
+        assert_eq!(unsafe { gabriel_client_destroy(client) }, Status::Ok);
     }
 
     #[test]
