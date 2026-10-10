@@ -11,7 +11,7 @@ use iceoryx2_bb_container::string::String as _;
 
 use crate::{
     Client, Engine, Error, EventKind, FlowSpec, Forward, Producer, Result, Server, Subscription,
-    subscription::Event,
+    logging, subscription::Event,
 };
 
 /// Status code returned by every C ABI function.
@@ -105,6 +105,20 @@ unsafe fn destroy_handle<T>(ptr: *mut T) -> Status {
         drop(unsafe { Box::from_raw(ptr) });
     }
     Status::Ok
+}
+
+// --- Logging ---
+
+/// Prints Gabriel's log to standard error. `filter` picks what is printed, in the syntax of
+/// `RUST_LOG`, e.g. "info" or "gabriel=debug". If it is NULL, `RUST_LOG` picks, or warnings and
+/// errors are printed if that is unset. Call it once, before anything else; without it, nothing is
+/// logged. Fails with `ERR_INVALID` for a malformed filter, or when called a second time.
+///
+/// # Safety
+/// `filter` must be NUL-terminated or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_log_init(filter: *const c_char) -> Status {
+    Status::from(unsafe { opt_str_arg(filter) }.and_then(logging::init))
 }
 
 // --- Producer ---

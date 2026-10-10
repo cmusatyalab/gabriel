@@ -20,6 +20,7 @@ use iceoryx2::port::{
 };
 use iceoryx2::prelude::*;
 use iceoryx2_bb_container::string::String as _;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -193,6 +194,7 @@ impl Dispatcher {
         let ports = EnginePorts::open(&self.node, name)?;
         self.router.add_engine(name)?;
         self.engines.insert(engine, ports);
+        info!(engine = name, "serving engine");
         Ok(())
     }
 
@@ -201,6 +203,7 @@ impl Dispatcher {
         self.router.remove_engine(name)?;
         let engine = EngineName::try_from(name).expect("the router knew the engine");
         self.engines.remove(&engine);
+        info!(engine = name, "stopped serving engine");
         Ok(())
     }
 
@@ -322,6 +325,10 @@ impl Dispatcher {
             ports.instance = instance;
         }
         for engine in stopped {
+            warn!(
+                engine = engine.as_str(),
+                "engine stopped; its inputs are lost"
+            );
             if let Err(e) = self.engine_lost(engine.as_str(), now) {
                 first_error.get_or_insert(e);
             }

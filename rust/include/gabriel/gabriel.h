@@ -158,6 +158,17 @@ extern "C" {
 #endif // __cplusplus
 
 /**
+ * Prints Gabriel's log to standard error. `filter` picks what is printed, in the syntax of
+ * `RUST_LOG`, e.g. "info" or "gabriel=debug". If it is NULL, `RUST_LOG` picks, or warnings and
+ * errors are printed if that is unset. Call it once, before anything else; without it, nothing is
+ * logged. Fails with `ERR_INVALID` for a malformed filter, or when called a second time.
+ *
+ * # Safety
+ * `filter` must be NUL-terminated or null.
+ */
+gabriel_status_t gabriel_log_init(const char *filter);
+
+/**
  * # Safety
  * String arguments must be NUL-terminated; `producer` must be valid for writes.
  */

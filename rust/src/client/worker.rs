@@ -12,6 +12,8 @@
 //! checks every [`SERVER_CHECK_INTERVAL`], or when the server's stream of events loses some. Then
 //! every offer on the server ends with `Disconnected`, and the thread installs its flows again as
 //! soon as it can.
+//!
+//! Failures the thread carries on after are logged as warnings, with [`tracing`].
 
 use std::{
     collections::{HashMap, HashSet},
@@ -26,6 +28,7 @@ use std::{
 
 use iceoryx2::prelude::*;
 use iceoryx2_bb_container::{string::String as _, vector::Vector as _};
+use tracing::{debug, error, info, info_span, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -119,6 +122,8 @@ pub(super) fn spawn(
     let thread = thread::Builder::new()
         .name(format!("gabriel-client-{name}"))
         .spawn(move || {
+            // Every event the thread logs names the client.
+            let _span = info_span!("client", name = %name).entered();
             // Created inside the thread: iceoryx2 ports cannot be moved between threads.
             let worker = match Worker::new(&name, &local_server) {
                 Ok(worker) => {
@@ -130,7 +135,11 @@ pub(super) fn spawn(
                     return Ok(());
                 }
             };
-            worker.run(&command_rx)
+            let stopped = worker.run(&command_rx);
+            if let Err(e) = &stopped {
+                error!(error = %e, "client thread stopped");
+            }
+            stopped
         })
         .map_err(|e| Error::Internal(format!("failed to spawn client thread: {e}")))?;
     match started_rx.recv() {
@@ -187,15 +196,19 @@ impl Worker {
             let now = Instant::now();
             // Events can free tokens and crossings, so they go before new inputs. An event the
             // client cannot read leaves its offer open until the offer's deadline.
-            if let Ok((events, lost)) = self.server.take_events() {
-                for event in &events {
-                    self.apply(event, now);
+            match self.server.take_events() {
+                Ok((events, lost)) => {
+                    for event in &events {
+                        self.apply(event, now);
+                    }
+                    // The lost events may have ended offers, so the client can no longer tell
+                    // which of the server's offers are open.
+                    if lost > 0 {
+                        warn!(lost, "the local server's event stream lost events");
+                        self.server_lost(now);
+                    }
                 }
-                // The lost events may have ended offers, so the client can no longer tell which
-                // of the server's offers are open.
-                if lost > 0 {
-                    self.server_lost(now);
-                }
+                Err(e) => warn!(error = %e, "failed to read the local server's events"),
             }
             for input in self.producers.take_inputs() {
                 self.admit(input, now);
@@ -209,7 +222,10 @@ impl Worker {
             }
             self.carry_out();
             // A subscriber that is not woken still finds the events at its next wait.
-            let _ = self.producers.wake_subscribers();
+            warn_on_error(
+                self.producers.wake_subscribers(),
+                "failed to wake a producer's subscribers",
+            );
         }
     }
 
@@ -321,6 +337,7 @@ impl Worker {
                 producers,
             },
         );
+        info!(flow = name, session, "added flow");
         Ok(())
     }
 
@@ -330,6 +347,7 @@ impl Worker {
             .ok()
             .and_then(|flow| self.flows.remove(&flow))
             .ok_or_else(|| Error::InvalidArgument(format!("flow {name:?} does not exist")))?;
+        info!(flow = name, "removed flow");
         if !flow.connected {
             // After lost events the server may still have the flow; if the server is gone,
             // there is nothing to remove.
@@ -387,16 +405,23 @@ impl Worker {
         };
         let published = record.kind != EventKind::Accepted;
         let verdict = flow.router.end_offer(&record.id, offer, end, now);
-        if published && verdict != Verdict::Dropped {
+        if verdict == Verdict::Dropped {
+            // A duplicate, an event for an offer that already ended, e.g. with a lost connection,
+            // or one for an offer the client never made.
+            debug!(kind = ?record.kind, ?offer, input = ?record.id, "dropped an unexpected event");
+        } else if published {
             self.publish(record.clone(), &event.result);
         }
     }
 
     /// Publishes `record` for the app of its input's producer. An event the app misses only
-    /// leaves it waiting, so a failure is ignored.
+    /// leaves it waiting, so the thread carries on after a failure.
     fn publish(&mut self, record: EventRecord, result: &[u8]) {
         let producer = record.id.producer;
-        let _ = self.producers.publish(&producer, record, result);
+        warn_on_error(
+            self.producers.publish(&producer, record, result),
+            "failed to publish an event for a producer's app",
+        );
     }
 
     /// Hands a producer's newest input to the flow it was published on.
@@ -416,11 +441,16 @@ impl Worker {
     /// are installed on it, the connection is lost. Otherwise, flows whose connection was lost
     /// are installed again.
     fn check_server(&mut self, now: Instant) {
-        let Ok(stopped) = self.server.check(&self.node) else {
-            return;
+        let stopped = match self.server.check(&self.node) {
+            Ok(stopped) => stopped,
+            Err(e) => {
+                warn!(error = %e, "failed to check the local server");
+                return;
+            }
         };
         let installed = self.flows.values().any(|flow| flow.connected);
         if stopped || (installed && !self.server.is_running()) {
+            warn!("the local server stopped or restarted");
             self.server_lost(now);
         } else {
             self.reconnect(now);
@@ -437,7 +467,10 @@ impl Worker {
                 .disconnect(flow.session, &flow.crossing_ids(), now);
             for producer in &flow.producers {
                 let record = EventRecord::disconnected(name);
-                let _ = self.producers.publish(producer, record, &[]);
+                warn_on_error(
+                    self.producers.publish(producer, record, &[]),
+                    "failed to publish an event for a producer's app",
+                );
             }
         }
         self.reconnect(now);
@@ -446,13 +479,19 @@ impl Worker {
     /// Installs every flow whose connection was lost again, and lets it send again. A flow the
     /// server refuses stays disconnected until the next try.
     fn reconnect(&mut self, now: Instant) {
-        for flow in self.flows.values_mut().filter(|flow| !flow.connected) {
+        for (name, flow) in self.flows.iter_mut().filter(|(_, flow)| !flow.connected) {
             // After lost events the server still has the flow, so it is removed first. If the
             // server restarted, it has nothing to remove.
             let _ = self.server.remove_flow(flow.session);
-            let Ok(session) = self.server.install(flow.install.clone()) else {
-                continue;
+            let session = match self.server.install(flow.install.clone()) {
+                Ok(session) => session,
+                Err(e) => {
+                    // Tried again at every check, so not worth a warning each time.
+                    debug!(flow = name.as_str(), error = %e, "failed to install flow again");
+                    continue;
+                }
             };
+            info!(flow = name.as_str(), session, "installed flow again");
             flow.session = session;
             flow.connected = true;
             flow.router.reconnect(&flow.crossing_ids(), now);
@@ -474,12 +513,15 @@ impl Worker {
                         // An input the server did not get times out on its crossing, which frees
                         // the crossing and, later, the input's token. Producers set no payload
                         // type yet.
-                        let _ = self.server.send(
-                            flow.session,
-                            offer,
-                            input_id,
-                            PayloadType::new(),
-                            &input,
+                        warn_on_error(
+                            self.server.send(
+                                flow.session,
+                                offer,
+                                input_id,
+                                PayloadType::new(),
+                                &input,
+                            ),
+                            "failed to send an input to the local server",
                         );
                     }
                     RouterAction::Skipped {
@@ -489,12 +531,18 @@ impl Worker {
                     } => {
                         for &engine in &flow.crossings[&edge] {
                             let record = EventRecord::skipped(offer, input_id, engine, name);
-                            let _ = self.producers.publish(&input_id.producer, record, &[]);
+                            warn_on_error(
+                                self.producers.publish(&input_id.producer, record, &[]),
+                                "failed to publish an event for a producer's app",
+                            );
                         }
                         // The engines' subscribers learn it from the server. A notice that does
                         // not arrive only leaves them waiting.
                         if flow.connected {
-                            let _ = self.server.send_skipped(flow.session, offer, input_id);
+                            warn_on_error(
+                                self.server.send_skipped(flow.session, offer, input_id),
+                                "failed to send a skip notice to the local server",
+                            );
                         }
                     }
                     RouterAction::TimedOut {
@@ -504,11 +552,21 @@ impl Worker {
                     } => {
                         for &engine in &flow.crossings[&edge] {
                             let record = EventRecord::timed_out(offer, input_id, engine, name);
-                            let _ = self.producers.publish(&input_id.producer, record, &[]);
+                            warn_on_error(
+                                self.producers.publish(&input_id.producer, record, &[]),
+                                "failed to publish an event for a producer's app",
+                            );
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/// Logs the error of `result`, a failure the thread carries on after, as a warning about `what`.
+fn warn_on_error(result: Result<()>, what: &str) {
+    if let Err(e) = result {
+        warn!(error = %e, "{what}");
     }
 }

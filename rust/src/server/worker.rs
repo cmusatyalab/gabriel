@@ -5,12 +5,16 @@
 //! The thread sleeps until an engine reports an outcome or a client sends an input, so either is
 //! handled right away. It also wakes every [`COMMAND_POLL_INTERVAL`] for commands, control calls
 //! and deadlines, and checks every [`ENGINE_CHECK_INTERVAL`] whether an engine's process stopped.
+//!
+//! Failures the thread carries on after are logged as warnings, with [`tracing`].
 
 use std::{
     sync::mpsc::{self, TryRecvError},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
+
+use tracing::{error, info_span, warn};
 
 use crate::{
     Error, Result,
@@ -45,6 +49,8 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
     let thread = thread::Builder::new()
         .name(format!("gabriel-server-{name}"))
         .spawn(move || {
+            // Every event the thread logs names the server.
+            let _span = info_span!("server", name = %name).entered();
             // Created inside the thread: iceoryx2 ports cannot be moved between threads.
             let opened = Dispatcher::new(&name).and_then(|dispatcher| {
                 let clients = LocalClients::open(dispatcher.node(), &name)?;
@@ -60,7 +66,11 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
                     return Ok(());
                 }
             };
-            run(dispatcher, clients, &command_rx)
+            let stopped = run(dispatcher, clients, &command_rx);
+            if let Err(e) = &stopped {
+                error!(error = %e, "server thread stopped");
+            }
+            stopped
         })
         .map_err(|e| Error::Internal(format!("failed to spawn server thread: {e}")))?;
     match started_rx.recv() {
@@ -99,15 +109,25 @@ fn run(
         let now = Instant::now();
         // An error here concerns one call, one input or one engine. A failed call was answered
         // with the error, and an input's offer has already ended for the client, or times out
-        // there. So the server carries on.
-        let _ = clients.answer_calls(&mut dispatcher);
-        let _ = clients.take_inputs(&mut dispatcher, now);
-        let _ = dispatcher.poll(now);
+        // there. So the server logs it and carries on. Each step returns its first error only.
+        if let Err(e) = clients.answer_calls(&mut dispatcher) {
+            warn!(error = %e, "failed to answer a control call");
+        }
+        if let Err(e) = clients.take_inputs(&mut dispatcher, now) {
+            warn!(error = %e, "failed to take a client's input");
+        }
+        if let Err(e) = dispatcher.poll(now) {
+            warn!(error = %e, "failed to handle an engine's outcome");
+        }
         if now >= next_engine_check {
-            let _ = dispatcher.check_engines(now);
+            if let Err(e) = dispatcher.check_engines(now) {
+                warn!(error = %e, "failed to check the engines");
+            }
             next_engine_check = now + ENGINE_CHECK_INTERVAL;
         }
-        let _ = clients.send_events(&mut dispatcher);
+        if let Err(e) = clients.send_events(&mut dispatcher) {
+            warn!(error = %e, "failed to send a client its events");
+        }
     }
 }
 

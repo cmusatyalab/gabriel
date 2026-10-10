@@ -9,6 +9,7 @@ use iceoryx2::port::{
     subscriber::Subscriber,
 };
 use iceoryx2::prelude::*;
+use tracing::{debug, info};
 
 use crate::{
     Error, Result,
@@ -159,13 +160,16 @@ impl LocalClients {
                     let stream = EventStream::open(dispatcher.node(), &client)?;
                     self.streams.insert(client.clone(), stream);
                 }
+                let flow = spec.flow.clone();
                 let installed = dispatcher.install(spec);
                 match installed {
                     Ok(session) => {
+                        info!(client, flow, session, "installed flow");
                         self.owners.insert(session, client);
                         Ok(Reply::Installed { session })
                     }
                     Err(e) => {
+                        debug!(client, flow, error = %e, "refused to install flow");
                         self.close_unused_stream(&client);
                         Err(e)
                     }
@@ -178,6 +182,7 @@ impl LocalClients {
                     )));
                 }
                 dispatcher.remove_flow(session)?;
+                info!(client, session, "removed flow");
                 self.owners.remove(&session);
                 self.close_unused_stream(&client);
                 Ok(Reply::Removed)
