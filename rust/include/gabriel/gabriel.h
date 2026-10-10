@@ -151,6 +151,15 @@ typedef struct {
   const char *payload_type;
   const uint8_t *result;
   size_t result_len;
+  /**
+   * When the event happened, in nanoseconds on the machine's `CLOCK_MONOTONIC`.
+   */
+  uint64_t at_ns;
+  /**
+   * When the server made the engine's offer, on the same clock; 0 if the client made the
+   * offer, or for `DISCONNECTED`.
+   */
+  uint64_t offered_at_ns;
 } gabriel_event_t;
 
 #ifdef __cplusplus
@@ -189,12 +198,17 @@ gabriel_status_t gabriel_producer_destroy(gabriel_producer_t *producer);
 gabriel_status_t gabriel_producer_new_input(gabriel_producer_t *p, uint8_t **buf);
 
 /**
+ * Publishes the first `len` bytes of the input on `flow`. If `seq` is not null, it gets the
+ * input's sequence number, which the events about the input carry.
+ *
  * # Safety
- * `p` must be a live handle; `flow` must be NUL-terminated.
+ * `p` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid for
+ * writes.
  */
 gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *p,
                                                 size_t len,
-                                                const char *flow);
+                                                const char *flow,
+                                                uint64_t *seq);
 
 /**
  * # Safety

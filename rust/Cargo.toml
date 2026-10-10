@@ -20,6 +20,7 @@ toml = "1.1.8"
 humantime-serde = "1.1.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "std", "ansi"] }
+rustix = { version = "1.1.5", features = ["time"] }
 
 [build-dependencies]
 cbindgen = "0.29"

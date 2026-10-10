@@ -8,6 +8,7 @@ use iceoryx2_bb_container::{
 
 use crate::{
     Error, Result,
+    clock::Timestamp,
     envelope::MAX_FLOW_NAME,
     routing::ids::{InputId, OfferId},
 };
@@ -154,6 +155,11 @@ pub(crate) struct EventRecord {
     pub(crate) children: StaticVec<OfferId, MAX_CHILDREN>,
     /// How to read the result bytes. Empty when there are none.
     pub(crate) payload_type: PayloadType,
+    /// When the event happened, on the clock of the machine whose client or server made it.
+    pub(crate) at: Timestamp,
+    /// When the offer that ended was made, if its maker knows: set by servers, for the events of
+    /// their engines' offers.
+    pub(crate) offered_at: RelocatableOption<Timestamp>,
 }
 
 impl EventRecord {
@@ -163,6 +169,13 @@ impl EventRecord {
         self
     }
 
+    /// This record, for an offer made at `at`.
+    pub(crate) fn offered_at(mut self, at: Timestamp) -> Self {
+        self.offered_at = RelocatableOption::Some(at);
+        self
+    }
+
+    /// A record of an event that happens now.
     fn new(
         kind: EventKind,
         offer: RelocatableOption<OfferId>,
@@ -176,6 +189,7 @@ impl EventRecord {
             id,
             engine,
             flow,
+            at: Timestamp::now(),
             ..Self::default()
         }
     }

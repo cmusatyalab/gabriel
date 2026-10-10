@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use crate::Producer;
+use crate::{InputId, Producer};
 
 /// Long enough for a published input to arrive, short enough to keep tests fast.
 pub(crate) const TIMEOUT: Duration = Duration::from_millis(200);
@@ -18,11 +18,11 @@ pub(crate) fn unique(prefix: &str) -> String {
     format!("{prefix}-{}", Uuid::new_v4())
 }
 
-/// Publishes an input of `INPUT_LEN` bytes, all set to `value`.
-pub(crate) fn publish(producer: &mut Producer, value: u8) {
+/// Publishes an input of `INPUT_LEN` bytes, all set to `value`, and returns its id.
+pub(crate) fn publish(producer: &mut Producer, value: u8) -> InputId {
     let buf = producer.new_input().unwrap();
     for byte in &mut buf[..INPUT_LEN] {
         byte.write(value);
     }
-    producer.publish_input(INPUT_LEN, FLOW).unwrap();
+    producer.publish_input(INPUT_LEN, FLOW).unwrap()
 }

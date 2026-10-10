@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Result,
+    clock::Timestamp,
     ipc::types::{EngineName, EventRecord, FlowName, Forward, MAX_CHILDREN, OutcomeRecord},
     routing::{
         edge::{EdgeAction, EdgeState},
@@ -88,6 +89,8 @@ pub(crate) enum ServerAction<T> {
 struct Kept<T> {
     id: InputId,
     data: T,
+    /// When the server made the offer, for the events that end it.
+    offered_at: Timestamp,
 }
 
 /// An edge this server owns.
@@ -332,10 +335,13 @@ impl<T: Clone> ServerRouter<T> {
         };
 
         let mut children = Vec::with_capacity(targets.len());
+        // The crossing is accepted, and its offers made, at the same moment.
+        let accepted_at = Timestamp::now();
         for target in targets {
             let kept = Kept {
                 id,
                 data: data.clone(),
+                offered_at: accepted_at,
             };
             let child = offer_on(flow, &mut self.engines, session, target, kept, now);
             children.push((flow.nodes[&flow.edges[&target].to], child));
@@ -344,16 +350,18 @@ impl<T: Clone> ServerRouter<T> {
         // The client learns about every child at once; each engine's subscribers only about
         // their own.
         let all: Vec<OfferId> = children.iter().map(|(_, child)| *child).collect();
-        let record = EventRecord::accepted(offer, id, EngineName::new(), flow.name, &all)
+        let mut record = EventRecord::accepted(offer, id, EngineName::new(), flow.name, &all)
             .expect("install bounds the targets of a crossing");
+        record.at = accepted_at;
         self.actions.push_back(ServerAction::ToClient {
             session,
             record,
             result: None,
         });
         for (engine, child) in children {
-            let record = EventRecord::accepted(offer, id, engine, flow.name, &[child])
+            let mut record = EventRecord::accepted(offer, id, engine, flow.name, &[child])
                 .expect("one child is within the maximum");
+            record.at = accepted_at;
             self.actions.push_back(ServerAction::ToSubscribers {
                 record,
                 result: None,
@@ -436,6 +444,9 @@ impl<T: Clone> ServerRouter<T> {
                 .expect("a delivered offer's edge exists while its flow does");
             let node = edge.to;
             let kept = edge.state.end(offer, now);
+            let offered_at = kept.as_ref().map(|kept| kept.offered_at);
+            // The result and the offers it makes happen at the same moment.
+            let ended_at = Timestamp::now();
 
             let mut children = Vec::new();
             if let Some(kept) = kept {
@@ -450,6 +461,7 @@ impl<T: Clone> ServerRouter<T> {
                         let kept = Kept {
                             id: outcome.id,
                             data: data.clone(),
+                            offered_at: ended_at,
                         };
                         children.push(offer_on(
                             flow,
@@ -463,7 +475,7 @@ impl<T: Clone> ServerRouter<T> {
                 }
             }
 
-            let record = EventRecord::result(
+            let mut record = EventRecord::result(
                 offer,
                 outcome.id,
                 engine,
@@ -473,6 +485,10 @@ impl<T: Clone> ServerRouter<T> {
                 outcome.payload_type,
             )
             .expect("install bounds the outgoing edges of an engine");
+            record.at = ended_at;
+            if let Some(offered_at) = offered_at {
+                record = record.offered_at(offered_at);
+            }
             publish(&mut self.actions, offer.session, record, result);
         }
         self.settle(now);
@@ -595,7 +611,8 @@ impl<T: Clone> ServerRouter<T> {
                 while let Some(action) = edge.state.poll_action() {
                     match action {
                         EdgeAction::Send { offer, input } => {
-                            let record = EventRecord::sent(offer, input.id, engine, flow.name);
+                            let record = EventRecord::sent(offer, input.id, engine, flow.name)
+                                .offered_at(input.offered_at);
                             publish(&mut self.actions, session, record, None);
                             self.actions.push_back(ServerAction::Deliver {
                                 engine,
@@ -605,11 +622,13 @@ impl<T: Clone> ServerRouter<T> {
                             });
                         }
                         EdgeAction::Skipped { offer, input } => {
-                            let record = EventRecord::skipped(offer, input.id, engine, flow.name);
+                            let record = EventRecord::skipped(offer, input.id, engine, flow.name)
+                                .offered_at(input.offered_at);
                             publish(&mut self.actions, session, record, None);
                         }
                         EdgeAction::TimedOut { offer, input } => {
-                            let record = EventRecord::timed_out(offer, input.id, engine, flow.name);
+                            let record = EventRecord::timed_out(offer, input.id, engine, flow.name)
+                                .offered_at(input.offered_at);
                             publish(&mut self.actions, session, record, None);
                         }
                     }

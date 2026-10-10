@@ -154,15 +154,25 @@ pub unsafe extern "C" fn gabriel_producer_new_input(p: *mut Producer, buf: *mut 
     Status::from(result)
 }
 
+/// Publishes the first `len` bytes of the input on `flow`. If `seq` is not null, it gets the
+/// input's sequence number, which the events about the input carry.
+///
 /// # Safety
-/// `p` must be a live handle; `flow` must be NUL-terminated.
+/// `p` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid for
+/// writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_producer_publish_input(
     p: *mut Producer,
     len: usize,
     flow: *const c_char,
+    seq: *mut u64,
 ) -> Status {
-    Status::from(unsafe { (|| handle_arg(p)?.publish_input(len, str_arg(flow)?))() })
+    let result = unsafe { (|| handle_arg(p)?.publish_input(len, str_arg(flow)?))() };
+    Status::from(result.map(|id| {
+        if !seq.is_null() {
+            unsafe { seq.write(id.seq()) };
+        }
+    }))
 }
 
 // --- Client ---
@@ -515,6 +525,11 @@ pub struct EventView {
     payload_type: *const c_char,
     result: *const u8,
     result_len: usize,
+    /// When the event happened, in nanoseconds on the machine's `CLOCK_MONOTONIC`.
+    at_ns: u64,
+    /// When the server made the engine's offer, on the same clock; 0 if the client made the
+    /// offer, or for `DISCONNECTED`.
+    offered_at_ns: u64,
 }
 
 impl EventView {
@@ -534,6 +549,8 @@ impl EventView {
                 payload_type: c"".as_ptr(),
                 result: ptr::null(),
                 result_len: 0,
+                at_ns: 0,
+                offered_at_ns: 0,
             },
             Event::Published(published) => {
                 let record = published.record;
@@ -551,6 +568,8 @@ impl EventView {
                     payload_type: record.payload_type.as_c_str(),
                     result: published.result().as_ptr(),
                     result_len: published.result().len(),
+                    at_ns: published.at().as_nanos(),
+                    offered_at_ns: published.offered_at().map_or(0, |at| at.as_nanos()),
                 }
             }
         }

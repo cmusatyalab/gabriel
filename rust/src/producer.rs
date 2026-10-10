@@ -1,6 +1,7 @@
 //! Producer: publishes inputs into shared memory for engines to consume.
 
 use crate::envelope::{Envelope, MAX_FLOW_NAME};
+use crate::routing::ids::{InputId, ProducerName};
 use crate::{Error, Result, services};
 use iceoryx2::port::notifier::Notifier;
 use iceoryx2::port::publisher::Publisher;
@@ -14,6 +15,7 @@ use uuid::Uuid;
 /// Publishes inputs. An input is written in place into a loaned shared memory buffer
 /// ([`Producer::new_input`]) and then sent ([`Producer::publish_input`]).
 pub struct Producer {
+    name: ProducerName,
     /// Chosen randomly when the producer starts, so input ids never repeat across restarts.
     session: u64,
     /// Sequence number of the next input.
@@ -28,6 +30,8 @@ pub struct Producer {
 impl Producer {
     /// Creates the producer `name` whose inputs are at most `max_input_size` bytes.
     pub fn new(name: &str, max_input_size: usize) -> Result<Self> {
+        let producer = ProducerName::try_from(name)
+            .map_err(|_| Error::InvalidArgument(format!("producer name {name:?} is too long")))?;
         let node_name = NodeName::new(name).map_err(|e| Error::InvalidArgument(e.to_string()))?;
         let node = NodeBuilder::new()
             .name(&node_name)
@@ -48,6 +52,7 @@ impl Producer {
 
         let (session, _) = Uuid::new_v4().as_u64_pair();
         Ok(Self {
+            name: producer,
             session,
             next_seq: 1,
             max_input_size,
@@ -68,8 +73,9 @@ impl Producer {
         Ok(self.pending.insert(sample).payload_mut())
     }
 
-    /// Publishes the first `len` bytes of the loaned buffer on `flow`.
-    pub fn publish_input(&mut self, len: usize, flow: &str) -> Result<()> {
+    /// Publishes the first `len` bytes of the loaned buffer on `flow`, and returns the input's id,
+    /// which the events about the input carry.
+    pub fn publish_input(&mut self, len: usize, flow: &str) -> Result<InputId> {
         if len > self.max_input_size {
             return Err(Error::SizeExceeded {
                 size: len,
@@ -82,9 +88,14 @@ impl Producer {
         let mut sample = self.pending.take().ok_or_else(|| {
             Error::InvalidArgument(String::from("no pending input; call new_input first"))
         })?;
-        *sample.user_header_mut() = Envelope {
+        let id = InputId {
+            producer: self.name,
             session: self.session,
             seq: self.next_seq,
+        };
+        *sample.user_header_mut() = Envelope {
+            session: id.session,
+            seq: id.seq,
             len: len as u64,
             flow,
         };
@@ -101,7 +112,7 @@ impl Producer {
             .notify()
             .map_err(|e| Error::Internal(format!("failed to notify: {e}")))?;
 
-        Ok(())
+        Ok(id)
     }
 }
 

@@ -106,9 +106,9 @@ mod tests {
     };
 
     use crate::{
-        Client, Engine, Error, EventKind, Producer, Server, Subscription,
+        Client, Engine, Error, EventKind, Producer, Server, Subscription, Timestamp,
         spec::{EdgeSpec, EngineSpec, FlowSpec, Location, ProducerSpec},
-        subscription::Event,
+        subscription::{Event, Published},
         test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, publish, unique},
     };
 
@@ -194,19 +194,16 @@ mod tests {
     /// its result.
     type Seen = (EventKind, u64, String, Vec<u8>);
 
-    /// Returns the next event, if one arrives within `timeout`. Fails on lost events.
-    fn try_next_event(subscription: &mut Subscription, timeout: Duration) -> Option<Seen> {
+    /// Reads the next event with `read`, if one arrives within `timeout`. Fails on lost events.
+    fn try_next<T>(
+        subscription: &mut Subscription,
+        timeout: Duration,
+        read: impl Fn(&Published<'_>) -> T,
+    ) -> Option<T> {
         let deadline = Instant::now() + timeout;
         loop {
             match subscription.poll() {
-                Ok(Event::Published(event)) => {
-                    return Some((
-                        event.kind(),
-                        event.id().seq(),
-                        event.engine().to_owned(),
-                        event.result().to_vec(),
-                    ));
-                }
+                Ok(Event::Published(event)) => return Some(read(&event)),
                 Ok(Event::Lost { count }) => panic!("{count} events were lost"),
                 Err(Error::Again) => {}
                 Err(e) => panic!("{e}"),
@@ -219,8 +216,28 @@ mod tests {
         }
     }
 
+    /// Returns the next event, if one arrives within `timeout`. Fails on lost events.
+    fn try_next_event(subscription: &mut Subscription, timeout: Duration) -> Option<Seen> {
+        try_next(subscription, timeout, |event| {
+            (
+                event.kind(),
+                event.id().seq(),
+                event.engine().to_owned(),
+                event.result().to_vec(),
+            )
+        })
+    }
+
     fn next_event(subscription: &mut Subscription) -> Seen {
         try_next_event(subscription, WAIT).expect("no event arrived")
+    }
+
+    /// Returns the next event's kind, when it happened, and when its offer was made.
+    fn next_stamps(subscription: &mut Subscription) -> (EventKind, Timestamp, Option<Timestamp>) {
+        try_next(subscription, WAIT, |event| {
+            (event.kind(), event.at(), event.offered_at())
+        })
+        .expect("no event arrived")
     }
 
     /// Waits for the engine's next input, and returns its first byte.
@@ -314,6 +331,47 @@ mod tests {
         assert!(filter.wait(QUIET).is_err());
         detector.stop(&[]).unwrap();
         assert_eq!(next_input(&mut filter), 2);
+    }
+
+    #[test]
+    fn events_tell_when_each_stage_happened() {
+        let mut fixture = Fixture::new();
+        let mut subscription = fixture.subscribe();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let mut filter = fixture.engine(&filter_name);
+        let mut detector = fixture.engine(&detector_name);
+        let spec = fixture.chain(ONE_TOKEN, &[&filter_name, &detector_name]);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        let published_at = Timestamp::now();
+        publish(&mut fixture.producer, 1);
+        next_input(&mut filter);
+        filter.pass(&[]).unwrap();
+        next_input(&mut detector);
+        detector.stop(&[]).unwrap();
+
+        let stamps: Vec<_> = (0..4).map(|_| next_stamps(&mut subscription)).collect();
+        let kinds: Vec<_> = stamps.iter().map(|(kind, ..)| *kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                EventKind::Sent,
+                EventKind::Result,
+                EventKind::Sent,
+                EventKind::Result
+            ]
+        );
+        // Each offer is made before it is sent, and sent before its result.
+        let times: Vec<_> = stamps
+            .iter()
+            .map(|(_, at, offered_at)| (offered_at.expect("the server made the offer"), *at))
+            .collect();
+        assert!(published_at <= times[0].0);
+        assert!(times[0].0 <= times[0].1 && times[0].1 <= times[1].1);
+        // The filter's result made the detector's offer.
+        assert_eq!(times[2].0, times[3].0);
+        assert!(times[1].1 <= times[2].0 && times[2].0 <= times[2].1);
+        assert!(times[2].1 <= times[3].1);
     }
 
     #[test]

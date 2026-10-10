@@ -2,6 +2,9 @@
 //! producer's app ("Event services and subscriptions" in the design note). Every event is
 //! delivered, in order; a subscriber that falls too far behind loses the oldest, and learns how
 //! many as [`Event::Lost`].
+//!
+//! Each event says when it happened, and for an engine's offer, when the offer was made. With the
+//! time the app published the input, these tell how long the input waited, and where.
 
 use std::time::Duration;
 
@@ -11,7 +14,7 @@ use iceoryx2::sample::Sample;
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{
-    Error, InputId, Result,
+    Error, InputId, Result, Timestamp,
     ipc::types::{EventGaps, EventKind, EventRecord, Forward},
     services::{self, EventPayload},
 };
@@ -84,6 +87,18 @@ impl Published<'_> {
     /// The engine's result. Empty if it reported none.
     pub fn result(&self) -> &[u8] {
         self.result
+    }
+
+    /// When the event happened, on the clock of the machine whose client or server made it.
+    pub fn at(&self) -> Timestamp {
+        self.record.at
+    }
+
+    /// When the server made the offer the event is about, i.e. when the input reached it or the
+    /// engine before passed it on. `None` if the client made the offer, as for a skipped or timed
+    /// out crossing, and for [`EventKind::Disconnected`].
+    pub fn offered_at(&self) -> Option<Timestamp> {
+        self.record.offered_at.as_option_ref().copied()
     }
 }
 
@@ -271,6 +286,7 @@ mod tests {
         assert_eq!(event.engine(), "detector");
         assert_eq!(event.flow(), "tracking");
         assert_eq!(event.result(), RESULT);
+        assert!(event.at() > Timestamp::default());
     }
 
     #[test]

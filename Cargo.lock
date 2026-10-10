@@ -333,6 +333,7 @@ dependencies = [
  "iceoryx2-bb-container",
  "petgraph",
  "postcard",
+ "rustix",
  "serde",
  "thiserror",
  "toml 1.1.8+spec-1.1.0",
