@@ -52,6 +52,20 @@ pub(crate) struct InputHeader {
     pub(crate) payload_type: PayloadType,
 }
 
+/// Metadata of an input a client sends on a crossing: the user header of a server's input service.
+/// The payload is the input's bytes.
+#[derive(Debug, Clone, Default, ZeroCopySend)]
+#[repr(C)]
+pub(crate) struct CrossingHeader {
+    /// The session the server gave the flow when the client installed it.
+    pub(crate) flow: u64,
+    /// The client's offer. Its edge is the crossing; the server knows the crossing's targets.
+    pub(crate) offer: OfferId,
+    pub(crate) id: InputId,
+    /// How to read the payload.
+    pub(crate) payload_type: PayloadType,
+}
+
 /// What happened to an offer or an input.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
 #[repr(C)]

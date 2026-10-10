@@ -1,12 +1,15 @@
 //! iceoryx2 services that connect Gabriel's local components. Every side of a service opens it
 //! through here, so they always agree on its types.
 
+use std::{thread, time::Duration};
+
+use iceoryx2::port::listener::Listener;
 use iceoryx2::port::{BackpressureAction, BackpressureInfo};
 use iceoryx2::prelude::*;
-use iceoryx2::service::port_factory::{event, publish_subscribe};
+use iceoryx2::service::port_factory::{event, publish_subscribe, request_response};
 
 use crate::envelope::Envelope;
-use crate::ipc::types::{EventRecord, InputHeader, OutcomeRecord};
+use crate::ipc::types::{CrossingHeader, EventRecord, InputHeader, OutcomeRecord};
 use crate::{Error, Result, naming};
 
 /// Payload of a producer's input service.
@@ -28,6 +31,34 @@ pub(crate) const ENGINE_INPUT_BUFFER_SIZE: usize = 4;
 /// is a short idle gap after each outcome, while the server delivers the next input.
 pub(crate) const ENGINE_DELIVERY_LIMIT: usize = 1;
 const _: () = assert!(ENGINE_DELIVERY_LIMIT <= ENGINE_INPUT_BUFFER_SIZE);
+
+/// The capacity of each crossing from a client to its local server: the delivery limit plus 2. It
+/// is the smallest that keeps the server's pending slots updating while every target of the
+/// crossing is busy ("Freshness" in the design note).
+pub(crate) const LOCAL_CROSSING_CAPACITY: usize = ENGINE_DELIVERY_LIMIT + 2;
+
+/// Local clients one server serves at once: the publishers of its input service, and the clients
+/// of its control service.
+const MAX_LOCAL_CLIENTS: usize = 16;
+
+/// Payload of a server's input service: the input's bytes, which its payload type explains.
+pub(crate) type CrossingPayload = [u8];
+
+/// Inputs from its clients that a server's input service holds until the server reads them. The
+/// server reads them all each time a client wakes it, so they only pile up while it is busy with
+/// something else. A full buffer fails the client's send, and the input's offer times out.
+const SERVER_INPUT_BUFFER_SIZE: usize = 64;
+
+/// Payload of a control call and of its reply: a postcard message ([`crate::wire`]).
+pub(crate) type ControlPayload = [u8];
+
+/// Payload of a client's event stream: the event's result bytes, if it has any.
+pub(crate) type ClientEventPayload = [u8];
+
+/// Events a client's stream holds until the client reads them. Past this the oldest are dropped,
+/// and the client sees a gap in their sequence numbers. It is large because every event matters to
+/// the client's token accounting.
+const CLIENT_EVENT_BUFFER_SIZE: usize = 1024;
 
 /// Payload of an engine's event service: the event's result bytes, if it has any.
 pub(crate) type EventPayload = [u8];
@@ -173,6 +204,112 @@ pub(crate) fn open_engine_events(
         .enable_safe_overflow(true)
         .open_or_create()
         .map_err(|e| Error::Internal(format!("failed to open events of engine {name:?}: {e}")))
+}
+
+/// Opens (or creates) the control service of the server `name`. Each request is a postcard
+/// [`Request`](crate::wire::Request), and each reply a postcard
+/// [`Response`](crate::wire::Response).
+pub(crate) fn open_server_control(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<request_response::PortFactory<ipc::Service, ControlPayload, (), ControlPayload, ()>> {
+    node.service_builder(&naming::server_control_service(name)?)
+        .request_response::<ControlPayload, ControlPayload>()
+        .max_servers(1)
+        .max_clients(MAX_LOCAL_CLIENTS)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open control of server {name:?}: {e}")))
+}
+
+/// Opens (or creates) the service local clients send the server `name` their inputs on. Each
+/// sample is one input sent on a crossing. An input is never dropped, because its offer would then
+/// never end before its deadline.
+pub(crate) fn open_server_input(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<publish_subscribe::PortFactory<ipc::Service, CrossingPayload, CrossingHeader>> {
+    node.service_builder(&naming::server_input_service(name)?)
+        .publish_subscribe::<CrossingPayload>()
+        .user_header::<CrossingHeader>()
+        .max_publishers(MAX_LOCAL_CLIENTS)
+        .max_subscribers(1)
+        .subscriber_max_buffer_size(SERVER_INPUT_BUFFER_SIZE)
+        .enable_safe_overflow(false)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open input of server {name:?}: {e}")))
+}
+
+/// Opens (or creates) the event local clients signal after sending the server `name` an input.
+pub(crate) fn open_server_input_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    let service = naming::server_input_ready_service(name)?;
+    node.service_builder(&service)
+        .event()
+        .max_notifiers(MAX_LOCAL_CLIENTS)
+        .max_listeners(1)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
+}
+
+/// Opens (or creates) the stream of events the local server sends the client `name`: every event
+/// about the client's flows, in order, numbered from 1. The client's token accounting reads it.
+pub(crate) fn open_client_events(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<publish_subscribe::PortFactory<ipc::Service, ClientEventPayload, EventRecord>> {
+    node.service_builder(&naming::client_events_service(name)?)
+        .publish_subscribe::<ClientEventPayload>()
+        .user_header::<EventRecord>()
+        .max_publishers(1)
+        .max_subscribers(1)
+        .subscriber_max_buffer_size(CLIENT_EVENT_BUFFER_SIZE)
+        .enable_safe_overflow(true)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open events of client {name:?}: {e}")))
+}
+
+/// Opens (or creates) the event the local server signals after sending the client `name` events.
+pub(crate) fn open_client_events_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    let service = naming::client_events_ready_service(name)?;
+    node.service_builder(&service)
+        .event()
+        .max_notifiers(1)
+        .max_listeners(1)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
+}
+
+/// Waits until one of `listeners` has a notification, or `timeout` passes. Leaves the
+/// notifications to be read by the listeners' owners, who also read what they announce.
+pub(crate) fn wait_for_any<'a>(
+    listeners: impl IntoIterator<Item = &'a Listener<ipc::Service>>,
+    timeout: Duration,
+) -> Result<()> {
+    // Gabriel is a library: leave SIGINT/SIGTERM handling to the host application.
+    let waitset = WaitSetBuilder::new()
+        .signal_handling_mode(SignalHandlingMode::Disabled)
+        .create::<ipc::Service>()
+        .map_err(|e| Error::Internal(format!("failed to create waitset: {e}")))?;
+    // Each guard keeps its listener attached for as long as it lives.
+    let guards = listeners
+        .into_iter()
+        .map(|listener| waitset.attach_notification(listener))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| Error::Internal(format!("failed to attach a listener: {e}")))?;
+    if guards.is_empty() {
+        // Nothing can wake the caller early.
+        thread::sleep(timeout);
+        return Ok(());
+    }
+    waitset
+        .wait_and_process_once_with_timeout(|_| CallbackProgression::Stop, timeout)
+        .map_err(|e| Error::Internal(format!("failed to wait: {e}")))?;
+    Ok(())
 }
 
 #[cfg(test)]

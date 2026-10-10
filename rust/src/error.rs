@@ -1,7 +1,8 @@
 //! Error type shared by the Rust API.
 
-/// Errors returned by Gabriel operations.
-#[derive(Debug, thiserror::Error)]
+/// Errors returned by Gabriel operations. A server sends them back to its clients, so they can be
+/// serialized.
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum Error {
     /// A caller-supplied argument was invalid (null pointer, bad UTF-8, bad address, ...).
     #[error("invalid argument: {0}")]

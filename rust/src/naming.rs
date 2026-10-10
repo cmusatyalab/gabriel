@@ -14,8 +14,10 @@ const SEPARATOR: char = '/';
 const PRODUCER: &str = "producer";
 /// Segment for engine services and nodes.
 const ENGINE: &str = "engine";
-/// Segment for server nodes.
+/// Segment for server services and nodes.
 const SERVER: &str = "server";
+/// Segment for client services and nodes.
+const CLIENT: &str = "client";
 /// Service carrying a component's inputs.
 const INPUT: &str = "input";
 /// Service carrying a component's events.
@@ -28,6 +30,10 @@ const READY: &str = "ready";
 const INPUT_READY: &str = "input-ready";
 /// Event signalled when an engine has reported an outcome to its server.
 const OUTCOME_READY: &str = "outcome-ready";
+/// Service carrying a server's control calls.
+const CONTROL: &str = "control";
+/// Event signalled when a server has published events for a client.
+const EVENTS_READY: &str = "events-ready";
 
 /// Service name of the producer `name`'s input.
 pub fn producer_input_service(name: &str) -> Result<ServiceName> {
@@ -80,6 +86,36 @@ pub fn engine_of_node(node: &str) -> Option<&str> {
 /// Node name of the server `name`.
 pub fn server_node(name: &str) -> Result<NodeName> {
     node(SERVER, name)
+}
+
+/// Service name of the server `name`'s control calls, such as installing a flow.
+pub fn server_control_service(name: &str) -> Result<ServiceName> {
+    service(SERVER, name, CONTROL)
+}
+
+/// Service name of the inputs local clients send to the server `name`.
+pub fn server_input_service(name: &str) -> Result<ServiceName> {
+    service(SERVER, name, INPUT)
+}
+
+/// Service name of the event a local client signals after sending the server `name` an input.
+pub fn server_input_ready_service(name: &str) -> Result<ServiceName> {
+    service(SERVER, name, INPUT_READY)
+}
+
+/// Service name of the events the local server sends the client `name`, about its flows.
+pub fn client_events_service(name: &str) -> Result<ServiceName> {
+    service(CLIENT, name, EVENTS)
+}
+
+/// Service name of the event the local server signals after sending the client `name` events.
+pub fn client_events_ready_service(name: &str) -> Result<ServiceName> {
+    service(CLIENT, name, EVENTS_READY)
+}
+
+/// Node name of the client `name`.
+pub fn client_node(name: &str) -> Result<NodeName> {
+    node(CLIENT, name)
 }
 
 fn service(kind: &str, name: &str, suffix: &str) -> Result<ServiceName> {
@@ -168,6 +204,35 @@ mod tests {
         assert_eq!(engine_of_node(node.as_str()), Some("yolo"));
         assert_eq!(engine_of_node(server_node("yolo").unwrap().as_str()), None);
         assert_eq!(engine_of_node("yolo"), None);
+    }
+
+    #[test]
+    fn server_names() {
+        assert_eq!(
+            server_control_service("edge").unwrap().as_str(),
+            "gabriel/server/edge/control"
+        );
+        assert_eq!(
+            server_input_service("edge").unwrap().as_str(),
+            "gabriel/server/edge/input"
+        );
+        assert_eq!(
+            server_input_ready_service("edge").unwrap().as_str(),
+            "gabriel/server/edge/input-ready"
+        );
+    }
+
+    #[test]
+    fn client_names() {
+        assert_eq!(
+            client_events_service("app").unwrap().as_str(),
+            "gabriel/client/app/events"
+        );
+        assert_eq!(
+            client_events_ready_service("app").unwrap().as_str(),
+            "gabriel/client/app/events-ready"
+        );
+        assert_eq!(client_node("app").unwrap().as_str(), "gabriel/client/app");
     }
 
     #[test]

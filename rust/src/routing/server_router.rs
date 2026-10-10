@@ -14,6 +14,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     Error, Result,
     ipc::types::{EngineName, EventRecord, FlowName, Forward, MAX_CHILDREN, OutcomeRecord},
@@ -25,7 +27,7 @@ use crate::{
 
 /// An edge whose offers this server makes: between two of its engines, or from a crossing to one
 /// of its engines. It has no capacity of its own: the engine at its end pulls its inputs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct EdgeSpec {
     pub(crate) id: EdgeId,
     /// The node that feeds the edge. For a crossing's target, it is on the client's side.
@@ -38,15 +40,15 @@ pub(crate) struct EdgeSpec {
 
 /// A client's edge that arrives at this server. The client sends each input on it once; the
 /// server offers it on one edge per target engine.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct CrossingSpec {
     /// The client's edge. Inputs sent on it carry an offer on this edge.
     pub(crate) id: EdgeId,
     pub(crate) targets: Vec<EdgeSpec>,
 }
 
-/// This server's part of a flow.
-#[derive(Debug, Clone)]
+/// This server's part of a flow. A client sends it to the server, encoded with postcard.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct InstallFlow {
     pub(crate) flow: String,
     /// This server's engines in the flow, by registered name.

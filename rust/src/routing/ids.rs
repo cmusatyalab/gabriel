@@ -1,8 +1,11 @@
 use iceoryx2::prelude::ZeroCopySend;
 use iceoryx2_bb_container::string::StaticString;
+use serde::{Deserialize, Serialize};
 
 /// Identifies an input edge within a flow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend, Serialize, Deserialize,
+)]
 #[repr(C)]
 pub(crate) struct EdgeId(pub(crate) u32);
 
@@ -31,5 +34,5 @@ pub(crate) struct OfferId {
 }
 
 /// Identifies a node within a flow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) struct NodeId(pub(crate) u32);

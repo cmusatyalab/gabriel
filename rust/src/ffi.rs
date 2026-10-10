@@ -196,6 +196,9 @@ pub unsafe extern "C" fn gabriel_client_remove_producer(
     Status::from(unsafe { (|| handle_arg(client)?.remove_producer(str_arg(name)?))() })
 }
 
+/// Returns `GABRIEL_STATUS_T_ERR_INVALID` for now, because the text format of `spec` is not
+/// decided yet. From Rust, flows can already be added with a `FlowSpec`.
+///
 /// # Safety
 /// String arguments must be NUL-terminated; `client` must be a live handle.
 #[unsafe(no_mangle)]
@@ -204,7 +207,14 @@ pub unsafe extern "C" fn gabriel_client_add_flow(
     spec: *const c_char,
     client: *mut Client,
 ) -> Status {
-    Status::from(unsafe { (|| handle_arg(client)?.add_flow(str_arg(name)?, str_arg(spec)?))() })
+    Status::from(unsafe {
+        (|| {
+            let (_client, _name, _spec) = (handle_arg(client)?, str_arg(name)?, str_arg(spec)?);
+            Err(Error::InvalidArgument(String::from(
+                "flow specs cannot be read from C yet: their text format is not decided",
+            )))
+        })()
+    })
 }
 
 /// # Safety
