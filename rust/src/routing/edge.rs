@@ -33,6 +33,9 @@ pub(crate) struct EdgeState<T> {
     /// The most offers in flight. `None` if the owner decides when the pending offer is sent,
     /// with [`EdgeState::pull`].
     capacity: Option<usize>,
+    /// Set while the engine's server cannot be reached: the edge then sends nothing, and keeps
+    /// only its newest offer pending.
+    suspended: bool,
     timeout: Duration,
     in_flight: HashMap<OfferId, Sent<T>>,
     pending: Option<(OfferId, T)>,
@@ -59,6 +62,7 @@ impl<T: Clone> EdgeState<T> {
             session,
             next_seq: 1,
             capacity,
+            suspended: false,
             timeout,
             in_flight: HashMap::new(),
             pending: None,
@@ -66,10 +70,24 @@ impl<T: Clone> EdgeState<T> {
         }
     }
 
-    /// Whether an offer made now would be sent right away. Never for a pulled edge.
+    /// Whether an offer made now would be sent right away. Never for a pulled or suspended edge.
     pub(crate) fn has_spare_capacity(&self) -> bool {
-        self.capacity
-            .is_some_and(|capacity| self.in_flight.len() < capacity)
+        !self.suspended
+            && self
+                .capacity
+                .is_some_and(|capacity| self.in_flight.len() < capacity)
+    }
+
+    /// Stops sending, e.g. while the engine's server cannot be reached. Offers in flight stay in
+    /// flight until their owner ends them.
+    pub(crate) fn suspend(&mut self) {
+        self.suspended = true;
+    }
+
+    /// Sends again, starting with the pending offer if there is room.
+    pub(crate) fn resume(&mut self, now: Instant) {
+        self.suspended = false;
+        self.send_pending(now);
     }
 
     /// Whether an offer is waiting to be sent.
@@ -431,6 +449,30 @@ mod tests {
             }]
         );
         assert!(!edge.has_pending());
+    }
+
+    #[test]
+    fn suspended_edge_sends_nothing_until_resumed() {
+        let now = Instant::now();
+        let mut edge = EdgeState::new(EDGE, SESSION, 1, TIMEOUT);
+        edge.suspend();
+
+        edge.offer(FRAME, now);
+        let second = edge.offer(SECOND_FRAME, now);
+        assert!(!edge.has_spare_capacity());
+        assert!(matches!(
+            actions(&mut edge)[..],
+            [EdgeAction::Skipped { input: FRAME, .. }]
+        ));
+
+        edge.resume(now);
+        assert_eq!(
+            actions(&mut edge),
+            vec![EdgeAction::Send {
+                offer: second,
+                input: SECOND_FRAME
+            }]
+        );
     }
 
     #[test]

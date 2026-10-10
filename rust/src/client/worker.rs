@@ -4,8 +4,14 @@
 //!
 //! The thread sleeps until a producer publishes or the local server sends events, and also wakes
 //! every [`COMMAND_POLL_INTERVAL`] for commands and deadlines. Each time, it applies the server's
-//! events first, which can return tokens, then admits the producers' newest inputs, and sends
-//! what its routers decided.
+//! events first, which can return tokens, then admits the producers' newest inputs, and carries
+//! out what its routers decided. Every event about a producer's inputs is also published for the
+//! producer's app.
+//!
+//! The connection to the local server is lost when the server's process stops, which the thread
+//! checks every [`SERVER_CHECK_INTERVAL`], or when the server's stream of events loses some. Then
+//! every offer on the server ends with `Disconnected`, and the thread installs its flows again as
+//! soon as it can.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -26,15 +32,16 @@ use crate::{
     Error, Result,
     client::{
         compile::compile,
-        local_server::LocalServer,
-        receiver::{InputReceiver, ReceivedInput},
+        local_server::{LocalServer, ServerEvent},
+        producers::{Producers, ReceivedInput},
     },
     ipc::types::{EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
     naming,
     routing::{
         flow::{FlowRouter, RouterAction},
-        ids::{NodeId, ProducerName},
-        tokens::OfferEnd,
+        ids::{EdgeId, NodeId, ProducerName},
+        server_router::InstallFlow,
+        tokens::{OfferEnd, Verdict},
     },
     services::{self, LOCAL_CROSSING_CAPACITY},
     spec::FlowSpec,
@@ -43,6 +50,10 @@ use crate::{
 /// How long the thread waits for inputs and events before it checks for commands and deadlines
 /// again. Bounds how late a command is handled and an offer times out.
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// How often the thread checks whether the local server's process stopped. Until then, the offers
+/// on a stopped server stay open, and their tokens held, unless their deadlines pass first.
+const SERVER_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 pub(super) enum Command {
     AddProducer {
@@ -70,16 +81,30 @@ struct ClientFlow {
     router: FlowRouter<Arc<[u8]>>,
     /// The session the local server gave the flow.
     session: u64,
+    /// Whether the flow is installed on the local server. Not while the connection is lost.
+    connected: bool,
+    /// The local server's part, kept to install it again after a lost connection.
+    install: InstallFlow,
     /// The node of each engine, so an event names the node it is about.
     nodes: HashMap<EngineName, NodeId>,
+    /// The target engines of each crossing, so the client can report what happened to a
+    /// crossing's offer at each engine.
+    crossings: HashMap<EdgeId, Vec<EngineName>>,
     producers: HashSet<ProducerName>,
+}
+
+impl ClientFlow {
+    fn crossing_ids(&self) -> Vec<EdgeId> {
+        self.crossings.keys().copied().collect()
+    }
 }
 
 struct Worker {
     node: Node<ipc::Service>,
-    receiver: InputReceiver,
+    producers: Producers,
     server: LocalServer,
     flows: HashMap<FlowName, ClientFlow>,
+    next_server_check: Instant,
 }
 
 /// Starts the thread of the client `name`, which talks to the local server `local_server`, and
@@ -132,9 +157,10 @@ impl Worker {
         let server = LocalServer::open(&node, name, local_server)?;
         Ok(Self {
             node,
-            receiver: InputReceiver::default(),
+            producers: Producers::default(),
             server,
             flows: HashMap::new(),
+            next_server_check: Instant::now(),
         })
     }
 
@@ -154,25 +180,36 @@ impl Worker {
             }
 
             let listeners = self
-                .receiver
+                .producers
                 .listeners()
                 .chain(iter::once(self.server.events_ready()));
             services::wait_for_any(listeners, COMMAND_POLL_INTERVAL)?;
             let now = Instant::now();
             // Events can free tokens and crossings, so they go before new inputs. An event the
             // client cannot read leaves its offer open until the offer's deadline.
-            if let Ok(events) = self.server.take_events() {
-                for event in events {
-                    self.apply(&event, now);
+            if let Ok((events, lost)) = self.server.take_events() {
+                for event in &events {
+                    self.apply(event, now);
+                }
+                // The lost events may have ended offers, so the client can no longer tell which
+                // of the server's offers are open.
+                if lost > 0 {
+                    self.server_lost(now);
                 }
             }
-            for input in self.receiver.take_inputs() {
+            for input in self.producers.take_inputs() {
                 self.admit(input, now);
             }
             for flow in self.flows.values_mut() {
                 flow.router.expire(now);
             }
-            self.send_inputs();
+            if now >= self.next_server_check {
+                self.check_server(now);
+                self.next_server_check = now + SERVER_CHECK_INTERVAL;
+            }
+            self.carry_out();
+            // A subscriber that is not woken still finds the events at its next wait.
+            let _ = self.producers.wake_subscribers();
         }
     }
 
@@ -180,7 +217,7 @@ impl Worker {
         // A caller that stopped waiting for its reply needs none, so failed replies are ignored.
         match command {
             Command::AddProducer { name, reply } => {
-                let _ = reply.send(self.receiver.add_producer(&self.node, &name));
+                let _ = reply.send(self.producers.add_producer(&self.node, &name));
             }
             Command::RemoveProducer { name, reply } => {
                 let _ = reply.send(self.remove_producer(&name));
@@ -206,7 +243,7 @@ impl Worker {
                 "producer {name:?} is used by a flow"
             )));
         }
-        self.receiver.remove_producer(name)
+        self.producers.remove_producer(name)
     }
 
     /// Checks the flow `name`, installs the local server's part, and starts routing the client's
@@ -228,7 +265,7 @@ impl Worker {
         let mut router = FlowRouter::new(session);
         let mut producers = HashSet::new();
         for producer in &compiled.producers {
-            if !self.receiver.has_producer(&producer.name) {
+            if !self.producers.has_producer(&producer.name) {
                 return Err(Error::InvalidArgument(format!(
                     "producer {:?} is not added to the client",
                     producer.name
@@ -251,14 +288,36 @@ impl Worker {
             )?;
         }
 
+        let engines: HashMap<NodeId, EngineName> = compiled
+            .nodes
+            .iter()
+            .map(|(&engine, &node)| (node, engine))
+            .collect();
+        let crossings = compiled
+            .local
+            .crossings
+            .iter()
+            .map(|crossing| {
+                let targets = crossing
+                    .targets
+                    .iter()
+                    .map(|target| engines[&target.to])
+                    .collect();
+                (crossing.id, targets)
+            })
+            .collect();
+
         // Last, so a flow the client rejects is never installed.
-        let session = self.server.install(compiled.local)?;
+        let session = self.server.install(compiled.local.clone())?;
         self.flows.insert(
             flow,
             ClientFlow {
                 router,
                 session,
+                connected: true,
+                install: compiled.local,
                 nodes: compiled.nodes,
+                crossings,
                 producers,
             },
         );
@@ -271,6 +330,12 @@ impl Worker {
             .ok()
             .and_then(|flow| self.flows.remove(&flow))
             .ok_or_else(|| Error::InvalidArgument(format!("flow {name:?} does not exist")))?;
+        if !flow.connected {
+            // After lost events the server may still have the flow; if the server is gone,
+            // there is nothing to remove.
+            let _ = self.server.remove_flow(flow.session);
+            return Ok(());
+        }
         self.server.remove_flow(flow.session)
     }
 
@@ -282,37 +347,56 @@ impl Worker {
         }
     }
 
-    /// Applies an event from the server to its flow's router.
-    fn apply(&mut self, event: &EventRecord, now: Instant) {
-        let Some(flow) = self.flows.get_mut(&event.flow) else {
+    /// Applies an event from the server to its flow's router, and publishes it for the app of the
+    /// input's producer, unless it is a duplicate. `Accepted` is not published: the app learns
+    /// about each engine's offer from the events that follow.
+    fn apply(&mut self, event: &ServerEvent, now: Instant) {
+        let record = &event.record;
+        let Some(flow) = self.flows.get_mut(&record.flow) else {
             // The flow was removed since.
             return;
         };
-        let Some(&offer) = event.offer.as_option_ref() else {
+        let Some(&offer) = record.offer.as_option_ref() else {
             // A derived result answers no offer.
             return;
         };
-        let children = || event.children.as_slice().to_vec();
-        let end = match event.kind {
+        let children = || record.children.as_slice().to_vec();
+        let end = match record.kind {
             EventKind::Accepted => OfferEnd::Accepted {
                 children: children(),
             },
             EventKind::Result => {
-                let Some(&node) = flow.nodes.get(&event.engine) else {
+                let Some(&node) = flow.nodes.get(&record.engine) else {
                     return;
                 };
                 OfferEnd::Result {
                     node,
-                    forwarded: event.forward != Forward::Stop,
+                    forwarded: record.forward != Forward::Stop,
                     children: children(),
                 }
             }
             EventKind::Skipped => OfferEnd::Skipped,
             EventKind::TimedOut => OfferEnd::TimedOut,
-            // Sending ends no offer, and a derived result answers none.
-            EventKind::Sent | EventKind::Derived => return,
+            // Sending ends no offer, but the app learns that a result may come.
+            EventKind::Sent => {
+                self.publish(record.clone(), &event.result);
+                return;
+            }
+            // The client reports these itself, and the server answers no offer with them.
+            EventKind::Disconnected | EventKind::Derived => return,
         };
-        flow.router.end_offer(&event.id, offer, end, now);
+        let published = record.kind != EventKind::Accepted;
+        let verdict = flow.router.end_offer(&record.id, offer, end, now);
+        if published && verdict != Verdict::Dropped {
+            self.publish(record.clone(), &event.result);
+        }
+    }
+
+    /// Publishes `record` for the app of its input's producer. An event the app misses only
+    /// leaves it waiting, so a failure is ignored.
+    fn publish(&mut self, record: EventRecord, result: &[u8]) {
+        let producer = record.id.producer;
+        let _ = self.producers.publish(&producer, record, result);
     }
 
     /// Hands a producer's newest input to the flow it was published on.
@@ -328,22 +412,102 @@ impl Worker {
         }
     }
 
-    /// Sends the inputs the routers decided to send. Every client edge is a crossing to the local
-    /// server for now.
-    fn send_inputs(&mut self) {
-        for flow in self.flows.values_mut() {
-            while let Some(RouterAction::Send {
-                offer,
-                input_id,
-                input,
-                ..
-            }) = flow.router.poll_action()
-            {
-                // An input the server did not get times out on its crossing, which frees the
-                // crossing and, later, the input's token. Producers set no payload type yet.
-                let _ = self
-                    .server
-                    .send(flow.session, offer, input_id, PayloadType::new(), &input);
+    /// Checks whether the local server's process stopped. If it did, or if it is gone while flows
+    /// are installed on it, the connection is lost. Otherwise, flows whose connection was lost
+    /// are installed again.
+    fn check_server(&mut self, now: Instant) {
+        let Ok(stopped) = self.server.check(&self.node) else {
+            return;
+        };
+        let installed = self.flows.values().any(|flow| flow.connected);
+        if stopped || (installed && !self.server.is_running()) {
+            self.server_lost(now);
+        } else {
+            self.reconnect(now);
+        }
+    }
+
+    /// The connection to the local server was lost. Every offer of every flow on the server ends
+    /// with `Disconnected`, and each flow's producers' apps are told once. Then the flows are
+    /// installed again, if the server can be reached.
+    fn server_lost(&mut self, now: Instant) {
+        for (&name, flow) in self.flows.iter_mut().filter(|(_, flow)| flow.connected) {
+            flow.connected = false;
+            flow.router
+                .disconnect(flow.session, &flow.crossing_ids(), now);
+            for producer in &flow.producers {
+                let record = EventRecord::disconnected(name);
+                let _ = self.producers.publish(producer, record, &[]);
+            }
+        }
+        self.reconnect(now);
+    }
+
+    /// Installs every flow whose connection was lost again, and lets it send again. A flow the
+    /// server refuses stays disconnected until the next try.
+    fn reconnect(&mut self, now: Instant) {
+        for flow in self.flows.values_mut().filter(|flow| !flow.connected) {
+            // After lost events the server still has the flow, so it is removed first. If the
+            // server restarted, it has nothing to remove.
+            let _ = self.server.remove_flow(flow.session);
+            let Ok(session) = self.server.install(flow.install.clone()) else {
+                continue;
+            };
+            flow.session = session;
+            flow.connected = true;
+            flow.router.reconnect(&flow.crossing_ids(), now);
+        }
+    }
+
+    /// Carries out what the routers decided: sends inputs on their crossings, and reports offers
+    /// that ended on the client. Every client edge is a crossing to the local server for now.
+    fn carry_out(&mut self) {
+        for (&name, flow) in &mut self.flows {
+            while let Some(action) = flow.router.poll_action() {
+                match action {
+                    RouterAction::Send {
+                        offer,
+                        input_id,
+                        input,
+                        ..
+                    } => {
+                        // An input the server did not get times out on its crossing, which frees
+                        // the crossing and, later, the input's token. Producers set no payload
+                        // type yet.
+                        let _ = self.server.send(
+                            flow.session,
+                            offer,
+                            input_id,
+                            PayloadType::new(),
+                            &input,
+                        );
+                    }
+                    RouterAction::Skipped {
+                        edge,
+                        offer,
+                        input_id,
+                    } => {
+                        for &engine in &flow.crossings[&edge] {
+                            let record = EventRecord::skipped(offer, input_id, engine, name);
+                            let _ = self.producers.publish(&input_id.producer, record, &[]);
+                        }
+                        // The engines' subscribers learn it from the server. A notice that does
+                        // not arrive only leaves them waiting.
+                        if flow.connected {
+                            let _ = self.server.send_skipped(flow.session, offer, input_id);
+                        }
+                    }
+                    RouterAction::TimedOut {
+                        edge,
+                        offer,
+                        input_id,
+                    } => {
+                        for &engine in &flow.crossings[&edge] {
+                            let record = EventRecord::timed_out(offer, input_id, engine, name);
+                            let _ = self.producers.publish(&input_id.producer, record, &[]);
+                        }
+                    }
+                }
             }
         }
     }

@@ -34,6 +34,10 @@ const OUTCOME_READY: &str = "outcome-ready";
 const CONTROL: &str = "control";
 /// Event signalled when a server has published events for a client.
 const EVENTS_READY: &str = "events-ready";
+/// Service carrying the events about a producer's inputs, for the producer's app.
+const RESULT: &str = "result";
+/// Event signalled when a client has published events about a producer's inputs.
+const RESULT_READY: &str = "result-ready";
 
 /// Service name of the producer `name`'s input.
 pub fn producer_input_service(name: &str) -> Result<ServiceName> {
@@ -43,6 +47,16 @@ pub fn producer_input_service(name: &str) -> Result<ServiceName> {
 /// Service name of the producer `name`'s ready event.
 pub fn producer_ready_service(name: &str) -> Result<ServiceName> {
     service(PRODUCER, name, READY)
+}
+
+/// Service name of the events about the producer `name`'s inputs.
+pub fn producer_result_service(name: &str) -> Result<ServiceName> {
+    service(PRODUCER, name, RESULT)
+}
+
+/// Service name of the event signalled after events about the producer `name`'s inputs.
+pub fn producer_result_ready_service(name: &str) -> Result<ServiceName> {
+    service(PRODUCER, name, RESULT_READY)
 }
 
 /// Service name of the engine `name`'s input.
@@ -77,10 +91,7 @@ pub fn engine_node(name: &str) -> Result<NodeName> {
 
 /// The engine whose node is named `node`, if it is an engine's node.
 pub fn engine_of_node(node: &str) -> Option<&str> {
-    node.strip_prefix(ROOT)?
-        .strip_prefix(SEPARATOR)?
-        .strip_prefix(ENGINE)?
-        .strip_prefix(SEPARATOR)
+    name_of_node(ENGINE, node)
 }
 
 /// Node name of the server `name`.
@@ -113,6 +124,11 @@ pub fn client_events_ready_service(name: &str) -> Result<ServiceName> {
     service(CLIENT, name, EVENTS_READY)
 }
 
+/// The server whose node is named `node`, if it is a server's node.
+pub fn server_of_node(node: &str) -> Option<&str> {
+    name_of_node(SERVER, node)
+}
+
 /// Node name of the client `name`.
 pub fn client_node(name: &str) -> Result<NodeName> {
     node(CLIENT, name)
@@ -128,6 +144,14 @@ fn node(kind: &str, name: &str) -> Result<NodeName> {
     let node_name = prefix(kind, name)?;
     NodeName::new(&node_name)
         .map_err(|e| Error::InvalidArgument(format!("invalid node name {node_name:?}: {e}")))
+}
+
+/// The `<name>` of a node named `gabriel/<kind>/<name>`.
+fn name_of_node<'a>(kind: &str, node: &'a str) -> Option<&'a str> {
+    node.strip_prefix(ROOT)?
+        .strip_prefix(SEPARATOR)?
+        .strip_prefix(kind)?
+        .strip_prefix(SEPARATOR)
 }
 
 /// `gabriel/<kind>/<name>`, after checking `name`.
@@ -157,6 +181,18 @@ mod tests {
         assert_eq!(
             producer_ready_service("cam0").unwrap().as_str(),
             "gabriel/producer/cam0/ready"
+        );
+    }
+
+    #[test]
+    fn producer_result_names() {
+        assert_eq!(
+            producer_result_service("cam0").unwrap().as_str(),
+            "gabriel/producer/cam0/result"
+        );
+        assert_eq!(
+            producer_result_ready_service("cam0").unwrap().as_str(),
+            "gabriel/producer/cam0/result-ready"
         );
     }
 
@@ -204,6 +240,14 @@ mod tests {
         assert_eq!(engine_of_node(node.as_str()), Some("yolo"));
         assert_eq!(engine_of_node(server_node("yolo").unwrap().as_str()), None);
         assert_eq!(engine_of_node("yolo"), None);
+    }
+
+    #[test]
+    fn server_node_name_names_its_server() {
+        let node = server_node("edge").unwrap();
+
+        assert_eq!(server_of_node(node.as_str()), Some("edge"));
+        assert_eq!(server_of_node(engine_node("edge").unwrap().as_str()), None);
     }
 
     #[test]

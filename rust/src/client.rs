@@ -1,9 +1,10 @@
 //! Client: takes inputs from local producers, and routes them through the flows it added. Each
-//! flow's engines run on the local server; the remote server is not supported yet. Its work runs
-//! on its own thread.
+//! flow's engines run on the local server; the remote server is not supported yet. It publishes
+//! what happens to each producer's inputs for the producer's app, which reads it with a
+//! [`Subscription`](crate::Subscription). Its work runs on its own thread.
 mod compile;
 mod local_server;
-mod receiver;
+mod producers;
 mod worker;
 
 use std::{sync::mpsc, thread::JoinHandle};
@@ -94,11 +95,20 @@ impl Drop for Client {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{
+        collections::HashMap,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        thread,
+        time::{Duration, Instant},
+    };
 
     use crate::{
-        Client, Engine, Error, Producer, Server,
+        Client, Engine, Error, EventKind, Producer, Server, Subscription,
         spec::{EdgeSpec, EngineSpec, FlowSpec, Location, ProducerSpec},
+        subscription::Event,
         test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, publish, unique},
     };
 
@@ -114,6 +124,7 @@ mod tests {
     /// A local server, a client of it, and a producer the client takes inputs from.
     struct Fixture {
         server: Server,
+        server_name: String,
         client: Client,
         producer: Producer,
         producer_name: String,
@@ -130,10 +141,16 @@ mod tests {
             client.add_producer(&producer_name).unwrap();
             Self {
                 server,
+                server_name,
                 client,
                 producer,
                 producer_name,
             }
+        }
+
+        /// Subscribes to the events about the producer's inputs.
+        fn subscribe(&self) -> Subscription {
+            Subscription::producer(&self.producer_name).unwrap()
         }
 
         /// Starts the local engine `name`, and serves it.
@@ -171,6 +188,39 @@ mod tests {
                 edges,
             }
         }
+    }
+
+    /// An event as the tests compare it: its kind, its input's sequence number, its engine, and
+    /// its result.
+    type Seen = (EventKind, u64, String, Vec<u8>);
+
+    /// Returns the next event, if one arrives within `timeout`. Fails on lost events.
+    fn try_next_event(subscription: &mut Subscription, timeout: Duration) -> Option<Seen> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match subscription.poll() {
+                Ok(Event::Published(event)) => {
+                    return Some((
+                        event.kind(),
+                        event.id().seq(),
+                        event.engine().to_owned(),
+                        event.result().to_vec(),
+                    ));
+                }
+                Ok(Event::Lost { count }) => panic!("{count} events were lost"),
+                Err(Error::Again) => {}
+                Err(e) => panic!("{e}"),
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            let _ = subscription.wait(left);
+        }
+    }
+
+    fn next_event(subscription: &mut Subscription) -> Seen {
+        try_next_event(subscription, WAIT).expect("no event arrived")
     }
 
     /// Waits for the engine's next input, and returns its first byte.
@@ -296,6 +346,184 @@ mod tests {
         drop(client);
 
         server.remove_engine(&detector_name).unwrap();
+    }
+
+    #[test]
+    fn app_reads_what_happened_to_its_inputs() {
+        const RESULT: [u8; 2] = [4, 2];
+        let mut fixture = Fixture::new();
+        let mut subscription = fixture.subscribe();
+        let detector_name = unique("detector");
+        let mut detector = fixture.engine(&detector_name);
+        let spec = fixture.chain(ONE_TOKEN, &[&detector_name]);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 1);
+        assert_eq!(next_input(&mut detector), 1);
+        detector.stop(&RESULT).unwrap();
+
+        assert_eq!(
+            next_event(&mut subscription),
+            (EventKind::Sent, 1, detector_name.clone(), vec![])
+        );
+        assert_eq!(
+            next_event(&mut subscription),
+            (EventKind::Result, 1, detector_name, RESULT.to_vec())
+        );
+    }
+
+    #[test]
+    fn input_replaced_at_the_server_is_reported_skipped() {
+        const TOKENS: usize = 3;
+        let mut fixture = Fixture::new();
+        let mut subscription = fixture.subscribe();
+        let detector_name = unique("detector");
+        let mut detector = fixture.engine(&detector_name);
+        let spec = fixture.chain(TOKENS, &[&detector_name]);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+        publish(&mut fixture.producer, 1);
+        assert_eq!(next_input(&mut detector), 1);
+        assert_eq!(next_event(&mut subscription).0, EventKind::Sent);
+
+        // The detector is busy, so at the server each new input replaces the one waiting in the
+        // detector's pending slot. An input the client already replaced never enters the flow, so
+        // which input is skipped depends on timing.
+        let skipped = loop {
+            publish(&mut fixture.producer, 2);
+            if let Some(event) = try_next_event(&mut subscription, QUIET) {
+                break event;
+            }
+        };
+
+        assert_eq!(skipped.0, EventKind::Skipped);
+        assert!(skipped.1 > 1);
+        assert_eq!(skipped.2, detector_name);
+    }
+
+    /// Runs the engine `name` on its own thread until `stop` is set: it answers every input after
+    /// `work`, passing on every second one.
+    fn run_engine(name: String, work: Duration, stop: Arc<AtomicBool>) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            let mut engine = Engine::new(&name, None, MAX_OUTPUT_SIZE).unwrap();
+            while !stop.load(Ordering::Relaxed) {
+                if engine.wait(QUIET).is_err() {
+                    continue;
+                }
+                let Ok(input) = engine.poll_input() else {
+                    continue;
+                };
+                let passes = input.data[0] % 2 == 0;
+                thread::sleep(work);
+                if passes {
+                    engine.pass(&[]).unwrap();
+                } else {
+                    engine.stop(&[]).unwrap();
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn every_offer_the_app_hears_of_ends_exactly_once() {
+        const TOKENS: usize = 2;
+        const FRAMES: u8 = 200;
+        const FRAME_INTERVAL: Duration = Duration::from_millis(1);
+        const FILTER_WORK: Duration = Duration::from_millis(2);
+        const DETECTOR_WORK: Duration = Duration::from_millis(7);
+        let mut fixture = Fixture::new();
+        let mut subscription = fixture.subscribe();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        fixture.server.add_engine(&filter_name).unwrap();
+        fixture.server.add_engine(&detector_name).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let engines = [
+            run_engine(filter_name.clone(), FILTER_WORK, stop.clone()),
+            run_engine(detector_name.clone(), DETECTOR_WORK, stop.clone()),
+        ];
+        let spec = fixture.chain(TOKENS, &[&filter_name, &detector_name]);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        let mut events = Vec::new();
+        for frame in 0..FRAMES {
+            publish(&mut fixture.producer, frame);
+            while let Some(event) = try_next_event(&mut subscription, FRAME_INTERVAL) {
+                events.push(event);
+            }
+        }
+        while let Some(event) = try_next_event(&mut subscription, QUIET) {
+            events.push(event);
+        }
+        stop.store(true, Ordering::Relaxed);
+        for engine in engines {
+            engine.join().unwrap();
+        }
+
+        // Each input reaches each engine at most once in this flow, so an offer is known by its
+        // input and engine. Sent may come first; then exactly one event ends the offer.
+        let mut ends: HashMap<(u64, String), Vec<EventKind>> = HashMap::new();
+        for (kind, seq, engine, _) in events {
+            ends.entry((seq, engine)).or_default().push(kind);
+        }
+        assert!(ends.keys().any(|(_, engine)| *engine == detector_name));
+        for (offer, kinds) in &ends {
+            let ending = kinds.strip_prefix(&[EventKind::Sent]).unwrap_or(kinds);
+            assert!(
+                matches!(
+                    ending,
+                    [EventKind::Result | EventKind::Skipped | EventKind::TimedOut]
+                ),
+                "offer {offer:?} had events {kinds:?}"
+            );
+            if kinds[0] == EventKind::Sent {
+                assert_ne!(ending, [EventKind::Skipped], "offer {offer:?} was sent");
+            }
+        }
+    }
+
+    #[test]
+    fn restarted_server_disconnects_and_gets_the_flow_again() {
+        let mut fixture = Fixture::new();
+        let mut subscription = fixture.subscribe();
+        let detector_name = unique("detector");
+        let mut detector = fixture.engine(&detector_name);
+        let spec = fixture.chain(ONE_TOKEN, &[&detector_name]);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+        publish(&mut fixture.producer, 1);
+        assert_eq!(next_input(&mut detector), 1);
+        assert_eq!(next_event(&mut subscription).0, EventKind::Sent);
+
+        // The server stops while the detector holds input 1, and a new one starts.
+        let Fixture {
+            server,
+            server_name,
+            client: _client,
+            mut producer,
+            ..
+        } = fixture;
+        drop(server);
+        let mut server = Server::new(&server_name, None).unwrap();
+        server.add_engine(&detector_name).unwrap();
+
+        // Input 1's offer ends with the connection, so its token comes back.
+        let disconnected = next_event(&mut subscription);
+        assert_eq!(disconnected.0, EventKind::Disconnected);
+        // The answer reaches the new server, which never gave the detector this input.
+        detector.stop(&[]).unwrap();
+        // The flow is installed on the new server, so a new input reaches the detector.
+        let deadline = Instant::now() + WAIT;
+        let input = loop {
+            publish(&mut producer, 2);
+            if detector.wait(QUIET).is_ok()
+                && let Ok(input) = detector.poll_input()
+            {
+                break input.data[0];
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the flow was not installed again"
+            );
+        };
+        assert_eq!(input, 2);
     }
 
     #[test]

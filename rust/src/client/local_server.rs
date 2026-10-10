@@ -1,11 +1,14 @@
 //! The client's ends of its local server's services: control calls, inputs sent on crossings, and
-//! the stream of events about the client's flows.
+//! the stream of events about the client's flows. It also tells when the connection is lost: the
+//! server's process stopped, or the stream lost events.
 
 use std::{
     thread,
     time::{Duration, Instant},
 };
 
+use iceoryx2::identifiers::UniqueNodeId;
+use iceoryx2::node::NodeView;
 use iceoryx2::port::{
     client::Client as ControlClient, listener::Listener, notifier::Notifier, publisher::Publisher,
     subscriber::Subscriber,
@@ -14,7 +17,8 @@ use iceoryx2::prelude::*;
 
 use crate::{
     Error, Result,
-    ipc::types::{CrossingHeader, EventRecord, PayloadType},
+    ipc::types::{CrossingHeader, CrossingKind, EventGaps, EventRecord, PayloadType},
+    naming,
     routing::{
         ids::{InputId, OfferId},
         server_router::InstallFlow,
@@ -34,6 +38,13 @@ const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// The slice length the input publisher and the control client start with. They grow as needed.
 const INITIAL_SLICE_LEN: usize = 4096;
 
+/// An event from the server, with its result bytes, if any.
+#[derive(Debug)]
+pub(super) struct ServerEvent {
+    pub(super) record: EventRecord,
+    pub(super) result: Box<[u8]>,
+}
+
 pub(super) struct LocalServer {
     /// The client's name, which the server sends the flow's events to.
     client: String,
@@ -46,6 +57,10 @@ pub(super) struct LocalServer {
     events: Subscriber<ipc::Service, ClientEventPayload, EventRecord>,
     /// Wakes the client after the server sends events.
     events_ready: Listener<ipc::Service>,
+    /// Finds events the stream lost.
+    gaps: EventGaps,
+    /// The node of the server's running process, as of the last check.
+    instance: Option<UniqueNodeId>,
 }
 
 impl LocalServer {
@@ -84,6 +99,8 @@ impl LocalServer {
             input_ready,
             events,
             events_ready,
+            gaps: EventGaps::default(),
+            instance: None,
         })
     }
 
@@ -121,16 +138,36 @@ impl LocalServer {
         payload_type: PayloadType,
         data: &[u8],
     ) -> Result<()> {
-        let mut sample = self
-            .inputs
-            .loan_slice_uninit(data.len())
-            .map_err(|e| Error::Internal(format!("failed to loan input: {e}")))?;
-        *sample.user_header_mut() = CrossingHeader {
+        let header = CrossingHeader {
+            kind: CrossingKind::Input,
             flow,
             offer,
             id,
             payload_type,
         };
+        self.send_on_crossing(header, data)
+    }
+
+    /// Tells the server that the offer `offer` of the input `id`, on a crossing of the flow `flow`,
+    /// was skipped and will never be sent, so that the server can tell the subscribers of the
+    /// crossing's target engines.
+    pub(super) fn send_skipped(&self, flow: u64, offer: OfferId, id: InputId) -> Result<()> {
+        let header = CrossingHeader {
+            kind: CrossingKind::Skipped,
+            flow,
+            offer,
+            id,
+            payload_type: PayloadType::new(),
+        };
+        self.send_on_crossing(header, &[])
+    }
+
+    fn send_on_crossing(&self, header: CrossingHeader, data: &[u8]) -> Result<()> {
+        let mut sample = self
+            .inputs
+            .loan_slice_uninit(data.len())
+            .map_err(|e| Error::Internal(format!("failed to loan input: {e}")))?;
+        *sample.user_header_mut() = header;
         let receivers = sample
             .write_from_slice(data)
             .send()
@@ -149,22 +186,53 @@ impl LocalServer {
         &self.events_ready
     }
 
-    /// Returns the events the server sent since the last call, in order. Their result bytes are
-    /// not needed for token accounting, so they are left behind.
-    pub(super) fn take_events(&self) -> Result<Vec<EventRecord>> {
+    /// Returns the events the server sent since the last call, in order, and how many events the
+    /// stream lost, because the client fell too far behind.
+    pub(super) fn take_events(&mut self) -> Result<(Vec<ServerEvent>, u64)> {
         // Without this the waitset keeps reporting the same notifications.
         self.events_ready
             .try_wait(|_| {})
             .map_err(|e| Error::Internal(format!("failed to drain event wake-ups: {e}")))?;
         let mut events = Vec::new();
+        let mut lost = 0;
         while let Some(sample) = self
             .events
             .receive()
             .map_err(|e| Error::Internal(format!("failed to receive event: {e}")))?
         {
-            events.push(sample.user_header().clone());
+            let record = sample.user_header().clone();
+            lost += self.gaps.observe(record.seq);
+            events.push(ServerEvent {
+                record,
+                result: Box::from(sample.payload()),
+            });
         }
-        Ok(events)
+        Ok((events, lost))
+    }
+
+    /// Looks for the server's process, by its node, among those `node` can see. Returns whether the process seen at the last
+    /// check is gone: the server stopped, or stopped and started again.
+    pub(super) fn check(&mut self, node: &Node<ipc::Service>) -> Result<bool> {
+        let mut running = None;
+        Node::<ipc::Service>::list(node.config(), |state| {
+            if let NodeState::Alive(node) = state
+                && let Some(details) = node.details().as_ref()
+                && naming::server_of_node(details.name().as_str()) == Some(self.name.as_str())
+            {
+                running = Some(*node.id());
+                return CallbackProgression::Stop;
+            }
+            CallbackProgression::Continue
+        })
+        .map_err(|e| Error::Internal(format!("failed to list nodes: {e:?}")))?;
+        let lost = self.instance.is_some() && running != self.instance;
+        self.instance = running;
+        Ok(lost)
+    }
+
+    /// Whether the server's process was running at the last check.
+    pub(super) fn is_running(&self) -> bool {
+        self.instance.is_some()
     }
 
     /// Sends `call` to the server, and waits for its reply.

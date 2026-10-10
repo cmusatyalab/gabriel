@@ -232,6 +232,19 @@ impl Dispatcher {
         self.carry_out(now)
     }
 
+    /// A client skipped its offer `offer` of the input `id` on a crossing of the flow `session`.
+    /// The subscribers of the crossing's target engines are told.
+    pub(crate) fn crossing_skipped(
+        &mut self,
+        session: u64,
+        offer: OfferId,
+        id: InputId,
+        now: Instant,
+    ) -> Result<()> {
+        self.router.crossing_skipped(session, offer, id)?;
+        self.carry_out(now)
+    }
+
     /// The engine `name` stopped, e.g. its process died. Its delivered inputs end with
     /// `TimedOut` and its pending inputs with `Skipped`. It keeps being served, so it gets new
     /// inputs when it starts again.

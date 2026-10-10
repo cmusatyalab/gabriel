@@ -364,6 +364,36 @@ impl<T: Clone> ServerRouter<T> {
         Ok(())
     }
 
+    /// The client's offer `offer` of the input `id`, on a crossing of the flow `session`, was
+    /// replaced in the crossing's pending slot and will never arrive. The client already knows, so
+    /// only the subscribers of the crossing's target engines are told.
+    pub(crate) fn crossing_skipped(
+        &mut self,
+        session: u64,
+        offer: OfferId,
+        id: InputId,
+    ) -> Result<()> {
+        let Some(flow) = self.flows.get(&session) else {
+            return Err(Error::InvalidArgument(format!(
+                "flow {session} is not installed"
+            )));
+        };
+        let Some(targets) = flow.crossings.get(&offer.edge) else {
+            return Err(Error::InvalidArgument(format!(
+                "edge {:?} is not a crossing of flow {session}",
+                offer.edge
+            )));
+        };
+        for target in targets {
+            let engine = flow.nodes[&flow.edges[target].to];
+            self.actions.push_back(ServerAction::ToSubscribers {
+                record: EventRecord::skipped(offer, id, engine, flow.name),
+                result: None,
+            });
+        }
+        Ok(())
+    }
+
     /// The engine `engine` reported `outcome`. `output` is the new input of an `Emit`, and
     /// `result` the result bytes, if any.
     ///
@@ -904,6 +934,33 @@ mod tests {
         assert!(router.remove_engine(DETECTOR).is_err());
         router.remove_flow(session).unwrap();
         assert!(router.remove_engine(DETECTOR).is_ok());
+    }
+
+    #[test]
+    fn crossing_skipped_at_the_client_is_told_to_the_targets_subscribers_only() {
+        let (mut router, session) = installed(ONE);
+
+        router
+            .crossing_skipped(session, client_offer(CROSSING, 1), input_id(1))
+            .unwrap();
+
+        assert_eq!(
+            steps(&mut router),
+            vec![Step::Subscribers {
+                kind: EventKind::Skipped,
+                engine: String::from(DETECTOR),
+                children: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn crossing_skipped_on_an_unknown_edge_is_rejected() {
+        let (mut router, session) = installed(ONE);
+
+        let result = router.crossing_skipped(session, client_offer(TO_TRACKER, 1), input_id(1));
+
+        assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
 
     #[test]

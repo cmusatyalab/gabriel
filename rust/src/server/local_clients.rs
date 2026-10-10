@@ -12,7 +12,7 @@ use iceoryx2::prelude::*;
 
 use crate::{
     Error, Result,
-    ipc::types::{CrossingHeader, EventRecord},
+    ipc::types::{CrossingHeader, CrossingKind, EventRecord},
     server::dispatch::{ClientEvent, Dispatcher},
     services::{self, ClientEventPayload, ControlPayload, CrossingPayload},
     wire::{self, Call, PROTOCOL_VERSION, Reply, Request, Response},
@@ -192,9 +192,9 @@ impl LocalClients {
         }
     }
 
-    /// Passes every input the clients sent to the dispatcher. Returns the first error, after
-    /// passing the rest. A refused input, e.g. for a flow that was removed, times out on its
-    /// crossing at the client.
+    /// Passes every input the clients sent to the dispatcher, and every offer they skipped on a
+    /// crossing. Returns the first error, after passing the rest. A refused input, e.g. for a
+    /// flow that was removed, times out on its crossing at the client.
     pub(crate) fn take_inputs(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()> {
         // Consume the wake-ups, or the next wait returns at once for the same inputs.
         self.input_ready
@@ -212,15 +212,20 @@ impl LocalClients {
                 }
             };
             let header = sample.user_header();
-            let accepted = dispatcher.accept(
-                header.flow,
-                header.offer,
-                header.id,
-                header.payload_type,
-                sample.payload(),
-                now,
-            );
-            if let Err(e) = accepted {
+            let handled = match header.kind {
+                CrossingKind::Input => dispatcher.accept(
+                    header.flow,
+                    header.offer,
+                    header.id,
+                    header.payload_type,
+                    sample.payload(),
+                    now,
+                ),
+                CrossingKind::Skipped => {
+                    dispatcher.crossing_skipped(header.flow, header.offer, header.id, now)
+                }
+            };
+            if let Err(e) = handled {
                 first_error.get_or_insert(e);
             }
         }
@@ -260,10 +265,19 @@ impl LocalClients {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{routing::server_router::InstallFlow, test_util::unique};
+    use crate::{
+        Engine,
+        ipc::types::{EventKind, PayloadType},
+        routing::{
+            ids::{EdgeId, InputId, NodeId, OfferId, ProducerName},
+            server_router::{CrossingSpec, EdgeSpec, InstallFlow},
+        },
+        test_util::unique,
+    };
 
     /// A dispatcher with its local clients' services, and a raw control client.
     struct Fixture {
+        name: String,
         dispatcher: Dispatcher,
         clients: LocalClients,
         control:
@@ -282,6 +296,7 @@ mod tests {
                 .create()
                 .unwrap();
             Self {
+                name,
                 dispatcher,
                 clients,
                 control,
@@ -360,6 +375,73 @@ mod tests {
         let response = fixture.call(&wire::encode(&request).unwrap());
 
         assert!(matches!(response, Err(Error::InvalidArgument(_))));
+    }
+
+    #[test]
+    fn crossing_skipped_by_a_client_is_told_to_the_engines_subscribers() {
+        const MAX_OUTPUT_SIZE: usize = 16;
+        const CROSSING: EdgeId = EdgeId(1);
+        const DETECTOR: NodeId = NodeId(0);
+        let mut fixture = Fixture::new();
+        let detector = unique("detector");
+        let _engine = Engine::new(&detector, None, MAX_OUTPUT_SIZE).unwrap();
+        fixture.dispatcher.add_engine(&detector).unwrap();
+        let mut request = install(&unique("client"));
+        let Call::Install { spec, .. } = &mut request.call else {
+            unreachable!("install() makes an install call");
+        };
+        spec.engines = vec![(DETECTOR, detector.clone())];
+        spec.crossings = vec![CrossingSpec {
+            id: CROSSING,
+            targets: vec![EdgeSpec {
+                id: EdgeId(0),
+                from: NodeId(1),
+                to: DETECTOR,
+                timeout: std::time::Duration::from_secs(1),
+            }],
+        }];
+        let Ok(Reply::Installed { session }) = fixture.call(&wire::encode(&request).unwrap())
+        else {
+            panic!("install failed");
+        };
+        let node = fixture.dispatcher.node();
+        let subscriber = services::open_engine_events(node, &detector)
+            .unwrap()
+            .subscriber_builder()
+            .create()
+            .unwrap();
+        let inputs = services::open_server_input(node, &fixture.name)
+            .unwrap()
+            .publisher_builder()
+            .initial_max_slice_len(INITIAL_SLICE_LEN)
+            .create()
+            .unwrap();
+
+        let mut sample = inputs.loan_slice_uninit(0).unwrap();
+        *sample.user_header_mut() = CrossingHeader {
+            kind: CrossingKind::Skipped,
+            flow: session,
+            offer: OfferId {
+                session: 1,
+                edge: CROSSING,
+                seq: 1,
+            },
+            id: InputId {
+                producer: ProducerName::try_from("camera").unwrap(),
+                session: 1,
+                seq: 1,
+            },
+            payload_type: PayloadType::new(),
+        };
+        sample.write_from_slice(&[]).send().unwrap();
+        fixture
+            .clients
+            .take_inputs(&mut fixture.dispatcher, Instant::now())
+            .unwrap();
+
+        let event = subscriber.receive().unwrap().unwrap();
+        assert_eq!(event.user_header().kind, EventKind::Skipped);
+        assert!(subscriber.receive().unwrap().is_none());
     }
 
     #[test]

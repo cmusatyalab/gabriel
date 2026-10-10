@@ -47,6 +47,32 @@ typedef enum {
 } gabriel_status_t;
 
 /**
+ * What happened, as a subscription reports it: the kinds of published events, and `Lost`.
+ */
+typedef enum {
+  GABRIEL_EVENT_KIND_T_ACCEPTED,
+  GABRIEL_EVENT_KIND_T_SENT,
+  GABRIEL_EVENT_KIND_T_RESULT,
+  GABRIEL_EVENT_KIND_T_SKIPPED,
+  GABRIEL_EVENT_KIND_T_TIMED_OUT,
+  GABRIEL_EVENT_KIND_T_DISCONNECTED,
+  GABRIEL_EVENT_KIND_T_DERIVED,
+  /**
+   * Events were lost before the next one, because the subscriber fell behind.
+   */
+  GABRIEL_EVENT_KIND_T_LOST,
+} gabriel_event_kind_t;
+
+/**
+ * What an engine forwards along its outgoing input edges.
+ */
+typedef enum {
+  GABRIEL_FORWARD_T_STOP,
+  GABRIEL_FORWARD_T_PASS,
+  GABRIEL_FORWARD_T_EMIT,
+} gabriel_forward_t;
+
+/**
  * Bridges local producers to the servers that run a flow's engines.
  */
 typedef struct gabriel_client_t gabriel_client_t;
@@ -67,6 +93,11 @@ typedef struct gabriel_producer_t gabriel_producer_t;
  * Delivers the inputs of the flows installed on it to a dynamic set of engines.
  */
 typedef struct gabriel_server_t gabriel_server_t;
+
+/**
+ * Reads the events of one event service.
+ */
+typedef struct gabriel_subscription_t gabriel_subscription_t;
 
 /**
  * Identifies one input of a producer. `producer` stays valid until the engine reports its
@@ -90,6 +121,37 @@ typedef struct {
   const uint8_t *buf;
   size_t len;
 } gabriel_input_t;
+
+/**
+ * An event read from a subscription. Stays valid until the next poll. For `LOST`, only `lost`
+ * is set; for `DISCONNECTED`, only `flow`.
+ */
+typedef struct {
+  gabriel_event_kind_t kind;
+  /**
+   * For `LOST`: how many events were lost.
+   */
+  uint64_t lost;
+  gabriel_input_id_t id;
+  /**
+   * The engine the event is about; "" if none.
+   */
+  const char *engine;
+  /**
+   * The flow the event belongs to; "" if none.
+   */
+  const char *flow;
+  /**
+   * What the engine forwarded, for `RESULT`.
+   */
+  gabriel_forward_t forward;
+  /**
+   * How to read `result`; "" if there is no result.
+   */
+  const char *payload_type;
+  const uint8_t *result;
+  size_t result_len;
+} gabriel_event_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -274,6 +336,41 @@ gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
                                      size_t output_len,
                                      const uint8_t *result,
                                      size_t result_len);
+
+/**
+ * Subscribes to the events about the inputs of the producer `name`: what happened to each at
+ * each engine, and lost connections. Only events published from now on are read.
+ *
+ * # Safety
+ * `name` must be NUL-terminated; `subscription` must be valid for writes.
+ */
+gabriel_status_t gabriel_subscribe_producer(const char *name,
+                                            gabriel_subscription_t **subscription);
+
+/**
+ * # Safety
+ * `subscription` must be null or a live handle that is not used afterwards.
+ */
+gabriel_status_t gabriel_subscription_destroy(gabriel_subscription_t *subscription);
+
+/**
+ * Waits until an event is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch the
+ * event with `gabriel_subscription_poll`.
+ *
+ * # Safety
+ * `subscription` must be a live handle.
+ */
+gabriel_status_t gabriel_subscription_wait(gabriel_subscription_t *subscription,
+                                           uint32_t timeout_ms);
+
+/**
+ * Returns `ERR_AGAIN` if no event is available. The event stays valid until the next poll.
+ *
+ * # Safety
+ * `subscription` must be a live handle; `event` must be valid for writes.
+ */
+gabriel_status_t gabriel_subscription_poll(gabriel_subscription_t *subscription,
+                                           gabriel_event_t *event);
 
 #ifdef __cplusplus
 }  // extern "C"

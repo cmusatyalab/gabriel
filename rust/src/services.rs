@@ -63,8 +63,9 @@ const CLIENT_EVENT_BUFFER_SIZE: usize = 1024;
 /// Payload of an engine's event service: the event's result bytes, if it has any.
 pub(crate) type EventPayload = [u8];
 
-/// Publishers of an engine's event service: the server for its own engines, or the client for
-/// engines it relays from a remote server. Never both, so events have one order.
+/// Publishers of an event service. An engine's is published by the server for its own engines, or
+/// by the client for engines it relays from a remote server, never both, so events have one order.
+/// A producer's result service is published by the one client that takes its inputs.
 const EVENT_PUBLISHERS: usize = 1;
 /// Subscribers of an engine's event service: the server, the client, and the engines that
 /// subscribe to it.
@@ -195,7 +196,42 @@ pub(crate) fn open_engine_events(
     node: &Node<ipc::Service>,
     name: &str,
 ) -> Result<publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>> {
-    node.service_builder(&naming::engine_events_service(name)?)
+    open_events(node, &naming::engine_events_service(name)?)
+}
+
+/// Opens (or creates) the result service of the producer `name`: every event about its inputs, in
+/// order, for the producer's app. Its one publisher is the client that takes the producer's
+/// inputs. Like an engine's event service, it drops the oldest events for a subscriber that falls
+/// behind.
+pub(crate) fn open_producer_results(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>> {
+    open_events(node, &naming::producer_result_service(name)?)
+}
+
+/// Opens (or creates) the event the client signals after publishing events about the producer
+/// `name`'s inputs, so subscribers can wait for them.
+pub(crate) fn open_producer_results_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    let service = naming::producer_result_ready_service(name)?;
+    node.service_builder(&service)
+        .event()
+        .max_notifiers(EVENT_PUBLISHERS)
+        .max_listeners(EVENT_SUBSCRIBERS)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
+}
+
+/// Opens (or creates) an event service: one publisher, and subscribers that lose their oldest
+/// events when they fall behind.
+fn open_events(
+    node: &Node<ipc::Service>,
+    service: &ServiceName,
+) -> Result<publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>> {
+    node.service_builder(service)
         .publish_subscribe::<EventPayload>()
         .user_header::<EventRecord>()
         .max_publishers(EVENT_PUBLISHERS)
@@ -203,7 +239,7 @@ pub(crate) fn open_engine_events(
         .subscriber_max_buffer_size(EVENT_BUFFER_SIZE)
         .enable_safe_overflow(true)
         .open_or_create()
-        .map_err(|e| Error::Internal(format!("failed to open events of engine {name:?}: {e}")))
+        .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
 }
 
 /// Opens (or creates) the control service of the server `name`. Each request is a postcard

@@ -43,6 +43,20 @@ pub(crate) enum RouterAction<T> {
         input_id: InputId,
         input: T,
     },
+    /// Report that `offer`, of the input `input_id`, was replaced in the pending slot of `edge`
+    /// and never sent.
+    Skipped {
+        edge: EdgeId,
+        offer: OfferId,
+        input_id: InputId,
+    },
+    /// Report that `offer`, of the input `input_id`, was sent along `edge` but not answered
+    /// before its deadline.
+    TimedOut {
+        edge: EdgeId,
+        offer: OfferId,
+        input_id: InputId,
+    },
 }
 
 /// Client-side routing of one flow.
@@ -206,7 +220,9 @@ impl<T: Clone> FlowRouter<T> {
     }
 
     /// Turns the edges' queued actions into the router's: sends become actions for the client, and
-    /// skipped or timed-out offers end in their input's pool.
+    /// skipped or timed-out offers end in their input's pool, and are reported if that ended them.
+    /// A crossing that times out after `Accepted` has already ended in the pool, so its timeout
+    /// only frees the edge, and is not reported.
     fn drain_edge_actions(&mut self, now: Instant) {
         for (&edge_id, edge) in self.edges.iter_mut() {
             while let Some(action) = edge.state.poll_action() {
@@ -231,7 +247,14 @@ impl<T: Clone> FlowRouter<T> {
                             .producers
                             .get_mut(&id.producer)
                             .expect("producer was added");
-                        producer.pool.end_offer(&id, offer, OfferEnd::Skipped, now);
+                        let verdict = producer.pool.end_offer(&id, offer, OfferEnd::Skipped, now);
+                        if matches!(verdict, Verdict::Applied { .. }) {
+                            self.actions.push_back(RouterAction::Skipped {
+                                edge: edge_id,
+                                offer,
+                                input_id: id,
+                            });
+                        }
                     }
                     EdgeAction::TimedOut { offer, input: id } => {
                         // A crossing that times out after `Accepted` no longer holds capacity, so
@@ -242,7 +265,14 @@ impl<T: Clone> FlowRouter<T> {
                             .producers
                             .get_mut(&id.producer)
                             .expect("producer was added");
-                        producer.pool.end_offer(&id, offer, OfferEnd::TimedOut, now);
+                        let verdict = producer.pool.end_offer(&id, offer, OfferEnd::TimedOut, now);
+                        if matches!(verdict, Verdict::Applied { .. }) {
+                            self.actions.push_back(RouterAction::TimedOut {
+                                edge: edge_id,
+                                offer,
+                                input_id: id,
+                            });
+                        }
                     }
                 }
             }
@@ -351,6 +381,55 @@ impl<T: Clone> FlowRouter<T> {
         }
     }
 
+    /// The client lost its connection to a server: the one whose offers carry the session
+    /// `server_session`, and that the client's edges `crossings` lead to.
+    ///
+    /// The crossings stop sending until [`FlowRouter::reconnect`], and their pending offers are
+    /// skipped, so nothing old is sent once the server is back. Every offer on that server then ends
+    /// with `Disconnected`: the offers the server made, and the crossing offers sent to it, whose
+    /// events may have been lost with the connection. Inputs whose only paths lead to that server
+    /// are not admitted until then.
+    pub(crate) fn disconnect(&mut self, server_session: u64, crossings: &[EdgeId], now: Instant) {
+        for crossing in crossings {
+            if let Some(edge) = self.edges.get_mut(crossing) {
+                edge.state.suspend();
+                edge.state.skip_pending();
+            }
+        }
+        // The sends not carried out yet are for offers that end below.
+        self.actions.retain(
+            |action| !matches!(action, RouterAction::Send { edge, .. } if crossings.contains(edge)),
+        );
+        self.drain_edge_actions(now);
+
+        let session = self.session;
+        let on_server = |offer: &OfferId| {
+            offer.session == server_session
+                || (offer.session == session && crossings.contains(&offer.edge))
+        };
+        let lost: Vec<(InputId, OfferId)> = self
+            .producers
+            .values()
+            .flat_map(|producer| producer.pool.open_offers())
+            .filter(|(_, offer)| on_server(offer))
+            .collect();
+        for (id, offer) in lost {
+            self.end_offer(&id, offer, OfferEnd::Disconnected, now);
+        }
+    }
+
+    /// The client is connected to the server again: the crossings `crossings` send again, and
+    /// waiting inputs are admitted.
+    pub(crate) fn reconnect(&mut self, crossings: &[EdgeId], now: Instant) {
+        for crossing in crossings {
+            if let Some(edge) = self.edges.get_mut(crossing) {
+                edge.state.resume(now);
+            }
+        }
+        self.drain_edge_actions(now);
+        self.try_admit_all(now);
+    }
+
     /// Handles the passing of time: ends the offers whose edge deadline passed, returns the tokens
     /// of tickets past their deadline, and admits waiting inputs into the freed capacity. The
     /// client calls this periodically.
@@ -426,14 +505,15 @@ mod tests {
     /// are in no particular order.
     fn sends(router: &mut FlowRouter<u32>) -> Vec<(u32, u64, u32)> {
         let mut sends: Vec<_> = std::iter::from_fn(|| router.poll_action())
-            .map(
-                |RouterAction::Send {
-                     edge,
-                     input_id,
-                     input,
-                     ..
-                 }| (edge.0, input_id.seq, input),
-            )
+            .filter_map(|action| match action {
+                RouterAction::Send {
+                    edge,
+                    input_id,
+                    input,
+                    ..
+                } => Some((edge.0, input_id.seq, input)),
+                _ => None,
+            })
             .collect();
         sends.sort();
         sends
@@ -443,7 +523,10 @@ mod tests {
     /// into `end_offer`, as the client does when the engines answer.
     fn sent_offers(router: &mut FlowRouter<u32>) -> Vec<(EdgeId, OfferId)> {
         let mut offers: Vec<_> = std::iter::from_fn(|| router.poll_action())
-            .map(|RouterAction::Send { edge, offer, .. }| (edge, offer))
+            .filter_map(|action| match action {
+                RouterAction::Send { edge, offer, .. } => Some((edge, offer)),
+                _ => None,
+            })
             .collect();
         offers.sort_by_key(|(edge, _)| edge.0);
         offers
@@ -859,6 +942,147 @@ mod tests {
 
         assert_eq!(verdict, Verdict::Late);
         assert_eq!(sends(&mut router), vec![]);
+    }
+
+    /// Offers the router reported as `(edge, input seq)`: first the skipped, then the timed out.
+    type Reported = (Vec<(u32, u64)>, Vec<(u32, u64)>);
+
+    /// The skips and timeouts the router reported so far, sorted. Sends are dropped.
+    fn reported(router: &mut FlowRouter<u32>) -> Reported {
+        let (mut skipped, mut timed_out) = (Vec::new(), Vec::new());
+        for action in std::iter::from_fn(|| router.poll_action()) {
+            match action {
+                RouterAction::Skipped { edge, input_id, .. } => {
+                    skipped.push((edge.0, input_id.seq));
+                }
+                RouterAction::TimedOut { edge, input_id, .. } => {
+                    timed_out.push((edge.0, input_id.seq));
+                }
+                RouterAction::Send { .. } => {}
+            }
+        }
+        skipped.sort();
+        timed_out.sort();
+        (skipped, timed_out)
+    }
+
+    /// A router whose fast edge has finished input 1 and has input 2 in flight, while the slow
+    /// edge still has input 1, and input 2 waits in its pending slot.
+    fn slow_edge_with_a_pending_input(now: Instant) -> FlowRouter<u32> {
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE), (SLOW, SLOW_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, fast_offer), _] = sent_offers(&mut router)[..] else {
+            panic!("expected one send per edge");
+        };
+        router.input_ready(input_id(2), 20, now).unwrap();
+        router.end_offer(&input_id(1), fast_offer, stopped(FAST_ENGINE), now);
+        router
+    }
+
+    #[test]
+    fn skipped_and_timed_out_offers_are_reported() {
+        let now = Instant::now();
+        let mut router = slow_edge_with_a_pending_input(now);
+        let [(_, fast_offer)] = sent_offers(&mut router)[..] else {
+            panic!("expected input 2 on the fast edge");
+        };
+
+        // The fast edge finishes input 2, so input 3 is admitted and replaces input 2 at the
+        // slow edge.
+        router.input_ready(input_id(3), 30, now).unwrap();
+        router.end_offer(&input_id(2), fast_offer, stopped(FAST_ENGINE), now);
+        assert_eq!(reported(&mut router), (vec![(SLOW.0, 2)], vec![]));
+
+        router.expire(now + TIMEOUT);
+
+        assert_eq!(
+            reported(&mut router),
+            (vec![], vec![(FAST.0, 3), (SLOW.0, 1)])
+        );
+    }
+
+    #[test]
+    fn crossing_timeout_after_accepted_is_not_reported() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+        router.end_offer(&input_id(1), crossing, accepted(1), now);
+
+        router.expire(now + TIMEOUT);
+
+        assert_eq!(reported(&mut router), (vec![], vec![]));
+    }
+
+    #[test]
+    fn disconnect_ends_the_crossing_and_admits_nothing_until_reconnect() {
+        let now = Instant::now();
+        let mut router = router(ONE, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+
+        router.disconnect(SERVER_SESSION, &[FAST], now);
+
+        // The token came back, but the crossing cannot send, so input 2 waits.
+        assert!(router.producers[&producer()].pool.has_tokens());
+        router.input_ready(input_id(2), 20, now).unwrap();
+        router.input_ready(input_id(3), 30, now).unwrap();
+        assert_eq!(sends(&mut router), vec![]);
+        // A result from before the disconnection is late.
+        let late = router.end_offer(&input_id(1), crossing, stopped(FAST_ENGINE), now);
+        assert_eq!(late, Verdict::Late);
+
+        router.reconnect(&[FAST], now);
+        assert_eq!(sends(&mut router), vec![(FAST.0, 3, 30)]);
+    }
+
+    #[test]
+    fn disconnect_ends_the_servers_offers_and_frees_the_crossing() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+        router.end_offer(&input_id(1), crossing, accepted(1), now);
+
+        router.disconnect(SERVER_SESSION, &[FAST], now);
+        router.reconnect(&[FAST], now);
+
+        // Both children ended, so the ticket is closed, and the crossing has room again.
+        assert!(
+            router.producers[&producer()]
+                .pool
+                .input(&input_id(1))
+                .is_none()
+        );
+        router.input_ready(input_id(2), 20, now).unwrap();
+        assert_eq!(sends(&mut router), vec![(FAST.0, 2, 20)]);
+    }
+
+    #[test]
+    fn disconnect_skips_the_crossings_pending_offer() {
+        let now = Instant::now();
+        let mut router = slow_edge_with_a_pending_input(now);
+        sends(&mut router);
+
+        router.disconnect(SERVER_SESSION, &[FAST, SLOW], now);
+        router.reconnect(&[FAST, SLOW], now);
+
+        // Input 2 was skipped at the slow edge rather than sent late, and both tokens are back.
+        assert_eq!(reported(&mut router), (vec![(SLOW.0, 2)], vec![]));
+        assert!(
+            router.producers[&producer()]
+                .pool
+                .input(&input_id(2))
+                .is_none()
+        );
+        router.input_ready(input_id(3), 30, now).unwrap();
+        assert_eq!(sends(&mut router), vec![(FAST.0, 3, 30), (SLOW.0, 3, 30)]);
     }
 
     #[test]

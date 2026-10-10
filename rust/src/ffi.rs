@@ -3,12 +3,16 @@
 
 use std::{
     ffi::{CStr, c_char},
+    ptr,
     time::Duration,
 };
 
 use iceoryx2_bb_container::string::String as _;
 
-use crate::{Client, Engine, Error, FlowSpec, Producer, Result, Server};
+use crate::{
+    Client, Engine, Error, EventKind, FlowSpec, Forward, Producer, Result, Server, Subscription,
+    subscription::Event,
+};
 
 /// Status code returned by every C ABI function.
 #[repr(C)]
@@ -448,9 +452,153 @@ pub unsafe extern "C" fn gabriel_engine_emit(
     })
 }
 
+// --- Subscription ---
+
+/// What happened, as a subscription reports it: the kinds of published events, and `Lost`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKindView {
+    Accepted,
+    Sent,
+    Result,
+    Skipped,
+    TimedOut,
+    Disconnected,
+    Derived,
+    /// Events were lost before the next one, because the subscriber fell behind.
+    Lost,
+}
+
+impl From<EventKind> for EventKindView {
+    fn from(kind: EventKind) -> Self {
+        match kind {
+            EventKind::Accepted => Self::Accepted,
+            EventKind::Sent => Self::Sent,
+            EventKind::Result => Self::Result,
+            EventKind::Skipped => Self::Skipped,
+            EventKind::TimedOut => Self::TimedOut,
+            EventKind::Disconnected => Self::Disconnected,
+            EventKind::Derived => Self::Derived,
+        }
+    }
+}
+
+/// An event read from a subscription. Stays valid until the next poll. For `LOST`, only `lost`
+/// is set; for `DISCONNECTED`, only `flow`.
+#[repr(C)]
+pub struct EventView {
+    kind: EventKindView,
+    /// For `LOST`: how many events were lost.
+    lost: u64,
+    id: InputIdView,
+    /// The engine the event is about; "" if none.
+    engine: *const c_char,
+    /// The flow the event belongs to; "" if none.
+    flow: *const c_char,
+    /// What the engine forwarded, for `RESULT`.
+    forward: Forward,
+    /// How to read `result`; "" if there is no result.
+    payload_type: *const c_char,
+    result: *const u8,
+    result_len: usize,
+}
+
+impl EventView {
+    fn new(event: &Event<'_>) -> Self {
+        match event {
+            Event::Lost { count } => Self {
+                kind: EventKindView::Lost,
+                lost: *count,
+                id: InputIdView {
+                    producer: c"".as_ptr(),
+                    session: 0,
+                    seq: 0,
+                },
+                engine: c"".as_ptr(),
+                flow: c"".as_ptr(),
+                forward: Forward::default(),
+                payload_type: c"".as_ptr(),
+                result: ptr::null(),
+                result_len: 0,
+            },
+            Event::Published(published) => {
+                let record = published.record;
+                Self {
+                    kind: record.kind.into(),
+                    lost: 0,
+                    id: InputIdView {
+                        producer: record.id.producer.as_c_str(),
+                        session: record.id.session,
+                        seq: record.id.seq,
+                    },
+                    engine: record.engine.as_c_str(),
+                    flow: record.flow.as_c_str(),
+                    forward: record.forward,
+                    payload_type: record.payload_type.as_c_str(),
+                    result: published.result().as_ptr(),
+                    result_len: published.result().len(),
+                }
+            }
+        }
+    }
+}
+
+/// Subscribes to the events about the inputs of the producer `name`: what happened to each at
+/// each engine, and lost connections. Only events published from now on are read.
+///
+/// # Safety
+/// `name` must be NUL-terminated; `subscription` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_subscribe_producer(
+    name: *const c_char,
+    subscription: *mut *mut Subscription,
+) -> Status {
+    unsafe { create_handle(subscription, || Subscription::producer(str_arg(name)?)) }
+}
+
+/// # Safety
+/// `subscription` must be null or a live handle that is not used afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_subscription_destroy(subscription: *mut Subscription) -> Status {
+    unsafe { destroy_handle(subscription) }
+}
+
+/// Waits until an event is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch the
+/// event with `gabriel_subscription_poll`.
+///
+/// # Safety
+/// `subscription` must be a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_subscription_wait(
+    subscription: *mut Subscription,
+    timeout_ms: u32,
+) -> Status {
+    let timeout = Duration::from_millis(u64::from(timeout_ms));
+    Status::from(unsafe { handle_arg(subscription) }.and_then(|s| s.wait(timeout)))
+}
+
+/// Returns `ERR_AGAIN` if no event is available. The event stays valid until the next poll.
+///
+/// # Safety
+/// `subscription` must be a live handle; `event` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_subscription_poll(
+    subscription: *mut Subscription,
+    event: *mut EventView,
+) -> Status {
+    if event.is_null() {
+        return Status::ErrInvalid;
+    }
+    let result = unsafe { handle_arg(subscription) }
+        .and_then(Subscription::poll)
+        // SAFETY: `event` is non-null and writable per the caller's contract.
+        .map(|polled| unsafe { event.write(EventView::new(&polled)) });
+    Status::from(result)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{ffi::CString, ptr};
+    use std::ffi::CString;
 
     use super::*;
     use crate::test_util::unique;
@@ -484,6 +632,23 @@ mod tests {
 
         assert_eq!(status, Status::ErrInvalid);
         assert_eq!(unsafe { gabriel_client_destroy(client) }, Status::Ok);
+    }
+
+    #[test]
+    fn subscription_without_events_is_again() {
+        let name = CString::new(unique("camera")).unwrap();
+        let mut subscription = ptr::null_mut();
+        let created = unsafe { gabriel_subscribe_producer(name.as_ptr(), &mut subscription) };
+        assert_eq!(created, Status::Ok);
+        let mut event = std::mem::MaybeUninit::<EventView>::uninit();
+
+        let polled = unsafe { gabriel_subscription_poll(subscription, event.as_mut_ptr()) };
+
+        assert_eq!(polled, Status::ErrAgain);
+        assert_eq!(
+            unsafe { gabriel_subscription_destroy(subscription) },
+            Status::Ok
+        );
     }
 
     #[test]

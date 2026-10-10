@@ -123,6 +123,13 @@ impl<T> TokenPool<T> {
             .is_some_and(|t| t.open.contains(&offer))
     }
 
+    /// Every offer that has not ended yet, with its input.
+    pub(crate) fn open_offers(&self) -> impl Iterator<Item = (InputId, OfferId)> + '_ {
+        self.tickets
+            .iter()
+            .flat_map(|(id, ticket)| ticket.open.iter().map(move |offer| (*id, *offer)))
+    }
+
     /// Records the offers the client made for the input `id` on its own edges right after
     /// admitting it.
     pub(crate) fn add_offers(

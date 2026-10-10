@@ -52,11 +52,24 @@ pub(crate) struct InputHeader {
     pub(crate) payload_type: PayloadType,
 }
 
-/// Metadata of an input a client sends on a crossing: the user header of a server's input service.
+/// What a client tells a server about one offer on a crossing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
+#[repr(C)]
+pub(crate) enum CrossingKind {
+    /// The offer was sent: the payload is the input.
+    #[default]
+    Input,
+    /// The offer was replaced in the crossing's pending slot on the client, and will never be
+    /// sent. The server tells the subscribers of the crossing's target engines. No payload.
+    Skipped,
+}
+
+/// Metadata of an offer a client sends on a crossing: the user header of a server's input service.
 /// The payload is the input's bytes.
 #[derive(Debug, Clone, Default, ZeroCopySend)]
 #[repr(C)]
 pub(crate) struct CrossingHeader {
+    pub(crate) kind: CrossingKind,
     /// The session the server gave the flow when the client installed it.
     pub(crate) flow: u64,
     /// The client's offer. Its edge is the crossing; the server knows the crossing's targets.
@@ -69,7 +82,7 @@ pub(crate) struct CrossingHeader {
 /// What happened to an offer or an input.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
 #[repr(C)]
-pub(crate) enum EventKind {
+pub enum EventKind {
     /// A server received a crossing and created `children`, one offer per target engine.
     #[default]
     Accepted,
@@ -81,6 +94,9 @@ pub(crate) enum EventKind {
     Skipped,
     /// The engine did not answer in time, or was lost.
     TimedOut,
+    /// The client lost its connection to a server of the flow. Every offer on that server ended
+    /// with it, including offers whose events were lost. It names no input.
+    Disconnected,
     /// A result an engine derived from subscribed events. It answers no offer.
     Derived,
 }
@@ -88,7 +104,7 @@ pub(crate) enum EventKind {
 /// What an engine forwards along its outgoing input edges.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
 #[repr(C)]
-pub(crate) enum Forward {
+pub enum Forward {
     #[default]
     Stop,
     Pass,
@@ -116,9 +132,8 @@ impl EventGaps {
 /// Metadata of an event: the user header of an engine's event service. The result bytes, if any,
 /// are the slice that follows.
 ///
-/// Only what a server or engine publishes is here. `late`, `Lost` and `Disconnected` of the
-/// app-facing event are worked out by the reader: a result is late when the reader already saw its
-/// offer end.
+/// `late` and `Lost` of the app-facing event are worked out by the reader: a result is late when
+/// the reader already saw its offer end, and events are lost when their numbers skip.
 #[derive(Debug, Clone, Default, ZeroCopySend)]
 #[repr(C)]
 pub(crate) struct EventRecord {
@@ -247,6 +262,18 @@ impl EventRecord {
             RelocatableOption::Some(offer),
             id,
             engine,
+            flow,
+        )
+    }
+
+    /// The client lost its connection to the server of the flow `flow`, and ended every offer
+    /// there.
+    pub(crate) fn disconnected(flow: FlowName) -> Self {
+        Self::new(
+            EventKind::Disconnected,
+            RelocatableOption::None,
+            InputId::default(),
+            EngineName::new(),
             flow,
         )
     }
