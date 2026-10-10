@@ -1,0 +1,53 @@
+# A camera at 30 fps feeds a cheap filter that drops half its inputs, then a slow detector with a
+# heavy tail, then a tracker.
+name = "chain"
+duration = "20s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+# Engines + server edges + 1 ("Choosing C" in the design note): 3 engines + 3 server edges + 1.
+tokens = 7
+
+[[flow.engines]]
+name = "filter"
+location = "local"
+
+[[flow.engines]]
+name = "detector"
+location = "local"
+
+[[flow.engines]]
+name = "tracker"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "filter"
+timeout = "100ms"
+
+[[flow.edges]]
+from = "filter"
+to = "detector"
+timeout = "500ms"
+
+[[flow.edges]]
+from = "detector"
+to = "tracker"
+timeout = "100ms"
+
+[producers.camera]
+rate = 30
+input_size = 65536
+
+[engines.filter]
+service_time = { distribution = "constant", time = "2ms" }
+pass_probability = 0.5
+
+[engines.detector]
+service_time = { distribution = "lognormal", mean = "40ms", sd = "20ms" }
+result_size = 64
+
+[engines.tracker]
+service_time = { distribution = "uniform", min = "3ms", max = "7ms" }

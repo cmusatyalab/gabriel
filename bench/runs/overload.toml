@@ -1,0 +1,27 @@
+# A producer far faster than its only engine, whose times have a heavy tail.
+name = "overload"
+duration = "20s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "sensor"
+# Engines + server edges + 1 ("Choosing C" in the design note): 1 engine + 1 server edge + 1.
+tokens = 3
+
+[[flow.engines]]
+name = "detector"
+location = "local"
+
+[[flow.edges]]
+from = "sensor"
+to = "detector"
+timeout = "1s"
+
+[producers.sensor]
+rate = 200
+arrivals = "poisson"
+input_size = 4096
+
+[engines.detector]
+service_time = { distribution = "lognormal", mean = "30ms", sd = "60ms" }

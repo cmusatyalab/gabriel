@@ -1,0 +1,39 @@
+# A camera at 30 fps feeds a fast and a slow engine at once. The slow one must not hold back the
+# fast one.
+name = "fanout"
+duration = "20s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+# Engines + server edges + 1 ("Choosing C" in the design note): 2 engines + 2 server edges + 1.
+tokens = 5
+
+[[flow.engines]]
+name = "fast"
+location = "local"
+
+[[flow.engines]]
+name = "slow"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "fast"
+timeout = "100ms"
+
+[[flow.edges]]
+from = "camera"
+to = "slow"
+timeout = "1s"
+
+[producers.camera]
+rate = 30
+input_size = 65536
+
+[engines.fast]
+service_time = { distribution = "constant", time = "5ms" }
+
+[engines.slow]
+service_time = { distribution = "exponential", mean = "150ms" }
