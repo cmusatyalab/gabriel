@@ -1,8 +1,13 @@
 //! C ABI. Every function returns a [`Status`]; handles are opaque pointers
-//! created by `*_create` and freed by `*_destroy`.
+//! created by `*_create` and freed by `*_destroy`. After a failure, [`gabriel_last_error`] says
+//! what went wrong.
+//!
+//! A producer, an engine and a subscription must stay on the thread that created them: create,
+//! use and destroy each on one thread. A client and a server may be used from any thread.
 
 use std::{
-    ffi::{CStr, c_char},
+    cell::RefCell,
+    ffi::{CStr, CString, c_char},
     ptr,
     time::Duration,
 };
@@ -25,8 +30,34 @@ pub enum Status {
     ErrInternal,
 }
 
+thread_local! {
+    /// The message of the last failure on this thread.
+    static LAST_ERROR: RefCell<CString> = RefCell::default();
+}
+
+/// Records `err` as this thread's last error, for [`gabriel_last_error`].
+fn set_last_error(err: &Error) {
+    // A message with a NUL in it is cut there, rather than lost.
+    let message = err.to_string();
+    let message = CString::new(message).unwrap_or_else(|e| {
+        let nul = e.nul_position();
+        let mut bytes = e.into_vec();
+        bytes.truncate(nul);
+        CString::new(bytes).expect("cut before the first NUL")
+    });
+    LAST_ERROR.with(|last| *last.borrow_mut() = message);
+}
+
+/// Says what went wrong in the last call on this thread that failed. The string stays valid until
+/// the next call on this thread that fails. It is "" if no call has failed yet.
+#[unsafe(no_mangle)]
+pub extern "C" fn gabriel_last_error() -> *const c_char {
+    LAST_ERROR.with(|last| last.borrow().as_ptr())
+}
+
 impl From<&Error> for Status {
     fn from(err: &Error) -> Self {
+        set_last_error(err);
         match err {
             Error::InvalidArgument(_) => Status::ErrInvalid,
             Error::SizeExceeded { .. } => Status::ErrSizeExceeded,
@@ -86,13 +117,18 @@ unsafe fn handle_arg<'a, T>(ptr: *mut T) -> Result<&'a mut T> {
 /// `out` must be null or valid for writes.
 unsafe fn create_handle<T>(out: *mut *mut T, create: impl FnOnce() -> Result<T>) -> Status {
     if out.is_null() {
-        return Status::ErrInvalid;
+        return null_argument("output pointer");
     }
     let result = create().map(|value| {
         // SAFETY: `out` is non-null and writable per the caller's contract.
         unsafe { *out = Box::into_raw(Box::new(value)) };
     });
     Status::from(result)
+}
+
+/// Fails a call that was given a null `name`.
+fn null_argument(name: &str) -> Status {
+    Status::from(&Error::InvalidArgument(format!("null {name}")))
 }
 
 /// Frees a handle returned by the matching `*_create`. Null is a no-op.
@@ -123,6 +159,8 @@ pub unsafe extern "C" fn gabriel_log_init(filter: *const c_char) -> Status {
 
 // --- Producer ---
 
+/// Creates a producer. Use and destroy it only on the thread that created it.
+///
 /// # Safety
 /// String arguments must be NUL-terminated; `producer` must be valid for writes.
 #[unsafe(no_mangle)]
@@ -146,7 +184,7 @@ pub unsafe extern "C" fn gabriel_producer_destroy(producer: *mut Producer) -> St
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_producer_new_input(p: *mut Producer, buf: *mut *mut u8) -> Status {
     if buf.is_null() {
-        return Status::ErrInvalid;
+        return null_argument("buf");
     }
     let result = unsafe { handle_arg(p) }
         .and_then(Producer::new_input)
@@ -399,8 +437,8 @@ unsafe fn bytes_arg<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8]> {
     Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
 }
 
-/// `result_type` names how to read this engine's results, e.g. a protobuf message name. It may be
-/// NULL.
+/// Creates an engine. Use and destroy it only on the thread that created it. `result_type` names
+/// how to read this engine's results, e.g. a protobuf message name. It may be NULL.
 ///
 /// # Safety
 /// String arguments must be NUL-terminated (`result_type` may be null); `engine` must be valid
@@ -448,7 +486,7 @@ pub unsafe extern "C" fn gabriel_engine_poll_input(
     input: *mut InputView,
 ) -> Status {
     if input.is_null() {
-        return Status::ErrInvalid;
+        return null_argument("input");
     }
     let result = unsafe { handle_arg(engine) }
         .and_then(Engine::poll_input)
@@ -506,7 +544,7 @@ pub unsafe extern "C" fn gabriel_engine_new_output(
     buf: *mut *mut u8,
 ) -> Status {
     if buf.is_null() {
-        return Status::ErrInvalid;
+        return null_argument("buf");
     }
     let result = unsafe { handle_arg(engine) }
         .and_then(Engine::new_output)
@@ -646,7 +684,8 @@ impl EventView {
 }
 
 /// Subscribes to the events about the inputs of the producer `name`: what happened to each at
-/// each engine, and lost connections. Only events published from now on are read.
+/// each engine, and lost connections. Only events published from now on are read. Use and destroy
+/// the subscription only on the thread that created it.
 ///
 /// # Safety
 /// `name` must be NUL-terminated; `subscription` must be valid for writes.
@@ -689,7 +728,7 @@ pub unsafe extern "C" fn gabriel_subscription_poll(
     event: *mut EventView,
 ) -> Status {
     if event.is_null() {
-        return Status::ErrInvalid;
+        return null_argument("event");
     }
     let result = unsafe { handle_arg(subscription) }
         .and_then(Subscription::poll)
@@ -758,6 +797,16 @@ mod tests {
             unsafe { gabriel_subscription_destroy(subscription) },
             Status::Ok
         );
+    }
+
+    #[test]
+    fn last_error_says_what_failed() {
+        let mut producer = ptr::null_mut();
+        unsafe { gabriel_producer_create(ptr::null(), 0, &mut producer) };
+
+        let message = unsafe { CStr::from_ptr(gabriel_last_error()) };
+
+        assert_eq!(message, c"invalid argument: null string");
     }
 
     #[test]

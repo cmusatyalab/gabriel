@@ -175,6 +175,12 @@ extern "C" {
 #endif // __cplusplus
 
 /**
+ * Says what went wrong in the last call on this thread that failed. The string stays valid until
+ * the next call on this thread that fails. It is "" if no call has failed yet.
+ */
+const char *gabriel_last_error(void);
+
+/**
  * Prints Gabriel's log to standard error. `filter` picks what is printed, in the syntax of
  * `RUST_LOG`, e.g. "info" or "gabriel=debug". If it is NULL, `RUST_LOG` picks, or warnings and
  * errors are printed if that is unset. Call it once, before anything else; without it, nothing is
@@ -186,6 +192,8 @@ extern "C" {
 gabriel_status_t gabriel_log_init(const char *filter);
 
 /**
+ * Creates a producer. Use and destroy it only on the thread that created it.
+ *
  * # Safety
  * String arguments must be NUL-terminated; `producer` must be valid for writes.
  */
@@ -321,8 +329,8 @@ gabriel_status_t gabriel_server_add_engine(const char *name, gabriel_server_t *s
 gabriel_status_t gabriel_server_remove_engine(const char *name, gabriel_server_t *server);
 
 /**
- * `result_type` names how to read this engine's results, e.g. a protobuf message name. It may be
- * NULL.
+ * Creates an engine. Use and destroy it only on the thread that created it. `result_type` names
+ * how to read this engine's results, e.g. a protobuf message name. It may be NULL.
  *
  * # Safety
  * String arguments must be NUL-terminated (`result_type` may be null); `engine` must be valid
@@ -401,7 +409,8 @@ gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
 
 /**
  * Subscribes to the events about the inputs of the producer `name`: what happened to each at
- * each engine, and lost connections. Only events published from now on are read.
+ * each engine, and lost connections. Only events published from now on are read. Use and destroy
+ * the subscription only on the thread that created it.
  *
  * # Safety
  * `name` must be NUL-terminated; `subscription` must be valid for writes.

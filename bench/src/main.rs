@@ -42,7 +42,7 @@ const RESULTS_DIR: &str = "bench-results";
 struct Args {
     /// The run's TOML file.
     run: PathBuf,
-    /// Where to write the results. Defaults to bench-results/<name>-<unix time>.
+    /// Where to write the results. Defaults to `bench-results/<name>-<unix time>`.
     #[arg(long)]
     out: Option<PathBuf>,
     /// Which of Gabriel's log messages to print, in the syntax of RUST_LOG, e.g. "info".
