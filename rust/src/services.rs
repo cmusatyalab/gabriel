@@ -3,7 +3,7 @@
 
 use std::{thread, time::Duration};
 
-use iceoryx2::port::listener::Listener;
+use iceoryx2::port::listener::{Listener, ListenerWaitError};
 use iceoryx2::port::{BackpressureAction, BackpressureInfo};
 use iceoryx2::prelude::*;
 use iceoryx2::service::port_factory::{event, publish_subscribe, request_response};
@@ -332,6 +332,25 @@ pub(crate) fn open_remote_ready(
         .max_listeners(1)
         .open_or_create()
         .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
+}
+
+/// Waits until `listener` has a notification, or `timeout` passes, and consumes the notifications.
+/// Returns whether the wait ended early: for a notification, or for a signal. A signal is a
+/// wake-up like any other, after which the caller checks again what it waits for; the Go runtime,
+/// for one, signals its threads often.
+pub(crate) fn wait_for_notification(
+    listener: &Listener<ipc::Service>,
+    timeout: Duration,
+) -> std::result::Result<bool, ListenerWaitError> {
+    // iceoryx2 waits without end when given no time.
+    if timeout.is_zero() {
+        return Ok(false);
+    }
+    match listener.timed_wait(|_| {}, timeout) {
+        Ok(notifications) => Ok(notifications > 0),
+        Err(ListenerWaitError::InterruptSignal) => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// Waits until one of `listeners` has a notification, or `timeout` passes. Leaves the

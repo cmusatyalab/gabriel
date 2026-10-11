@@ -154,8 +154,8 @@ impl Subscription {
         }
         // The publisher signals after it publishes, so an event that arrived since the check
         // above ends this wait at once.
-        let notifications = self.ready.timed_wait(|_| {}, timeout).map_err(failed)?;
-        if notifications > 0 || has_event()? {
+        let woken = services::wait_for_notification(&self.ready, timeout).map_err(failed)?;
+        if woken || has_event()? {
             Ok(())
         } else {
             Err(Error::Again)
@@ -295,6 +295,16 @@ mod tests {
         assert_eq!(event.flow(), "tracking");
         assert_eq!(event.result(), RESULT);
         assert!(event.at() > Timestamp::default());
+    }
+
+    #[test]
+    fn wait_with_no_time_left_returns_at_once() {
+        let fixture = Fixture::new();
+
+        assert!(matches!(
+            fixture.subscription.wait(Duration::ZERO),
+            Err(Error::Again)
+        ));
     }
 
     #[test]

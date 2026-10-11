@@ -105,11 +105,8 @@ impl Engine {
         }
         // The server signals after it delivers, so an input that arrived since the check above
         // ends this wait at once.
-        let notifications = self
-            .input_ready
-            .timed_wait(|_| {}, timeout)
-            .map_err(failed)?;
-        if notifications > 0 || has_input()? {
+        let woken = services::wait_for_notification(&self.input_ready, timeout).map_err(failed)?;
+        if woken || has_input()? {
             Ok(())
         } else {
             Err(Error::Again)
@@ -351,6 +348,16 @@ mod tests {
         let mut fixture = Fixture::new();
 
         assert!(matches!(fixture.engine.poll_input(), Err(Error::Again)));
+    }
+
+    #[test]
+    fn wait_with_no_time_left_returns_at_once() {
+        let fixture = Fixture::new();
+
+        assert!(matches!(
+            fixture.engine.wait(Duration::ZERO),
+            Err(Error::Again)
+        ));
     }
 
     #[test]
