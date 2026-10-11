@@ -16,7 +16,9 @@ pub const MAX_PRODUCER_NAME: usize = 64;
 pub(crate) type ProducerName = StaticString<MAX_PRODUCER_NAME>;
 
 /// Identifies one input of a producer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend, Serialize, Deserialize,
+)]
 #[repr(C)]
 pub struct InputId {
     pub(crate) producer: ProducerName,
@@ -42,7 +44,9 @@ impl InputId {
 }
 
 /// Identifies one offer of an input to an edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, ZeroCopySend, Serialize, Deserialize,
+)]
 #[repr(C)]
 pub(crate) struct OfferId {
     pub(crate) session: u64,

@@ -1,5 +1,6 @@
-//! Control calls from a client to a server. Unlike inputs and events, they have no fixed layout,
-//! so they are encoded with postcard. The same messages will go over QUIC to a remote server.
+//! Messages between a client and a server, encoded with postcard. Control calls have no fixed
+//! layout, so they are encoded on both transports. Inputs and events have fixed-size records on
+//! one machine; over QUIC, their records are encoded too, followed by their bytes as they are.
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -46,14 +47,40 @@ pub(crate) enum Reply {
 /// What a server answers to a call.
 pub(crate) type Response = std::result::Result<Reply, Error>;
 
+/// Decodes a call a client sent, and refuses one made with another version of the protocol.
+pub(crate) fn decode_call(bytes: &[u8]) -> Result<Call> {
+    let request: Request = decode(bytes)?;
+    if request.version != PROTOCOL_VERSION {
+        return Err(Error::InvalidArgument(format!(
+            "protocol version {} is not {PROTOCOL_VERSION}",
+            request.version
+        )));
+    }
+    Ok(request.call)
+}
+
 pub(crate) fn encode<T: Serialize>(message: &T) -> Result<Vec<u8>> {
     postcard::to_stdvec(message)
-        .map_err(|e| Error::Internal(format!("failed to encode a control message: {e}")))
+        .map_err(|e| Error::Internal(format!("failed to encode a message: {e}")))
 }
 
 pub(crate) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     postcard::from_bytes(bytes)
-        .map_err(|e| Error::InvalidArgument(format!("failed to decode a control message: {e}")))
+        .map_err(|e| Error::InvalidArgument(format!("failed to decode a message: {e}")))
+}
+
+/// Encodes `header`, followed by `payload` as it is. Inputs and events are sent this way, so their
+/// bytes are not encoded one by one.
+pub(crate) fn encode_with_payload<T: Serialize>(header: &T, payload: &[u8]) -> Result<Vec<u8>> {
+    let mut bytes = encode(header)?;
+    bytes.extend_from_slice(payload);
+    Ok(bytes)
+}
+
+/// Decodes a header made by [`encode_with_payload`], and returns it with the payload after it.
+pub(crate) fn decode_with_payload<T: DeserializeOwned>(bytes: &[u8]) -> Result<(T, &[u8])> {
+    postcard::take_from_bytes(bytes)
+        .map_err(|e| Error::InvalidArgument(format!("failed to decode a message: {e}")))
 }
 
 #[cfg(test)]
@@ -61,9 +88,13 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::routing::{
-        ids::{EdgeId, NodeId},
-        server_router::{CrossingSpec, EdgeSpec},
+    use crate::{
+        clock::Timestamp,
+        ipc::types::{EngineName, EventRecord, FlowName},
+        routing::{
+            ids::{EdgeId, InputId, NodeId, OfferId},
+            server_router::{CrossingSpec, EdgeSpec},
+        },
     };
 
     #[test]
@@ -100,6 +131,24 @@ mod tests {
         assert!(
             matches!(decoded, Err(Error::InvalidArgument(message)) if message == "no such engine")
         );
+    }
+
+    #[test]
+    fn event_and_its_result_survive_encoding() {
+        let record = EventRecord::sent(
+            OfferId::default(),
+            InputId::default(),
+            EngineName::try_from("detector").unwrap(),
+            FlowName::try_from("tracking").unwrap(),
+        )
+        .offered_at(Timestamp::from_nanos(7));
+        let result = [1, 2, 3];
+
+        let bytes = encode_with_payload(&record, &result).unwrap();
+        let (decoded, payload) = decode_with_payload::<EventRecord>(&bytes).unwrap();
+
+        assert_eq!(decoded, record);
+        assert_eq!(payload, result);
     }
 
     #[test]

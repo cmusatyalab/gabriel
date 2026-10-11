@@ -160,6 +160,12 @@ typedef struct {
    * offer, or for `DISCONNECTED`.
    */
   uint64_t offered_at_ns;
+  /**
+   * When the client received the event from the remote server, on this machine's
+   * `CLOCK_MONOTONIC`; `at_ns` and `offered_at_ns` are then on the remote server's clock. 0 for
+   * other events.
+   */
+  uint64_t received_at_ns;
 } gabriel_event_t;
 
 #ifdef __cplusplus

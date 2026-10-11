@@ -38,6 +38,8 @@ const EVENTS_READY: &str = "events-ready";
 const RESULT: &str = "result";
 /// Event signalled when a client has published events about a producer's inputs.
 const RESULT_READY: &str = "result-ready";
+/// Event signalled by a process's network thread when it has received something.
+const REMOTE_READY: &str = "remote-ready";
 
 /// Service name of the producer `name`'s input.
 pub fn producer_input_service(name: &str) -> Result<ServiceName> {
@@ -122,6 +124,18 @@ pub fn client_events_service(name: &str) -> Result<ServiceName> {
 /// Service name of the event the local server signals after sending the client `name` events.
 pub fn client_events_ready_service(name: &str) -> Result<ServiceName> {
     service(CLIENT, name, EVENTS_READY)
+}
+
+/// Service name of the event the server `name`'s network thread signals after receiving calls or
+/// inputs from remote clients.
+pub fn server_remote_ready_service(name: &str) -> Result<ServiceName> {
+    service(SERVER, name, REMOTE_READY)
+}
+
+/// Service name of the event the client `name`'s network thread signals after receiving events
+/// from the remote server.
+pub fn client_remote_ready_service(name: &str) -> Result<ServiceName> {
+    service(CLIENT, name, REMOTE_READY)
 }
 
 /// The server whose node is named `node`, if it is a server's node.

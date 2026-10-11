@@ -22,7 +22,7 @@ use crate::{
         dispatch::{ClientEvent, Dispatcher},
     },
     services::{self, ClientEventPayload, ControlPayload, CrossingPayload},
-    wire::{self, Call, PROTOCOL_VERSION, Reply, Request, Response},
+    wire::{self, Call, Reply, Response},
 };
 
 /// The slice length the event publishers and the control server start with. They grow as needed.
@@ -121,14 +121,7 @@ impl LocalClients {
     }
 
     fn answer(&mut self, dispatcher: &mut Dispatcher, request: &[u8]) -> Response {
-        let request: Request = wire::decode(request)?;
-        if request.version != PROTOCOL_VERSION {
-            return Err(Error::InvalidArgument(format!(
-                "protocol version {} is not {PROTOCOL_VERSION}",
-                request.version
-            )));
-        }
-        match request.call {
+        match wire::decode_call(request)? {
             Call::Install { client, spec } => {
                 if !self.streams.contains_key(&client) {
                     let stream = EventStream::open(dispatcher.node(), &client)?;
@@ -171,14 +164,8 @@ impl LocalClients {
             self.unwoken.remove(client);
         }
     }
-}
 
-impl ClientLink for LocalClients {
-    /// The listener clients signal after they send an input.
-    fn ready(&self) -> &Listener<ipc::Service> {
-        &self.input_ready
-    }
-
+    /// Answers every waiting control call. Returns the first error, after answering the rest.
     fn answer_calls(&mut self, dispatcher: &mut Dispatcher) -> Result<()> {
         let mut first_error = None;
         loop {
@@ -208,6 +195,8 @@ impl ClientLink for LocalClients {
         first_error.map_or(Ok(()), Err)
     }
 
+    /// Passes every input the clients sent to the dispatcher, and every offer they skipped on a
+    /// crossing. Returns the first error, after passing the rest.
     fn take_inputs(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()> {
         // Consume the wake-ups, or the next wait returns at once for the same inputs.
         self.input_ready
@@ -243,6 +232,20 @@ impl ClientLink for LocalClients {
             }
         }
         first_error.map_or(Ok(()), Err)
+    }
+}
+
+impl ClientLink for LocalClients {
+    /// The listener clients signal after they send an input.
+    fn ready(&self) -> &Listener<ipc::Service> {
+        &self.input_ready
+    }
+
+    fn receive(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()> {
+        // Calls first, so that an input that follows its flow's install finds the flow.
+        let answered = self.answer_calls(dispatcher);
+        let taken = self.take_inputs(dispatcher, now);
+        answered.and(taken)
     }
 
     fn owns(&self, session: u64) -> bool {
@@ -281,6 +284,7 @@ mod tests {
             server_router::{CrossingSpec, EdgeSpec, InstallFlow},
         },
         test_util::unique,
+        wire::{PROTOCOL_VERSION, Request},
     };
 
     /// A dispatcher with its local clients' services, and a raw control client.

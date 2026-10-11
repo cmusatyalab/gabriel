@@ -10,10 +10,24 @@ use std::time::Duration;
 
 use iceoryx2::prelude::ZeroCopySend;
 use rustix::time::{ClockId, clock_gettime};
+use serde::{Deserialize, Serialize};
 
 /// A moment on the machine's monotonic clock, in nanoseconds since an unspecified start, e.g.
 /// boot. Unlike [`std::time::Instant`], it can be sent to other processes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, ZeroCopySend)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    ZeroCopySend,
+    Serialize,
+    Deserialize,
+)]
 #[repr(C)]
 pub struct Timestamp {
     nanos: u64,

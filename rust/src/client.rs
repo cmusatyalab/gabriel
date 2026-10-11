@@ -5,6 +5,9 @@
 mod compile;
 mod local_server;
 mod producers;
+// Used by the client once flows can have remote engines.
+#[cfg_attr(not(test), expect(dead_code))]
+mod remote_server;
 mod server_link;
 mod worker;
 

@@ -320,6 +320,20 @@ pub(crate) fn open_client_events_ready(
         .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
 }
 
+/// Opens (or creates) the event `service`, which a process's network thread signals to wake the
+/// thread that reads what it received.
+pub(crate) fn open_remote_ready(
+    node: &Node<ipc::Service>,
+    service: &ServiceName,
+) -> Result<event::PortFactory<ipc::Service>> {
+    node.service_builder(service)
+        .event()
+        .max_notifiers(1)
+        .max_listeners(1)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open {service}: {e}")))
+}
+
 /// Waits until one of `listeners` has a notification, or `timeout` passes. Leaves the
 /// notifications to be read by the listeners' owners, who also read what they announce.
 pub(crate) fn wait_for_any<'a>(

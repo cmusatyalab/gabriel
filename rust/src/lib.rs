@@ -31,6 +31,7 @@ pub use subscription::Subscription;
 
 mod envelope;
 mod ipc;
+mod net;
 mod routing;
 mod services;
 #[cfg(test)]

@@ -100,6 +100,14 @@ impl Published<'_> {
     pub fn offered_at(&self) -> Option<Timestamp> {
         self.record.offered_at.as_option_ref().copied()
     }
+
+    /// When the client received the event from the remote server, on this machine's clock. Then
+    /// [`at`](Self::at) and [`offered_at`](Self::offered_at) are on the remote server's clock, so
+    /// only differences between them mean something here. `None` for events from the local
+    /// server or the client.
+    pub fn received_at(&self) -> Option<Timestamp> {
+        self.record.received_at.as_option_ref().copied()
+    }
 }
 
 impl Subscription {

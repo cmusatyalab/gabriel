@@ -530,6 +530,10 @@ pub struct EventView {
     /// When the server made the engine's offer, on the same clock; 0 if the client made the
     /// offer, or for `DISCONNECTED`.
     offered_at_ns: u64,
+    /// When the client received the event from the remote server, on this machine's
+    /// `CLOCK_MONOTONIC`; `at_ns` and `offered_at_ns` are then on the remote server's clock. 0 for
+    /// other events.
+    received_at_ns: u64,
 }
 
 impl EventView {
@@ -551,6 +555,7 @@ impl EventView {
                 result_len: 0,
                 at_ns: 0,
                 offered_at_ns: 0,
+                received_at_ns: 0,
             },
             Event::Published(published) => {
                 let record = published.record;
@@ -570,6 +575,7 @@ impl EventView {
                     result_len: published.result().len(),
                     at_ns: published.at().as_nanos(),
                     offered_at_ns: published.offered_at().map_or(0, |at| at.as_nanos()),
+                    received_at_ns: published.received_at().map_or(0, |at| at.as_nanos()),
                 }
             }
         }

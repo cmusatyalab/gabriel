@@ -4,34 +4,55 @@
 mod client_link;
 mod dispatch;
 mod local_clients;
+mod remote_clients;
 mod worker;
 
-use std::{sync::mpsc, thread::JoinHandle};
+use std::{net::SocketAddr, sync::mpsc, thread::JoinHandle};
 
-use crate::{Error, Result, server::worker::Command};
+use crate::{
+    Error, Result,
+    server::worker::{Command, RemoteEndpoint},
+};
 
 /// Delivers the inputs of the flows installed on it to a dynamic set of engines.
 #[derive(Debug)]
 pub struct Server {
     commands: Option<mpsc::Sender<Command>>,
     thread: Option<JoinHandle<Result<()>>>,
+    remote: Option<RemoteEndpoint>,
 }
 
 impl Server {
     /// Creates the server `name`. `bind_addr` is the network address to accept remote clients
-    /// on, or `None` for a local server, which only serves clients on its machine. Local clients
-    /// find the server by its name.
+    /// on, e.g. `0.0.0.0:4433`, or `None` for a local server, which only serves clients on its
+    /// machine. Local clients find the server by its name.
     pub fn new(name: &str, bind_addr: Option<&str>) -> Result<Self> {
-        if let Some(addr) = bind_addr {
-            return Err(Error::InvalidArgument(format!(
-                "cannot accept remote clients on {addr:?}: not supported yet"
-            )));
-        }
-        let (commands, thread) = worker::spawn(name)?;
+        let bind_addr = bind_addr
+            .map(|addr| {
+                addr.parse::<SocketAddr>()
+                    .map_err(|e| Error::InvalidArgument(format!("invalid address {addr:?}: {e}")))
+            })
+            .transpose()?;
+        let (commands, thread, remote) = worker::spawn(name, bind_addr)?;
         Ok(Self {
             commands: Some(commands),
             thread: Some(thread),
+            remote,
         })
+    }
+
+    /// The address remote clients reach the server at, or `None` for a local server. With port 0
+    /// in the address the server was created with, this is the port the system picked.
+    pub fn remote_addr(&self) -> Option<SocketAddr> {
+        self.remote.as_ref().map(|remote| remote.addr)
+    }
+
+    /// The certificate remote clients must trust, in DER, or `None` for a local server. The server
+    /// makes a new self-signed one each time it starts.
+    pub fn certificate(&self) -> Option<&[u8]> {
+        self.remote
+            .as_ref()
+            .map(|remote| remote.certificate.as_slice())
     }
 
     /// Starts serving the local engine `name`. The engine may start before or after this call.
@@ -96,8 +117,16 @@ mod tests {
     }
 
     #[test]
-    fn remote_clients_are_not_supported_yet() {
-        let result = Server::new(&unique("server"), Some("127.0.0.1:4433"));
+    fn remote_clients_are_accepted_on_a_picked_port() {
+        let server = Server::new(&unique("server"), Some("127.0.0.1:0")).unwrap();
+
+        assert_ne!(server.remote_addr().unwrap().port(), 0);
+        assert!(!server.certificate().unwrap().is_empty());
+    }
+
+    #[test]
+    fn invalid_address_is_rejected() {
+        let result = Server::new(&unique("server"), Some("not an address"));
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }

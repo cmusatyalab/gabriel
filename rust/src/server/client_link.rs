@@ -17,13 +17,11 @@ pub(crate) trait ClientLink {
     /// The listener that wakes the server thread when a client sent a call or an input.
     fn ready(&self) -> &Listener<ipc::Service>;
 
-    /// Answers every waiting control call. Returns the first error, after answering the rest.
-    fn answer_calls(&mut self, dispatcher: &mut Dispatcher) -> Result<()>;
-
-    /// Passes every input the clients sent to the dispatcher, and every offer they skipped on a
-    /// crossing. Returns the first error, after passing the rest. A refused input, e.g. for a
-    /// flow that was removed, times out on its crossing at the client.
-    fn take_inputs(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()>;
+    /// Answers every waiting control call, then passes every input the clients sent to the
+    /// dispatcher, and every offer they skipped on a crossing. Returns the first error, after
+    /// handling the rest. A refused input, e.g. for a flow that was removed, times out on its
+    /// crossing at the client.
+    fn receive(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()>;
 
     /// Whether a client of this link installed the flow `session`.
     fn owns(&self, session: u64) -> bool;

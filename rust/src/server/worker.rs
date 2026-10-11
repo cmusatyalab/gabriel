@@ -9,6 +9,7 @@
 //! Failures the thread carries on after are logged as warnings, with [`tracing`].
 
 use std::{
+    net::SocketAddr,
     sync::mpsc::{self, TryRecvError},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -22,6 +23,7 @@ use crate::{
         client_link::{self, ClientLink},
         dispatch::Dispatcher,
         local_clients::LocalClients,
+        remote_clients::RemoteClients,
     },
 };
 
@@ -44,9 +46,24 @@ pub(super) enum Command {
     },
 }
 
-/// Starts the thread of the server `name`, and returns its command channel once the thread has
-/// set up its iceoryx2 ports.
-pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Result<()>>)> {
+/// Where remote clients reach a server, and the certificate they must trust, in DER.
+#[derive(Debug, Clone)]
+pub(super) struct RemoteEndpoint {
+    pub(super) addr: SocketAddr,
+    pub(super) certificate: Vec<u8>,
+}
+
+/// A started server thread: its command channel, the thread, and where remote clients reach it.
+pub(super) type Spawned = (
+    mpsc::Sender<Command>,
+    JoinHandle<Result<()>>,
+    Option<RemoteEndpoint>,
+);
+
+/// Starts the thread of the server `name`, which also accepts remote clients on `bind_addr` if it
+/// is given. Returns its command channel once the thread has set up its ports, and where remote
+/// clients reach it.
+pub(super) fn spawn(name: &str, bind_addr: Option<SocketAddr>) -> Result<Spawned> {
     let (started_tx, started_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
     let name = name.to_string();
@@ -57,14 +74,23 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
             let _span = info_span!("server", name = %name).entered();
             // Created inside the thread: iceoryx2 ports cannot be moved between threads.
             let opened = Dispatcher::new(&name).and_then(|dispatcher| {
-                let local: Box<dyn ClientLink> =
-                    Box::new(LocalClients::open(dispatcher.node(), &name)?);
-                Ok((dispatcher, vec![local]))
+                let mut clients: Vec<Box<dyn ClientLink>> =
+                    vec![Box::new(LocalClients::open(dispatcher.node(), &name)?)];
+                let mut remote = None;
+                if let Some(addr) = bind_addr {
+                    let remote_clients = RemoteClients::open(dispatcher.node(), &name, addr)?;
+                    remote = Some(RemoteEndpoint {
+                        addr: remote_clients.local_addr()?,
+                        certificate: remote_clients.certificate().to_vec(),
+                    });
+                    clients.push(Box::new(remote_clients));
+                }
+                Ok((dispatcher, clients, remote))
             });
             let (dispatcher, clients) = match opened {
-                Ok(opened) => {
-                    let _ = started_tx.send(Ok(()));
-                    opened
+                Ok((dispatcher, clients, remote)) => {
+                    let _ = started_tx.send(Ok(remote));
+                    (dispatcher, clients)
                 }
                 Err(e) => {
                     let _ = started_tx.send(Err(e));
@@ -79,7 +105,7 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
         })
         .map_err(|e| Error::Internal(format!("failed to spawn server thread: {e}")))?;
     match started_rx.recv() {
-        Ok(Ok(())) => Ok((command_tx, thread)),
+        Ok(Ok(remote)) => Ok((command_tx, thread, remote)),
         Ok(Err(e)) => {
             let _ = thread.join();
             Err(e)
@@ -119,11 +145,8 @@ fn run(
         // with the error, and an input's offer has already ended for the client, or times out
         // there. So the server logs it and carries on. Each step returns its first error only.
         for link in &mut clients {
-            if let Err(e) = link.answer_calls(&mut dispatcher) {
-                warn!(error = %e, "failed to answer a control call");
-            }
-            if let Err(e) = link.take_inputs(&mut dispatcher, now) {
-                warn!(error = %e, "failed to take a client's input");
+            if let Err(e) = link.receive(&mut dispatcher, now) {
+                warn!(error = %e, "failed to handle a client's call or input");
             }
         }
         if let Err(e) = dispatcher.poll(now) {

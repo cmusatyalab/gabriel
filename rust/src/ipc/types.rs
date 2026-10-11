@@ -5,6 +5,7 @@ use iceoryx2::prelude::ZeroCopySend;
 use iceoryx2_bb_container::{
     relocatable_option::RelocatableOption, string::StaticString, vector::StaticVec,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     Error, Result,
@@ -54,7 +55,7 @@ pub(crate) struct InputHeader {
 }
 
 /// What a client tells a server about one offer on a crossing.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
 pub(crate) enum CrossingKind {
     /// The offer was sent: the payload is the input.
@@ -67,7 +68,7 @@ pub(crate) enum CrossingKind {
 
 /// Metadata of an offer a client sends on a crossing: the user header of a server's input service.
 /// The payload is the input's bytes.
-#[derive(Debug, Clone, Default, ZeroCopySend)]
+#[derive(Debug, Clone, Default, PartialEq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
 pub(crate) struct CrossingHeader {
     pub(crate) kind: CrossingKind,
@@ -81,7 +82,7 @@ pub(crate) struct CrossingHeader {
 }
 
 /// What happened to an offer or an input.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
 pub enum EventKind {
     /// A server received a crossing and created `children`, one offer per target engine.
@@ -103,7 +104,7 @@ pub enum EventKind {
 }
 
 /// What an engine forwards along its outgoing input edges.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
 pub enum Forward {
     #[default]
@@ -135,7 +136,7 @@ impl EventGaps {
 ///
 /// `late` and `Lost` of the app-facing event are worked out by the reader: a result is late when
 /// the reader already saw its offer end, and events are lost when their numbers skip.
-#[derive(Debug, Clone, Default, ZeroCopySend)]
+#[derive(Debug, Clone, Default, PartialEq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
 pub(crate) struct EventRecord {
     /// Counts the events published on this engine's event service, from 1. A subscriber that
@@ -160,6 +161,9 @@ pub(crate) struct EventRecord {
     /// When the offer that ended was made, if its maker knows: set by servers, for the events of
     /// their engines' offers.
     pub(crate) offered_at: RelocatableOption<Timestamp>,
+    /// When the client received the event from the remote server, on the client's clock. `at` and
+    /// `offered_at` are then on the remote server's clock. `None` for other events.
+    pub(crate) received_at: RelocatableOption<Timestamp>,
 }
 
 impl EventRecord {
