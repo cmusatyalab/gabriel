@@ -5,6 +5,7 @@
 mod compile;
 mod local_server;
 mod producers;
+mod server_link;
 mod worker;
 
 use std::{sync::mpsc, thread::JoinHandle};

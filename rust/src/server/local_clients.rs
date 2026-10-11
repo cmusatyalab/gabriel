@@ -2,7 +2,10 @@
 //! crossings, and one event stream per client. It passes what arrives to the dispatcher, and sends
 //! each client the events of the flows it installed.
 
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use iceoryx2::port::{
     listener::Listener, notifier::Notifier, publisher::Publisher, server::Server as ControlServer,
@@ -14,7 +17,10 @@ use tracing::{debug, info};
 use crate::{
     Error, Result,
     ipc::types::{CrossingHeader, CrossingKind, EventRecord},
-    server::dispatch::{ClientEvent, Dispatcher},
+    server::{
+        client_link::ClientLink,
+        dispatch::{ClientEvent, Dispatcher},
+    },
     services::{self, ClientEventPayload, ControlPayload, CrossingPayload},
     wire::{self, Call, PROTOCOL_VERSION, Reply, Request, Response},
 };
@@ -83,6 +89,8 @@ pub(crate) struct LocalClients {
     streams: HashMap<String, EventStream>,
     /// The client that installed each flow, by the flow's session.
     owners: HashMap<u64, String>,
+    /// The clients that were sent events since the last wake-up.
+    unwoken: HashSet<String>,
 }
 
 impl LocalClients {
@@ -108,42 +116,8 @@ impl LocalClients {
             input_ready,
             streams: HashMap::new(),
             owners: HashMap::new(),
+            unwoken: HashSet::new(),
         })
-    }
-
-    /// The listener that wakes the server when a client sends an input.
-    pub(crate) fn input_ready(&self) -> &Listener<ipc::Service> {
-        &self.input_ready
-    }
-
-    /// Answers every waiting control call. Returns the first error, after answering the rest.
-    pub(crate) fn answer_calls(&mut self, dispatcher: &mut Dispatcher) -> Result<()> {
-        let mut first_error = None;
-        loop {
-            let request = match self.control.receive() {
-                Ok(Some(request)) => request,
-                Ok(None) => break,
-                Err(e) => {
-                    first_error.get_or_insert(Error::Internal(format!(
-                        "failed to receive a control call: {e}"
-                    )));
-                    break;
-                }
-            };
-            let response = self.answer(dispatcher, request.payload());
-            let replied = wire::encode(&response).and_then(|bytes| {
-                request
-                    .loan_slice_uninit(bytes.len())
-                    .map_err(|e| Error::Internal(format!("failed to loan reply: {e}")))?
-                    .write_from_slice(&bytes)
-                    .send()
-                    .map_err(|e| Error::Internal(format!("failed to send reply: {e}")))
-            });
-            if let Err(e) = replied {
-                first_error.get_or_insert(e);
-            }
-        }
-        first_error.map_or(Ok(()), Err)
     }
 
     fn answer(&mut self, dispatcher: &mut Dispatcher, request: &[u8]) -> Response {
@@ -194,13 +168,47 @@ impl LocalClients {
     fn close_unused_stream(&mut self, client: &str) {
         if !self.owners.values().any(|owner| owner == client) {
             self.streams.remove(client);
+            self.unwoken.remove(client);
         }
     }
+}
 
-    /// Passes every input the clients sent to the dispatcher, and every offer they skipped on a
-    /// crossing. Returns the first error, after passing the rest. A refused input, e.g. for a
-    /// flow that was removed, times out on its crossing at the client.
-    pub(crate) fn take_inputs(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()> {
+impl ClientLink for LocalClients {
+    /// The listener clients signal after they send an input.
+    fn ready(&self) -> &Listener<ipc::Service> {
+        &self.input_ready
+    }
+
+    fn answer_calls(&mut self, dispatcher: &mut Dispatcher) -> Result<()> {
+        let mut first_error = None;
+        loop {
+            let request = match self.control.receive() {
+                Ok(Some(request)) => request,
+                Ok(None) => break,
+                Err(e) => {
+                    first_error.get_or_insert(Error::Internal(format!(
+                        "failed to receive a control call: {e}"
+                    )));
+                    break;
+                }
+            };
+            let response = self.answer(dispatcher, request.payload());
+            let replied = wire::encode(&response).and_then(|bytes| {
+                request
+                    .loan_slice_uninit(bytes.len())
+                    .map_err(|e| Error::Internal(format!("failed to loan reply: {e}")))?
+                    .write_from_slice(&bytes)
+                    .send()
+                    .map_err(|e| Error::Internal(format!("failed to send reply: {e}")))
+            });
+            if let Err(e) = replied {
+                first_error.get_or_insert(e);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
+    fn take_inputs(&mut self, dispatcher: &mut Dispatcher, now: Instant) -> Result<()> {
         // Consume the wake-ups, or the next wait returns at once for the same inputs.
         self.input_ready
             .try_wait(|_| {})
@@ -237,28 +245,23 @@ impl LocalClients {
         first_error.map_or(Ok(()), Err)
     }
 
-    /// Sends every event the dispatcher has for clients, then wakes the clients that got some.
-    /// Returns the first error, after sending the rest. An event for a flow that was removed is
-    /// dropped: no client waits for it.
-    pub(crate) fn send_events(&mut self, dispatcher: &mut Dispatcher) -> Result<()> {
+    fn owns(&self, session: u64) -> bool {
+        self.owners.contains_key(&session)
+    }
+
+    fn send_event(&mut self, event: ClientEvent) -> Result<()> {
+        let client = &self.owners[&event.session];
+        let stream = self
+            .streams
+            .get_mut(client)
+            .expect("a client with flows has a stream");
+        self.unwoken.insert(client.clone());
+        stream.publish(event)
+    }
+
+    fn flush(&mut self) -> Result<()> {
         let mut first_error = None;
-        let mut woken = Vec::new();
-        while let Some(event) = dispatcher.poll_client_event() {
-            let Some(client) = self.owners.get(&event.session) else {
-                continue;
-            };
-            let stream = self
-                .streams
-                .get_mut(client)
-                .expect("a client with flows has a stream");
-            if let Err(e) = stream.publish(event) {
-                first_error.get_or_insert(e);
-            }
-            if !woken.contains(client) {
-                woken.push(client.clone());
-            }
-        }
-        for client in woken {
+        for client in self.unwoken.drain() {
             if let Err(e) = self.streams[&client].wake() {
                 first_error.get_or_insert(e);
             }

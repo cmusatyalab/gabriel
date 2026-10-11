@@ -18,7 +18,11 @@ use tracing::{error, info_span, warn};
 
 use crate::{
     Error, Result,
-    server::{dispatch::Dispatcher, local_clients::LocalClients},
+    server::{
+        client_link::{self, ClientLink},
+        dispatch::Dispatcher,
+        local_clients::LocalClients,
+    },
 };
 
 /// How long the thread waits for outcomes and inputs before it checks for commands, control calls
@@ -53,8 +57,9 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
             let _span = info_span!("server", name = %name).entered();
             // Created inside the thread: iceoryx2 ports cannot be moved between threads.
             let opened = Dispatcher::new(&name).and_then(|dispatcher| {
-                let clients = LocalClients::open(dispatcher.node(), &name)?;
-                Ok((dispatcher, clients))
+                let local: Box<dyn ClientLink> =
+                    Box::new(LocalClients::open(dispatcher.node(), &name)?);
+                Ok((dispatcher, vec![local]))
             });
             let (dispatcher, clients) = match opened {
                 Ok(opened) => {
@@ -92,7 +97,7 @@ pub(super) fn spawn(name: &str) -> Result<(mpsc::Sender<Command>, JoinHandle<Res
 /// more.
 fn run(
     mut dispatcher: Dispatcher,
-    mut clients: LocalClients,
+    mut clients: Vec<Box<dyn ClientLink>>,
     commands: &mpsc::Receiver<Command>,
 ) -> Result<()> {
     let mut next_engine_check = Instant::now();
@@ -105,16 +110,21 @@ fn run(
             }
         }
 
-        dispatcher.wait(clients.input_ready(), COMMAND_POLL_INTERVAL)?;
+        dispatcher.wait(
+            clients.iter().map(|link| link.ready()),
+            COMMAND_POLL_INTERVAL,
+        )?;
         let now = Instant::now();
         // An error here concerns one call, one input or one engine. A failed call was answered
         // with the error, and an input's offer has already ended for the client, or times out
         // there. So the server logs it and carries on. Each step returns its first error only.
-        if let Err(e) = clients.answer_calls(&mut dispatcher) {
-            warn!(error = %e, "failed to answer a control call");
-        }
-        if let Err(e) = clients.take_inputs(&mut dispatcher, now) {
-            warn!(error = %e, "failed to take a client's input");
+        for link in &mut clients {
+            if let Err(e) = link.answer_calls(&mut dispatcher) {
+                warn!(error = %e, "failed to answer a control call");
+            }
+            if let Err(e) = link.take_inputs(&mut dispatcher, now) {
+                warn!(error = %e, "failed to take a client's input");
+            }
         }
         if let Err(e) = dispatcher.poll(now) {
             warn!(error = %e, "failed to handle an engine's outcome");
@@ -125,7 +135,7 @@ fn run(
             }
             next_engine_check = now + ENGINE_CHECK_INTERVAL;
         }
-        if let Err(e) = clients.send_events(&mut dispatcher) {
+        if let Err(e) = client_link::send_events(&mut dispatcher, &mut clients) {
             warn!(error = %e, "failed to send a client its events");
         }
     }

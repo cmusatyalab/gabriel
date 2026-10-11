@@ -8,7 +8,6 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    iter,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -261,12 +260,16 @@ impl Dispatcher {
         &self.node
     }
 
-    /// Waits until an engine reports an outcome, `other` is notified, or `timeout` passes. The
-    /// outcomes themselves are read by [`Dispatcher::poll`], and `other`'s notifications by its
-    /// owner.
-    pub(crate) fn wait(&self, other: &Listener<ipc::Service>, timeout: Duration) -> Result<()> {
+    /// Waits until an engine reports an outcome, one of `others` is notified, or `timeout`
+    /// passes. The outcomes themselves are read by [`Dispatcher::poll`], and the notifications of
+    /// `others` by their owners.
+    pub(crate) fn wait<'a>(
+        &'a self,
+        others: impl IntoIterator<Item = &'a Listener<ipc::Service>>,
+        timeout: Duration,
+    ) -> Result<()> {
         let outcome_ready = self.engines.values().map(|ports| &ports.outcome_ready);
-        services::wait_for_any(outcome_ready.chain(iter::once(other)), timeout)?;
+        services::wait_for_any(outcome_ready.chain(others), timeout)?;
         // Consume the notifications, or the next wait returns at once for the same outcomes.
         for (engine, ports) in &self.engines {
             ports.outcome_ready.try_wait(|_| {}).map_err(|e| {
@@ -688,7 +691,7 @@ mod tests {
             .unwrap();
 
         let started = Instant::now();
-        fixture.dispatcher.wait(&other, LONG_WAIT).unwrap();
+        fixture.dispatcher.wait([&other], LONG_WAIT).unwrap();
 
         assert!(started.elapsed() < LONG_WAIT);
     }

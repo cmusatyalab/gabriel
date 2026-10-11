@@ -3,6 +3,7 @@
 //! server's process stopped, or the stream lost events.
 
 use std::{
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
@@ -13,10 +14,12 @@ use iceoryx2::port::{
     client::Client as ControlClient, listener::Listener, notifier::Notifier, publisher::Publisher,
     subscriber::Subscriber,
 };
-use iceoryx2::prelude::*;
+use iceoryx2::{config::Config, prelude::*};
+use tracing::warn;
 
 use crate::{
     Error, Result,
+    client::server_link::{Received, ServerEvent, ServerLink},
     ipc::types::{CrossingHeader, CrossingKind, EventGaps, EventRecord, PayloadType},
     naming,
     routing::{
@@ -38,13 +41,6 @@ const CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// The slice length the input publisher and the control client start with. They grow as needed.
 const INITIAL_SLICE_LEN: usize = 4096;
 
-/// An event from the server, with its result bytes, if any.
-#[derive(Debug)]
-pub(super) struct ServerEvent {
-    pub(super) record: EventRecord,
-    pub(super) result: Box<[u8]>,
-}
-
 pub(super) struct LocalServer {
     /// The client's name, which the server sends the flow's events to.
     client: String,
@@ -59,6 +55,8 @@ pub(super) struct LocalServer {
     events_ready: Listener<ipc::Service>,
     /// Finds events the stream lost.
     gaps: EventGaps,
+    /// The iceoryx2 configuration of the client's node, to find the server's node with.
+    config: Config,
     /// The node of the server's running process, as of the last check.
     instance: Option<UniqueNodeId>,
 }
@@ -100,66 +98,9 @@ impl LocalServer {
             events,
             events_ready,
             gaps: EventGaps::default(),
+            config: node.config().clone(),
             instance: None,
         })
-    }
-
-    /// Installs the server's part of a flow, and returns the flow's session on the server.
-    pub(super) fn install(&self, spec: InstallFlow) -> Result<u64> {
-        let call = Call::Install {
-            client: self.client.clone(),
-            spec,
-        };
-        match self.call(call)? {
-            Reply::Installed { session } => Ok(session),
-            reply => Err(self.unexpected(&reply)),
-        }
-    }
-
-    /// Removes the flow `session` from the server.
-    pub(super) fn remove_flow(&self, session: u64) -> Result<()> {
-        let call = Call::RemoveFlow {
-            client: self.client.clone(),
-            session,
-        };
-        match self.call(call)? {
-            Reply::Removed => Ok(()),
-            reply => Err(self.unexpected(&reply)),
-        }
-    }
-
-    /// Sends the input `id`, whose bytes are `data`, on a crossing of the flow `flow`, as the offer
-    /// `offer`, and wakes the server.
-    pub(super) fn send(
-        &self,
-        flow: u64,
-        offer: OfferId,
-        id: InputId,
-        payload_type: PayloadType,
-        data: &[u8],
-    ) -> Result<()> {
-        let header = CrossingHeader {
-            kind: CrossingKind::Input,
-            flow,
-            offer,
-            id,
-            payload_type,
-        };
-        self.send_on_crossing(header, data)
-    }
-
-    /// Tells the server that the offer `offer` of the input `id`, on a crossing of the flow `flow`,
-    /// was skipped and will never be sent, so that the server can tell the subscribers of the
-    /// crossing's target engines.
-    pub(super) fn send_skipped(&self, flow: u64, offer: OfferId, id: InputId) -> Result<()> {
-        let header = CrossingHeader {
-            kind: CrossingKind::Skipped,
-            flow,
-            offer,
-            id,
-            payload_type: PayloadType::new(),
-        };
-        self.send_on_crossing(header, &[])
     }
 
     fn send_on_crossing(&self, header: CrossingHeader, data: &[u8]) -> Result<()> {
@@ -179,60 +120,6 @@ impl LocalServer {
             .notify()
             .map_err(|e| Error::Internal(format!("failed to wake the server: {e}")))?;
         Ok(())
-    }
-
-    /// The listener that wakes the client when the server sends events.
-    pub(super) fn events_ready(&self) -> &Listener<ipc::Service> {
-        &self.events_ready
-    }
-
-    /// Returns the events the server sent since the last call, in order, and how many events the
-    /// stream lost, because the client fell too far behind.
-    pub(super) fn take_events(&mut self) -> Result<(Vec<ServerEvent>, u64)> {
-        // Without this the waitset keeps reporting the same notifications.
-        self.events_ready
-            .try_wait(|_| {})
-            .map_err(|e| Error::Internal(format!("failed to drain event wake-ups: {e}")))?;
-        let mut events = Vec::new();
-        let mut lost = 0;
-        while let Some(sample) = self
-            .events
-            .receive()
-            .map_err(|e| Error::Internal(format!("failed to receive event: {e}")))?
-        {
-            let record = sample.user_header().clone();
-            lost += self.gaps.observe(record.seq);
-            events.push(ServerEvent {
-                record,
-                result: Box::from(sample.payload()),
-            });
-        }
-        Ok((events, lost))
-    }
-
-    /// Looks for the server's process, by its node, among those `node` can see. Returns whether the process seen at the last
-    /// check is gone: the server stopped, or stopped and started again.
-    pub(super) fn check(&mut self, node: &Node<ipc::Service>) -> Result<bool> {
-        let mut running = None;
-        Node::<ipc::Service>::list(node.config(), |state| {
-            if let NodeState::Alive(node) = state
-                && let Some(details) = node.details().as_ref()
-                && naming::server_of_node(details.name().as_str()) == Some(self.name.as_str())
-            {
-                running = Some(*node.id());
-                return CallbackProgression::Stop;
-            }
-            CallbackProgression::Continue
-        })
-        .map_err(|e| Error::Internal(format!("failed to list nodes: {e:?}")))?;
-        let lost = self.instance.is_some() && running != self.instance;
-        self.instance = running;
-        Ok(lost)
-    }
-
-    /// Whether the server's process was running at the last check.
-    pub(super) fn is_running(&self) -> bool {
-        self.instance.is_some()
     }
 
     /// Sends `call` to the server, and waits for its reply.
@@ -275,5 +162,119 @@ impl LocalServer {
             "local server {:?} sent an unexpected reply: {reply:?}",
             self.name
         ))
+    }
+}
+
+impl ServerLink for LocalServer {
+    fn install(&self, spec: InstallFlow) -> Result<u64> {
+        let call = Call::Install {
+            client: self.client.clone(),
+            spec,
+        };
+        match self.call(call)? {
+            Reply::Installed { session } => Ok(session),
+            reply => Err(self.unexpected(&reply)),
+        }
+    }
+
+    fn remove_flow(&self, session: u64) -> Result<()> {
+        let call = Call::RemoveFlow {
+            client: self.client.clone(),
+            session,
+        };
+        match self.call(call)? {
+            Reply::Removed => Ok(()),
+            reply => Err(self.unexpected(&reply)),
+        }
+    }
+
+    /// Copies the input into the server's input service, and wakes the server.
+    fn send(
+        &self,
+        flow: u64,
+        offer: OfferId,
+        id: InputId,
+        payload_type: PayloadType,
+        data: Arc<[u8]>,
+    ) -> Result<()> {
+        let header = CrossingHeader {
+            kind: CrossingKind::Input,
+            flow,
+            offer,
+            id,
+            payload_type,
+        };
+        self.send_on_crossing(header, &data)
+    }
+
+    fn send_skipped(&self, flow: u64, offer: OfferId, id: InputId) -> Result<()> {
+        let header = CrossingHeader {
+            kind: CrossingKind::Skipped,
+            flow,
+            offer,
+            id,
+            payload_type: PayloadType::new(),
+        };
+        self.send_on_crossing(header, &[])
+    }
+
+    /// The listener the server signals after it sends events.
+    fn ready(&self) -> &Listener<ipc::Service> {
+        &self.events_ready
+    }
+
+    /// The connection is lost when the stream lost events, because the client fell too far
+    /// behind.
+    fn take_events(&mut self) -> Result<Received> {
+        // Without this the waitset keeps reporting the same notifications.
+        self.events_ready
+            .try_wait(|_| {})
+            .map_err(|e| Error::Internal(format!("failed to drain event wake-ups: {e}")))?;
+        let mut events = Vec::new();
+        let mut lost = 0;
+        while let Some(sample) = self
+            .events
+            .receive()
+            .map_err(|e| Error::Internal(format!("failed to receive event: {e}")))?
+        {
+            let record = sample.user_header().clone();
+            lost += self.gaps.observe(record.seq);
+            events.push(ServerEvent {
+                record,
+                result: Box::from(sample.payload()),
+            });
+        }
+        if lost > 0 {
+            warn!(lost, "the local server's event stream lost events");
+        }
+        Ok(Received {
+            events,
+            lost: lost > 0,
+        })
+    }
+
+    /// Looks for the server's process, by its node. The connection was lost if the process seen
+    /// at the last check is gone: the server stopped, or stopped and started again.
+    fn check(&mut self) -> Result<bool> {
+        let mut running = None;
+        Node::<ipc::Service>::list(&self.config, |state| {
+            if let NodeState::Alive(node) = state
+                && let Some(details) = node.details().as_ref()
+                && naming::server_of_node(details.name().as_str()) == Some(self.name.as_str())
+            {
+                running = Some(*node.id());
+                return CallbackProgression::Stop;
+            }
+            CallbackProgression::Continue
+        })
+        .map_err(|e| Error::Internal(format!("failed to list nodes: {e:?}")))?;
+        let lost = self.instance.is_some() && running != self.instance;
+        self.instance = running;
+        Ok(lost)
+    }
+
+    /// Whether the server's process was running at the last check.
+    fn is_connected(&self) -> bool {
+        self.instance.is_some()
     }
 }

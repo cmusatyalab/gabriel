@@ -1,6 +1,7 @@
 //! Server: runs the flows its clients install, and delivers their inputs to its engines. Its work
 //! runs on its own thread.
 
+mod client_link;
 mod dispatch;
 mod local_clients;
 mod worker;

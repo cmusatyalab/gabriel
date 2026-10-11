@@ -35,8 +35,9 @@ use crate::{
     Error, Result,
     client::{
         compile::compile,
-        local_server::{LocalServer, ServerEvent},
+        local_server::LocalServer,
         producers::{Producers, ReceivedInput},
+        server_link::{ServerEvent, ServerLink},
     },
     ipc::types::{EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
     naming,
@@ -105,7 +106,7 @@ impl ClientFlow {
 struct Worker {
     node: Node<ipc::Service>,
     producers: Producers,
-    server: LocalServer,
+    server: Box<dyn ServerLink>,
     flows: HashMap<FlowName, ClientFlow>,
     next_server_check: Instant,
 }
@@ -167,7 +168,7 @@ impl Worker {
         Ok(Self {
             node,
             producers: Producers::default(),
-            server,
+            server: Box::new(server),
             flows: HashMap::new(),
             next_server_check: Instant::now(),
         })
@@ -191,20 +192,17 @@ impl Worker {
             let listeners = self
                 .producers
                 .listeners()
-                .chain(iter::once(self.server.events_ready()));
+                .chain(iter::once(self.server.ready()));
             services::wait_for_any(listeners, COMMAND_POLL_INTERVAL)?;
             let now = Instant::now();
             // Events can free tokens and crossings, so they go before new inputs. An event the
             // client cannot read leaves its offer open until the offer's deadline.
             match self.server.take_events() {
-                Ok((events, lost)) => {
-                    for event in &events {
+                Ok(received) => {
+                    for event in &received.events {
                         self.apply(event, now);
                     }
-                    // The lost events may have ended offers, so the client can no longer tell
-                    // which of the server's offers are open.
-                    if lost > 0 {
-                        warn!(lost, "the local server's event stream lost events");
+                    if received.lost {
                         self.server_lost(now);
                     }
                 }
@@ -441,7 +439,7 @@ impl Worker {
     /// are installed on it, the connection is lost. Otherwise, flows whose connection was lost
     /// are installed again.
     fn check_server(&mut self, now: Instant) {
-        let stopped = match self.server.check(&self.node) {
+        let stopped = match self.server.check() {
             Ok(stopped) => stopped,
             Err(e) => {
                 warn!(error = %e, "failed to check the local server");
@@ -449,7 +447,7 @@ impl Worker {
             }
         };
         let installed = self.flows.values().any(|flow| flow.connected);
-        if stopped || (installed && !self.server.is_running()) {
+        if stopped || (installed && !self.server.is_connected()) {
             warn!("the local server stopped or restarted");
             self.server_lost(now);
         } else {
@@ -519,7 +517,7 @@ impl Worker {
                                 offer,
                                 input_id,
                                 PayloadType::new(),
-                                &input,
+                                input,
                             ),
                             "failed to send an input to the local server",
                         );
