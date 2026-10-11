@@ -1,9 +1,11 @@
-//! Runs a flow in this process: a local server, a synthetic engine per engine of the flow, a
-//! client, and a producer per producer, each on its own thread, plus a thread per producer that
-//! records the events about its inputs. iceoryx2 carries everything between them as it would
-//! between processes.
+//! Runs a flow in this process: a local server, a remote server if the flow has remote engines, a
+//! synthetic engine per engine of the flow, a client, and a producer per producer, each on its own
+//! thread, plus a thread per producer that records the events about its inputs. iceoryx2 carries
+//! everything between them as it would between processes, and QUIC on loopback carries what goes
+//! between the client and the remote server.
 
 use std::{
+    collections::BTreeSet,
     sync::{
         Arc, Barrier,
         atomic::{AtomicBool, Ordering},
@@ -14,7 +16,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use gabriel::{Client, Engine, Error, Producer, Server, Subscription, Timestamp};
+use gabriel::{
+    Client, Engine, Error, Producer, RemoteServerConfig, Server, Subscription, Timestamp,
+    spec::Location,
+};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
@@ -24,6 +29,9 @@ use crate::{
 
 /// How long a waiting engine or recorder sleeps before it checks whether the run is over.
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(10);
+/// The remote server listens on loopback, on a port the system picks. A network emulated on
+/// loopback applies to it.
+const REMOTE_BIND_ADDR: &str = "127.0.0.1:0";
 
 /// What a run recorded.
 pub struct Recorded {
@@ -35,6 +43,17 @@ pub struct Recorded {
 pub fn run(spec: &RunSpec) -> Result<Recorded> {
     let server_name = format!("{}-server", spec.name);
     let mut server = Server::new(&server_name, None).context("failed to start the server")?;
+    let remote_engines: BTreeSet<&str> = spec
+        .flow
+        .engines
+        .iter()
+        .filter(|engine| engine.location == Location::Remote)
+        .map(|engine| engine.name.as_str())
+        .collect();
+    let mut remote = (!remote_engines.is_empty())
+        .then(|| Server::new(&format!("{}-remote", spec.name), Some(REMOTE_BIND_ADDR)))
+        .transpose()
+        .context("failed to start the remote server")?;
     let stop = Arc::new(AtomicBool::new(false));
 
     // Each thread gets its own stream of random numbers, derived from the run's seed.
@@ -42,8 +61,21 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
     let mut engines = Vec::new();
     for (name, load) in &spec.engines {
         engines.push(start_engine(name, load, seeds.random(), &stop)?);
-        server.add_engine(name)?;
+        match &mut remote {
+            Some(remote) if remote_engines.contains(name.as_str()) => remote.add_engine(name)?,
+            _ => server.add_engine(name)?,
+        }
     }
+    let remote_config = remote.as_ref().map(|remote| RemoteServerConfig {
+        addr: remote
+            .remote_addr()
+            .expect("the remote server accepts remote clients"),
+        certificate: remote
+            .certificate()
+            .expect("the remote server accepts remote clients")
+            .to_vec(),
+        crossing_capacity: spec.remote.crossing_capacity,
+    });
 
     // Every producer and recorder is ready before the client takes their inputs, and they start
     // together once the flow is added.
@@ -61,8 +93,12 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
             &start,
         )?);
     }
-    let mut client = Client::new(&format!("{}-client", spec.name), &server_name, None)
-        .context("failed to start the client")?;
+    let mut client = Client::new(
+        &format!("{}-client", spec.name),
+        &server_name,
+        remote_config,
+    )
+    .context("failed to start the client")?;
     for name in spec.producers.keys() {
         client.add_producer(name)?;
     }
@@ -76,8 +112,9 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
     stop.store(true, Ordering::Relaxed);
     let events = join_all(recorders)?;
     join_all(engines)?;
-    // The client removes its flow from the server as it stops.
+    // The client removes its flow from the servers as it stops.
     drop(client);
+    drop(remote);
     drop(server);
     Ok(Recorded { inputs, events })
 }

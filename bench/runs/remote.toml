@@ -1,0 +1,51 @@
+# A camera at 30 fps feeds a filter on the device, which passes a third of the frames on to a
+# detector on the remote server, over a link with a 40 ms round trip. The network is emulated on
+# loopback, so this run needs its own network namespace:
+#
+#   unshare --user --map-root-user --net target/release/gabriel-bench bench/runs/remote.toml
+name = "remote"
+duration = "20s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+# Engines + server edges + the remote crossing's capacity + 1 ("Choosing C" in the design note):
+# 2 engines + 2 server edges + 3 + 1.
+tokens = 8
+
+[[flow.engines]]
+name = "filter"
+location = "local"
+
+[[flow.engines]]
+name = "detector"
+location = "remote"
+
+[[flow.edges]]
+from = "camera"
+to = "filter"
+timeout = "100ms"
+
+[[flow.edges]]
+from = "filter"
+to = "detector"
+timeout = "1s"
+
+[producers.camera]
+rate = 30
+input_size = 65536
+
+[engines.filter]
+service_time = { distribution = "constant", time = "5ms" }
+pass_probability = 0.33
+
+[engines.detector]
+service_time = { distribution = "exponential", mean = "50ms" }
+
+[remote]
+crossing_capacity = 3
+
+[network]
+delay = "20ms"
+jitter = "2ms"

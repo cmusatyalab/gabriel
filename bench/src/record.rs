@@ -45,6 +45,8 @@ pub struct EventRow {
     pub offered_ns: Option<u64>,
     /// When the event happened.
     pub at_ns: Option<u64>,
+    /// When the client received the event from the remote server.
+    pub received_ns: Option<u64>,
     /// How many events were lost, for `Lost`.
     pub lost: Option<u64>,
 }
@@ -63,6 +65,7 @@ impl EventRow {
                 forward: None,
                 offered_ns: None,
                 at_ns: None,
+                received_ns: None,
                 lost: Some(*count),
             },
             Event::Published(event) => {
@@ -79,6 +82,7 @@ impl EventRow {
                         .then(|| format!("{:?}", event.forward())),
                     offered_ns: event.offered_at().map(|at| at.as_nanos()),
                     at_ns: Some(event.at().as_nanos()),
+                    received_ns: event.received_at().map(|at| at.as_nanos()),
                     lost: None,
                 }
             }

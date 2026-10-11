@@ -23,13 +23,21 @@ Per input an engine got:
                one on its path. All the waiting Gabriel added.
   before       offered - published at the first engine: waiting for a token
                and on the crossing, and the trip to the server.
+  uplink       offered - the previous engine's result, when the two engines
+               are on different servers: waiting on the client's crossing,
+               and the trip to the remote server.
   edge_wait    sent - offered: waiting at this engine's edge on the server.
   idle         sent - the engine's previous result: how long the engine sat
                idle before it got this input.
+  back         received - result, for a remote engine: the result's trip
+               back to the client.
 
 Age of information (AoI), per engine: at each moment, the age of the input
-behind the engine's newest result. Its time average, and its peaks just
-before each new result.
+behind the newest result the app has: its time average, and its peaks just
+before each new result. A remote engine's result counts from when the client
+received it.
+
+Both servers run on this machine, so all timestamps share one clock.
 
 Per producer, by Little's law: the average number of its inputs in flight,
 from reaching the server to their last event, against its tokens.
@@ -40,6 +48,7 @@ the result whose time equals the offer's.
 
 import argparse
 import tomllib
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -51,7 +60,7 @@ PERCENTILES = [0.5, 0.9, 0.99]
 INPUT = ["producer", "session", "seq", "flow"]
 # The events that end an offer at an engine.
 ENDS = ["Result", "Skipped", "TimedOut"]
-WAITS = ["age", "excess", "before", "edge_wait", "idle"]
+WAITS = ["age", "excess", "before", "uplink", "edge_wait", "idle", "back"]
 # Inputs published this close to the start or the end of a run are left out
 # of waits and ages: engines are still starting, or no newer input comes to
 # replace a waiting one.
@@ -64,30 +73,51 @@ def load(run: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     events = pd.read_csv(
         run / "events.csv", dtype={"engine": str, "flow": str}
     )
+    # Runs recorded before the remote server have no receipt stamps.
+    if "received_ns" not in events:
+        events["received_ns"] = float("nan")
     spec = tomllib.loads((run / "run.toml").read_text())
     return inputs, events, spec
 
 
-def offers(inputs: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+def offers(
+    inputs: pd.DataFrame, events: pd.DataFrame, spec: dict
+) -> pd.DataFrame:
     """One row per offer sent to an engine: how it ended, and the waits."""
     sent = events[events.kind == "Sent"]
     ended = events[events.kind.isin(ENDS)][
-        [*INPUT, "engine", "offered_ns", "kind", "at_ns"]
+        [*INPUT, "engine", "offered_ns", "kind", "at_ns", "received_ns"]
     ]
-    offers = sent.merge(
-        ended.rename(columns={"kind": "end", "at_ns": "ended_ns"}),
-        on=[*INPUT, "engine", "offered_ns"],
-        how="left",
-    ).merge(inputs, on=["producer", "session", "seq"], how="left")
+    offers = (
+        sent.drop(columns="received_ns")
+        .merge(
+            ended.rename(
+                columns={
+                    "kind": "end",
+                    "at_ns": "ended_ns",
+                    "received_ns": "ended_received_ns",
+                }
+            ),
+            on=[*INPUT, "engine", "offered_ns"],
+            how="left",
+        )
+        .merge(inputs, on=["producer", "session", "seq"], how="left")
+    )
     offers["sent_ns"] = offers.at_ns
     offers["age"] = offers.sent_ns - offers.published_ns
     offers["edge_wait"] = offers.sent_ns - offers.offered_ns
     offers["service"] = (offers.ended_ns - offers.sent_ns).where(
         offers.end == "Result"
     )
+    offers["back"] = offers.ended_received_ns - offers.ended_ns
+    # When the app learned how the offer ended.
+    offers["seen_ns"] = offers.ended_received_ns.fillna(offers.ended_ns)
 
     # Walk each offer back to the result that made it, in the order offers
-    # were made, so a parent's waiting is known before its children's.
+    # were made, so a parent's waiting is known before its children's. On
+    # one server, a result and the offers it makes share one timestamp. An
+    # offer on another server is made later, by the client, so its parent is
+    # the latest result before it from an engine with an edge to its engine.
     made_by = {
         (*key, ended_ns): index
         for index, key, ended_ns in zip(
@@ -98,16 +128,36 @@ def offers(inputs: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
         )
         if not pd.isna(ended_ns)
     }
-    excess, before = {}, {}
+    feeds = defaultdict(set)
+    for edge in spec["flow"]["edges"]:
+        feeds[edge["to"]].add(edge["from"])
+    results = defaultdict(list)
+    for index, row in offers[offers.end == "Result"].iterrows():
+        results[tuple(row[INPUT])].append((row.ended_ns, row.engine, index))
+    excess, before, uplink = {}, {}, {}
     for index, row in offers.sort_values("offered_ns").iterrows():
-        parent = made_by.get((*row[INPUT], row.offered_ns))
-        if parent is None:
+        key = tuple(row[INPUT])
+        parent = made_by.get((*key, row.offered_ns))
+        if parent is not None:
+            excess[index] = excess[parent] + row.edge_wait
+            continue
+        earlier = [
+            (ended_ns, parent)
+            for ended_ns, engine, parent in results[key]
+            if engine in feeds[row.engine] and ended_ns <= row.offered_ns
+        ]
+        if earlier:
+            ended_ns, parent = max(earlier)
+            uplink[index] = row.offered_ns - ended_ns
+            excess[index] = excess[parent] + uplink[index] + row.edge_wait
+        else:
             before[index] = row.offered_ns - row.published_ns
             excess[index] = before[index] + row.edge_wait
-        else:
-            excess[index] = excess[parent] + row.edge_wait
-    offers["before"] = pd.Series(before)
-    offers["excess"] = pd.Series(excess)
+    # Typed, so a wait no offer has, such as the uplink on one server, is
+    # still a column of numbers.
+    offers["before"] = pd.Series(before, dtype=float)
+    offers["uplink"] = pd.Series(uplink, dtype=float)
+    offers["excess"] = pd.Series(excess, dtype=float)
 
     # Each engine works on one input at a time, so the time from one result
     # to the next send is idle time.
@@ -183,14 +233,15 @@ def age_of_information(
 ) -> pd.DataFrame:
     """Per engine: the time-average AoI of its results, and its peaks, in ms.
 
-    Results are taken at the time the server got them; the app hears of them
-    a few microseconds later.
+    A local result counts from when its server got it; the app hears of it a
+    few microseconds later. A remote result counts from when the client
+    received it.
     """
     rows = {}
     results = offers[offers.end == "Result"]
     for engine, group in results.groupby("engine"):
-        group = group.sort_values("ended_ns")
-        times = group.ended_ns.to_numpy()
+        group = group.sort_values("seen_ns")
+        times = group.seen_ns.to_numpy()
         # The newest input behind any result so far.
         newest = group.published_ns.cummax().to_numpy()
         keep = (times[:-1] >= start) & (times[1:] <= end)
@@ -261,7 +312,7 @@ def main() -> None:
     args = parser.parse_args()
 
     inputs, events, spec = load(args.run)
-    all_offers = offers(inputs, events)
+    all_offers = offers(inputs, events, spec)
     start, end = window(inputs, args.trim)
     kept = all_offers[all_offers.published_ns.between(start, end)]
     for kind in ["Disconnected", "Lost"]:

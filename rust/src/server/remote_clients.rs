@@ -10,7 +10,7 @@ use std::{collections::HashMap, net::SocketAddr, sync::mpsc, thread::JoinHandle,
 use bytes::Bytes;
 use futures_util::SinkExt;
 use iceoryx2::{port::listener::Listener, prelude::*};
-use quinn::{Connection, Endpoint, Incoming, RecvStream, SendStream};
+use quinn::{Connection, ConnectionError, Endpoint, Incoming, RecvStream, SendStream};
 use tokio::sync::{
     mpsc::{Sender, UnboundedSender, error::TrySendError, unbounded_channel},
     oneshot,
@@ -360,7 +360,12 @@ async fn serve(incoming: Incoming, id: ConnectionId, updates: UnboundedSender<Up
                 },
             }
         };
-        warn!(%error, "lost the connection");
+        match error {
+            ConnectionError::ApplicationClosed(close) if close.error_code == net::CLOSED => {
+                info!("disconnected");
+            }
+            error => warn!(%error, "lost the connection"),
+        }
         let _ = updates.send(Update::Lost { id });
     }
     .instrument(span)

@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use gabriel::FlowSpec;
+use gabriel::{FlowSpec, client::DEFAULT_REMOTE_CROSSING_CAPACITY};
 use rand::{Rng, distr::Uniform};
 use rand_distr::{Distribution, Exp, LogNormal};
 use serde::Deserialize;
@@ -33,6 +33,44 @@ pub struct RunSpec {
     pub producers: BTreeMap<String, ProducerLoad>,
     /// The behavior of each of the flow's engines, by name.
     pub engines: BTreeMap<String, EngineLoad>,
+    /// How the client uses the remote server, if the flow has remote engines.
+    #[serde(default)]
+    pub remote: RemoteSettings,
+    /// The link to the remote server, emulated with netem. Without it, the link is loopback.
+    pub network: Option<NetworkSpec>,
+}
+
+/// How the client uses the remote server.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteSettings {
+    /// How many inputs each crossing to the remote server may have in flight.
+    pub crossing_capacity: usize,
+}
+
+impl Default for RemoteSettings {
+    fn default() -> Self {
+        Self {
+            crossing_capacity: DEFAULT_REMOTE_CROSSING_CAPACITY,
+        }
+    }
+}
+
+/// An emulated link. Both directions get the same settings.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkSpec {
+    /// The delay each way, so the round trip takes twice as long.
+    #[serde(with = "humantime_serde")]
+    pub delay: Duration,
+    /// How much the delay varies, up or down.
+    #[serde(default, with = "humantime_serde")]
+    pub jitter: Duration,
+    /// The share of packets lost each way, from 0 to 1.
+    #[serde(default)]
+    pub loss: f64,
+    /// The bandwidth each way, in tc's syntax, e.g. "20mbit". Unlimited if not given.
+    pub rate: Option<String>,
 }
 
 /// How a producer publishes.
@@ -133,6 +171,16 @@ impl RunSpec {
             ensure!(
                 load.rate.is_finite() && load.rate > 0.0,
                 "producer {name:?} needs a positive rate"
+            );
+        }
+        ensure!(
+            self.remote.crossing_capacity > 0,
+            "remote crossings need a capacity of at least 1"
+        );
+        if let Some(network) = &self.network {
+            ensure!(
+                (0.0..1.0).contains(&network.loss),
+                "the network's loss must be at least 0 and below 1"
             );
         }
         for (name, load) in &self.engines {

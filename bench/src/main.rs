@@ -9,7 +9,11 @@
 //! ```text
 //! cargo run --release -p gabriel-bench -- bench/runs/chain.toml
 //! ```
+//!
+//! A run with a `[network]` section emulates the link to the remote server on loopback, so it must
+//! run in a network namespace of its own (see [`network`]).
 
+mod network;
 mod record;
 mod run;
 mod spec;
@@ -63,6 +67,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
     gabriel::logging::init(args.log.as_deref())?;
     let (spec, text) = RunSpec::read(&args.run)?;
+    if let Some(network) = &spec.network {
+        network::emulate(network).context("failed to emulate the network")?;
+    }
     let started_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let out = args
         .out
