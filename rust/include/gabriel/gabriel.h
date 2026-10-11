@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+
+
 /**
  * Maximum length of a flow name.
  */
@@ -217,12 +219,20 @@ gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *p,
                                                 uint64_t *seq);
 
 /**
+ * Creates a client of the local server `local_server`. `remote_server_addr` is the remote
+ * server's address, e.g. "192.0.2.1:4433", or NULL for none; the client then trusts only the
+ * certificate of `certificate_len` bytes at `certificate`, in DER, as
+ * `gabriel_server_certificate` gives it. Crossings to the remote server get the default capacity.
+ *
  * # Safety
- * String arguments must be NUL-terminated; `client` must be valid for writes.
+ * String arguments must be NUL-terminated (`remote_server_addr` may be null); `certificate` must
+ * point to `certificate_len` readable bytes; `client` must be valid for writes.
  */
 gabriel_status_t gabriel_client_create(const char *name,
                                        const char *local_server,
                                        const char *remote_server_addr,
+                                       const uint8_t *certificate,
+                                       size_t certificate_len,
                                        gabriel_client_t **client);
 
 /**
@@ -276,6 +286,27 @@ gabriel_status_t gabriel_server_create(const char *name,
  * `server` must be null or a live handle that is not used afterwards.
  */
 gabriel_status_t gabriel_server_destroy(gabriel_server_t *server);
+
+/**
+ * Writes the port remote clients reach the server on to `*port`. Fails for a server created
+ * without a bind address.
+ *
+ * # Safety
+ * `server` must be a live handle; `port` must be valid for writes.
+ */
+gabriel_status_t gabriel_server_remote_port(gabriel_server_t *server, uint16_t *port);
+
+/**
+ * Points `*certificate` to the certificate remote clients must trust, in DER, and writes its
+ * length to `*len`. The bytes stay valid while the server lives. Fails for a server created
+ * without a bind address.
+ *
+ * # Safety
+ * `server` must be a live handle; `certificate` and `len` must be valid for writes.
+ */
+gabriel_status_t gabriel_server_certificate(gabriel_server_t *server,
+                                            const uint8_t **certificate,
+                                            size_t *len);
 
 /**
  * # Safety

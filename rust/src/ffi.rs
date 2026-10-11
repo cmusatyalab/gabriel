@@ -10,8 +10,8 @@ use std::{
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{
-    Client, Engine, Error, EventKind, FlowSpec, Forward, Producer, Result, Server, Subscription,
-    logging, subscription::Event,
+    Client, Engine, Error, EventKind, FlowSpec, Forward, Producer, RemoteServerConfig, Result,
+    Server, Subscription, logging, subscription::Event,
 };
 
 /// Status code returned by every C ABI function.
@@ -177,22 +177,35 @@ pub unsafe extern "C" fn gabriel_producer_publish_input(
 
 // --- Client ---
 
+/// Creates a client of the local server `local_server`. `remote_server_addr` is the remote
+/// server's address, e.g. "192.0.2.1:4433", or NULL for none; the client then trusts only the
+/// certificate of `certificate_len` bytes at `certificate`, in DER, as
+/// `gabriel_server_certificate` gives it. Crossings to the remote server get the default capacity.
+///
 /// # Safety
-/// String arguments must be NUL-terminated; `client` must be valid for writes.
+/// String arguments must be NUL-terminated (`remote_server_addr` may be null); `certificate` must
+/// point to `certificate_len` readable bytes; `client` must be valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_create(
     name: *const c_char,
     local_server: *const c_char,
     remote_server_addr: *const c_char,
+    certificate: *const u8,
+    certificate_len: usize,
     client: *mut *mut Client,
 ) -> Status {
     unsafe {
         create_handle(client, || {
-            Client::new(
-                str_arg(name)?,
-                str_arg(local_server)?,
-                str_arg(remote_server_addr)?,
-            )
+            let remote = opt_str_arg(remote_server_addr)?
+                .map(|addr| {
+                    let addr = addr.parse().map_err(|e| {
+                        Error::InvalidArgument(format!("invalid address {addr:?}: {e}"))
+                    })?;
+                    let certificate = bytes_arg(certificate, certificate_len)?.to_vec();
+                    Ok::<_, Error>(RemoteServerConfig::new(addr, certificate))
+                })
+                .transpose()?;
+            Client::new(str_arg(name)?, str_arg(local_server)?, remote)
         })
     }
 }
@@ -278,6 +291,56 @@ pub unsafe extern "C" fn gabriel_server_create(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_destroy(server: *mut Server) -> Status {
     unsafe { destroy_handle(server) }
+}
+
+/// Writes the port remote clients reach the server on to `*port`. Fails for a server created
+/// without a bind address.
+///
+/// # Safety
+/// `server` must be a live handle; `port` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_remote_port(server: *mut Server, port: *mut u16) -> Status {
+    let result = unsafe {
+        (|| {
+            let addr = handle_arg(server)?.remote_addr().ok_or_else(not_remote)?;
+            let port = port
+                .as_mut()
+                .ok_or_else(|| Error::InvalidArgument("null port".into()))?;
+            *port = addr.port();
+            Ok(())
+        })()
+    };
+    Status::from(result)
+}
+
+/// Points `*certificate` to the certificate remote clients must trust, in DER, and writes its
+/// length to `*len`. The bytes stay valid while the server lives. Fails for a server created
+/// without a bind address.
+///
+/// # Safety
+/// `server` must be a live handle; `certificate` and `len` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_certificate(
+    server: *mut Server,
+    certificate: *mut *const u8,
+    len: *mut usize,
+) -> Status {
+    let result = unsafe {
+        (|| {
+            let bytes = handle_arg(server)?.certificate().ok_or_else(not_remote)?;
+            let (Some(certificate), Some(len)) = (certificate.as_mut(), len.as_mut()) else {
+                return Err(Error::InvalidArgument("null output".into()));
+            };
+            *certificate = bytes.as_ptr();
+            *len = bytes.len();
+            Ok(())
+        })()
+    };
+    Status::from(result)
+}
+
+fn not_remote() -> Error {
+    Error::InvalidArgument("the server accepts no remote clients".into())
 }
 
 /// # Safety
@@ -662,7 +725,14 @@ mod tests {
         let server = CString::new(unique("server")).unwrap();
         let mut client = ptr::null_mut();
         let created = unsafe {
-            gabriel_client_create(name.as_ptr(), server.as_ptr(), c"".as_ptr(), &mut client)
+            gabriel_client_create(
+                name.as_ptr(),
+                server.as_ptr(),
+                ptr::null(),
+                ptr::null(),
+                0,
+                &mut client,
+            )
         };
         assert_eq!(created, Status::Ok);
 

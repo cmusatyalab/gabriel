@@ -58,12 +58,12 @@ pub struct ProducerSpec {
 }
 
 /// Where an engine runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Location {
     /// On the local server, on this machine.
     Local,
-    /// On the remote server, e.g. a cloudlet. Not supported yet.
+    /// On the remote server, e.g. a cloudlet.
     Remote,
 }
 

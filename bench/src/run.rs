@@ -24,8 +24,6 @@ use crate::{
 
 /// How long a waiting engine or recorder sleeps before it checks whether the run is over.
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(10);
-/// The client has no remote server yet, so its address is never used.
-const UNUSED_REMOTE_ADDR: &str = "127.0.0.1:0";
 
 /// What a run recorded.
 pub struct Recorded {
@@ -63,12 +61,8 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
             &start,
         )?);
     }
-    let mut client = Client::new(
-        &format!("{}-client", spec.name),
-        &server_name,
-        UNUSED_REMOTE_ADDR,
-    )
-    .context("failed to start the client")?;
+    let mut client = Client::new(&format!("{}-client", spec.name), &server_name, None)
+        .context("failed to start the client")?;
     for name in spec.producers.keys() {
         client.add_producer(name)?;
     }

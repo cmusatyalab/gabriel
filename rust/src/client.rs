@@ -1,39 +1,68 @@
-//! Client: takes inputs from local producers, and routes them through the flows it added. Each
-//! flow's engines run on the local server; the remote server is not supported yet. It publishes
-//! what happens to each producer's inputs for the producer's app, which reads it with a
-//! [`Subscription`](crate::Subscription). Its work runs on its own thread.
+//! Client: takes inputs from local producers, and routes them through the flows it added. A
+//! flow's engines run on the local server, and on the remote server if the client connects to one.
+//! It publishes what happens to each producer's inputs for the producer's app, which reads it with
+//! a [`Subscription`](crate::Subscription). Its work runs on its own thread.
 mod compile;
 mod local_server;
 mod producers;
-// Used by the client once flows can have remote engines.
-#[cfg_attr(not(test), expect(dead_code))]
 mod remote_server;
 mod server_link;
 mod worker;
 
-use std::{sync::mpsc, thread::JoinHandle};
+use std::{net::SocketAddr, sync::mpsc, thread::JoinHandle};
 
-use crate::{Error, Result, client::worker::Command, spec::FlowSpec};
+use crate::{Error, Result, client::worker::Command, services, spec::FlowSpec};
+
+/// How many inputs a crossing to the remote server may have in flight, unless the client is told
+/// otherwise: the least that keeps the server's pending slots fresh ("Freshness" in the design
+/// note). A longer round trip may need more to keep the remote engines busy.
+pub const DEFAULT_REMOTE_CROSSING_CAPACITY: usize = services::LOCAL_CROSSING_CAPACITY;
+
+/// How a client reaches the remote server.
+#[derive(Debug, Clone)]
+pub struct RemoteServerConfig {
+    /// The server's address, as [`Server::remote_addr`](crate::Server::remote_addr) gives it.
+    pub addr: SocketAddr,
+    /// The only certificate the client trusts, in DER, as
+    /// [`Server::certificate`](crate::Server::certificate) gives it.
+    pub certificate: Vec<u8>,
+    /// How many inputs each crossing to the remote server may have in flight: on the network, or
+    /// waiting at the server.
+    pub crossing_capacity: usize,
+}
+
+impl RemoteServerConfig {
+    /// The remote server at `addr`, with its `certificate`, and the default crossing capacity.
+    pub fn new(addr: SocketAddr, certificate: Vec<u8>) -> Self {
+        Self {
+            addr,
+            certificate,
+            crossing_capacity: DEFAULT_REMOTE_CROSSING_CAPACITY,
+        }
+    }
+}
 
 /// Bridges local producers to the servers that run a flow's engines.
 #[derive(Debug)]
 pub struct Client {
-    name: String,
-    local_server: String,
-    remote_server_addr: String,
     commands: Option<mpsc::Sender<Command>>,
     thread: Option<JoinHandle<Result<()>>>,
 }
 
 impl Client {
-    /// Creates a client named `name` that talks to the local server `local_server` and the remote
-    /// server at the network address `remote_server_addr`. The local server may start later.
-    pub fn new(name: &str, local_server: &str, remote_server_addr: &str) -> Result<Self> {
-        let (commands, thread) = worker::spawn(name, local_server)?;
+    /// Creates a client named `name` that talks to the local server `local_server`, and to the
+    /// remote server `remote` if it is given. Both servers may start later; the client connects
+    /// to the remote server, and connects again after a loss, on its own.
+    pub fn new(name: &str, local_server: &str, remote: Option<RemoteServerConfig>) -> Result<Self> {
+        if let Some(remote) = &remote
+            && remote.crossing_capacity == 0
+        {
+            return Err(Error::InvalidArgument(String::from(
+                "crossings to the remote server need a capacity of at least 1",
+            )));
+        }
+        let (commands, thread) = worker::spawn(name, local_server, remote)?;
         Ok(Self {
-            name: String::from(name),
-            local_server: String::from(local_server),
-            remote_server_addr: String::from(remote_server_addr),
             commands: Some(commands),
             thread: Some(thread),
         })
@@ -55,8 +84,11 @@ impl Client {
         })
     }
 
-    /// Adds the flow `name` described by `spec`: installs its engines' part on the local server,
-    /// and routes the inputs its producers publish on `name`. Its producers must be added first.
+    /// Adds the flow `name` described by `spec`: installs its engines' parts on the servers, and
+    /// routes the inputs its producers publish on `name`. Its producers must be added first. The
+    /// local part must install. If the remote server is not connected yet, the remote part is
+    /// installed once it is; until then, inputs bound for it wait at the client, the newest
+    /// replacing the rest.
     pub fn add_flow(&mut self, name: &str, spec: &FlowSpec) -> Result<()> {
         self.request(|reply| Command::AddFlow {
             name: name.to_string(),
@@ -65,7 +97,7 @@ impl Client {
         })
     }
 
-    /// Removes the flow `name` from the client and from the local server.
+    /// Removes the flow `name` from the client and from the servers.
     pub fn remove_flow(&mut self, name: &str) -> Result<()> {
         self.request(|reply| Command::RemoveFlow {
             name: name.to_string(),
@@ -110,13 +142,13 @@ mod tests {
     };
 
     use crate::{
-        Client, Engine, Error, EventKind, Producer, Server, Subscription, Timestamp,
+        Client, Engine, Error, EventKind, Producer, RemoteServerConfig, Server, Subscription,
+        Timestamp,
         spec::{EdgeSpec, EngineSpec, FlowSpec, Location, ProducerSpec},
         subscription::{Event, Published},
         test_util::{FLOW, INPUT_LEN, MAX_INPUT_SIZE, publish, unique},
     };
 
-    const REMOTE_SERVER_ADDR: &str = "127.0.0.1:4433";
     const MAX_OUTPUT_SIZE: usize = 16;
     const OFFER_TIMEOUT: Duration = Duration::from_secs(5);
     /// Far longer than anything here takes, so a test fails rather than hangs.
@@ -138,8 +170,7 @@ mod tests {
         fn new() -> Self {
             let server_name = unique("server");
             let server = Server::new(&server_name, None).unwrap();
-            let mut client =
-                Client::new(&unique("client"), &server_name, REMOTE_SERVER_ADDR).unwrap();
+            let mut client = Client::new(&unique("client"), &server_name, None).unwrap();
             let producer_name = unique("camera");
             let producer = Producer::new(&producer_name, MAX_INPUT_SIZE).unwrap();
             client.add_producer(&producer_name).unwrap();
@@ -632,8 +663,7 @@ mod tests {
 
     #[test]
     fn flow_fails_without_a_running_server() {
-        let mut client =
-            Client::new(&unique("client"), &unique("server"), REMOTE_SERVER_ADDR).unwrap();
+        let mut client = Client::new(&unique("client"), &unique("server"), None).unwrap();
         let producer_name = unique("camera");
         client.add_producer(&producer_name).unwrap();
         let spec = FlowSpec {
@@ -660,8 +690,7 @@ mod tests {
 
     #[test]
     fn add_and_remove_producer_reject_duplicates_and_unknown_names() {
-        let mut client =
-            Client::new(&unique("client"), &unique("server"), REMOTE_SERVER_ADDR).unwrap();
+        let mut client = Client::new(&unique("client"), &unique("server"), None).unwrap();
         let producer_name = unique("producer");
 
         client.add_producer(&producer_name).unwrap();
@@ -674,6 +703,167 @@ mod tests {
             client.remove_producer(&producer_name),
             Err(Error::InvalidArgument(_))
         ));
+    }
+
+    /// A local and a remote server, a client of both, and a producer the client takes inputs from.
+    struct Offload {
+        local: Server,
+        remote: Server,
+        client: Client,
+        producer: Producer,
+        producer_name: String,
+    }
+
+    impl Offload {
+        fn new() -> Self {
+            let local_name = unique("server");
+            let local = Server::new(&local_name, None).unwrap();
+            let remote = Server::new(&unique("remote"), Some("127.0.0.1:0")).unwrap();
+            let config = RemoteServerConfig::new(
+                remote.remote_addr().unwrap(),
+                remote.certificate().unwrap().to_vec(),
+            );
+            let mut client = Client::new(&unique("client"), &local_name, Some(config)).unwrap();
+            let producer_name = unique("camera");
+            let producer = Producer::new(&producer_name, MAX_INPUT_SIZE).unwrap();
+            client.add_producer(&producer_name).unwrap();
+            Self {
+                local,
+                remote,
+                client,
+                producer,
+                producer_name,
+            }
+        }
+
+        /// The producer feeds `filter` on the device, which feeds `detector` on the remote server.
+        fn spec(&self, filter: &str, detector: &str) -> FlowSpec {
+            let edge = |from: &str, to: &str| EdgeSpec {
+                from: String::from(from),
+                to: String::from(to),
+                timeout: OFFER_TIMEOUT,
+            };
+            FlowSpec {
+                producers: vec![ProducerSpec {
+                    name: self.producer_name.clone(),
+                    tokens: ONE_TOKEN,
+                }],
+                engines: vec![
+                    EngineSpec {
+                        name: String::from(filter),
+                        location: Location::Local,
+                    },
+                    EngineSpec {
+                        name: String::from(detector),
+                        location: Location::Remote,
+                    },
+                ],
+                edges: vec![edge(&self.producer_name, filter), edge(filter, detector)],
+            }
+        }
+    }
+
+    /// Starts the engine `name`, and serves it on `server`.
+    fn serve(server: &mut Server, name: &str) -> Engine {
+        let engine = Engine::new(name, None, MAX_OUTPUT_SIZE).unwrap();
+        server.add_engine(name).unwrap();
+        engine
+    }
+
+    #[test]
+    fn input_a_local_filter_passes_is_processed_remotely() {
+        const RESULT: &[u8] = &[4, 2];
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        let mut subscription = Subscription::producer(&fixture.producer_name).unwrap();
+        // The remote part is installed once the client connects, which may be after this.
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+        assert_eq!(next_input(&mut filter), 7);
+        filter.pass(&[]).unwrap();
+        assert_eq!(next_input(&mut detector), 7);
+        detector.pass(RESULT).unwrap();
+
+        let mut seen = Vec::new();
+        while !seen
+            .iter()
+            .any(|(kind, engine, _, _)| *kind == EventKind::Result && *engine == detector_name)
+        {
+            seen.push(
+                try_next(&mut subscription, WAIT, |event| {
+                    (
+                        event.kind(),
+                        event.engine().to_owned(),
+                        event.received_at().is_some(),
+                        event.result().to_vec(),
+                    )
+                })
+                .expect("no event arrived"),
+            );
+        }
+        assert_eq!(
+            seen,
+            vec![
+                (EventKind::Sent, filter_name.clone(), false, vec![]),
+                (EventKind::Result, filter_name, false, vec![]),
+                (EventKind::Sent, detector_name.clone(), true, vec![]),
+                (EventKind::Result, detector_name, true, RESULT.to_vec()),
+            ]
+        );
+    }
+
+    #[test]
+    fn lost_remote_server_is_reported() {
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        let mut subscription = Subscription::producer(&fixture.producer_name).unwrap();
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+        // One input through both servers, so the remote part is installed.
+        publish(&mut fixture.producer, 7);
+        next_input(&mut filter);
+        filter.pass(&[]).unwrap();
+        next_input(&mut detector);
+        detector.pass(&[]).unwrap();
+
+        let Offload { remote, .. } = fixture;
+        drop(remote);
+
+        let disconnected = (0..)
+            .map(|_| next_event(&mut subscription))
+            .find(|(kind, ..)| *kind == EventKind::Disconnected);
+        assert!(disconnected.is_some());
+    }
+
+    #[test]
+    fn flow_with_remote_engines_needs_a_remote_server() {
+        let mut fixture = Fixture::new();
+        let filter = unique("filter");
+        fixture.engine(&filter);
+        let mut spec = fixture.chain(ONE_TOKEN, &[&filter, "detector"]);
+        spec.engines[1].location = Location::Remote;
+
+        let added = fixture.client.add_flow(FLOW, &spec);
+
+        assert!(matches!(added, Err(Error::InvalidArgument(_))));
+    }
+
+    #[test]
+    fn remote_crossings_need_capacity() {
+        let remote = RemoteServerConfig {
+            crossing_capacity: 0,
+            ..RemoteServerConfig::new(std::net::SocketAddr::from(([127, 0, 0, 1], 0)), Vec::new())
+        };
+
+        let created = Client::new(&unique("client"), &unique("server"), Some(remote));
+
+        assert!(matches!(created, Err(Error::InvalidArgument(_))));
     }
 
     #[test]

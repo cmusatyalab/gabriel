@@ -18,7 +18,7 @@ pub mod server;
 pub mod spec;
 pub mod subscription;
 
-pub use client::Client;
+pub use client::{Client, RemoteServerConfig};
 pub use clock::Timestamp;
 pub use engine::{Engine, Input};
 pub use error::{Error, Result};

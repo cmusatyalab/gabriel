@@ -2,22 +2,23 @@
 //! threads, and one flow router per flow. It takes commands from the [`Client`](super::Client)
 //! handle over a channel.
 //!
-//! The thread sleeps until a producer publishes or the local server sends events, and also wakes
-//! every [`COMMAND_POLL_INTERVAL`] for commands and deadlines. Each time, it applies the server's
-//! events first, which can return tokens, then admits the producers' newest inputs, and carries
-//! out what its routers decided. Every event about a producer's inputs is also published for the
+//! The thread sleeps until a producer publishes or a server sends events, and also wakes every
+//! [`COMMAND_POLL_INTERVAL`] for commands and deadlines. Each time, it applies the servers' events
+//! first, which can return tokens, then admits the producers' newest inputs, and carries out what
+//! its routers decided. Every event about a producer's inputs is also published for the
 //! producer's app.
 //!
-//! The connection to the local server is lost when the server's process stops, which the thread
-//! checks every [`SERVER_CHECK_INTERVAL`], or when the server's stream of events loses some. Then
-//! every offer on the server ends with `Disconnected`, and the thread installs its flows again as
-//! soon as it can.
+//! Each flow has a part on each server that runs some of its engines. The connection to a server
+//! is lost when its process stops or its stream of events loses some (the local server), or when
+//! the network connection drops (the remote server). Then every offer on that server ends with
+//! `Disconnected`, and the thread installs the flows' parts again as soon as it can. A flow's
+//! remote part is also installed late if the remote server was not connected when the flow was
+//! added; until then, the flow's crossings to it send nothing.
 //!
 //! Failures the thread carries on after are logged as warnings, with [`tracing`].
 
 use std::{
     collections::{HashMap, HashSet},
-    iter,
     sync::{
         Arc,
         mpsc::{self, TryRecvError},
@@ -34,9 +35,11 @@ use uuid::Uuid;
 use crate::{
     Error, Result,
     client::{
+        RemoteServerConfig,
         compile::compile,
         local_server::LocalServer,
         producers::{Producers, ReceivedInput},
+        remote_server::RemoteServer,
         server_link::{ServerEvent, ServerLink},
     },
     ipc::types::{EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
@@ -48,15 +51,16 @@ use crate::{
         tokens::{OfferEnd, Verdict},
     },
     services::{self, LOCAL_CROSSING_CAPACITY},
-    spec::FlowSpec,
+    spec::{FlowSpec, Location},
 };
 
 /// How long the thread waits for inputs and events before it checks for commands and deadlines
 /// again. Bounds how late a command is handled and an offer times out.
 const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-/// How often the thread checks whether the local server's process stopped. Until then, the offers
-/// on a stopped server stay open, and their tokens held, unless their deadlines pass first.
+/// How often the thread checks whether a server stopped, and installs parts of flows that are not
+/// installed. Until then, the offers on a stopped local server stay open, and their tokens held,
+/// unless their deadlines pass first.
 const SERVER_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 pub(super) enum Command {
@@ -79,43 +83,54 @@ pub(super) enum Command {
     },
 }
 
+/// The part of a flow that one server runs.
+struct Part {
+    /// Kept to install the part again after a lost connection.
+    install: InstallFlow,
+    /// The session the server gave the part, once it was installed.
+    session: Option<u64>,
+    /// Whether the part is installed. Not before the first install, nor while the connection is
+    /// lost.
+    connected: bool,
+    /// The client's crossings to the server.
+    crossings: Vec<EdgeId>,
+}
+
+/// Where a crossing goes.
+struct Crossing {
+    location: Location,
+    /// Its target engines, so the client can report what happened to a crossing's offer at each.
+    targets: Vec<EngineName>,
+}
+
 /// One flow the client added.
 struct ClientFlow {
     /// Producer inputs are kept as shared bytes; the router clones them for each crossing.
     router: FlowRouter<Arc<[u8]>>,
-    /// The session the local server gave the flow.
-    session: u64,
-    /// Whether the flow is installed on the local server. Not while the connection is lost.
-    connected: bool,
-    /// The local server's part, kept to install it again after a lost connection.
-    install: InstallFlow,
+    parts: HashMap<Location, Part>,
     /// The node of each engine, so an event names the node it is about.
     nodes: HashMap<EngineName, NodeId>,
-    /// The target engines of each crossing, so the client can report what happened to a
-    /// crossing's offer at each engine.
-    crossings: HashMap<EdgeId, Vec<EngineName>>,
+    crossings: HashMap<EdgeId, Crossing>,
     producers: HashSet<ProducerName>,
-}
-
-impl ClientFlow {
-    fn crossing_ids(&self) -> Vec<EdgeId> {
-        self.crossings.keys().copied().collect()
-    }
 }
 
 struct Worker {
     node: Node<ipc::Service>,
     producers: Producers,
-    server: Box<dyn ServerLink>,
+    servers: HashMap<Location, Box<dyn ServerLink>>,
+    /// How many inputs each crossing to the remote server may have in flight.
+    remote_crossing_capacity: usize,
     flows: HashMap<FlowName, ClientFlow>,
     next_server_check: Instant,
 }
 
-/// Starts the thread of the client `name`, which talks to the local server `local_server`, and
-/// returns its command channel once the thread has set up its iceoryx2 ports.
+/// Starts the thread of the client `name`, which talks to the local server `local_server`, and to
+/// the remote server `remote` if it is given. Returns its command channel once the thread has set
+/// up its ports.
 pub(super) fn spawn(
     name: &str,
     local_server: &str,
+    remote: Option<RemoteServerConfig>,
 ) -> Result<(mpsc::Sender<Command>, JoinHandle<Result<()>>)> {
     let (started_tx, started_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
@@ -126,7 +141,7 @@ pub(super) fn spawn(
             // Every event the thread logs names the client.
             let _span = info_span!("client", name = %name).entered();
             // Created inside the thread: iceoryx2 ports cannot be moved between threads.
-            let worker = match Worker::new(&name, &local_server) {
+            let worker = match Worker::new(&name, &local_server, remote) {
                 Ok(worker) => {
                     let _ = started_tx.send(Ok(()));
                     worker
@@ -159,22 +174,32 @@ pub(super) fn spawn(
 }
 
 impl Worker {
-    fn new(name: &str, local_server: &str) -> Result<Self> {
+    fn new(name: &str, local_server: &str, remote: Option<RemoteServerConfig>) -> Result<Self> {
         let node = NodeBuilder::new()
             .name(&naming::client_node(name)?)
             .create::<ipc::Service>()
             .map_err(|e| Error::Internal(format!("failed to create node: {e}")))?;
-        let server = LocalServer::open(&node, name, local_server)?;
+        let mut servers: HashMap<Location, Box<dyn ServerLink>> = HashMap::from([(
+            Location::Local,
+            Box::new(LocalServer::open(&node, name, local_server)?) as Box<dyn ServerLink>,
+        )]);
+        let mut remote_crossing_capacity = LOCAL_CROSSING_CAPACITY;
+        if let Some(remote) = remote {
+            let server = RemoteServer::open(&node, name, remote.addr, &remote.certificate)?;
+            servers.insert(Location::Remote, Box::new(server));
+            remote_crossing_capacity = remote.crossing_capacity;
+        }
         Ok(Self {
             node,
             producers: Producers::default(),
-            server: Box::new(server),
+            servers,
+            remote_crossing_capacity,
             flows: HashMap::new(),
             next_server_check: Instant::now(),
         })
     }
 
-    /// Runs until the command channel closes, then removes the client's flows from the server.
+    /// Runs until the command channel closes, then removes the client's flows from the servers.
     /// Returns an error only if the thread cannot wait any more.
     fn run(mut self, commands: &mpsc::Receiver<Command>) -> Result<()> {
         loop {
@@ -192,21 +217,14 @@ impl Worker {
             let listeners = self
                 .producers
                 .listeners()
-                .chain(iter::once(self.server.ready()));
+                .chain(self.servers.values().map(|server| server.ready()));
             services::wait_for_any(listeners, COMMAND_POLL_INTERVAL)?;
             let now = Instant::now();
             // Events can free tokens and crossings, so they go before new inputs. An event the
             // client cannot read leaves its offer open until the offer's deadline.
-            match self.server.take_events() {
-                Ok(received) => {
-                    for event in &received.events {
-                        self.apply(event, now);
-                    }
-                    if received.lost {
-                        self.server_lost(now);
-                    }
-                }
-                Err(e) => warn!(error = %e, "failed to read the local server's events"),
+            let locations: Vec<Location> = self.servers.keys().copied().collect();
+            for location in locations {
+                self.take_events(location, now);
             }
             for input in self.producers.take_inputs() {
                 self.admit(input, now);
@@ -215,7 +233,7 @@ impl Worker {
                 flow.router.expire(now);
             }
             if now >= self.next_server_check {
-                self.check_server(now);
+                self.check_servers(now);
                 self.next_server_check = now + SERVER_CHECK_INTERVAL;
             }
             self.carry_out();
@@ -224,6 +242,35 @@ impl Worker {
                 self.producers.wake_subscribers(),
                 "failed to wake a producer's subscribers",
             );
+        }
+    }
+
+    /// Applies what the server at `location` sent. A server that just connected gets the parts
+    /// of flows that wait for it.
+    fn take_events(&mut self, location: Location, now: Instant) {
+        let server = self
+            .servers
+            .get_mut(&location)
+            .expect("only servers the client has are asked");
+        let was_connected = server.is_connected();
+        let received = match server.take_events() {
+            Ok(received) => received,
+            Err(e) => {
+                warn!(error = %e, ?location, "failed to read a server's events");
+                return;
+            }
+        };
+        let connected = server.is_connected();
+        for event in &received.events {
+            self.apply(event, now);
+        }
+        // The lost events may have ended offers, so the client can no longer tell which of the
+        // server's offers are open.
+        if received.lost {
+            warn!(?location, "lost the connection to a server");
+            self.server_lost(location, now);
+        } else if connected && !was_connected {
+            self.reconnect(location, now);
         }
     }
 
@@ -260,8 +307,9 @@ impl Worker {
         self.producers.remove_producer(name)
     }
 
-    /// Checks the flow `name`, installs the local server's part, and starts routing the client's
-    /// part.
+    /// Checks the flow `name`, installs each server's part, and starts routing the client's part.
+    /// The local part must install. The remote part is installed now if the remote server is
+    /// connected, and must then install too; otherwise it is installed once the server connects.
     fn add_flow(&mut self, name: &str, spec: &FlowSpec) -> Result<()> {
         let flow = FlowName::try_from(name)
             .ok()
@@ -273,6 +321,16 @@ impl Worker {
             )));
         }
         let compiled = compile(name, spec)?;
+        if let Some(location) = compiled
+            .parts
+            .keys()
+            .find(|location| !self.servers.contains_key(location))
+        {
+            return Err(Error::InvalidArgument(format!(
+                "flow {name:?} has engines on the {location:?} server, which the client does not \
+                 connect to"
+            )));
+        }
 
         // A random session keeps the client's offer ids from before a restart apart from new ones.
         let (session, _) = Uuid::new_v4().as_u64_pair();
@@ -292,12 +350,16 @@ impl Worker {
             )?;
             producers.insert(producer.name);
         }
-        for crossing in compiled.crossings {
+        for crossing in &compiled.crossings {
+            let capacity = match crossing.location {
+                Location::Local => LOCAL_CROSSING_CAPACITY,
+                Location::Remote => self.remote_crossing_capacity,
+            };
             router.add_edge(
                 crossing.id,
-                crossing.source,
+                crossing.source.clone(),
                 crossing.target,
-                LOCAL_CROSSING_CAPACITY,
+                capacity,
                 crossing.timeout,
             )?;
         }
@@ -307,63 +369,109 @@ impl Worker {
             .iter()
             .map(|(&engine, &node)| (node, engine))
             .collect();
-        let crossings = compiled
-            .local
-            .crossings
-            .iter()
-            .map(|crossing| {
+        let mut crossings = HashMap::new();
+        let mut parts = HashMap::new();
+        for (location, install) in compiled.parts {
+            for crossing in &install.crossings {
                 let targets = crossing
                     .targets
                     .iter()
                     .map(|target| engines[&target.to])
                     .collect();
-                (crossing.id, targets)
-            })
-            .collect();
+                crossings.insert(crossing.id, Crossing { location, targets });
+            }
+            let part = Part {
+                crossings: install
+                    .crossings
+                    .iter()
+                    .map(|crossing| crossing.id)
+                    .collect(),
+                install,
+                session: None,
+                connected: false,
+            };
+            // Nothing is sent to a part until it is installed.
+            router.suspend(&part.crossings);
+            parts.insert(location, part);
+        }
+        let mut flow_state = ClientFlow {
+            router,
+            parts,
+            nodes: compiled.nodes,
+            crossings,
+            producers,
+        };
 
         // Last, so a flow the client rejects is never installed.
-        let session = self.server.install(compiled.local.clone())?;
-        self.flows.insert(
-            flow,
-            ClientFlow {
-                router,
-                session,
-                connected: true,
-                install: compiled.local,
-                nodes: compiled.nodes,
-                crossings,
-                producers,
-            },
-        );
-        info!(flow = name, session, "added flow");
+        let now = Instant::now();
+        let mut installed = Vec::new();
+        for location in [Location::Local, Location::Remote] {
+            let Some(part) = flow_state.parts.get_mut(&location) else {
+                continue;
+            };
+            let server = &self.servers[&location];
+            if location == Location::Remote && !server.is_connected() {
+                info!(
+                    flow = name,
+                    "the remote server is not connected; its part waits"
+                );
+                continue;
+            }
+            match install(server.as_ref(), part, &mut flow_state.router, now) {
+                Ok(()) => installed.push(location),
+                Err(e) => {
+                    // No flow is left half installed.
+                    for location in installed {
+                        if let Some(session) = flow_state.parts[&location].session {
+                            let _ = self.servers[&location].remove_flow(session);
+                        }
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        self.flows.insert(flow, flow_state);
+        info!(flow = name, "added flow");
         Ok(())
     }
 
-    /// Removes the flow `name` from the client and from the server. Its open tickets are dropped.
+    /// Removes the flow `name` from the client and from the servers. Its open tickets are dropped.
     fn remove_flow(&mut self, name: &str) -> Result<()> {
         let flow = FlowName::try_from(name)
             .ok()
             .and_then(|flow| self.flows.remove(&flow))
             .ok_or_else(|| Error::InvalidArgument(format!("flow {name:?} does not exist")))?;
         info!(flow = name, "removed flow");
-        if !flow.connected {
-            // After lost events the server may still have the flow; if the server is gone,
-            // there is nothing to remove.
-            let _ = self.server.remove_flow(flow.session);
-            return Ok(());
+        let mut first_error = None;
+        for (location, part) in &flow.parts {
+            let Some(session) = part.session else {
+                continue;
+            };
+            let removed = self.servers[location].remove_flow(session);
+            // After lost events the server may still have the part; if the server is gone, there
+            // is nothing to remove. Only a connected part must be removed.
+            if part.connected
+                && let Err(e) = removed
+            {
+                first_error.get_or_insert(e);
+            }
         }
-        self.server.remove_flow(flow.session)
+        first_error.map_or(Ok(()), Err)
     }
 
-    /// Removes every flow from the server, so that a client that stops leaves nothing installed.
+    /// Removes every flow from the servers, so that a client that stops leaves nothing installed.
     fn remove_all_flows(&mut self) {
         for (_, flow) in self.flows.drain() {
-            // The server may be gone already; then there is nothing to remove.
-            let _ = self.server.remove_flow(flow.session);
+            for (location, part) in &flow.parts {
+                // The server may be gone already; then there is nothing to remove.
+                if let Some(session) = part.session {
+                    let _ = self.servers[location].remove_flow(session);
+                }
+            }
         }
     }
 
-    /// Applies an event from the server to its flow's router, and publishes it for the app of the
+    /// Applies an event from a server to its flow's router, and publishes it for the app of the
     /// input's producer, unless it is a duplicate. `Accepted` is not published: the app learns
     /// about each engine's offer from the events that follow.
     fn apply(&mut self, event: &ServerEvent, now: Instant) {
@@ -385,9 +493,14 @@ impl Worker {
                 let Some(&node) = flow.nodes.get(&record.engine) else {
                     return;
                 };
+                if record.forward == Forward::Emit {
+                    // The client has only the input, not what the engine emitted, so it cannot
+                    // send that on its own edges, such as an uplink.
+                    debug!(engine = %record.engine, "an emitted input does not cross to the remote server yet");
+                }
                 OfferEnd::Result {
                     node,
-                    forwarded: record.forward != Forward::Stop,
+                    forwarded: record.forward == Forward::Pass,
                     children: children(),
                 }
             }
@@ -435,34 +548,46 @@ impl Worker {
         }
     }
 
-    /// Checks whether the local server's process stopped. If it did, or if it is gone while flows
-    /// are installed on it, the connection is lost. Otherwise, flows whose connection was lost
-    /// are installed again.
-    fn check_server(&mut self, now: Instant) {
-        let stopped = match self.server.check() {
-            Ok(stopped) => stopped,
-            Err(e) => {
-                warn!(error = %e, "failed to check the local server");
-                return;
+    /// Checks whether each server stopped. If one did, or if it is gone while parts are installed
+    /// on it, the connection is lost. Otherwise, parts that are not installed are installed.
+    fn check_servers(&mut self, now: Instant) {
+        let locations: Vec<Location> = self.servers.keys().copied().collect();
+        for location in locations {
+            let server = self
+                .servers
+                .get_mut(&location)
+                .expect("only servers the client has are checked");
+            let stopped = match server.check() {
+                Ok(stopped) => stopped,
+                Err(e) => {
+                    warn!(error = %e, ?location, "failed to check a server");
+                    continue;
+                }
+            };
+            let installed = self
+                .flows
+                .values()
+                .any(|flow| flow.parts.get(&location).is_some_and(|part| part.connected));
+            if stopped || (installed && !server.is_connected()) {
+                warn!(?location, "a server stopped or restarted");
+                self.server_lost(location, now);
+            } else {
+                self.reconnect(location, now);
             }
-        };
-        let installed = self.flows.values().any(|flow| flow.connected);
-        if stopped || (installed && !self.server.is_connected()) {
-            warn!("the local server stopped or restarted");
-            self.server_lost(now);
-        } else {
-            self.reconnect(now);
         }
     }
 
-    /// The connection to the local server was lost. Every offer of every flow on the server ends
-    /// with `Disconnected`, and each flow's producers' apps are told once. Then the flows are
-    /// installed again, if the server can be reached.
-    fn server_lost(&mut self, now: Instant) {
-        for (&name, flow) in self.flows.iter_mut().filter(|(_, flow)| flow.connected) {
-            flow.connected = false;
-            flow.router
-                .disconnect(flow.session, &flow.crossing_ids(), now);
+    /// The connection to the server at `location` was lost. Every offer of every flow on the
+    /// server ends with `Disconnected`, and each flow's producers' apps are told once. Then the
+    /// parts are installed again, if the server can be reached.
+    fn server_lost(&mut self, location: Location, now: Instant) {
+        for (&name, flow) in &mut self.flows {
+            let Some(part) = flow.parts.get_mut(&location).filter(|part| part.connected) else {
+                continue;
+            };
+            part.connected = false;
+            let session = part.session.expect("a connected part was installed");
+            flow.router.disconnect(session, &part.crossings, now);
             for producer in &flow.producers {
                 let record = EventRecord::disconnected(name);
                 warn_on_error(
@@ -471,55 +596,69 @@ impl Worker {
                 );
             }
         }
-        self.reconnect(now);
+        self.reconnect(location, now);
     }
 
-    /// Installs every flow whose connection was lost again, and lets it send again. A flow the
-    /// server refuses stays disconnected until the next try.
-    fn reconnect(&mut self, now: Instant) {
-        for (name, flow) in self.flows.iter_mut().filter(|(_, flow)| !flow.connected) {
-            // After lost events the server still has the flow, so it is removed first. If the
-            // server restarted, it has nothing to remove.
-            let _ = self.server.remove_flow(flow.session);
-            let session = match self.server.install(flow.install.clone()) {
-                Ok(session) => session,
-                Err(e) => {
-                    // Tried again at every check, so not worth a warning each time.
-                    debug!(flow = name.as_str(), error = %e, "failed to install flow again");
-                    continue;
-                }
+    /// Installs every part on the server at `location` that is not installed, and lets its
+    /// crossings send. A part the server refuses stays waiting until the next try.
+    fn reconnect(&mut self, location: Location, now: Instant) {
+        let server = &self.servers[&location];
+        if !server.is_connected() && location == Location::Remote {
+            return;
+        }
+        for (name, flow) in &mut self.flows {
+            let Some(part) = flow.parts.get_mut(&location).filter(|part| !part.connected) else {
+                continue;
             };
-            info!(flow = name.as_str(), session, "installed flow again");
-            flow.session = session;
-            flow.connected = true;
-            flow.router.reconnect(&flow.crossing_ids(), now);
+            // After lost events the server still has the part, so it is removed first. If the
+            // server restarted, it has nothing to remove.
+            if let Some(session) = part.session {
+                let _ = server.remove_flow(session);
+            }
+            match install(server.as_ref(), part, &mut flow.router, now) {
+                Ok(()) => info!(flow = name.as_str(), ?location, "installed flow"),
+                // A server that refuses the part needs attention; one that cannot be reached is
+                // tried again at every check, so it is not worth a warning each time.
+                Err(e @ Error::InvalidArgument(_)) => {
+                    warn!(flow = name.as_str(), ?location, error = %e, "server refused flow");
+                }
+                Err(e) => {
+                    debug!(flow = name.as_str(), ?location, error = %e, "failed to install flow");
+                }
+            }
         }
     }
 
     /// Carries out what the routers decided: sends inputs on their crossings, and reports offers
-    /// that ended on the client. Every client edge is a crossing to the local server for now.
+    /// that ended on the client.
     fn carry_out(&mut self) {
         for (&name, flow) in &mut self.flows {
             while let Some(action) = flow.router.poll_action() {
                 match action {
                     RouterAction::Send {
+                        edge,
                         offer,
                         input_id,
                         input,
                         ..
                     } => {
+                        let location = flow.crossings[&edge].location;
+                        // A crossing only sends while its part is installed.
+                        let Some(session) = flow.parts[&location].session else {
+                            continue;
+                        };
                         // An input the server did not get times out on its crossing, which frees
                         // the crossing and, later, the input's token. Producers set no payload
                         // type yet.
                         warn_on_error(
-                            self.server.send(
-                                flow.session,
+                            self.servers[&location].send(
+                                session,
                                 offer,
                                 input_id,
                                 PayloadType::new(),
                                 input,
                             ),
-                            "failed to send an input to the local server",
+                            "failed to send an input to a server",
                         );
                     }
                     RouterAction::Skipped {
@@ -527,7 +666,8 @@ impl Worker {
                         offer,
                         input_id,
                     } => {
-                        for &engine in &flow.crossings[&edge] {
+                        let crossing = &flow.crossings[&edge];
+                        for &engine in &crossing.targets {
                             let record = EventRecord::skipped(offer, input_id, engine, name);
                             warn_on_error(
                                 self.producers.publish(&input_id.producer, record, &[]),
@@ -536,10 +676,14 @@ impl Worker {
                         }
                         // The engines' subscribers learn it from the server. A notice that does
                         // not arrive only leaves them waiting.
-                        if flow.connected {
+                        let part = &flow.parts[&crossing.location];
+                        if part.connected
+                            && let Some(session) = part.session
+                        {
                             warn_on_error(
-                                self.server.send_skipped(flow.session, offer, input_id),
-                                "failed to send a skip notice to the local server",
+                                self.servers[&crossing.location]
+                                    .send_skipped(session, offer, input_id),
+                                "failed to send a skip notice to a server",
                             );
                         }
                     }
@@ -548,7 +692,7 @@ impl Worker {
                         offer,
                         input_id,
                     } => {
-                        for &engine in &flow.crossings[&edge] {
+                        for &engine in &flow.crossings[&edge].targets {
                             let record = EventRecord::timed_out(offer, input_id, engine, name);
                             warn_on_error(
                                 self.producers.publish(&input_id.producer, record, &[]),
@@ -560,6 +704,20 @@ impl Worker {
             }
         }
     }
+}
+
+/// Installs `part` on `server`, and lets its crossings in `router` send.
+fn install(
+    server: &dyn ServerLink,
+    part: &mut Part,
+    router: &mut FlowRouter<Arc<[u8]>>,
+    now: Instant,
+) -> Result<()> {
+    let session = server.install(part.install.clone())?;
+    part.session = Some(session);
+    part.connected = true;
+    router.reconnect(&part.crossings, now);
+    Ok(())
 }
 
 /// Logs the error of `result`, a failure the thread carries on after, as a warning about `what`.

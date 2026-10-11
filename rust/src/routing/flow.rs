@@ -418,6 +418,16 @@ impl<T: Clone> FlowRouter<T> {
         }
     }
 
+    /// The crossings `crossings` send nothing until [`FlowRouter::reconnect`], e.g. because their
+    /// server's part of the flow is not installed yet.
+    pub(crate) fn suspend(&mut self, crossings: &[EdgeId]) {
+        for crossing in crossings {
+            if let Some(edge) = self.edges.get_mut(crossing) {
+                edge.state.suspend();
+            }
+        }
+    }
+
     /// The client is connected to the server again: the crossings `crossings` send again, and
     /// waiting inputs are admitted.
     pub(crate) fn reconnect(&mut self, crossings: &[EdgeId], now: Instant) {

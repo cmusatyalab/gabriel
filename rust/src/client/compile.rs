@@ -1,13 +1,14 @@
 //! Turns an app's flow spec into routing state for the client and for each server ("Installing a
 //! flow" in the design note). An edge between two engines on one server belongs to that server;
 //! every other edge belongs to the client, and a node's client edges to one server form a single
-//! crossing. Only local engines are supported until the remote server exists.
+//! crossing. Inputs only move from the device to the remote server, so no edge may lead from a
+//! remote engine to a local one.
 
 use std::{collections::HashMap, time::Duration};
 
 use petgraph::{
     algo::toposort,
-    graph::{DiGraph, NodeIndex},
+    graph::{DiGraph, EdgeReference, NodeIndex},
     visit::EdgeRef,
 };
 
@@ -23,16 +24,20 @@ use crate::{
     spec::{FlowSpec, Location},
 };
 
-/// A flow, split into the client's part and the local server's part.
+/// How long a round trip to the remote server may take, on top of the engines' own time. Generous,
+/// because a queue on the link can multiply the round trip.
+pub(super) const REMOTE_RTT_BOUND: Duration = Duration::from_secs(1);
+
+/// A flow, split into the client's part and a part for each server that runs its engines.
 #[derive(Debug)]
 pub(super) struct CompiledFlow {
     pub(super) producers: Vec<CompiledProducer>,
-    /// The client's edges: one crossing per producer.
+    /// The client's edges, grouped into crossings: one per producer or local engine and server.
     pub(super) crossings: Vec<CompiledCrossing>,
     /// The node of each engine, so the client can tell which node an event is about.
     pub(super) nodes: HashMap<EngineName, NodeId>,
-    /// The local server's part.
-    pub(super) local: InstallFlow,
+    /// The part of each server that runs some of the flow's engines.
+    pub(super) parts: HashMap<Location, InstallFlow>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +54,8 @@ pub(super) struct CompiledProducer {
 pub(super) struct CompiledCrossing {
     pub(super) id: EdgeId,
     pub(super) source: EdgeSource,
+    /// The server its targets run on.
+    pub(super) location: Location,
     /// The first of its target engines. The crossing goes to their server, which offers each input
     /// to every target.
     pub(super) target: NodeId,
@@ -63,18 +70,21 @@ fn engine_wait(timeout: Duration) -> Duration {
     timeout * turns
 }
 
-/// Checks `spec`, and splits the flow `flow` between the client and the local server.
+/// The longest an input can take from being sent to an engine at `location` to its outcome: the
+/// wait at the engine, and the round trip to the remote server.
+fn wait_at(location: Location, timeout: Duration) -> Duration {
+    match location {
+        Location::Local => engine_wait(timeout),
+        Location::Remote => engine_wait(timeout) + REMOTE_RTT_BOUND,
+    }
+}
+
+/// Checks `spec`, and splits the flow `flow` between the client and the servers.
 pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
     // The nodes are the engines, then the producers. A node's index in the graph is its id.
     let mut graph = DiGraph::<&str, Duration>::new();
     let mut by_name = HashMap::new();
     for engine in &spec.engines {
-        if engine.location == Location::Remote {
-            return Err(Error::InvalidArgument(format!(
-                "engine {:?} runs on the remote server, which is not supported yet",
-                engine.name
-            )));
-        }
         engine_name(&engine.name)?;
         add_node(&mut graph, &mut by_name, &engine.name)?;
     }
@@ -89,7 +99,8 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
         add_node(&mut graph, &mut by_name, &producer.name)?;
     }
 
-    let is_engine = |node: NodeIndex| node.index() < spec.engines.len();
+    // Where a node runs: producers are on the device, with the client.
+    let location = |node: NodeIndex| spec.engines.get(node.index()).map(|engine| engine.location);
     for edge in &spec.edges {
         let from = *by_name.get(edge.from.as_str()).ok_or_else(|| {
             Error::InvalidArgument(format!(
@@ -100,13 +111,20 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
         let to = by_name
             .get(edge.to.as_str())
             .copied()
-            .filter(|&to| is_engine(to))
+            .filter(|&to| location(to).is_some())
             .ok_or_else(|| {
                 Error::InvalidArgument(format!(
                     "edge leads to {:?}, which is not an engine of the flow",
                     edge.to
                 ))
             })?;
+        if location(from) == Some(Location::Remote) && location(to) == Some(Location::Local) {
+            return Err(Error::InvalidArgument(format!(
+                "the edge from {:?} to {:?} leads from the remote server back to the device; \
+                 only results come back",
+                edge.from, edge.to
+            )));
+        }
         if graph.contains_edge(from, to) {
             return Err(Error::InvalidArgument(format!(
                 "the edge from {:?} to {:?} appears twice",
@@ -129,60 +147,100 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
         ))
     })?;
 
-    let server_edge =
-        |edge: petgraph::graph::EdgeReference<'_, Duration>| server_router::EdgeSpec {
-            id: edge_id(edge.id().index()),
-            from: node_id(edge.source()),
-            to: node_id(edge.target()),
-            timeout: *edge.weight(),
-        };
-    let mut local = InstallFlow {
-        flow: flow.to_owned(),
-        engines: spec
-            .engines
-            .iter()
-            .enumerate()
-            .map(|(index, engine)| (node_id(NodeIndex::new(index)), engine.name.clone()))
-            .collect(),
-        // Edges between engines belong to the engines' server.
-        edges: graph
-            .edge_references()
-            .filter(|edge| is_engine(edge.source()))
-            .map(server_edge)
-            .collect(),
-        crossings: Vec::new(),
+    let target_location =
+        |edge: EdgeReference<'_, Duration>| location(edge.target()).expect("edges lead to engines");
+    // An edge between two engines on one server belongs to that server.
+    let server_owned = |edge: &EdgeReference<'_, Duration>| {
+        location(edge.source()) == Some(target_location(*edge))
     };
+    let server_edge = |edge: EdgeReference<'_, Duration>| server_router::EdgeSpec {
+        id: edge_id(edge.id().index()),
+        from: node_id(edge.source()),
+        to: node_id(edge.target()),
+        timeout: *edge.weight(),
+    };
+    let mut parts: HashMap<Location, InstallFlow> = HashMap::new();
+    for (index, engine) in spec.engines.iter().enumerate() {
+        parts
+            .entry(engine.location)
+            .or_insert_with(|| InstallFlow {
+                flow: flow.to_owned(),
+                engines: Vec::new(),
+                edges: Vec::new(),
+                crossings: Vec::new(),
+            })
+            .engines
+            .push((node_id(NodeIndex::new(index)), engine.name.clone()));
+    }
+    for edge in graph.edge_references().filter(server_owned) {
+        let part = parts
+            .get_mut(&target_location(edge))
+            .expect("an engine's server has a part");
+        part.edges.push(server_edge(edge));
+    }
 
+    // Every other edge belongs to the client. A node's client edges to one server form one
+    // crossing, numbered after the edges.
+    let mut crossings = Vec::new();
+    let mut next_crossing = spec.edges.len();
+    for node in graph.node_indices() {
+        let source = match location(node) {
+            Some(Location::Remote) => continue,
+            Some(Location::Local) => EdgeSource::Engine(node_id(node)),
+            None => EdgeSource::Producer(producer_name(graph[node])?),
+        };
+        for server in [Location::Local, Location::Remote] {
+            let mut targets: Vec<_> = graph
+                .edges(node)
+                .filter(|edge| !server_owned(edge) && target_location(*edge) == server)
+                .map(server_edge)
+                .collect();
+            targets.sort_by_key(|target| target.id.0);
+            let Some(first) = targets.first() else {
+                continue;
+            };
+            let id = edge_id(next_crossing);
+            next_crossing += 1;
+            crossings.push(CompiledCrossing {
+                id,
+                source: source.clone(),
+                location: server,
+                target: first.to,
+                timeout: targets
+                    .iter()
+                    .map(|target| wait_at(server, target.timeout))
+                    .max()
+                    .expect("a crossing has targets"),
+            });
+            parts
+                .get_mut(&server)
+                .expect("an engine's server has a part")
+                .crossings
+                .push(CrossingSpec { id, targets });
+        }
+    }
+
+    // The wait an edge adds to an input's path: a round trip if it crosses to the remote server.
+    let edge_wait = |edge: EdgeReference<'_, Duration>| {
+        if server_owned(&edge) {
+            engine_wait(*edge.weight())
+        } else {
+            wait_at(target_location(edge), *edge.weight())
+        }
+    };
     let mut producers = Vec::with_capacity(spec.producers.len());
-    let mut crossings = Vec::with_capacity(spec.producers.len());
     for (offset, producer) in spec.producers.iter().enumerate() {
         let node = NodeIndex::new(spec.engines.len() + offset);
-        let mut targets: Vec<_> = graph.edges(node).map(server_edge).collect();
-        targets.sort_by_key(|target| target.id.0);
-        let Some(first) = targets.first() else {
+        if graph.edges(node).next().is_none() {
             return Err(Error::InvalidArgument(format!(
                 "producer {:?} feeds no engine",
                 producer.name
             )));
-        };
-        let name = producer_name(&producer.name)?;
-        // Crossings are numbered after the edges.
-        let id = edge_id(spec.edges.len() + offset);
-        crossings.push(CompiledCrossing {
-            id,
-            source: EdgeSource::Producer(name),
-            target: first.to,
-            timeout: targets
-                .iter()
-                .map(|target| engine_wait(target.timeout))
-                .max()
-                .expect("a crossing has targets"),
-        });
-        local.crossings.push(CrossingSpec { id, targets });
+        }
         producers.push(CompiledProducer {
-            name,
+            name: producer_name(&producer.name)?,
             tokens: producer.tokens,
-            ticket_timeout: longest_wait(&graph, &order, node),
+            ticket_timeout: longest_wait(&graph, &order, node, edge_wait),
         });
     }
 
@@ -199,7 +257,7 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
         producers,
         crossings,
         nodes,
-        local,
+        parts,
     })
 }
 
@@ -217,12 +275,13 @@ fn add_node<'a>(
     Ok(())
 }
 
-/// The longest an input from the node `start` can spend in the flow: along each path, it waits at
-/// every engine in turn. `order` is the graph's nodes in topological order.
+/// The longest an input from the node `start` can spend in the flow: along each path, it waits
+/// `edge_wait` on every edge in turn. `order` is the graph's nodes in topological order.
 fn longest_wait(
     graph: &DiGraph<&str, Duration>,
     order: &[NodeIndex],
     start: NodeIndex,
+    edge_wait: impl Fn(EdgeReference<'_, Duration>) -> Duration,
 ) -> Duration {
     let mut longest = HashMap::from([(start, Duration::ZERO)]);
     for &node in order {
@@ -230,7 +289,7 @@ fn longest_wait(
             continue;
         };
         for edge in graph.edges(node) {
-            let arrived = waited + engine_wait(*edge.weight());
+            let arrived = waited + edge_wait(edge);
             longest
                 .entry(edge.target())
                 .and_modify(|longest: &mut Duration| *longest = (*longest).max(arrived))
@@ -275,6 +334,7 @@ mod tests {
     const TOKENS: usize = 2;
     const FILTER_TIMEOUT: Duration = Duration::from_millis(100);
     const DETECTOR_TIMEOUT: Duration = Duration::from_millis(300);
+    const TRACKER_TIMEOUT: Duration = Duration::from_millis(50);
 
     fn engine(name: &str) -> EngineSpec {
         EngineSpec {
@@ -316,8 +376,9 @@ mod tests {
 
         let (filter, detector, camera) = (NodeId(0), NodeId(1), NodeId(2));
         let (to_filter, to_detector, crossing) = (EdgeId(0), EdgeId(1), EdgeId(2));
+        assert!(!compiled.parts.contains_key(&Location::Remote));
         assert_eq!(
-            compiled.local,
+            compiled.parts[&Location::Local],
             InstallFlow {
                 flow: String::from(FLOW),
                 engines: vec![
@@ -346,6 +407,7 @@ mod tests {
             vec![CompiledCrossing {
                 id: crossing,
                 source: EdgeSource::Producer(ProducerName::try_from("camera").unwrap()),
+                location: Location::Local,
                 target: filter,
                 timeout: engine_wait(FILTER_TIMEOUT),
             }]
@@ -364,8 +426,9 @@ mod tests {
 
         let compiled = compile(FLOW, &spec).unwrap();
 
-        let [crossing] = &compiled.local.crossings[..] else {
-            panic!("expected one crossing, got {:?}", compiled.local.crossings);
+        let local = &compiled.parts[&Location::Local];
+        let [crossing] = &local.crossings[..] else {
+            panic!("expected one crossing, got {:?}", local.crossings);
         };
         let targets: Vec<NodeId> = crossing.targets.iter().map(|target| target.to).collect();
         assert_eq!(targets, vec![NodeId(0), NodeId(1)]);
@@ -441,10 +504,117 @@ mod tests {
         assert!(rejects(&no_edges));
     }
 
-    #[test]
-    fn rejects_remote_engines_for_now() {
+    /// camera → filter (local) → detector (remote) → tracker (remote).
+    fn offload() -> FlowSpec {
         let mut spec = cascade();
         spec.engines[1].location = Location::Remote;
+        spec.engines.push(EngineSpec {
+            name: String::from("tracker"),
+            location: Location::Remote,
+        });
+        spec.edges
+            .push(edge("detector", "tracker", TRACKER_TIMEOUT));
+        spec
+    }
+
+    #[test]
+    fn remote_engines_get_their_own_part_and_an_uplink() {
+        let compiled = compile(FLOW, &offload()).unwrap();
+
+        let (filter, detector, tracker, camera) = (NodeId(0), NodeId(1), NodeId(2), NodeId(3));
+        let (to_filter, to_detector, to_tracker) = (EdgeId(0), EdgeId(1), EdgeId(2));
+        // Crossings are numbered after the edges, in the order of their source nodes.
+        let (uplink, from_camera) = (EdgeId(3), EdgeId(4));
+        assert_eq!(
+            compiled.parts[&Location::Local],
+            InstallFlow {
+                flow: String::from(FLOW),
+                engines: vec![(filter, String::from("filter"))],
+                edges: vec![],
+                crossings: vec![CrossingSpec {
+                    id: from_camera,
+                    targets: vec![server_router::EdgeSpec {
+                        id: to_filter,
+                        from: camera,
+                        to: filter,
+                        timeout: FILTER_TIMEOUT,
+                    }],
+                }],
+            }
+        );
+        assert_eq!(
+            compiled.parts[&Location::Remote],
+            InstallFlow {
+                flow: String::from(FLOW),
+                engines: vec![
+                    (detector, String::from("detector")),
+                    (tracker, String::from("tracker"))
+                ],
+                edges: vec![server_router::EdgeSpec {
+                    id: to_tracker,
+                    from: detector,
+                    to: tracker,
+                    timeout: TRACKER_TIMEOUT,
+                }],
+                crossings: vec![CrossingSpec {
+                    id: uplink,
+                    targets: vec![server_router::EdgeSpec {
+                        id: to_detector,
+                        from: filter,
+                        to: detector,
+                        timeout: DETECTOR_TIMEOUT,
+                    }],
+                }],
+            }
+        );
+        assert_eq!(
+            compiled.crossings[0],
+            CompiledCrossing {
+                id: uplink,
+                source: EdgeSource::Engine(filter),
+                location: Location::Remote,
+                target: detector,
+                // An uplink also waits for the round trip.
+                timeout: engine_wait(DETECTOR_TIMEOUT) + REMOTE_RTT_BOUND,
+            }
+        );
+    }
+
+    #[test]
+    fn ticket_timeout_includes_the_round_trip() {
+        let compiled = compile(FLOW, &offload()).unwrap();
+
+        assert_eq!(
+            compiled.producers[0].ticket_timeout,
+            engine_wait(FILTER_TIMEOUT)
+                + engine_wait(DETECTOR_TIMEOUT)
+                + REMOTE_RTT_BOUND
+                + engine_wait(TRACKER_TIMEOUT)
+        );
+    }
+
+    #[test]
+    fn a_producers_edges_to_each_server_form_a_crossing() {
+        let mut spec = offload();
+        spec.edges
+            .push(edge("camera", "detector", DETECTOR_TIMEOUT));
+
+        let compiled = compile(FLOW, &spec).unwrap();
+
+        let from_camera: Vec<Location> = compiled
+            .crossings
+            .iter()
+            .filter(|crossing| matches!(crossing.source, EdgeSource::Producer(_)))
+            .map(|crossing| crossing.location)
+            .collect();
+        assert_eq!(from_camera, vec![Location::Local, Location::Remote]);
+    }
+
+    #[test]
+    fn rejects_an_edge_from_a_remote_to_a_local_engine() {
+        let mut spec = offload();
+        spec.engines.push(engine("display"));
+        spec.edges.push(edge("tracker", "display", FILTER_TIMEOUT));
 
         assert!(rejects(&spec));
     }
