@@ -1,0 +1,17 @@
+2026-10-12 15:30:09,038 remote WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 15:30:09,041 remote INFO remote server listening on 127.0.0.1:38256
+2026-10-12 15:30:09,104 remote INFO [d672bdf74b6dc06c] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:30:09,266 remote INFO [d672bdf74b6dc06c] Duplicate CRYPTO data received for epoch Epoch.INITIAL
+2026-10-12 15:30:09,419 remote INFO [d672bdf74b6dc06c] ALPN negotiated protocol gabriel
+2026-10-12 15:30:09,421 remote INFO client a0f551cacf8542b0a7b15a61d5356d0c connected
+No config file was loaded, a config with default values will be used.
+2026-10-12 15:30:11,074 remote INFO edge: rtt=316.5ms T: -
+2026-10-12 15:30:13,092 remote INFO edge: rtt=308.2ms T: chain|cam|detect=371.2ms
+2026-10-12 15:30:15,117 remote INFO edge: rtt=306.8ms T: chain|cam|detect=122.2ms
+2026-10-12 15:30:17,134 remote INFO edge: rtt=305.8ms T: chain|cam|detect=26.7ms
+2026-10-12 15:30:19,151 remote INFO edge: rtt=306.4ms T: chain|cam|detect=24.7ms
+2026-10-12 15:30:21,169 remote INFO edge: rtt=304.1ms T: chain|cam|detect=25.7ms
+2026-10-12 15:30:23,187 remote INFO edge: rtt=306.5ms T: chain|cam|detect=25.6ms
+2026-10-12 15:30:25,206 remote INFO edge: rtt=305.1ms T: chain|cam|detect=97.4ms
+2026-10-12 15:30:25,466 remote INFO [d672bdf74b6dc06c] Connection close received (code 0x0, reason )
+2026-10-12 15:30:25,915 remote INFO remote link down for flows

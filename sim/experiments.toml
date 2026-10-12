@@ -1,0 +1,608 @@
+# Experiments for `sim run experiments.toml`. They run one after another;
+# every experiment runs each of its `modes` (schedule, push, pull, token)
+# `repeats` times and writes results/<timestamp>/{summary.csv,results.jsonl}.
+#
+# Node fields (sources):  name, kind = "source", period_ms, frame_bytes, jitter_ms
+# Node fields (engines):  name, host = "local" | "remote", parents = [...],
+#                         service = {dist, mean_ms, cv, min_ms}  (dist: const,
+#                         uniform, normal, exp, lognormal), output_bytes,
+#                         pass_rate (filters), grace_ms (joins), r_seed_ms
+# Network fields (both directions unless set under network.up / network.down):
+#                         backend (netns | proxy | direct | virtual), delay_ms,
+#                         jitter_ms, loss_pct, rate_mbit, limit_pkts, down,
+#                         blackhole
+# Network events:         [[experiment.network.events]] at = seconds after the
+#                         flows start, direction = "both" | "up" | "down", plus
+#                         any network fields to change
+# Protocol params:        [experiment.params] (see flow.Params): c, w_ms,
+#                         eps_ms, r_window, r_seed_ms, pace_pct,
+#                         transmit_pct, tokens, tokens_max,
+#                         token_timeout_ms, pull_timeout_ms, ping_interval_ms,
+#                         engine_process
+# Sweeps:                 [experiment.sweep] "dotted.key" = [values...] expands
+#                         into one experiment per combination, e.g.
+#                         "network.delay_ms" = [10, 50] or
+#                         "flow.0.node.2.service.mean_ms" = [30, 60]
+
+[defaults]
+duration = 20.0
+warmup = 3.0
+repeats = 1
+modes = ["schedule", "push", "pull", "token", "token-adaptive", "credit", "schedule-hop", "segment"]
+quic_idle_timeout = 2.0
+
+[defaults.network]
+backend = "netns"
+limit_pkts = 50
+
+# ---------------------------------------------------------------------------
+# A chain that crosses the network twice: local -> remote -> local.
+[[experiment]]
+name = "chain"
+
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+
+[[experiment.flow]]
+name = "chain"
+[experiment.flow.params]
+tokens = 3
+transmit_pct = 65
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 33.3
+frame_bytes = 50000
+[[experiment.flow.node]]
+name = "decode"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 10, cv = 0.2 }
+output_bytes = 20000
+[[experiment.flow.node]]
+name = "detect"
+host = "remote"
+parents = ["decode"]
+service = { dist = "lognormal", mean_ms = 60, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "track"
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 15, cv = 0.2 }
+
+# ---------------------------------------------------------------------------
+# Same chain with an outage and a bandwidth drop.
+[[experiment]]
+name = "chain-outage"
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.network.events]]
+at = 8.0
+down = true
+[[experiment.network.events]]
+at = 9.5
+down = false
+[[experiment.network.events]]
+at = 13.0
+rate_mbit = 4
+[[experiment.network.events]]
+at = 17.0
+rate_mbit = 50
+
+[[experiment.flow]]
+name = "chain"
+[experiment.flow.params]
+tokens = 3
+transmit_pct = 65
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 33.3
+frame_bytes = 50000
+[[experiment.flow.node]]
+name = "decode"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 10, cv = 0.2 }
+output_bytes = 20000
+[[experiment.flow.node]]
+name = "detect"
+host = "remote"
+parents = ["decode"]
+service = { dist = "lognormal", mean_ms = 60, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "track"
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 15, cv = 0.2 }
+
+# ---------------------------------------------------------------------------
+# Fan-out to a fast local branch and a slow remote branch that meet at a
+# join, with a filter on the remote branch. Swept over link latency.
+[[experiment]]
+name = "fanout-join"
+
+[experiment.network]
+jitter_ms = 2
+rate_mbit = 30
+
+[experiment.sweep]
+"network.delay_ms" = [10, 40]
+
+[[experiment.flow]]
+name = "join"
+[experiment.flow.params]
+tokens = 3
+transmit_pct = 65
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "pre"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 8, cv = 0.2 }
+output_bytes = 30000
+[[experiment.flow.node]]
+name = "fast"
+host = "local"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 25, cv = 0.2 }
+[[experiment.flow.node]]
+name = "slow"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 70, cv = 0.3 }
+pass_rate = 0.8
+[[experiment.flow.node]]
+name = "fuse"
+host = "local"
+parents = ["fast", "slow"]
+grace_ms = 10
+service = { dist = "const", mean_ms = 5 }
+
+# ---------------------------------------------------------------------------
+# Two independent flows sharing the link (each flow has its own QUIC
+# channels, so they don't block each other).
+[[experiment]]
+name = "two-flows"
+
+[experiment.network]
+delay_ms = 25
+rate_mbit = 20
+
+[[experiment.flow]]
+name = "a"
+[experiment.flow.params]
+tokens = 3
+transmit_pct = 65
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 33.3
+frame_bytes = 40000
+[[experiment.flow.node]]
+name = "det"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+
+[[experiment.flow]]
+name = "b"
+[experiment.flow.params]
+tokens = 3
+transmit_pct = 65
+[[experiment.flow.node]]
+name = "mic"
+kind = "source"
+period_ms = 10
+frame_bytes = 4000
+[[experiment.flow.node]]
+name = "asr"
+host = "remote"
+parents = ["mic"]
+service = { dist = "lognormal", mean_ms = 30, cv = 0.2 }
+[[experiment.flow.node]]
+name = "nlu"
+host = "local"
+parents = ["asr"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+
+# ---------------------------------------------------------------------------
+# Schedule vs fixed tokens vs adaptive tokens. Each scenario targets a
+# weakness of fixed tokens; token-adaptive is the cheap fix to compare
+# against schedule mode's complexity. 3 repeats each.
+
+# 1. Link latency. A token makes a full round trip, so throughput is capped
+#    at about tokens / loop time: a count that suits a short link starves a
+#    long one. Measured before token-adaptive existed (proxy backend, 25 s):
+#    at 10 ms both ~15/s; at 150 ms schedule 10.5/s vs token 7.0/s.
+[[experiment]]
+name = "cmp-rtt"
+duration = 25.0
+warmup = 5.0
+repeats = 3
+modes = ["schedule", "token", "token-adaptive"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+jitter_ms = 2
+rate_mbit = 50
+[experiment.sweep]
+"network.delay_ms" = [10, 50, 150]
+[[experiment.flow]]
+name = "chain"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "detect"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "track"
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 10, cv = 0.2 }
+
+# 2. Latency changes mid-run (10 -> 150 -> 10 ms): no fixed count fits both.
+[[experiment]]
+name = "cmp-rtt-shift"
+duration = 40.0
+warmup = 5.0
+repeats = 3
+modes = ["schedule", "token", "token-adaptive"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 10
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.network.events]]
+at = 13.0
+delay_ms = 150
+[[experiment.network.events]]
+at = 27.0
+delay_ms = 10
+[[experiment.flow]]
+name = "chain"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "detect"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "track"
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 10, cv = 0.2 }
+
+# 3. Fan-out with mismatched branches: one token pool per Source can't pace a
+#    fast local branch and a slow remote branch separately.
+[[experiment]]
+name = "cmp-fanout"
+duration = 20.0
+warmup = 3.0
+repeats = 3
+modes = ["schedule", "token", "token-adaptive"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "fanout"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "pre"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 5, cv = 0.2 }
+output_bytes = 30000
+[[experiment.flow.node]]
+name = "fast"
+host = "local"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+[[experiment.flow.node]]
+name = "slow"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 80, cv = 0.3 }
+
+# 4. Join across two Sources (separate token pools) with a remote branch.
+[[experiment]]
+name = "cmp-join"
+duration = 20.0
+warmup = 3.0
+repeats = 3
+modes = ["schedule", "token", "token-adaptive"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 30
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "join"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 33.3
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "mic"
+kind = "source"
+period_ms = 20
+frame_bytes = 4000
+[[experiment.flow.node]]
+name = "det"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "asr"
+host = "local"
+parents = ["mic"]
+service = { dist = "lognormal", mean_ms = 15, cv = 0.2 }
+[[experiment.flow.node]]
+name = "fuse"
+host = "local"
+parents = ["det", "asr"]
+grace_ms = 10
+service = { dist = "const", mean_ms = 3 }
+
+# ---------------------------------------------------------------------------
+# Quick version of the comparison above (about 10 minutes on a real backend).
+[[experiment]]
+name = "quick-rtt"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+jitter_ms = 2
+rate_mbit = 50
+[experiment.sweep]
+"network.delay_ms" = [10, 150]
+[[experiment.flow]]
+name = "chain"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "detect"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "track"
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 10, cv = 0.2 }
+
+[[experiment]]
+name = "quick-fanout"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "fanout"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "pre"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 5, cv = 0.2 }
+output_bytes = 30000
+[[experiment.flow.node]]
+name = "fast"
+host = "local"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+[[experiment.flow.node]]
+name = "slow"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 80, cv = 0.3 }
+
+# The Source itself fans out to a fast local engine and a slow remote one.
+# With one token pool per Source, the slow branch gets frames at the fast
+# branch's pace; schedule and credit pace each edge separately.
+[[experiment]]
+name = "quick-fanout-source"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "fanout"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "fast"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+[[experiment.flow.node]]
+name = "slow"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 80, cv = 0.3 }
+
+# A fan-out to a local consumer and two remote consumers of different speed.
+# segment sends each frame across the link once for both remote consumers;
+# the slower one skips frames on the remote host.
+[[experiment]]
+name = "quick-two-remote"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.params]
+tokens = 3
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 30
+[[experiment.flow]]
+name = "fanout"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "pre"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 5, cv = 0.2 }
+output_bytes = 30000
+[[experiment.flow.node]]
+name = "fast"
+host = "local"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+[[experiment.flow.node]]
+name = "r1"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 40, cv = 0.3 }
+[[experiment.flow.node]]
+name = "r2"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 120, cv = 0.3 }
+
+# Joins: two Sources meeting at a local join, and a diamond (one fan-out's
+# local and remote branches meeting again). Each with and without grace.
+[[experiment]]
+name = "quick-join-sources"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.sweep]
+"flow.0.node.4.grace_ms" = ["none", 10]
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "join"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 33.3
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "mic"
+kind = "source"
+period_ms = 20
+frame_bytes = 4000
+[[experiment.flow.node]]
+name = "det"
+host = "remote"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 50, cv = 0.3 }
+output_bytes = 2000
+[[experiment.flow.node]]
+name = "asr"
+host = "local"
+parents = ["mic"]
+service = { dist = "lognormal", mean_ms = 15, cv = 0.2 }
+[[experiment.flow.node]]
+name = "fuse"
+host = "local"
+parents = ["det", "asr"]
+service = { dist = "const", mean_ms = 3 }
+
+[[experiment]]
+name = "quick-join-diamond"
+duration = 15.0
+warmup = 3.0
+repeats = 2
+modes = ["token-adaptive", "schedule-hop", "segment"]
+[experiment.sweep]
+"flow.0.node.4.grace_ms" = ["none", 10]
+[experiment.network]
+delay_ms = 20
+jitter_ms = 2
+rate_mbit = 50
+[[experiment.flow]]
+name = "diamond"
+[[experiment.flow.node]]
+name = "cam"
+kind = "source"
+period_ms = 20
+frame_bytes = 30000
+[[experiment.flow.node]]
+name = "pre"
+host = "local"
+parents = ["cam"]
+service = { dist = "lognormal", mean_ms = 5, cv = 0.2 }
+output_bytes = 30000
+[[experiment.flow.node]]
+name = "a"
+host = "local"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 20, cv = 0.2 }
+[[experiment.flow.node]]
+name = "b"
+host = "remote"
+parents = ["pre"]
+service = { dist = "lognormal", mean_ms = 60, cv = 0.3 }
+[[experiment.flow.node]]
+name = "fuse"
+host = "local"
+parents = ["a", "b"]
+service = { dist = "const", mean_ms = 3 }

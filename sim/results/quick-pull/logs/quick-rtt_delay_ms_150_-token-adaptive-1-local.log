@@ -1,0 +1,7 @@
+2026-10-12 15:29:33,665 local WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 15:29:33,670 local INFO local server listening on gs90e65b5f61/local
+2026-10-12 15:29:33,760 local INFO client 3233c54e86b443ef97e0a45f17b085b5 connected
+2026-10-12 15:29:34,121 local INFO remote link down for flows
+No config file was loaded, a config with default values will be used.
+2026-10-12 15:29:34,429 local INFO remote link up for flows
+2026-10-12 15:29:50,005 local INFO client 3233c54e86b443ef97e0a45f17b085b5 disconnected

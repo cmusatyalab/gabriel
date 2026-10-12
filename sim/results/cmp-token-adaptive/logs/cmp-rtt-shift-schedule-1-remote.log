@@ -1,0 +1,28 @@
+2026-10-12 03:24:35,805 remote WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 03:24:35,811 remote INFO remote server listening on 127.0.0.1:53878
+2026-10-12 03:24:35,826 remote INFO [741255de34ffb96d] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 03:24:35,853 remote INFO [741255de34ffb96d] ALPN negotiated protocol gabriel
+2026-10-12 03:24:35,854 remote INFO client cf425755583e43fdbd58357872378870 connected
+No config file was loaded, a config with default values will be used.
+2026-10-12 03:24:37,835 remote INFO edge: rtt=26.1ms T: chain|cam|detect=38.0ms
+2026-10-12 03:24:39,869 remote INFO edge: rtt=27.6ms T: chain|cam|detect=37.2ms
+2026-10-12 03:24:41,889 remote INFO edge: rtt=24.4ms T: chain|cam|detect=26.3ms
+2026-10-12 03:24:43,913 remote INFO edge: rtt=33.0ms T: chain|cam|detect=26.3ms
+2026-10-12 03:24:45,930 remote INFO edge: rtt=27.4ms T: chain|cam|detect=40.8ms
+2026-10-12 03:24:47,948 remote INFO edge: rtt=28.6ms T: chain|cam|detect=37.1ms
+2026-10-12 03:24:49,972 remote INFO edge: rtt=31.1ms T: chain|cam|detect=38.7ms
+2026-10-12 03:24:51,998 remote INFO edge: rtt=316.6ms T: chain|cam|detect=46.5ms
+2026-10-12 03:24:54,026 remote INFO edge: rtt=350.1ms T: chain|cam|detect=75.3ms
+2026-10-12 03:24:56,051 remote INFO edge: rtt=306.6ms T: chain|cam|detect=257.5ms
+2026-10-12 03:24:58,075 remote INFO edge: rtt=305.3ms T: chain|cam|detect=257.5ms
+2026-10-12 03:25:00,098 remote INFO edge: rtt=305.5ms T: chain|cam|detect=38.5ms
+2026-10-12 03:25:02,119 remote INFO edge: rtt=306.2ms T: chain|cam|detect=27.0ms
+2026-10-12 03:25:04,142 remote INFO edge: rtt=84.2ms T: chain|cam|detect=38.8ms
+2026-10-12 03:25:06,166 remote INFO edge: rtt=26.1ms T: chain|cam|detect=30.1ms
+2026-10-12 03:25:08,189 remote INFO edge: rtt=28.5ms T: chain|cam|detect=40.8ms
+2026-10-12 03:25:10,211 remote INFO edge: rtt=26.8ms T: chain|cam|detect=39.6ms
+2026-10-12 03:25:12,240 remote INFO edge: rtt=27.6ms T: chain|cam|detect=24.4ms
+2026-10-12 03:25:14,266 remote INFO edge: rtt=27.3ms T: chain|cam|detect=46.0ms
+2026-10-12 03:25:16,216 remote INFO [741255de34ffb96d] Connection close received (code 0x0, reason )
+2026-10-12 03:25:16,289 remote INFO edge: rtt=26.1ms T: chain|cam|detect=61.2ms
+2026-10-12 03:25:16,484 remote INFO client cf425755583e43fdbd58357872378870 disconnected

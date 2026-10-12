@@ -1,0 +1,195 @@
+2026-10-12 06:29:08,787 quick-join-sources[grace_ms=none]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 06:29:08,794 No config file was loaded, a config with default values will be used.
+2026-10-12 06:29:09,345 local link up
+2026-10-12 06:29:09,531 [b11d0fa108af4cdb] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:29:09,533 [b11d0fa108af4cdb] ALPN negotiated protocol gabriel
+2026-10-12 06:29:09,534 remote link up
+2026-10-12 06:29:25,181 [b11d0fa108af4cdb] Connection close sent (code 0x0, reason )
+2026-10-12 06:29:25,833   join: thr=17.66/s lat50=179ms aoi=212ms waste=21.3%  (17s)
+2026-10-12 06:29:25,833 quick-join-sources[grace_ms=none]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 06:29:26,369 local link up
+2026-10-12 06:29:26,498 [db6365240a18d2ff] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:29:26,499 [db6365240a18d2ff] ALPN negotiated protocol gabriel
+2026-10-12 06:29:26,500 remote link up
+2026-10-12 06:29:41,940 [db6365240a18d2ff] Connection close sent (code 0x0, reason )
+2026-10-12 06:29:42,421   join: thr=15.83/s lat50=191ms aoi=227ms waste=25.2%  (17s)
+2026-10-12 06:29:42,421 quick-join-sources[grace_ms=none]  mode=segment  repeat=0  (proxy)
+2026-10-12 06:29:42,951 local link up
+2026-10-12 06:29:43,080 [b20e7146428e2927] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:29:43,080 [b20e7146428e2927] ALPN negotiated protocol gabriel
+2026-10-12 06:29:43,081 remote link up
+2026-10-12 06:29:58,516 [b20e7146428e2927] Connection close sent (code 0x0, reason )
+2026-10-12 06:29:59,125   join: thr=16.00/s lat50=177ms aoi=219ms waste=0.9%  (17s)
+2026-10-12 06:29:59,125 quick-join-sources[grace_ms=none]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 06:29:59,657 local link up
+2026-10-12 06:29:59,790 [3735189fbfffe486] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:29:59,791 [3735189fbfffe486] ALPN negotiated protocol gabriel
+2026-10-12 06:29:59,792 remote link up
+2026-10-12 06:30:15,355 [3735189fbfffe486] Connection close sent (code 0x0, reason )
+2026-10-12 06:30:16,024   join: thr=17.33/s lat50=190ms aoi=223ms waste=25.8%  (17s)
+2026-10-12 06:30:16,025 quick-join-sources[grace_ms=none]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 06:30:16,311 local link up
+2026-10-12 06:30:16,326 [66d83d7b0cf104ec] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:30:16,326 [66d83d7b0cf104ec] ALPN negotiated protocol gabriel
+2026-10-12 06:30:16,327 remote link up
+2026-10-12 06:30:31,762 [66d83d7b0cf104ec] Connection close sent (code 0x0, reason )
+2026-10-12 06:30:32,364   join: thr=17.00/s lat50=170ms aoi=207ms waste=24.9%  (16s)
+2026-10-12 06:30:32,364 quick-join-sources[grace_ms=none]  mode=segment  repeat=1  (proxy)
+2026-10-12 06:30:32,691 local link up
+2026-10-12 06:30:33,063 [e14f241172091a2d] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:30:33,064 [e14f241172091a2d] ALPN negotiated protocol gabriel
+2026-10-12 06:30:33,064 remote link up
+2026-10-12 06:30:48,647 [e14f241172091a2d] Connection close sent (code 0x0, reason )
+2026-10-12 06:30:49,260   join: thr=15.92/s lat50=172ms aoi=216ms waste=0.9%  (17s)
+2026-10-12 06:30:49,260 quick-join-sources[grace_ms=10]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 06:30:49,801 local link up
+2026-10-12 06:30:49,919 [5b46279abe2b7d55] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:30:49,921 [5b46279abe2b7d55] ALPN negotiated protocol gabriel
+2026-10-12 06:30:49,922 remote link up
+2026-10-12 06:31:05,413 [5b46279abe2b7d55] Connection close sent (code 0x0, reason )
+2026-10-12 06:31:05,996   join: thr=50.42/s lat50=44ms aoi=59ms waste=0.1%  (17s)
+2026-10-12 06:31:05,996 quick-join-sources[grace_ms=10]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 06:31:06,289 [ddc66854c18be14e] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:31:06,290 [ddc66854c18be14e] ALPN negotiated protocol gabriel
+2026-10-12 06:31:06,292 local link up
+2026-10-12 06:31:06,292 remote link up
+2026-10-12 06:31:21,830 [ddc66854c18be14e] Connection close sent (code 0x0, reason )
+2026-10-12 06:31:22,459   join: thr=49.64/s lat50=52ms aoi=65ms waste=0.1%  (16s)
+2026-10-12 06:31:22,459 quick-join-sources[grace_ms=10]  mode=segment  repeat=0  (proxy)
+2026-10-12 06:31:22,739 local link up
+2026-10-12 06:31:22,750 [2b77f793110c7d81] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:31:22,750 [2b77f793110c7d81] ALPN negotiated protocol gabriel
+2026-10-12 06:31:22,751 remote link up
+2026-10-12 06:31:38,341 [2b77f793110c7d81] Connection close sent (code 0x0, reason )
+2026-10-12 06:31:39,015   join: thr=50.00/s lat50=49ms aoi=62ms waste=0.1%  (17s)
+2026-10-12 06:31:39,015 quick-join-sources[grace_ms=10]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 06:31:39,547 local link up
+2026-10-12 06:31:39,679 [dd509b2be034d022] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:31:39,679 [dd509b2be034d022] ALPN negotiated protocol gabriel
+2026-10-12 06:31:39,680 remote link up
+2026-10-12 06:31:55,235 [dd509b2be034d022] Connection close sent (code 0x0, reason )
+2026-10-12 06:31:55,764   join: thr=51.17/s lat50=44ms aoi=58ms waste=0.1%  (17s)
+2026-10-12 06:31:55,764 quick-join-sources[grace_ms=10]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 06:31:56,304 local link up
+2026-10-12 06:31:56,428 [43ecb9be24979e05] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:31:56,429 [43ecb9be24979e05] ALPN negotiated protocol gabriel
+2026-10-12 06:31:56,429 remote link up
+2026-10-12 06:32:11,921 [43ecb9be24979e05] Connection close sent (code 0x0, reason )
+2026-10-12 06:32:12,624   join: thr=50.00/s lat50=49ms aoi=62ms waste=0.1%  (17s)
+2026-10-12 06:32:12,624 quick-join-sources[grace_ms=10]  mode=segment  repeat=1  (proxy)
+2026-10-12 06:32:12,915 local link up
+2026-10-12 06:32:12,941 [6e833a5bfd91d131] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:32:12,941 [6e833a5bfd91d131] ALPN negotiated protocol gabriel
+2026-10-12 06:32:12,942 remote link up
+2026-10-12 06:32:28,412 [6e833a5bfd91d131] Connection close sent (code 0x0, reason )
+2026-10-12 06:32:29,086   join: thr=50.00/s lat50=49ms aoi=61ms waste=0.0%  (16s)
+2026-10-12 06:32:29,086 quick-join-diamond[grace_ms=none]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 06:32:29,373 local link up
+2026-10-12 06:32:29,383 [b16a2f5475b008f5] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:32:29,384 [b16a2f5475b008f5] ALPN negotiated protocol gabriel
+2026-10-12 06:32:29,385 remote link up
+2026-10-12 06:32:44,944 [b16a2f5475b008f5] Connection close sent (code 0x0, reason )
+2026-10-12 06:32:45,531   diamond: thr=14.75/s lat50=208ms aoi=249ms waste=15.8%  (16s)
+2026-10-12 06:32:45,531 quick-join-diamond[grace_ms=none]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 06:32:45,830 [c2c734a864aba405] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:32:45,831 [c2c734a864aba405] ALPN negotiated protocol gabriel
+2026-10-12 06:32:45,831 remote link up
+2026-10-12 06:32:45,835 local link up
+2026-10-12 06:33:01,388 [c2c734a864aba405] Connection close sent (code 0x0, reason )
+2026-10-12 06:33:01,945   diamond: thr=13.58/s lat50=230ms aoi=282ms waste=16.1%  (16s)
+2026-10-12 06:33:01,946 quick-join-diamond[grace_ms=none]  mode=segment  repeat=0  (proxy)
+2026-10-12 06:33:02,222 local link up
+2026-10-12 06:33:02,244 [101ebda3dd81a75e] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:33:02,245 [101ebda3dd81a75e] ALPN negotiated protocol gabriel
+2026-10-12 06:33:02,245 remote link up
+2026-10-12 06:33:17,783 [101ebda3dd81a75e] Connection close sent (code 0x0, reason )
+2026-10-12 06:33:18,307   diamond: thr=12.00/s lat50=261ms aoi=322ms waste=3.4%  (16s)
+2026-10-12 06:33:18,307 quick-join-diamond[grace_ms=none]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 06:33:18,842 local link up
+2026-10-12 06:33:18,969 [96b29d2b7fb55419] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:33:18,970 [96b29d2b7fb55419] ALPN negotiated protocol gabriel
+2026-10-12 06:33:18,971 remote link up
+2026-10-12 06:33:34,536 [96b29d2b7fb55419] Connection close sent (code 0x0, reason )
+2026-10-12 06:33:35,130   diamond: thr=15.83/s lat50=204ms aoi=237ms waste=16.9%  (17s)
+2026-10-12 06:33:35,131 quick-join-diamond[grace_ms=none]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 06:33:35,422 [a2f0182e174f9fa7] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:33:35,423 [a2f0182e174f9fa7] ALPN negotiated protocol gabriel
+2026-10-12 06:33:35,423 remote link up
+2026-10-12 06:33:35,425 local link up
+2026-10-12 06:33:50,999 [a2f0182e174f9fa7] Connection close sent (code 0x0, reason )
+2026-10-12 06:33:51,634   diamond: thr=13.75/s lat50=231ms aoi=285ms waste=16.8%  (17s)
+2026-10-12 06:33:51,634 quick-join-diamond[grace_ms=none]  mode=segment  repeat=1  (proxy)
+2026-10-12 06:33:51,912 [8ec8731e1b61178d] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:33:51,912 [8ec8731e1b61178d] ALPN negotiated protocol gabriel
+2026-10-12 06:33:51,913 remote link up
+2026-10-12 06:33:51,920 local link up
+2026-10-12 06:34:07,502 [8ec8731e1b61178d] Connection close sent (code 0x0, reason )
+2026-10-12 06:34:08,205   diamond: thr=13.25/s lat50=251ms aoi=305ms waste=3.3%  (17s)
+2026-10-12 06:34:08,205 quick-join-diamond[grace_ms=10]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 06:34:08,528 local link up
+2026-10-12 06:34:08,543 [409483e46e73c5f4] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:34:08,544 [409483e46e73c5f4] ALPN negotiated protocol gabriel
+2026-10-12 06:34:08,544 remote link up
+2026-10-12 06:34:24,495 [409483e46e73c5f4] Connection close sent (code 0x0, reason )
+2026-10-12 06:34:25,123   diamond: thr=40.00/s lat50=72ms aoi=90ms waste=1.6%  (17s)
+2026-10-12 06:34:25,123 quick-join-diamond[grace_ms=10]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 06:34:25,664 local link up
+2026-10-12 06:34:25,785 [e63f4ce1dac7b366] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:34:25,786 [e63f4ce1dac7b366] ALPN negotiated protocol gabriel
+2026-10-12 06:34:25,786 remote link up
+2026-10-12 06:34:41,376 [e63f4ce1dac7b366] Connection close sent (code 0x0, reason )
+2026-10-12 06:34:41,953   diamond: thr=42.99/s lat50=85ms aoi=98ms waste=0.1%  (17s)
+2026-10-12 06:34:41,953 quick-join-diamond[grace_ms=10]  mode=segment  repeat=0  (proxy)
+2026-10-12 06:34:42,487 local link up
+2026-10-12 06:34:42,627 [59d8fbd772b3f516] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:34:42,628 [59d8fbd772b3f516] ALPN negotiated protocol gabriel
+2026-10-12 06:34:42,629 remote link up
+2026-10-12 06:34:58,165 [59d8fbd772b3f516] Connection close sent (code 0x0, reason )
+2026-10-12 06:34:58,737   diamond: thr=42.83/s lat50=85ms aoi=99ms waste=0.6%  (17s)
+2026-10-12 06:34:58,737 quick-join-diamond[grace_ms=10]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 06:34:59,272 local link up
+2026-10-12 06:34:59,438 [981867cdb885f96a] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:34:59,439 [981867cdb885f96a] ALPN negotiated protocol gabriel
+2026-10-12 06:34:59,440 remote link up
+2026-10-12 06:35:15,045 [981867cdb885f96a] Connection close sent (code 0x0, reason )
+2026-10-12 06:35:15,750   diamond: thr=41.17/s lat50=72ms aoi=88ms waste=1.7%  (17s)
+2026-10-12 06:35:15,750 quick-join-diamond[grace_ms=10]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 06:35:16,035 local link up
+2026-10-12 06:35:16,046 [52e7397596f4f194] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:35:16,048 [52e7397596f4f194] ALPN negotiated protocol gabriel
+2026-10-12 06:35:16,049 remote link up
+2026-10-12 06:35:31,640 [52e7397596f4f194] Connection close sent (code 0x0, reason )
+2026-10-12 06:35:32,390   diamond: thr=42.67/s lat50=85ms aoi=97ms waste=0.2%  (17s)
+2026-10-12 06:35:32,390 quick-join-diamond[grace_ms=10]  mode=segment  repeat=1  (proxy)
+2026-10-12 06:35:32,919 local link up
+2026-10-12 06:35:33,052 [adc310b16b1f86a4] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 06:35:33,053 [adc310b16b1f86a4] ALPN negotiated protocol gabriel
+2026-10-12 06:35:33,054 remote link up
+2026-10-12 06:35:48,652 [adc310b16b1f86a4] Connection close sent (code 0x0, reason )
+2026-10-12 06:35:49,196   diamond: thr=41.50/s lat50=91ms aoi=106ms waste=0.7%  (17s)
+
+== quick-join-sources[grace_ms=none]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+join       token-adaptive   17.50     185     239     217    23.6      46     240       0      33
+join       schedule-hop     16.42     181     240     217    25.0       8     202       0      16
+join       segment          15.96     175     237     217     0.9      19      23       0      40
+
+== quick-join-sources[grace_ms=10]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+join       token-adaptive   50.79      44     227      58     0.1      38      38       0      13
+join       schedule-hop     49.82      51     217      63     0.1      12      12       0      14
+join       segment          50.00      49     216      62     0.0      16      16       0      17
+
+== quick-join-diamond[grace_ms=none]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+diamond    token-adaptive   15.29     206     264     243    16.4      96     271       0      42
+diamond    schedule-hop     13.67     231     320     283    16.5      11     174       0      18
+diamond    segment          12.63     256     396     314     3.4      38      16       0      52
+
+== quick-join-diamond[grace_ms=10]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+diamond    token-adaptive   40.58      72     241      89     1.7     136     172       0      28
+diamond    schedule-hop     42.83      85     252      97     0.1       5      76       0      19
+diamond    segment          42.17      88     259     103     0.6      38      12       0      28
+
+results in results/quick-join/ (summary.csv, results.jsonl, timelines/, logs/)

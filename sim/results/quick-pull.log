@@ -1,0 +1,267 @@
+2026-10-12 15:27:03,616 quick-rtt[delay_ms=10]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 15:27:03,619 No config file was loaded, a config with default values will be used.
+2026-10-12 15:27:03,889 [593f60a055b03767] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:27:03,889 [593f60a055b03767] ALPN negotiated protocol gabriel
+2026-10-12 15:27:03,890 remote link up
+2026-10-12 15:27:03,892 local link up
+2026-10-12 15:27:19,216 [593f60a055b03767] Connection close sent (code 0x0, reason )
+2026-10-12 15:27:19,690   chain: thr=17.83/s lat50=162ms aoi=197ms waste=0.0%  (16s)
+2026-10-12 15:27:19,690 quick-rtt[delay_ms=10]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 15:27:19,925 [dc7f9ca4e6cc69b3] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:27:19,926 [dc7f9ca4e6cc69b3] ALPN negotiated protocol gabriel
+2026-10-12 15:27:19,927 remote link up
+2026-10-12 15:27:19,971 local link up
+2026-10-12 15:27:35,235 [dc7f9ca4e6cc69b3] Connection close sent (code 0x0, reason )
+2026-10-12 15:27:35,624   chain: thr=16.92/s lat50=140ms aoi=176ms waste=0.0%  (16s)
+2026-10-12 15:27:35,624 quick-rtt[delay_ms=10]  mode=segment  repeat=0  (proxy)
+2026-10-12 15:27:35,860 [55b1de81eaf0b594] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:27:35,860 [55b1de81eaf0b594] ALPN negotiated protocol gabriel
+2026-10-12 15:27:35,861 remote link up
+2026-10-12 15:27:35,900 local link up
+2026-10-12 15:27:51,186 [55b1de81eaf0b594] Connection close sent (code 0x0, reason )
+2026-10-12 15:27:51,676   chain: thr=16.50/s lat50=150ms aoi=182ms waste=0.0%  (16s)
+2026-10-12 15:27:51,676 quick-rtt[delay_ms=10]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 15:27:51,944 [571173832f2c45f9] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:27:51,945 [571173832f2c45f9] ALPN negotiated protocol gabriel
+2026-10-12 15:27:51,945 remote link up
+2026-10-12 15:27:51,980 local link up
+2026-10-12 15:28:07,326 [571173832f2c45f9] Connection close sent (code 0x0, reason )
+2026-10-12 15:28:07,730   chain: thr=18.50/s lat50=158ms aoi=193ms waste=0.2%  (16s)
+2026-10-12 15:28:07,731 quick-rtt[delay_ms=10]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 15:28:08,042 local link up
+2026-10-12 15:28:08,398 [6bbee5087ea563fb] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:28:08,399 [6bbee5087ea563fb] ALPN negotiated protocol gabriel
+2026-10-12 15:28:08,399 remote link up
+2026-10-12 15:28:08,518 remote link down for flows
+2026-10-12 15:28:08,565 remote link up for flows
+2026-10-12 15:28:23,679 [6bbee5087ea563fb] Connection close sent (code 0x0, reason )
+2026-10-12 15:28:24,114   chain: thr=15.58/s lat50=174ms aoi=215ms waste=0.3%  (16s)
+2026-10-12 15:28:24,114 quick-rtt[delay_ms=10]  mode=segment  repeat=1  (proxy)
+2026-10-12 15:28:24,382 [bf965868f7de7010] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:28:24,383 [bf965868f7de7010] ALPN negotiated protocol gabriel
+2026-10-12 15:28:24,383 remote link up
+2026-10-12 15:28:24,423 local link up
+2026-10-12 15:28:39,687 [bf965868f7de7010] Connection close sent (code 0x0, reason )
+2026-10-12 15:28:40,151   chain: thr=16.08/s lat50=148ms aoi=187ms waste=0.0%  (16s)
+2026-10-12 15:28:40,151 quick-rtt[delay_ms=150]  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 15:28:40,431 local link up
+2026-10-12 15:28:40,668 [1d7bcac20388d2e7] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:28:40,669 [1d7bcac20388d2e7] ALPN negotiated protocol gabriel
+2026-10-12 15:28:40,670 remote link up
+2026-10-12 15:28:40,771 remote link down for flows
+2026-10-12 15:28:40,871 [1d7bcac20388d2e7] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:28:41,094 remote link up for flows
+2026-10-12 15:28:56,589 [1d7bcac20388d2e7] Connection close sent (code 0x0, reason )
+2026-10-12 15:28:57,775   chain: thr=6.17/s lat50=533ms aoi=793ms waste=2.0%  (18s)
+2026-10-12 15:28:57,775 quick-rtt[delay_ms=150]  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 15:28:58,047 local link up
+2026-10-12 15:28:58,292 [314289aef70aec94] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:28:58,293 [314289aef70aec94] ALPN negotiated protocol gabriel
+2026-10-12 15:28:58,293 remote link up
+2026-10-12 15:28:58,394 remote link down for flows
+2026-10-12 15:28:58,491 [314289aef70aec94] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:28:58,700 remote link up for flows
+2026-10-12 15:29:14,324 [314289aef70aec94] Connection close sent (code 0x0, reason )
+2026-10-12 15:29:15,557   chain: thr=9.58/s lat50=445ms aoi=791ms waste=1.7%  (18s)
+2026-10-12 15:29:15,557 quick-rtt[delay_ms=150]  mode=segment  repeat=0  (proxy)
+2026-10-12 15:29:15,842 local link up
+2026-10-12 15:29:16,084 [7d72c6918c0259ce] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:29:16,085 [7d72c6918c0259ce] ALPN negotiated protocol gabriel
+2026-10-12 15:29:16,086 remote link up
+2026-10-12 15:29:16,187 remote link down for flows
+2026-10-12 15:29:16,285 [7d72c6918c0259ce] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:29:16,739 remote link up for flows
+2026-10-12 15:29:32,316 [7d72c6918c0259ce] Connection close sent (code 0x0, reason )
+2026-10-12 15:29:33,483   chain: thr=4.25/s lat50=682ms aoi=1033ms waste=2.9%  (18s)
+2026-10-12 15:29:33,483 quick-rtt[delay_ms=150]  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 15:29:33,761 local link up
+2026-10-12 15:29:34,000 [de935454e220f48c] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:29:34,000 [de935454e220f48c] ALPN negotiated protocol gabriel
+2026-10-12 15:29:34,001 remote link up
+2026-10-12 15:29:34,120 remote link down for flows
+2026-10-12 15:29:34,243 [de935454e220f48c] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:29:34,428 remote link up for flows
+2026-10-12 15:29:49,968 [de935454e220f48c] Connection close sent (code 0x0, reason )
+2026-10-12 15:29:51,155   chain: thr=11.08/s lat50=450ms aoi=710ms waste=1.8%  (18s)
+2026-10-12 15:29:51,155 quick-rtt[delay_ms=150]  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 15:29:51,441 local link up
+2026-10-12 15:29:51,676 [a1053d395d5c27ec] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:29:51,677 [a1053d395d5c27ec] ALPN negotiated protocol gabriel
+2026-10-12 15:29:51,677 remote link up
+2026-10-12 15:29:51,779 remote link down for flows
+2026-10-12 15:29:51,875 [a1053d395d5c27ec] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:29:52,082 remote link up for flows
+2026-10-12 15:30:07,616 [a1053d395d5c27ec] Connection close sent (code 0x0, reason )
+2026-10-12 15:30:08,853   chain: thr=8.25/s lat50=479ms aoi=803ms waste=2.0%  (18s)
+2026-10-12 15:30:08,854 quick-rtt[delay_ms=150]  mode=segment  repeat=1  (proxy)
+2026-10-12 15:30:09,168 local link up
+2026-10-12 15:30:09,266 [d672bdf74b6dc06c] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:30:09,267 [d672bdf74b6dc06c] ALPN negotiated protocol gabriel
+2026-10-12 15:30:09,267 remote link up
+2026-10-12 15:30:09,390 remote link down for flows
+2026-10-12 15:30:09,420 [d672bdf74b6dc06c] Duplicate CRYPTO data received for epoch Epoch.HANDSHAKE
+2026-10-12 15:30:09,776 remote link up for flows
+2026-10-12 15:30:25,314 [d672bdf74b6dc06c] Connection close sent (code 0x0, reason )
+2026-10-12 15:30:26,557   chain: thr=11.00/s lat50=408ms aoi=501ms waste=1.1%  (18s)
+2026-10-12 15:30:26,557 quick-fanout  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 15:30:26,819 [5ce76ba9727b3147] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:30:26,820 [5ce76ba9727b3147] ALPN negotiated protocol gabriel
+2026-10-12 15:30:26,821 remote link up
+2026-10-12 15:30:26,831 local link up
+2026-10-12 15:30:42,169 [5ce76ba9727b3147] Connection close sent (code 0x0, reason )
+2026-10-12 15:30:42,728   fanout: thr=26.12/s lat50=45ms aoi=152ms waste=2.5%  (16s)
+2026-10-12 15:30:42,729 quick-fanout  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 15:30:42,995 [bb45d5071999e024] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:30:42,995 [bb45d5071999e024] ALPN negotiated protocol gabriel
+2026-10-12 15:30:42,996 remote link up
+2026-10-12 15:30:43,003 local link up
+2026-10-12 15:30:58,344 [bb45d5071999e024] Connection close sent (code 0x0, reason )
+2026-10-12 15:30:58,979   fanout: thr=27.33/s lat50=59ms aoi=164ms waste=0.4%  (16s)
+2026-10-12 15:30:58,979 quick-fanout  mode=segment  repeat=0  (proxy)
+2026-10-12 15:30:59,232 [7cd2cdbe07925f64] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:30:59,233 [7cd2cdbe07925f64] ALPN negotiated protocol gabriel
+2026-10-12 15:30:59,233 remote link up
+2026-10-12 15:30:59,251 local link up
+2026-10-12 15:31:14,680 [7cd2cdbe07925f64] Connection close sent (code 0x0, reason )
+2026-10-12 15:31:15,386   fanout: thr=27.17/s lat50=56ms aoi=159ms waste=2.2%  (16s)
+2026-10-12 15:31:15,386 quick-fanout  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 15:31:15,649 [8fd06226ee6d7f23] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:31:15,650 [8fd06226ee6d7f23] ALPN negotiated protocol gabriel
+2026-10-12 15:31:15,650 remote link up
+2026-10-12 15:31:15,659 local link up
+2026-10-12 15:31:31,031 [8fd06226ee6d7f23] Connection close sent (code 0x0, reason )
+2026-10-12 15:31:31,586   fanout: thr=26.46/s lat50=45ms aoi=147ms waste=3.4%  (16s)
+2026-10-12 15:31:31,586 quick-fanout  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 15:31:31,839 [4be4c72d3bcf64f6] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:31:31,840 [4be4c72d3bcf64f6] ALPN negotiated protocol gabriel
+2026-10-12 15:31:31,841 remote link up
+2026-10-12 15:31:31,858 local link up
+2026-10-12 15:31:47,225 [4be4c72d3bcf64f6] Connection close sent (code 0x0, reason )
+2026-10-12 15:31:47,798   fanout: thr=26.79/s lat50=60ms aoi=172ms waste=0.2%  (16s)
+2026-10-12 15:31:47,798 quick-fanout  mode=segment  repeat=1  (proxy)
+2026-10-12 15:31:48,069 [89c1c2e2256cae01] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:31:48,070 [89c1c2e2256cae01] ALPN negotiated protocol gabriel
+2026-10-12 15:31:48,070 remote link up
+2026-10-12 15:31:48,077 local link up
+2026-10-12 15:32:03,527 [89c1c2e2256cae01] Connection close sent (code 0x0, reason )
+2026-10-12 15:32:04,002   fanout: thr=26.92/s lat50=56ms aoi=156ms waste=1.2%  (16s)
+2026-10-12 15:32:04,002 quick-fanout-source  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 15:32:04,264 [23a75caed25a5d96] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:32:04,264 [23a75caed25a5d96] ALPN negotiated protocol gabriel
+2026-10-12 15:32:04,265 remote link up
+2026-10-12 15:32:04,274 local link up
+2026-10-12 15:32:19,748 [23a75caed25a5d96] Connection close sent (code 0x0, reason )
+2026-10-12 15:32:20,176   fanout: thr=27.66/s lat50=37ms aoi=142ms waste=0.2%  (16s)
+2026-10-12 15:32:20,176 quick-fanout-source  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 15:32:20,430 [3a0b4334b925e3f3] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:32:20,431 [3a0b4334b925e3f3] ALPN negotiated protocol gabriel
+2026-10-12 15:32:20,431 remote link up
+2026-10-12 15:32:20,449 local link up
+2026-10-12 15:32:35,810 [3a0b4334b925e3f3] Connection close sent (code 0x0, reason )
+2026-10-12 15:32:36,325   fanout: thr=26.79/s lat50=38ms aoi=145ms waste=0.2%  (16s)
+2026-10-12 15:32:36,325 quick-fanout-source  mode=segment  repeat=0  (proxy)
+2026-10-12 15:32:36,586 [3a103e724f3f3c9e] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:32:36,586 [3a103e724f3f3c9e] ALPN negotiated protocol gabriel
+2026-10-12 15:32:36,587 remote link up
+2026-10-12 15:32:36,593 local link up
+2026-10-12 15:32:51,942 [3a103e724f3f3c9e] Connection close sent (code 0x0, reason )
+2026-10-12 15:32:52,469   fanout: thr=25.67/s lat50=36ms aoi=141ms waste=0.3%  (16s)
+2026-10-12 15:32:52,469 quick-fanout-source  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 15:32:52,722 [e1093a2c03cdc813] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:32:52,723 [e1093a2c03cdc813] ALPN negotiated protocol gabriel
+2026-10-12 15:32:52,723 remote link up
+2026-10-12 15:32:52,741 local link up
+2026-10-12 15:33:08,126 [e1093a2c03cdc813] Connection close sent (code 0x0, reason )
+2026-10-12 15:33:08,618   fanout: thr=27.42/s lat50=37ms aoi=144ms waste=0.2%  (16s)
+2026-10-12 15:33:08,618 quick-fanout-source  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 15:33:08,880 [d10cf049a180f7ad] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:33:08,880 [d10cf049a180f7ad] ALPN negotiated protocol gabriel
+2026-10-12 15:33:08,881 remote link up
+2026-10-12 15:33:08,887 local link up
+2026-10-12 15:33:24,243 [d10cf049a180f7ad] Connection close sent (code 0x0, reason )
+2026-10-12 15:33:24,707   fanout: thr=25.92/s lat50=38ms aoi=145ms waste=0.2%  (16s)
+2026-10-12 15:33:24,708 quick-fanout-source  mode=segment  repeat=1  (proxy)
+2026-10-12 15:33:24,961 [5afeaebfd0cc8e97] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:33:24,961 [5afeaebfd0cc8e97] ALPN negotiated protocol gabriel
+2026-10-12 15:33:24,962 remote link up
+2026-10-12 15:33:24,980 local link up
+2026-10-12 15:33:25,222 remote link down for flows
+2026-10-12 15:33:25,225 remote link up for flows
+2026-10-12 15:33:40,310 [5afeaebfd0cc8e97] Connection close sent (code 0x0, reason )
+2026-10-12 15:33:40,811   fanout: thr=25.50/s lat50=36ms aoi=136ms waste=0.0%  (16s)
+2026-10-12 15:33:40,811 quick-two-remote  mode=token-adaptive  repeat=0  (proxy)
+2026-10-12 15:33:41,104 [dd0d7ee61032336f] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:33:41,104 [dd0d7ee61032336f] ALPN negotiated protocol gabriel
+2026-10-12 15:33:41,105 remote link up
+2026-10-12 15:33:41,116 local link up
+2026-10-12 15:33:56,601 [dd0d7ee61032336f] Connection close sent (code 0x0, reason )
+2026-10-12 15:33:57,201   fanout: thr=20.17/s lat50=48ms aoi=215ms waste=0.3%  (16s)
+2026-10-12 15:33:57,202 quick-two-remote  mode=schedule-hop  repeat=0  (proxy)
+2026-10-12 15:33:57,456 [fb01a613c651fb8e] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:33:57,457 [fb01a613c651fb8e] ALPN negotiated protocol gabriel
+2026-10-12 15:33:57,464 remote link up
+2026-10-12 15:33:57,476 local link up
+2026-10-12 15:34:12,851 [fb01a613c651fb8e] Connection close sent (code 0x0, reason )
+2026-10-12 15:34:13,447   fanout: thr=21.50/s lat50=63ms aoi=236ms waste=0.8%  (16s)
+2026-10-12 15:34:13,447 quick-two-remote  mode=segment  repeat=0  (proxy)
+2026-10-12 15:34:13,730 [196d16003ead4bb5] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:34:13,731 [196d16003ead4bb5] ALPN negotiated protocol gabriel
+2026-10-12 15:34:13,732 remote link up
+2026-10-12 15:34:13,759 local link up
+2026-10-12 15:34:29,147 [196d16003ead4bb5] Connection close sent (code 0x0, reason )
+2026-10-12 15:34:29,925   fanout: thr=22.83/s lat50=58ms aoi=203ms waste=2.2%  (16s)
+2026-10-12 15:34:29,925 quick-two-remote  mode=token-adaptive  repeat=1  (proxy)
+2026-10-12 15:34:30,203 [1468ac6c4f5aaa7a] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:34:30,204 [1468ac6c4f5aaa7a] ALPN negotiated protocol gabriel
+2026-10-12 15:34:30,204 remote link up
+2026-10-12 15:34:30,205 local link up
+2026-10-12 15:34:39,121 remote link down for flows
+2026-10-12 15:34:39,143 remote link up for flows
+2026-10-12 15:34:45,744 [1468ac6c4f5aaa7a] Connection close sent (code 0x0, reason )
+2026-10-12 15:34:46,227   fanout: thr=15.64/s lat50=51ms aoi=306ms waste=1.5%  (16s)
+2026-10-12 15:34:46,227 quick-two-remote  mode=schedule-hop  repeat=1  (proxy)
+2026-10-12 15:34:46,481 [5008a1013e1bf343] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:34:46,482 [5008a1013e1bf343] ALPN negotiated protocol gabriel
+2026-10-12 15:34:46,490 remote link up
+2026-10-12 15:34:46,502 local link up
+2026-10-12 15:35:01,955 [5008a1013e1bf343] Connection close sent (code 0x0, reason )
+2026-10-12 15:35:02,487   fanout: thr=22.92/s lat50=59ms aoi=215ms waste=0.8%  (16s)
+2026-10-12 15:35:02,487 quick-two-remote  mode=segment  repeat=1  (proxy)
+2026-10-12 15:35:02,780 [b8c98eb1718bfa9c] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 15:35:02,781 [b8c98eb1718bfa9c] ALPN negotiated protocol gabriel
+2026-10-12 15:35:02,781 remote link up
+2026-10-12 15:35:02,792 local link up
+2026-10-12 15:35:18,249 [b8c98eb1718bfa9c] Connection close sent (code 0x0, reason )
+2026-10-12 15:35:18,773   fanout: thr=23.08/s lat50=59ms aoi=198ms waste=2.2%  (16s)
+
+== quick-rtt[delay_ms=10]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+chain      token-adaptive   18.17     160     218     195     0.1      62      62       0      41
+chain      schedule-hop     16.25     157     232     196     0.1       6       6       0      46
+chain      segment          16.29     149     205     184     0.0      12      12       0      46
+
+== quick-rtt[delay_ms=150]
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+chain      token-adaptive    8.63     492     766     751     1.9       6       6       0      72
+chain      schedule-hop      8.92     462     758     797     1.8       6       6       0      70
+chain      segment           7.63     545     899     767     2.0       1       1       0      77
+
+== quick-fanout
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+fanout     token-adaptive   26.29      45     220     149     2.9     229     270       0      25
+fanout     schedule-hop     27.06      59     240     168     0.3       6      48       0      15
+fanout     segment          27.04      56     232     157     1.7      36      18       0      26
+
+== quick-fanout-source
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+fanout     token-adaptive   27.54      37     217     143     0.2     216     242       0       1
+fanout     schedule-hop     26.36      38     215     145     0.2       3       3       0       7
+fanout     segment          25.58      36     205     138     0.2      18      18       0       9
+
+== quick-two-remote
+flow       mode             thr/s   lat50   lat95     AoI  waste%   wXfer     ovw   flaps   idle%
+fanout     token-adaptive   17.90      50     361     260     0.9      64      74       0      33
+fanout     schedule-hop     22.21      61     305     226     0.8      15      44       0      19
+fanout     segment          22.96      58     279     200     2.2      40      30       0      23
+
+results in results/quick-pull/ (summary.csv, results.jsonl, timelines/, logs/)

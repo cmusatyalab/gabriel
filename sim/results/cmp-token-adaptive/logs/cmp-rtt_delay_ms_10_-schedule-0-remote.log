@@ -1,0 +1,20 @@
+2026-10-12 03:10:22,978 remote WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 03:10:22,982 remote INFO remote server listening on 127.0.0.1:60559
+2026-10-12 03:10:22,987 remote INFO [652105f654b8eb4f] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 03:10:23,017 remote INFO [652105f654b8eb4f] ALPN negotiated protocol gabriel
+2026-10-12 03:10:23,018 remote INFO client 26757c22026846a3a997af95fad68936 connected
+No config file was loaded, a config with default values will be used.
+2026-10-12 03:10:25,058 remote INFO edge: rtt=27.1ms T: chain|cam|detect=56.9ms
+2026-10-12 03:10:27,091 remote INFO edge: rtt=29.3ms T: chain|cam|detect=40.6ms
+2026-10-12 03:10:29,161 remote INFO edge: rtt=27.6ms T: chain|cam|detect=46.6ms
+2026-10-12 03:10:31,188 remote INFO edge: rtt=26.2ms T: chain|cam|detect=33.7ms
+2026-10-12 03:10:33,210 remote INFO edge: rtt=25.6ms T: chain|cam|detect=38.5ms
+2026-10-12 03:10:35,236 remote INFO edge: rtt=28.2ms T: chain|cam|detect=31.2ms
+2026-10-12 03:10:37,256 remote INFO edge: rtt=26.2ms T: chain|cam|detect=49.6ms
+2026-10-12 03:10:39,277 remote INFO edge: rtt=26.0ms T: chain|cam|detect=50.1ms
+2026-10-12 03:10:41,298 remote INFO edge: rtt=27.2ms T: chain|cam|detect=39.2ms
+2026-10-12 03:10:43,323 remote INFO edge: rtt=28.0ms T: chain|cam|detect=54.8ms
+2026-10-12 03:10:45,353 remote INFO edge: rtt=27.0ms T: chain|cam|detect=32.9ms
+2026-10-12 03:10:47,376 remote INFO edge: rtt=28.9ms T: chain|cam|detect=47.9ms
+2026-10-12 03:10:48,388 remote INFO [652105f654b8eb4f] Connection close received (code 0x0, reason )
+2026-10-12 03:10:48,659 remote INFO client 26757c22026846a3a997af95fad68936 disconnected

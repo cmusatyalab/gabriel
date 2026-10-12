@@ -1,0 +1,133 @@
+# Experiment template: copy this file, edit, then
+#   uv run sim check my.toml                    # validate, list the runs
+#   uv run sim run my.toml [--backend virtual]  # run; prints a table at the end
+# Results land in results/<timestamp>/ (summary.csv, results.jsonl,
+# timelines/, logs/). Every field below shows its default unless marked
+# "example". Delete what you don't need.
+
+# ---------------------------------------------------------------------------
+# Defaults merged into every [[experiment]] (an experiment's own values win).
+[defaults]
+duration = 20.0            # seconds per (mode, repeat), including warmup
+warmup = 3.0               # seconds excluded from the metrics
+repeats = 1                # runs per mode (seed + repeat changes the randomness)
+seed = 0
+modes = ["schedule", "push", "pull", "token", "token-adaptive", "credit", "schedule-hop", "segment"]
+quic_idle_timeout = 2.0    # seconds of silence before QUIC drops the connection
+congestion_control = "cubic"   # aioquic: "cubic" or "reno"
+
+[defaults.network]
+backend = "netns"          # netns (root) | proxy (userspace) | direct | virtual
+
+# ---------------------------------------------------------------------------
+[[experiment]]
+name = "my-experiment"     # example
+# Any [defaults] key can be overridden here, e.g.:
+# duration = 30.0
+# modes = ["schedule", "token"]
+
+# Protocol / baseline parameters (apply to every flow in this experiment;
+# a flow can override them in its own [experiment.flow.params]).
+[experiment.params]
+c = 3.0                    # lease = C x max(R, W)
+w_ms = 50.0                # idle heartbeat period; must exceed expected latency spikes
+eps_ms = 1.0               # send-time tolerance (I - eps)
+r_window = 32              # run times kept for R percentiles
+r_seed_ms = 10.0           # R estimate before the first run
+pace_pct = 50.0            # schedule: run-time percentile for Best/Worst (protocol.txt: 80)
+transmit_pct = 50.0        # schedule: time-per-byte percentile for network T (protocol.txt: 90)
+tokens = 3                 # token mode: tokens per Source (token-adaptive: starting count)
+tokens_max = 64            # token-adaptive / credit: upper bound on a window
+credit_init = 2            # credit: starting window per edge
+credit_timeout_ms = 1000.0 # credit: re-grant if nothing arrives this long
+lead_gain = 0.5            # schedule-hop: share of each arrival error fed back into the lead
+segment_remote_tokens = 6  # segment: fixed tokens per remote branch (edge crossing the network)
+segment_branch_tokens = true  # segment: false = older per-group version
+segment_local_tokens = 2   # segment, per-group version only: tokens for a local group
+token_timeout_ms = 2000.0  # token mode: reclaim a token whose return was lost
+pull_timeout_ms = 500.0    # pull mode: re-request after this long
+flap_window_ms = 1000.0    # expiry followed by a demand within this counts as a flap
+ping_interval_ms = 100.0   # RTT pings on the network edge
+engine_process = true      # false: engines run inline in the server (faster to start)
+
+# The client <-> remote link. Values apply to both directions unless
+# overridden under [experiment.network.up] (client -> remote) or
+# [experiment.network.down] (remote -> client).
+[experiment.network]
+delay_ms = 0.0             # one-way delay
+jitter_ms = 0.0
+loss_pct = 0.0
+# rate_mbit = 50           # unset = unlimited
+limit_pkts = 50            # queue in front of the rate limiter; keep small
+down = false               # link down (netns: interface down)
+blackhole = false          # drop every packet (netem loss 100%)
+
+# [experiment.network.up]
+# rate_mbit = 10
+
+# Timed changes, `at` seconds after the flows start. Any network field can
+# change; direction = "both" (default), "up" or "down".
+# [[experiment.network.events]]
+# at = 8.0
+# down = true
+# [[experiment.network.events]]
+# at = 9.5
+# down = false
+# [[experiment.network.events]]
+# at = 13.0
+# rate_mbit = 4
+# direction = "up"
+
+# Sweep: one experiment per combination. Keys are dotted paths into this
+# experiment; numbers index lists (flow.0.node.1 = 2nd node of 1st flow).
+# [experiment.sweep]
+# "network.delay_ms" = [10, 40]
+# "params.tokens" = [2, 4]
+# "flow.0.node.1.service.mean_ms" = [40, 80]
+
+# ---------------------------------------------------------------------------
+# Flows: each is a DAG. Several flows in one experiment run at the same time
+# and share the link.
+[[experiment.flow]]
+name = "main"              # example; may not contain "|" or "@"
+
+# [experiment.flow.params]  # per-flow overrides of [experiment.params]
+# tokens = 2
+
+# Source: gains a frame every period_ms; always runs in the client.
+[[experiment.flow.node]]
+name = "cam"               # example
+kind = "source"
+period_ms = 33.3
+frame_bytes = 10000
+jitter_ms = 0.0            # uniform +-jitter on frame arrival times
+
+# Engine: host = "local" (local server, shares a host with the client) or
+# "remote" (remote server, across the emulated link).
+[[experiment.flow.node]]
+name = "detect"            # example
+host = "remote"
+parents = ["cam"]
+# dist: const | uniform | normal | exp | lognormal; cv = std / mean
+# (uniform: half-width / mean); min_ms clamps the low end.
+service = { dist = "lognormal", mean_ms = 50.0, cv = 0.3, min_ms = 0.0 }
+output_bytes = 1000
+pass_rate = 1.0            # < 1 makes it a filter (rejects produce nothing)
+# r_seed_ms = 50.0         # per-node override of params.r_seed_ms
+
+[[experiment.flow.node]]
+name = "track"             # example
+host = "local"
+parents = ["detect"]
+service = { dist = "lognormal", mean_ms = 15.0, cv = 0.2 }
+
+# Join: several parents. grace_ms set = run grace_ms after the first input
+# (or when all are present); unset = wait for every parent. Prefer setting
+# it: without it the join fires at its slowest branch's pace, and every mode
+# either wastes the fast branch's work or holds its input stale at the join.
+# [[experiment.flow.node]]
+# name = "fuse"
+# host = "local"
+# parents = ["track", "other"]
+# grace_ms = 10.0            # or "none" (the default): wait for every parent
+# service = { dist = "const", mean_ms = 5.0 }

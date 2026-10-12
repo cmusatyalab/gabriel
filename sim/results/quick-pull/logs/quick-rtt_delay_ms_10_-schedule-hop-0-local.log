@@ -1,0 +1,5 @@
+2026-10-12 15:27:19,874 local WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 15:27:19,878 local INFO local server listening on gsa3ab1028d7/local
+2026-10-12 15:27:19,967 local INFO client d12fd7ee91eb4b258e7a32332ff6686a connected
+No config file was loaded, a config with default values will be used.
+2026-10-12 15:27:35,246 local INFO client d12fd7ee91eb4b258e7a32332ff6686a disconnected

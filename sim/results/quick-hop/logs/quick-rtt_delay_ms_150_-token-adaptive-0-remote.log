@@ -1,0 +1,15 @@
+2026-10-12 05:08:47,517 remote WARNING No config file was loaded, a config with default values will be used.
+2026-10-12 05:08:47,522 remote INFO remote server listening on 127.0.0.1:34479
+2026-10-12 05:08:47,589 remote INFO [5dd45cd498e8f6a0] Negotiated protocol version 0x00000001 (VERSION_1)
+2026-10-12 05:08:47,981 remote INFO [5dd45cd498e8f6a0] ALPN negotiated protocol gabriel
+2026-10-12 05:08:47,982 remote INFO client 134a5665eb0642648aa10a0db59a4e96 connected
+No config file was loaded, a config with default values will be used.
+2026-10-12 05:08:49,549 remote INFO edge: rtt=307.1ms T: chain|cam|detect=919.5ms
+2026-10-12 05:08:51,570 remote INFO edge: rtt=317.1ms T: chain|cam|detect=838.3ms
+2026-10-12 05:08:53,592 remote INFO edge: rtt=337.0ms T: chain|cam|detect=620.1ms
+2026-10-12 05:08:55,611 remote INFO edge: rtt=306.6ms T: chain|cam|detect=303.0ms
+2026-10-12 05:08:57,626 remote INFO edge: rtt=307.6ms T: chain|cam|detect=65.8ms
+2026-10-12 05:08:59,645 remote INFO edge: rtt=306.5ms T: chain|cam|detect=24.6ms
+2026-10-12 05:09:01,666 remote INFO edge: rtt=307.9ms T: chain|cam|detect=67.4ms
+2026-10-12 05:09:03,686 remote INFO edge: rtt=309.8ms T: chain|cam|detect=80.5ms
+2026-10-12 05:09:03,909 remote INFO [5dd45cd498e8f6a0] Connection close received (code 0x0, reason )
