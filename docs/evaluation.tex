@@ -1,0 +1,549 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Gabriel Rust Rewrite: Evaluation Plan}
+\author{Plan for logging, metrics, and benchmarks}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Purpose}
+
+The design note (\code{docs/dag-tokens.tex}) claims that end-to-end tokens
+and pending slots keep inputs fresh without letting backlogs build up. This
+plan says how to test that claim: what to log, what to measure, which flows to
+run, and what to compare against. Results will be added to this document as
+they come in.
+
+\section{When}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Logging first} (done). It is small, and it closes a known gap: the
+        server records no errors. It also helps debugging the rest.
+  \item \textbf{Then plan step 4} (done for the local server) (result events back to producers, and
+        \code{Disconnected}). Stress tests make engines and clients stall and
+        die; without step 4 a flow whose server dies hangs, and a benchmark
+        would measure that bug. Step 4 also lets the client time the whole
+        trip of an input, from capture to result, on its own clock.
+  \item \textbf{Then metrics} (timestamps done) \textbf{and benchmarks}, on
+        the local server. They are repeated once the remote server exists
+        (plan step 6).
+\end{enumerate}
+A first staleness number can be taken on the local path before that: every
+process on one machine shares one monotonic clock, and step 4 does not change
+the input path.
+
+\section{Logging}
+
+Done; the design note describes it (``Logging''). Use the \code{tracing} crate, with \code{tracing-subscriber} in tests and
+benchmarks. Gabriel is a library, so it only emits events; the app chooses
+whether and where to print them.
+\begin{itemize}[nosep]
+  \item \textbf{Errors and warnings}: every error the server and client
+        threads swallow today (failed deliveries, malformed outcomes, refused
+        inputs, failed sends), lost connections, and engines that stopped.
+  \item \textbf{Debug}: flows installed and removed, engines added and
+        removed.
+  \item \textbf{Nothing per input} at the default level. Per-input data goes
+        to the metrics below, not to the log.
+\end{itemize}
+
+\section{Metrics}
+
+\subsection{Timestamps on events}
+
+Done. Timestamps travel on the events, instead of each process writing its
+own file of timestamps. The events already reach the producer's app, so:
+\begin{itemize}[nosep]
+  \item the app sees the whole trip of each input in one place. There are no
+        files to collect from several processes and join;
+  \item a process killed in a stress test loses nothing, because its events
+        were sent before it died;
+  \item apps get the same data in production, e.g.\ to show how old a result
+        is;
+  \item nothing extra is written while inputs flow. A stamp costs one read of
+        the clock, about 20\,ns.
+\end{itemize}
+
+All stamps come from the monotonic clock (\code{CLOCK\_MONOTONIC} on Linux),
+which every process on a machine shares. Gabriel's \code{Timestamp} type reads
+it; C apps use \code{clock\_gettime(CLOCK\_MONOTONIC)}.
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Stamp & Taken by & When \\
+\midrule
+$t_\mathit{publish}$ & app    & just before it publishes the input \\
+$t_\mathit{offer}$   & server & it made the engine's offer: the input arrived, or \\
+                     &        & the engine before passed it on (\code{offered\_at}) \\
+$t_\mathit{sent}$    & server & it gave the input to the engine (\code{at} of \code{Sent}) \\
+$t_\mathit{end}$     & server & the offer ended: \code{at} of \code{Result}, \code{Skipped}, \\
+                     &        & or \code{TimedOut} \\
+                     & client & \ldots\ for an offer on a crossing that ended on the client \\
+$t_\mathit{received}$ & client & it received an event from the remote server \\
+                     &        & (\code{received\_at}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\code{Producer::publish\_input} returns the input's id, so the app can match
+its $t_\mathit{publish}$ to the events that carry the id. A server stamps a
+result and the offers it makes with the same time, so for the next engine
+$t_\mathit{offer}$ equals the result's $t_\mathit{end}$.
+
+Not stamped yet:
+\begin{itemize}[nosep]
+  \item \textbf{Capture}: only the app knows when it captured a frame. It
+        records that itself.
+  \item \textbf{On the client}: when an input got its token, and when it was
+        sent on a crossing. For the first engine, $t_\mathit{offer} -
+        t_\mathit{publish}$ covers both, plus the trip to the server.
+  \item \textbf{In the engine}: when it started on an input. $t_\mathit{end} -
+        t_\mathit{sent}$ includes the time an input waits at the engine,
+        which happens only when the server gives an engine more than one input
+        at a time.
+  \item \textbf{Remote server}: its stamps are on its own clock. Differences
+        between two of its stamps stay valid; $t_\mathit{offer} -
+        t_\mathit{publish}$ does not, across machines. The client's
+        $t_\mathit{received}$ gives the AoI at the app on the device's clock
+        (``Timestamps across machines'' in the design note). So far both
+        servers run on one machine, so every stamp compares directly.
+\end{itemize}
+
+\subsection{Recording}
+
+Done (\code{bench/}). The benchmark binary subscribes to every producer and keeps one row per
+event: the input id, flow, engine, kind, \code{forward}, $t_\mathit{offer}$,
+and the event's own time. It also keeps one row per published input with
+$t_\mathit{publish}$, so inputs that never got a token show up as drops. Rows
+stay in memory and are written when the run ends.
+
+\paragraph{Format: CSV.} Written with the \code{csv} crate and \code{serde},
+in long form (one row per event, not one column per stage), which is what
+pandas and polars work with best. The other options:
+\begin{itemize}[nosep]
+  \item \textbf{Parquet} has types and compression, and loads faster. But the
+        Rust crates (\code{arrow}, \code{parquet}) are large, and our runs are
+        small. 30 frames a second through three engines for five minutes is
+        about 50{,}000 rows, a few MB. A stress run at 1000 inputs a second
+        is a few million rows, which polars still reads from CSV in seconds.
+        If files grow past a few hundred MB, switch, or convert to Parquet in
+        Python once.
+  \item \textbf{JSON lines} are larger and slower than CSV, and our rows are
+        flat, so they gain nothing.
+  \item \textbf{Prometheus-style metrics} (the \code{metrics} crate) keep
+        only counters and histograms. They suit a live dashboard, but every
+        new question would need a new run.
+\end{itemize}
+Next to the rows, each run writes a small TOML file with its settings: the
+flow spec, the knob values, and the git commit. Rows are never separated from
+what produced them.
+
+\subsection{What to compute}
+
+The objective is the one in the design note (``What to optimize''): keep
+waiting small while keeping the slowest engine busy. The measures below use
+queueing terms; the design note defines them. \code{analyze.py} computes the
+ones marked \textbf{(done)}, all from the recorded events, without the first
+and last second of each run: at the start engines are warming up, and at the
+end no newer input comes to replace a waiting one.
+\begin{description}[style=nextline, leftmargin=1.5em]
+  \item[Age of information (AoI) (done)] Per engine: at each moment, the age
+        of the input behind its newest result. Its average over time, and its
+        peaks just before each new result. This is the one number that
+        combines both sides: it grows with waiting, and it grows when results
+        are rare. Every comparison starts with it.
+  \item[Waiting (done)] How old an input is when an engine gets it,
+        $t_\mathit{sent} - t_\mathit{publish}$, and the \emph{excess}: this
+        age minus the time the input spent in upstream engines on its path,
+        $\sum (t_\mathit{end} - t_\mathit{sent})$. The excess is all the
+        waiting Gabriel added. It is split by place: before the server (for a
+        token, and on the crossing), $t_\mathit{offer} - t_\mathit{publish}$
+        at the first engine; on an uplink, from the result of the engine
+        before to the offer on the remote server (the client's wait and the
+        trip out); and at each engine's edge on the server,
+        $t_\mathit{sent} - t_\mathit{offer}$.
+  \item[Return trip (done)] For a remote engine, $t_\mathit{received} -
+        t_\mathit{end}$: how long its result took to reach the client. A
+        remote result's AoI counts from $t_\mathit{received}$.
+  \item[Load (done)] Per engine: the arrival rate $\lambda$ of offers, the
+        throughput $X$ in results per second, the service time $S$ with its
+        mean and coefficient of variation, the offered load $\rho = \lambda
+        \cdot E[S]$, and the utilization $U$. A high $\rho$ with $U$ near 1
+        means the engine is always busy and most candidates are skipped. A
+        low $\rho$ means the engine is starved, or the flow is light.
+  \item[Idle time (done)] Per engine, the gap from a result to its next
+        input. This is the throughput side of the trade-off. Later: how much
+        of it passed while an input waited somewhere upstream, which is the
+        idle time a better limit could remove.
+  \item[Waste (partly done)] The share of offers skipped in pending slots,
+        and the offers made per result. Later: the compute spent upstream on
+        inputs that a downstream engine skipped, and over the network, the
+        bytes sent for inputs that were skipped.
+  \item[Tokens in use (done)] Per producer, by Little's law: the average
+        number of its inputs in flight, and the most at once, against its
+        token count. An average far below the count means tokens did not
+        limit the run.
+  \item[Drops and why] The share of captured frames that never get a result,
+        split by reason: replaced while waiting for a token, \code{Skipped}
+        in a pending slot, \code{TimedOut}, \code{Disconnected}. A system can
+        look fresh by dropping nearly everything, so freshness is always
+        reported together with the share of frames processed.
+  \item[Jitter] The spread of the time between results. Steady timing
+        matters for apps such as AR.
+  \item[Timeouts] How often offers time out as load grows. This tells
+        whether the deadlines the compiler derives are realistic.
+  \item[Fairness] When several flows or clients share an engine, the share
+        of the engine each one gets.
+  \item[Overhead] The latency Gabriel adds per hop (0.2\,ms at the median from
+        producer to engine so far), and the CPU it uses, also when idle: the
+        threads wake every 10\,ms, and control calls poll every 1\,ms.
+\end{description}
+
+\section{Benchmarks}
+
+\subsection{Flows}
+
+Engines in benchmarks are synthetic: they sleep or spin for a time drawn from
+a chosen distribution, and report a chosen outcome. That makes every run
+repeatable.
+\begin{itemize}[nosep]
+  \item a slow engine at the end of a deep chain;
+  \item wide fan-out, with branches of very different speeds;
+  \item several clients and flows sharing one engine;
+  \item bursty producers, and producers faster than any engine;
+  \item engine times with a heavy tail;
+  \item an engine killed and restarted during a run, and the local server
+        killed and restarted (needs plan step 4);
+  \item with the remote server: a link that slows down and drops (possible
+        now, see ``Tools'').
+\end{itemize}
+Each flow is run while sweeping one knob: the token count, the producer rate,
+the engine times, or the number of clients.
+
+\subsection{Baselines}
+
+The design is only interesting next to simpler ones, run on the same flows:
+\begin{itemize}[nosep]
+  \item a plain FIFO queue in front of each engine (no drops, so latency
+        grows without bound);
+  \item keep only the newest input at each engine, with no tokens;
+  \item the original Gabriel (one token per engine), where a flow can be
+        expressed in it. \textbf{Done} for one engine on one machine
+        (``Comparison with the original Gabriel'' below).
+\end{itemize}
+
+\subsection{Tools}
+
+\begin{itemize}[nosep]
+  \item \textbf{Done:} the benchmark binary, \code{gabriel-bench} in
+        \code{bench/}. A run's TOML file holds the flow spec, each producer's
+        rate (periodic or Poisson) and input size, and each engine's service
+        time (constant, uniform, exponential, or log-normal), its pass
+        probability, and its result size. It runs the server, the engines,
+        the client, the producers, and a recorder per producer on threads of
+        one process, all talking over iceoryx2 as separate processes would.
+        Examples are in \code{bench/runs/}:
+        \code{cargo run --release -p gabriel-bench -- bench/runs/chain.toml}.
+  \item \textbf{Done:} the remote server. An engine with
+        \code{location = "remote"} runs on a second server, which the client
+        reaches over QUIC on loopback. A \code{[remote]} section sets the
+        crossing capacity, and a \code{[network]} section the delay each way,
+        jitter, loss, and rate, which the bench applies with \code{tc netem}
+        on loopback. That would slow every program on the machine, so the
+        bench refuses unless the run has a network namespace of its own,
+        which needs no root:
+        \code{unshare --user --map-root-user --net target/release/gabriel-bench
+        bench/runs/remote.toml}. Only QUIC crosses loopback; iceoryx2 uses
+        shared memory. Both directions get the same settings.
+  \item \textbf{Done:} \code{bench/analyze.py} prints the measures marked
+        done above: per producer, tokens in use; per engine, load, waiting,
+        idle time, and AoI. It runs with \code{uv run}, which installs
+        pandas.
+  \item \textbf{Done:} \code{bench/compare/}, which compares this Gabriel
+        with the original one (\code{gabriel-server} and
+        \code{gabriel-client} 5.2 from PyPI) on one machine. Each system runs
+        as three processes: a server, an engine that answers at once, and an
+        app that sends a raw frame and waits for its result before sending
+        the next. It reports the round trip and the CPU of each process:
+        \code{python compare.py}.
+  \item \code{hdrhistogram} for latency histograms during a run.
+  \item \code{criterion} for micro-benchmarks of single parts, such as the
+        flow compiler and postcard encoding.
+  \item Python (pandas, matplotlib) for the analysis and the figures.
+\end{itemize}
+
+\section{Results}
+
+\subsection{Token sweep}
+
+How many tokens should a producer have? Each flow below was run with
+several token counts on the local server: 8\,s per run without the first and
+last second, one seed, one laptop. These are early numbers, not final
+measurements, but the effects are large and consistent. Times are in ms.
+
+\paragraph{Overload:} 200 inputs a second (Poisson) into one engine of
+30\,ms on average with a heavy tail (log-normal, standard deviation 60\,ms;
+measured $S$: 40\,ms mean, coefficient of variation 1.9).
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrrrrr@{}}
+\toprule
+Tokens & results/s & $U$ & $\rho$ & skipped & excess p50 & excess p99 & AoI \\
+\midrule
+1  & 26.2 & 0.97 & 1.1 & 0    & 3.0 & 17  & 105 \\
+2  & 26.2 & 1.00 & 1.1 & 0    & 18  & 398 & 147 \\
+3  & 26.2 & 0.98 & 7.9 & 0.87 & 2.1 & 20  & 103 \\
+10 & 26.2 & 0.98 & 7.8 & 0.87 & 2.5 & 17  & 104 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Balanced chain:} three engines of 20\,ms each, inputs at 100 a
+second. At the last engine:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Tokens & results/s & $U$ & idle p50 & excess p50 & AoI \\
+\midrule
+1  & 16.2 & 0.33 & 41  & 5.3 & 97 \\
+2  & 32.6 & 0.66 & 3.1 & 5.3 & 83 \\
+3  & 48.9 & 0.99 & 0.0 & 5.6 & 77 \\
+7  & 49.1 & 1.00 & 0.0 & 5.0 & 76 \\
+10 & 48.9 & 1.00 & 0.0 & 5.5 & 77 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Chain} (\code{chain.toml}): a camera at 30 frames a second, a
+2\,ms filter that passes half, a 40\,ms detector with a heavy tail, and a
+5\,ms tracker. At the detector:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Tokens & results/s & $\rho$ & excess p99 & in flight (mean) & AoI \\
+\midrule
+1  & 12.7 & 0.53 & 32 & 0.66 & 100 \\
+2  & 14.2 & 0.60 & 91 & 0.92 & 103 \\
+3  & 14.1 & 0.64 & 54 & 0.88 & 101 \\
+7  & 14.1 & 0.64 & 54 & 0.88 & 101 \\
+10 & 14.1 & 0.64 & 54 & 0.88 & 101 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Fan-out} (\code{fanout.toml}): the same for 1 to 10 tokens. The
+fast engine ($U = 0.16$) gets every frame, with an excess under 2\,ms at p99
+and an AoI of 22\,ms. The slow one is always busy ($\rho = 5.5$, $U = 0.99$)
+and skips 82\% of its offers. The token returns as soon as the fast path
+completes, so the slow engine never holds it.
+
+\paragraph{What the sweep shows,} in the terms of the design note's
+trade-off: waiting, idle time, and waste.
+\begin{enumerate}[nosep]
+  \item \textbf{Below the knee, tokens cost idle time.} With one token, only
+        one input is in the balanced chain at a time, so each engine idles
+        two thirds of the time. Excess stays the same, but results come a
+        third as often, and the AoI is 97 instead of 77.
+  \item \textbf{Exactly enough tokens to fill the pending slots freezes
+        them, which costs waiting.} With 2 tokens and one engine, one input
+        is in work and one in the pending slot, and no token is left to bring
+        a newer input. The waiting input waits for the rest of the engine's
+        time, and the heavy tail of that time becomes the tail of the excess:
+        398 at p99. Utilization gains 3\%, and the AoI rises by 40\%.
+  \item \textbf{One more token unfreezes them, at the cost of waste.} Newer
+        inputs keep reaching the slot and replacing the input there:
+        $\rho$ jumps from 1 to 8, and 87\% of offers are skipped. On one
+        machine a skipped offer costs a copy.
+  \item \textbf{For one engine on the device, one token is as good.} It
+        gives the same AoI as 3 tokens with no waste: fetching the next input
+        when the engine is free costs only 0.3\,ms of idle time at the
+        median. One token fails only when a path has several engines.
+  \item \textbf{Above the bound, tokens do nothing.} With 7 or 10 tokens,
+        0.9 inputs were in flight on the chain on average, and every measure
+        matched 3 tokens.
+  \item \textbf{Some waiting is ordinary queueing.} The chain's detector is
+        not overloaded: $\rho = 0.64$. Its inputs arrive at random, as the
+        filter passes half the frames, and its service time varies, so an
+        input sometimes arrives while the detector is busy and waits, 54 at
+        p99. No token count changes this, and neither does the AoI, which
+        stays near 100 for every count. Only less load or less variance would
+        lower it.
+\end{enumerate}
+
+\paragraph{Conclusion.} Tokens are not the tool that keeps inputs fresh. The
+design note (``Are tokens the right tool?'') draws the consequences: tokens
+become a cap above the knee, set by the rule in ``Choosing $C$''; on the
+device the per-hop limits do the work; and over the network the crossing
+capacity is the control to tune, by an adaptive capacity or by predictive
+pull, to be compared on emulated links.
+
+\subsection{First runs with the remote server}
+
+\code{bench/runs/remote.toml}: a camera at 30\,fps feeds a filter on the
+device (5\,ms, passes a third), which feeds a detector on the remote server
+(exponential, mean 50\,ms), over a link with 20\,ms each way and 2\,ms of
+jitter, and a crossing capacity of 3. Inputs are 64\,KB. Times in ms,
+without the first and last second.
+
+\paragraph{netem's jitter reorders packets, and QUIC slows down for it.} The
+first runs showed inputs waiting hundreds of milliseconds on the uplink. The
+cause: with jitter and no rate, netem gives each packet its own delay, so
+packets overtake each other. QUIC takes a packet that arrives three behind
+for lost, and cuts its sending rate. The larger the input, the more packets
+it takes, and the worse it gets. Uplink time, from the filter's result to the
+offer at the remote server:
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Run & p50 & p90 \\
+\midrule
+1\,KB inputs, jitter reorders     & 20  & 22 \\
+16\,KB inputs, jitter reorders    & 38  & 99 \\
+64\,KB inputs, jitter reorders    & 321 & 466 \\
+64\,KB inputs, no jitter          & 28  & 36 \\
+64\,KB inputs, jitter in order    & 30  & 36 \\
+\bottomrule
+\end{tabular}
+\end{center}
+netem keeps packets in order when it also has a rate, so the bench always
+gives it one, far above what a run sends unless the run sets its own. Real
+links reorder much less than this, but a lossy wireless link would hurt QUIC
+the same way, through real loss. It is worth measuring with \code{loss}
+next.
+
+\paragraph{The example, with packets in order} (20\,s):
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Detector & p50 & p90 & p99 \\
+\midrule
+uplink (client's wait and the trip out) & 28 & 33 & 46 \\
+wait at its edge                        & 0  & 42 & 135 \\
+idle between inputs                     & 39 & 184 & 329 \\
+return trip of the result               & 20 & 22 & 22 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The uplink is the 20\,ms delay plus about 8\,ms to send 64\,KB, and the
+result comes back in the 20\,ms delay. The detector's load is $\rho = 0.52$
+and its utilization 0.47. It idles mostly because inputs are rare (the filter
+passes a third of 30 frames a second), and sometimes waits because its
+service time varies. Its mean AoI at the app is 210, against 22 for the
+filter on the device. A crossing capacity sweep, a slower link, and loss come
+next.
+
+\paragraph{Next in the analysis.} Compare each input's age with that of the
+newest input that had reached its slot, to separate waiting Gabriel could
+have avoided from waiting it could not. Measure the compute wasted upstream,
+which matters once engines share a GPU.
+
+\subsection{Comparison with the original Gabriel}
+
+How much does each Gabriel itself cost, with everything on one machine? An
+app sends a raw RGB frame of noise, one engine answers at once with 256
+bytes, and the app sends the next frame when the answer arrives: one token,
+one frame in flight. The engine does no work, so the round trip is all
+framework. 300 frames after 30 of warm-up, one run per system, on an Intel
+Core Ultra 7 265K. The original Gabriel runs in four setups:
+\begin{description}[nosep, font=\normalfont\itshape]
+  \item[WebSocket] The app reaches the server by WebSocket, and the engine
+        reaches it by gRPC, both over TCP. This is its default setup.
+  \item[WebSocket, uncompressed] The same, with the WebSocket's compression
+        turned off.
+  \item[ZeroMQ, TCP] The app uses ZeroMQ over TCP; the engine as above.
+  \item[ZeroMQ, IPC] The app uses ZeroMQ, and both the app and the engine
+        reach the server over Unix sockets.
+\end{description}
+
+\paragraph{Round trip,} median (p99) in ms:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+System & 720p (2.8\,MB) & 1080p (6.2\,MB) & 4K (24.9\,MB) \\
+\midrule
+This Gabriel              & \textbf{0.76} (1.3) & \textbf{2.2} (3.3)
+                          & \textbf{6.2} (7.9) \\
+Original, ZeroMQ, IPC     & 7.6 (9.8)   & 16.2 (21.1)  & 102.6 (113.6) \\
+Original, ZeroMQ, TCP     & 7.4 (10.0)  & 15.9 (19.4)  & 107.7 (115.2) \\
+Original, WebSocket, uncompressed
+                          & 13.3 (18.4) & 31.1 (37.2)  & 80.6 (122.4) \\
+Original, WebSocket       & 67.0 (73.7) & 148.0 (157.6) & 605.3 (624.5) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{CPU,} in percent of one core, server / engine / app:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+System & 720p & 1080p & 4K \\
+\midrule
+This Gabriel              & 38 / 8 / 57  & 32 / 6 / 62  & 39 / 2 / 58 \\
+Original, ZeroMQ, IPC     & 37 / 42 / 25 & 38 / 42 / 24 & 48 / 22 / 38 \\
+Original, ZeroMQ, TCP     & 35 / 42 / 27 & 37 / 44 / 27 & 50 / 21 / 36 \\
+Original, WebSocket, uncompressed
+                          & 45 / 23 / 37 & 48 / 23 / 35 & 40 / 24 / 43 \\
+Original, WebSocket       & 6 / 7 / 88   & 6 / 6 / 90   & 10 / 4 / 88 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The processes of this Gabriel do 7 to 14 times more round trips a second, so
+its CPU per frame is far lower than the percentages suggest.
+
+\paragraph{What the comparison shows.}
+\begin{enumerate}[nosep]
+  \item \textbf{This Gabriel is 7 to 13 times faster} than the original's
+        best setup at every frame size.
+  \item \textbf{The original's default setup compresses every frame.} The
+        \code{websockets} library compresses each message unless told
+        otherwise, and the original client has no option to turn it off. The
+        app then spends 88\% of a core compressing, here on noise, which does
+        not shrink. Real frames would shrink a little, for the same CPU.
+  \item \textbf{The original cannot carry a raw frame over 4\,MB.} Its engine
+        fails on the first 1080p frame with gRPC's default limit, which
+        \code{EngineRunner} never raises:
+        \begin{center}
+        \code{RESOURCE\_EXHAUSTED}\\
+        \code{Received message larger than max (6220814 vs. 4194304)}
+        \end{center}
+        The comparison raises the limit in the engine process.
+  \item \textbf{Unix sockets do not help the original.} Its time goes to
+        protobuf, gRPC, and asyncio, not to the socket.
+  \item \textbf{Most of this Gabriel's time is spent copying the frame.}
+        The server uses 0.30, 0.73, and 2.5\,ms of CPU per frame at 720p,
+        1080p, and 4K: two copies of the frame at about 18\,GB/s, the speed
+        of \code{memcpy}. When idle it uses about 1.5\% of a core. The four
+        copies of the local path, plus the app's own, add up to most of the
+        6.2\,ms at 4K (``Copies'' in the design note).
+\end{enumerate}
+
+\paragraph{Before quoting these numbers.}
+\begin{itemize}[nosep]
+  \item One run per system, and runs vary: the original over ZeroMQ and TCP
+        took 15.9\,ms at 1080p here, and 23.3\,ms in a shorter run. Repeat
+        each run and give confidence intervals.
+  \item This Gabriel's engine never reads its frame, which stays in shared
+        memory, while the original's engine has already received and decoded
+        it. A real engine reads its frame once either way. Next: an engine
+        that reads every byte, and YOLO.
+  \item The original's gRPC transport for apps is not measured yet.
+  \item This is one machine. The comparison that matters for Gabriel is over
+        a network, with QUIC against the original's transports on emulated
+        links.
+\end{itemize}
+
+\end{document}

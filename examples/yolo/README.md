@@ -1,7 +1,7 @@
 # Object detection with YOLO26
 
 An app sends video frames through Gabriel to a YOLO26 engine, and prints what it finds in each.
-Everything runs on this machine. Frames go through shared memory as raw images, with no copy or
+Everything runs on this machine. Frames go through shared memory as raw images, with no
 encoding on the way.
 
 | File          | Process                                                         |

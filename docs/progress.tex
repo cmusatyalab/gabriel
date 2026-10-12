@@ -1,0 +1,425 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Gabriel Rust Rewrite: Progress}
+\author{Status report}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Summary}
+
+The rewrite is roughly \textbf{45\% done} by effort, measured against the
+implementation plan in the design note (\code{docs/dag-tokens.tex}). This is a
+rough estimate. The pieces built so far are the ones that were hardest to get
+right: the token rules, duplicate protection, and alignment at a fan-out. What
+remains is mostly plumbing (processes, transports, serialization, and the C
+ABI), which takes more code but involves fewer subtle decisions.
+
+The first useful milestone, a flow running end to end through local engines
+(plan steps 1--3), is \textbf{reached}: a producer's frames go through the
+client and the local server to a chain of local engines, and the engines'
+outcomes return the producer's tokens. A flow is added from Rust with a
+\code{FlowSpec}, or from C with the same spec in TOML.
+
+Plan step 4 is done for the local server: the producer's app reads what
+happened to each of its inputs, and a client that loses its local server
+reports \code{Disconnected} and installs its flows again. The plan for
+logging, metrics, and benchmarks is in \code{docs/evaluation.tex}. Logging is
+done, every event now carries timestamps, and a benchmark binary runs a flow
+with synthetic engines and records them. A first sweep of token counts
+showed how to set them: with too few, engines idle or pending inputs freeze;
+one spare token keeps every pending slot fresh (\code{docs/evaluation.tex}).
+
+All 198 tests pass.
+
+\section{Done}
+
+\begin{description}[style=nextline, leftmargin=1.5em]
+  \item[Producer (\code{producer.rs}, \code{envelope.rs})] Publishes inputs
+        over iceoryx2 into loaned shared memory, and notifies the client. Each
+        input carries an id chosen by the producer: a random session per
+        producer start and a sequence number per input. Publishing returns
+        the id, so the app can match events to its frames.
+  \item[Client thread (\code{client.rs}, \code{client/worker.rs},
+        \code{client/producers.rs})] Subscribes to producers and keeps the
+        newest input of each. Runs one flow router per flow: applies the local
+        server's events, admits inputs, and sends them on their crossings.
+        Wakes on producers and on the server's events. Adding a flow needs its
+        producers added, and a producer cannot be removed while a flow uses
+        it; a dropped client removes its flows from the server. A frame
+        reaches its engine 0.2\,ms after it is published at the median.
+        Publishes every event about a producer's inputs for the producer's
+        app, and tells the server about offers it skipped on crossings. Checks
+        every second that the local server runs, and looks for gaps in its
+        event stream; if either fails, it ends every offer there with
+        \code{Disconnected} and installs its flows again. 16 end-to-end tests
+        with a real server and engines, among them one that checks under load
+        that every offer ends exactly once, and one that restarts the server;
+        plus 4 for the producers' ports.
+  \item[Flow spec and compiler (\code{spec.rs}, \code{client/compile.rs})]
+        \code{FlowSpec}, the Rust description of a flow: producers with token
+        counts, engines with their location, and edges with timeouts. The
+        compiler checks it (names, a DAG, edges end at engines) and splits it:
+        edges between engines go to the local server, and each producer's
+        edges form one crossing. It derives the crossing and ticket
+        deadlines from the timeouts. Remote engines are rejected until QUIC
+        exists. From C, the spec is TOML: an edge list with the same shape as
+        \code{FlowSpec}, with timeouts such as \code{"300ms"}. 13 tests.
+  \item[Subscription (\code{subscription.rs}, \code{ffi.rs})] How a
+        producer's app reads the events about its inputs, from
+        \nolinkurl{gabriel/producer/<name>/result}: \code{wait} without
+        polling, and \code{poll}, which reports gaps in the numbers as
+        \code{Lost}. The app sees \code{Sent}, \code{Result} (with the result
+        bytes), \code{Skipped}, \code{TimedOut}, and \code{Disconnected}, per
+        input and engine. In C: \code{gabriel\_subscribe\_producer},
+        \code{gabriel\_subscription\_wait}, \code{gabriel\_subscription\_poll}.
+        5 tests.
+  \item[Local client transport (\code{client/local\_server.rs},
+        \code{server/local\_clients.rs}, \code{wire.rs})] Control calls
+        (\code{InstallFlow}, \code{RemoveFlow}) over iceoryx2 request-response,
+        encoded with postcard and carrying a protocol version; inputs on
+        crossings over a server input service, which wakes the server; and one
+        numbered event stream per client, which wakes the client. The server
+        records which client installed each flow, and only that client may
+        remove it. The input service also carries skip notices, which the
+        server publishes as \code{Skipped} on the target engines' event
+        services. 8 tests, plus the end-to-end tests above.
+  \item[Edges (\code{routing/edge.rs})] \code{EdgeState}: an edge's capacity,
+        inputs in flight with their deadlines, and the pending slot, where a
+        newer input replaces an older one. No I/O; the owner collects actions
+        (send, skipped, timed out). An edge can be suspended while its server
+        cannot be reached. 13 tests.
+  \item[Tokens (\code{routing/tokens.rs})] \code{TokenPool}: end-to-end tokens
+        per producer, and a ticket per admitted input that keeps the input
+        until it is done. Returns each token exactly once, even with fan-out,
+        duplicates, and timeouts, and tells late results from duplicates.
+        Checks its invariant in debug builds. 18 tests.
+  \item[Flow router (\code{routing/flow.rs})] \code{FlowRouter}: setup of
+        producers and client-owned edges; admission (an input is admitted when
+        its producer has a token and one of its edges can send it right away);
+        applying the end of an offer (early discard, forwarding after a
+        \code{Pass} across an uplink, duplicate and late events, fan-out
+        alignment, no forwarding after the ticket deadline); crossings, which
+        keep their capacity after \code{Accepted} until their first target
+        finishes or they time out; expiry of offers and tickets; reports of
+        offers skipped or timed out on the client's edges; and lost
+        connections, which end every offer on the server with
+        \code{Disconnected} and stop the crossings until the client
+        reconnects. 22 tests.
+  \item[Local services (\code{ipc/types.rs}, \code{services.rs},
+        \code{naming.rs})] The four iceoryx2 services of one machine, with
+        fixed-size records: the engine's input (\code{InputHeader}), the
+        engine's outcome (\code{OutcomeRecord}), and the engine's events
+        (\code{EventRecord}, with one constructor per kind of event, and the
+        flow it belongs to). The engine's input and outcome services never
+        drop a sample, and have a small fixed buffer that does not depend on
+        how many clients use the engine. Round trips through each service are
+        tested.
+  \item[Engine (\code{engine.rs}, \code{ffi.rs})] The engine side of the C
+        ABI: create and destroy, \code{wait} (for inputs, without polling),
+        \code{poll\_input}, and the outcomes \code{stop}, \code{pass}, and
+        \code{emit} (with \code{new\_output}). Each outcome wakes the server.
+        One input at a time. An input is one buffer with a payload type;
+        Gabriel does not look inside it, so an engine that emits several tiles
+        frames them itself. The engine names the type of its results when it
+        is created, and of the new input when it emits. 14 tests.
+  \item[Server router (\code{routing/server\_router.rs})]
+        \code{ServerRouter}: installing and removing flows (checked against
+        the registered engines, each with its own session); inputs arriving on
+        crossings, offered to one edge per target engine; outcomes, which free
+        the engine's place, end the offer, and forward \code{Pass} and
+        \code{Emit} on the server's own edges, reporting the \code{Result}
+        before its children's events; late, duplicate and misdirected
+        outcomes; expiry; skip notices from clients. Engines pull their
+        inputs: an engine is given one input at a time, and its edges keep
+        their newest input in their pending slots and take turns. Lost inputs
+        and dead engines free their places, so an engine's places cannot
+        leak. No I/O. 30 tests.
+  \item[Server dispatcher (\code{server/dispatch.rs})] Connects the server
+        router to the engines' iceoryx2 services: delivers inputs and wakes
+        the engine, waits for outcomes, reads them (checking their lengths),
+        numbers and publishes each engine's events, and queues events for
+        clients. A delivery that fails or reaches no engine, and a malformed
+        outcome, lose their input in the router. Notices engines whose
+        process stopped, by their iceoryx2 node, and cleans up after dead
+        ones. 13 tests, with real engines.
+  \item[Server thread (\code{server.rs}, \code{server/worker.rs})] Runs the
+        dispatcher and the local client transport on its own thread, woken by
+        engines' outcomes and clients' inputs, with commands from the
+        \code{Server} handle over a channel. Checks for stopped engines every
+        second. From an outcome to the engine's next
+        input takes 46\,\textmu s at the median and 0.4\,ms at the 99th
+        percentile. The C ABI creates a local server and adds and removes
+        engines. 3 tests here; the end-to-end tests are the client's.
+  \item[Services (\code{services.rs}, \code{naming.rs})] Besides the
+        services above: an event per engine in each direction, so neither
+        side polls; the server's control, input, and input-ready services,
+        and each client's event stream and events-ready event; node names
+        that identify engine, server, and client processes; and a
+        backpressure handler that makes a send to a full buffer fail instead
+        of hang.
+  \item[Logging (\code{logging.rs})] With \code{tracing}: warnings for every
+        failure the server and client threads carry on after, lost engines,
+        and lost connections; info for engines and flows; each thread's
+        events carry its name. Nothing per input. C apps print the log with
+        \code{gabriel\_log\_init}. 1 test.
+  \item[Timestamps (\code{clock.rs})] Every event says when it happened,
+        and an event that ends a server's offer says when the offer was
+        made. Both are read from \code{CLOCK\_MONOTONIC}, which every process
+        on a machine shares, through \code{rustix}. The subscription and the C
+        event view expose them. 3 tests, one of them end to end.
+  \item[Benchmarks (\code{bench/})] \code{gabriel-bench} runs a flow
+        from a TOML file with synthetic producers and engines on threads, and
+        writes one CSV row per input and per event, a copy of the run's file,
+        and the git commit. \code{analyze.py} reports, in queueing terms,
+        load, utilization, waiting, idle time, tokens in use, and the age of
+        information. Three example runs. 4 tests.
+  \item[Design note (\code{docs/dag-tokens.tex})] Covers the architecture,
+        ownership of edges, installing a flow, flow control, forwarding,
+        copies, result events, token accounting, worked examples (early
+        discard, multi-tier fusion, feedback), and disconnected operation.
+\end{description}
+
+\section{Remaining work}
+
+\begin{center}
+\small
+\begin{tabular}{@{}rp{0.5\linewidth}p{0.36\linewidth}@{}}
+\toprule
+Step & What & Status \\
+\midrule
+1  & Routing logic: edges, tokens, flow router
+   & \textbf{done} \\
+2  & Server with engines over iceoryx2, and the new engine ABI
+   & \textbf{done} for a local server; the rest of the engine ABI is
+     step 7 \\
+3  & Client--local server protocol over iceoryx2 (\code{InstallFlow}, inputs)
+   & \textbf{done} \\
+4  & Result events back to producers
+   & \textbf{done} for the local server \\
+5  & Wire format: postcard messages
+   & done for control calls \\
+6  & The same protocol over QUIC to the remote server
+   & \textbf{done}, tested over loopback: flows split between the servers,
+     uplinks, remote crossings with a configured capacity; the bench runs
+     it over netem on loopback; an \code{Emit} does not cross yet \\
+7  & Result edges, engine inboxes, \code{Derived} results (fusion, feedback)
+   & not started \\
+8  & Crossings with several targets
+   & routing done on both sides; not yet carried over a transport \\
+9  & Disconnected operation: priority producers, deduplication, stream
+     priorities
+   & not started \\
+10 & Zero copy on one machine
+   & optional \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Cross-cutting work} not tied to one step:
+\begin{itemize}[nosep]
+  \item the flow compiler, which splits a flow for the local server only so
+        far;
+  \item the C ABI for all new calls, generated with cbindgen;
+  \item reconnecting after a lost connection;
+  \item end-to-end tests across processes.
+\end{itemize}
+
+\section{Decisions since the last report}
+
+\begin{itemize}[nosep]
+  \item \textbf{Copies are fine for now.} A frame is copied at each service
+        boundary; zero copy on one machine stays an optional last step. A
+        first measurement shows the copies matter for raw frames: they are
+        most of the 6.2\,ms round trip of a 4K frame
+        (\code{docs/evaluation.tex}). Kept as they are until the remote
+        benchmarks are done.
+  \item \textbf{Outcomes go through the server.} Engines never publish events.
+        The server frees the edge, creates the follow-on offers, and then
+        publishes the event, so each event service has one publisher and one
+        order. This is also what lets the same engine run on the cloudlet.
+  \item \textbf{Gabriel does not know about parts.} An input is one buffer
+        with a payload type. An engine that emits several tiles lays them out
+        itself, and the next engine reads them by the type.
+  \item \textbf{Payload types name how to read bytes.} They are set when an
+        engine is created, and when it emits. Result events carry them.
+  \item \textbf{Fixed-size records inside, a schema outside.} Records on
+        iceoryx2 have a fixed layout. Apps are free to use protobuf for the
+        bytes they send.
+  \item \textbf{Every client edge into a server is a crossing}, including a
+        producer's edge to a local engine. A server receives inputs from a
+        client in one way, and offers each on its own edge per target engine.
+  \item \textbf{An engine's input buffer is fixed.} iceoryx2 cannot resize a
+        service, and clients come and go at runtime. So the server delivers
+        a fixed number of inputs to an engine before their outcomes arrive.
+  \item \textbf{Engines pull their inputs.} A server's edges have no
+        capacity. Each holds its newest input in its pending slot until the
+        engine has room, and the engine's edges take turns. Sending as soon
+        as an edge had room would queue stale inputs at the server behind
+        newer ones.
+  \item \textbf{An engine gets one input at a time, and local crossings
+        have capacity 3,} so an engine always starts on the newest input
+        there is. A second input given ahead of time could not be replaced,
+        and every slow engine would start on inputs one processing time old,
+        doubling its latency. Capacity 3 (the delivery limit plus 2) is the
+        smallest that keeps the server's pending slots updating when every
+        target of a crossing is busy. The cost is a gap of tens of
+        microseconds after each outcome, so the server thread must wake on
+        the engines' notifications. Remote crossings face the same choice
+        against bandwidth; it is an open question.
+  \item \textbf{Deferred:} gating an edge on whether its engine's output can
+        go anywhere, which saves compute before a slow engine; and pending
+        slots that hold more than one input, for streams where every input
+        matters. Both only extend when an edge may send, and what its
+        pending slot holds.
+  \item \textbf{Events name their flow}, because one input can enter several
+        flows. A late result is not marked; a reader that saw its offer end
+        knows.
+  \item \textbf{An engine's death ends its delivered offers with
+        \code{TimedOut} and its pending ones with \code{Skipped}.} The server
+        thread notices it by the engine's iceoryx2 node: the node it saw last
+        is gone, or none runs while inputs are delivered. It compares nodes
+        rather than looking for dead ones, because a restarting engine cleans
+        up dead nodes itself.
+  \item \textbf{A full input or outcome buffer fails the send.} iceoryx2
+        would otherwise make the sender wait, so a broken delivery bound
+        would hang the server or an engine.
+  \item \textbf{The server wakes on outcomes and on clients' inputs, and
+        polls commands and control calls every 10\,ms.} Both are rare.
+        iceoryx2 has no wake-up for a reply, so the client polls for it every
+        millisecond.
+  \item \textbf{Control calls are encoded with postcard}, the only messages
+        without a fixed layout; inputs and events keep fixed records. Every
+        call carries a protocol version, which the server checks.
+  \item \textbf{Each local client has its own event stream}, so it reads only
+        its own events, and a slow client fills only its own buffer. The
+        stream is numbered, and drops its oldest events when full.
+  \item \textbf{The spec gives timeouts, not deadlines or capacities.} Local
+        crossings have capacity 3, and the compiler derives each crossing's
+        and ticket's deadline from the engines' timeouts, as upper bounds.
+  \item \textbf{Flow specs are TOML from C}, as an edge list with the same
+        shape as \code{FlowSpec}, parsed by serde. Misspelled fields are
+        errors.
+  \item \textbf{A flow's inputs are the ones its producers publish on it}, by
+        the flow named in each frame.
+  \item \textbf{The producer's app sees events per input and engine, not per
+        offer.} The client leaves out \code{Accepted}, reports a crossing
+        offer that ends on the client once per target engine, and a lost
+        connection once per flow. The result service has a ready event, so
+        the app waits without polling.
+  \item \textbf{A lost connection ends every offer on the server with
+        \code{Disconnected}}, and the crossings to it stop until the flow is
+        installed again under a new session. The offer pending in a crossing
+        is skipped, so nothing old is sent after the server is back. The
+        client checks the server's node every second, like the server checks
+        its engines, and treats a gap in its event stream the same way.
+  \item \textbf{Skip notices travel with inputs.} A crossing offer skipped on
+        the client is sent to the server as a header with no payload, on the
+        same service as inputs, and the server tells only the target engines'
+        subscribers.
+  \item \textbf{Logging uses \code{tracing}, and Gabriel installs no
+        subscriber by itself.} Rust apps choose their own; C apps call
+        \code{gabriel\_log\_init}. Warnings for failures, info for
+        configuration changes, nothing per input.
+  \item \textbf{Timestamps travel on the events}, instead of each process
+        writing a file of them. The app already gets every event, so it sees
+        an input's whole trip in one place, and a process killed during a
+        benchmark loses nothing. The benchmark binary will write one CSV row
+        per event; Parquet is not worth its large crates at our sizes
+        (\code{docs/evaluation.tex}).
+  \item \textbf{Tokens bound the flow, not freshness.} The token count must
+        leave one token over when every engine and pending slot holds an
+        input, or a pending input can never be replaced (398\,ms of waiting
+        at p99, against 20\,ms with one more token). More tokens cost only copies of
+        inputs that get skipped. A client-side handover of tokens was
+        considered and rejected: it is not atomic, since the client learns
+        late that an input was sent; a spare token gives the same result with
+        the server deciding. The network is bounded by crossing capacities.
+  \item \textbf{The objective is the age of information.} Gabriel minimizes
+        the waiting it adds while keeping the slowest engine busy; AoI
+        combines both, and every comparison reports waiting, idle time, and
+        waste to explain it. Measures use queueing terms: load, utilization,
+        Little's law, and the knee of the token count.
+  \item \textbf{Tokens are a cap, not the control.} Below the knee they cost
+        throughput, at exactly the slots they freeze them, and above that
+        they are unused. Per-hop limits keep inputs fresh on the device; over
+        the network, the crossing capacity is the control to tune. Tickets
+        and token accounting stay as they are.
+  \item \textbf{An input that will get no outcome is lost:} its offer ends
+        with \code{TimedOut} at once and its place is freed. This covers a
+        failed delivery, an engine that has not started, and a malformed
+        outcome.
+\end{itemize}
+
+\section{Known gaps}
+
+A review of the design against its goals and failure modes (``Known gaps'' in
+the design note) found no gap that needs a new mechanism. Each one is fixed by
+ending offers the way the design already does, or by detecting dead iceoryx2
+nodes or gaps in sequence numbers.
+\begin{itemize}[nosep]
+  \item \textbf{A crashed local client's flows stay installed.} One that
+        stops cleanly removes them. Fix: the server already records which
+        client installed each flow, and would remove them when that client's
+        node dies.
+  \item \textbf{A skip notice or an event for the app can be lost} if a send
+        fails. Nothing waits on it for tokens, so only a subscriber may wait
+        longer than needed.
+\end{itemize}
+
+\section{Next steps}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Compute the token count in the compiler}: engines plus
+        server edges on the producer's paths, plus one (``Choosing $C$'' in
+        the design note). Use it when the spec gives no count, and warn when
+        a spec gives fewer.
+  \item \textbf{Measure compute waste on the device} (later): engines that
+        share a GPU, and whether gating on downstream readiness lowers the
+        AoI (``Are tokens the right tool?'' in the design note). The
+        synthetic engines only sleep, so an input that is later skipped
+        costs nothing, and newest wins looks free. The bench needs an option
+        in the run file that puts some engines behind one shared lock, in
+        place of the GPU. Then measure the compute spent on inputs that are
+        later skipped, and the AoI with and without gating.
+  \item \textbf{Benchmarks} on the local server, as planned in
+        \code{docs/evaluation.tex}: longer runs, sweeps of one knob at a
+        time, and the baselines. Compare each input's age with the newest
+        input that had reached its slot.
+  \item \textbf{With the remote server}: sweep the crossing capacity by
+        hand over slower links and with loss, then an adaptive crossing
+        capacity, then predictive pull, compared on emulated links
+        (\code{bench/runs/remote.toml} is the starting point).
+  \item \textbf{The rest of the engine ABI}: \code{subscribe} to engines'
+        event services (reusing \code{Subscription}), \code{publish\_result},
+        and \code{wait} for subscribed events too (plan step 7).
+\end{enumerate}
+
+The first version copies a frame at each service boundary
+(``Copies'' in the design note). Zero copy on one machine stays plan
+step 10. The comparison with the original Gabriel showed that the copies
+matter for raw frames: the server spends 2.5\,ms of CPU per 4K frame on two
+of them. A smaller step comes first: hold received samples instead of copying
+them into reference-counted buffers, which saves half the copies on one
+machine without changing behavior.
+
+\paragraph{Small open items.}
+\begin{itemize}[nosep]
+  \item A few error messages could name the producer or edge they are about.
+  \item Nothing checks that an engine's payload type matches what its
+        incoming edges carry. A mismatch shows up as garbage in the engine.
+  \item The sizes of the fixed records (names, the offers per event, the
+        engine input and outcome buffers) are guesses.
+  \item Producers set no payload type yet, so inputs from producers reach
+        engines with an empty one.
+\end{itemize}
+
+\end{document}

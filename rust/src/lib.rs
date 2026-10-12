@@ -1,5 +1,5 @@
 //! Gabriel: token-based flow control between producers and engines, built on
-//! iceoryx2 for zero-copy local transport.
+//! iceoryx2 for local transport through shared memory.
 //!
 //! The idiomatic Rust API lives in the [`producer`], [`client`], [`server`]
 //! and [`engine`] modules, flows are described with [`spec`], and a producer's app reads what

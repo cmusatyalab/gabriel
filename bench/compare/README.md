@@ -43,3 +43,23 @@ It prints a table and saves it, with every round trip, under
   library compresses every message by default, and the old client has no option
   to turn this off. That cost dominates `old-websocket`, so we also measure
   without it.
+
+## What it found
+
+The results, on one machine, are in `docs/evaluation.tex` ("Comparison with
+the original Gabriel"). One finding is about the new Gabriel itself: **most of
+its round trip is spent copying the frame.** On the local path, Gabriel copies
+each frame four times:
+
+| Process | Where                                                | Copy                                      |
+| ------- | ---------------------------------------------------- | ----------------------------------------- |
+| app     | `rust/src/client/producers.rs`, `Arc::from(data)`     | producer's sample into the heap           |
+| app     | `rust/src/client/local_server.rs`, `write_from_slice` | heap into the sample for the server       |
+| server  | `rust/src/server/dispatch.rs`, `Arc::from(bytes)`     | server's sample into the heap             |
+| server  | `rust/src/server/dispatch.rs`, `write_from_slice`     | heap into the engine's input sample       |
+
+The server's two copies cost 0.30, 0.73 and 2.5 ms of CPU per frame at 720p,
+1080p and 4K. That is the `server_cpu_pct` column: the server uses about 1.5%
+of a core when idle. The design note (`docs/dag-tokens.tex`, "Copies") gives
+two fixes: hold the received samples instead of copying them (half the
+copies), or zero copy on one machine (all of them).

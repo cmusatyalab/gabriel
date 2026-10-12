@@ -10,3 +10,11 @@ target/
 bench-results/
 .venv/
 *.pt
+
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
+*.out
+*.toc
+*.pdf
