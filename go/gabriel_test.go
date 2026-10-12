@@ -61,7 +61,7 @@ func newFixture(t *testing.T) *fixture {
 	f.names.producer, f.names.engine = unique("camera"), unique("detector")
 	serverName := unique("server")
 	var err error
-	if f.server, err = NewServer(serverName, ""); err != nil {
+	if f.server, err = NewServer(serverName, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.server.Close() })
@@ -233,7 +233,7 @@ func TestClosedHandleFails(t *testing.T) {
 }
 
 func TestRemoteServerGivesItsPortAndCertificate(t *testing.T) {
-	server, err := NewServer(unique("server"), "127.0.0.1:0")
+	server, err := NewServer(unique("server"), "127.0.0.1:0", "")
 	if err != nil {
 		t.Fatal(err)
 	}

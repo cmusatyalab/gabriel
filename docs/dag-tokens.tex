@@ -828,7 +828,32 @@ needed. An input holds its token only until its first path finishes, so
 inputs left only on a slower branch hold none, and that branch is kept fresh
 by its own edges. But which branch finishes first depends on service times
 the compiler does not know, and extra tokens cost nothing in freshness, so
-the compiler counts every place. A crossing to the remote server adds its
+the compiler counts every place.
+
+Why not count only the longest path? Because the inputs that hold tokens do
+not have to lie on one path. An input skipped at a fan-out's fast engine has
+not completed, so it still holds its token while it moves down the slow
+branch. One input can be in the slow branch's last engine, another in its
+pending slot, a third at the fast engine, and so on, until every place on
+every branch holds a token. So only the count of places is sure to leave one
+over. In a chain the two counts are the same. And the costs are lopsided: one
+token too many costs a skipped copy, one too few can freeze a slot (398\,ms
+at p99, below).
+
+In a chain, a replaced input gives its token back at once: being skipped
+in a pending slot ends its last open offer, so its ticket closes. (At a
+fan-out it may still have an offer open on another branch, and then it keeps
+its token, as above.) So in a chain the spare token is never used up. It
+brings in a newer input, which replaces an older one, and the older one's
+token becomes the spare. A pending slot behind an engine,
+such as B's in P $\to$ A $\to$ B, is kept fresh by that engine's results,
+whatever the token count. The spare token matters for the slots the client
+feeds. In that chain, with A slower than the camera and B much slower, 4
+tokens fill all four places, so the input waiting for A holds the last token
+and waits for all of A's time. That makes B's inputs 60\,ms older at the
+median. 5 tokens avoid this (\code{docs/evaluation.tex}).
+
+A crossing to the remote server adds its
 capacity, because inputs on the network hold tokens too. Fewer tokens fail in two ways, which
 the token sweep in \code{docs/evaluation.tex} measured:
 \begin{itemize}[nosep]
@@ -1292,6 +1317,70 @@ of a producer's inputs are in the system, which bounds the client's memory,
 and the tickets that let the client tell the app what happened to each input
 (\S\ref{sec:accounting}). Tickets do not need the cap to be tight.
 
+\paragraph{What a token means.} A token stands for an input that is still
+alive and has not given a result on any path. It comes back at the input's
+first completion, or when the input dies: its last offer ends without any
+path completing. An input replaced at one engine of a fan-out keeps its token
+while it is still alive on another branch, for two reasons:
+\begin{itemize}[nosep]
+  \item \textbf{The input is not done.} It still holds a place on the other
+        branch. Returning its token would let more inputs in than the count
+        says.
+  \item \textbf{A skip signals too much supply, not free capacity.} A skip
+        means a newer input arrived; a completion means work finished.
+        Returning tokens on skips would admit more inputs exactly when there
+        are too many.
+\end{itemize}
+The rule only matters when tokens are scarce. With $C$ set by ``Choosing
+$C$'', there is always a spare token, and the rule decides nothing.
+
+\paragraph{Two goals: freshness or compute.} A low token count is tempting
+as a way to save compute: fewer inputs enter, so fewer are processed and
+then skipped. In a chain whose last engine is much slower than the rest, it
+works. With a camera at 30 frames a second, A at 50\,ms, and B at 500\,ms
+(\code{docs/evaluation.tex}):
+\begin{itemize}[nosep]
+  \item \textbf{1 token:} A works only on inputs B will take. A does a
+        tenth of the work, B loses 7.5\% of its throughput to waiting for A,
+        and B's mean AoI is the same as with 5 tokens. A's own results are
+        older: 340\,ms of AoI instead of 92\,ms.
+  \item \textbf{2 tokens:} B's pending slot freezes, and B starts on inputs
+        525\,ms old. The worst count.
+  \item \textbf{3 to 5 tokens:} A works at full rate, and B skips 90\% of
+        A's results.
+\end{itemize}
+But a token count is the wrong control for compute, for two reasons:
+\begin{itemize}[nosep]
+  \item \textbf{It depends on the shape.} In a chain of equal engines, one
+        token gives a third of the throughput. Only a chain with one slow
+        engine gets it nearly free.
+  \item \textbf{It cannot act on one branch.} At a fan-out, the token comes
+        back when the fastest branch completes, so a slow branch skips as
+        much with one token as with ten (82\% in the fan-out sweep). One pool
+        per producer cannot say ``keep F at full rate, but feed B's branch
+        only as fast as B uses it''.
+\end{itemize}
+The control that fits is per edge: gating on downstream readiness, below.
+The plan is two modes, set per edge (not built yet):
+\begin{description}[style=nextline, leftmargin=1.5em, nosep]
+  \item[Fresh (the default)] Engines run freely, and the newest input wins
+        at each pending slot. Upstream work that is later skipped is the
+        price of always having a fresh input. Tokens are set by ``Choosing
+        $C$'', which in practice means no limit.
+  \item[Gated] An engine takes a new input only when the next engine can
+        take its result. Demand travels upstream, as in credit-based flow
+        control. In a chain this does what one token did, and at a fan-out
+        it acts on one branch only. It costs an idle gap: once the next
+        engine finishes, it waits for this one. That gap is 7.5\% of the
+        throughput above, and up to half of it when the two engines are
+        equal. Predictive pull closes it, by starting the upstream engine
+        about one of its processing times before the next engine is
+        expected to finish.
+\end{description}
+A flow can gate where compute is shared, such as two engines on one GPU, and
+stay fresh elsewhere. Over the network, the crossing capacity plays the same
+role for bandwidth.
+
 \paragraph{The alternatives.} These are the approaches that can limit
 waiting, each with the cost it pays:
 \begin{description}[style=nextline, leftmargin=1.5em, nosep]
@@ -1322,10 +1411,11 @@ waiting, each with the cost it pays:
   \item[Age limit (optional today)] Drop an input that waited too long. It
         caps the worst waiting, but wastes what was already sent, and it does
         not lower the average.
-  \item[Gating on downstream readiness (deferred)] An upstream engine starts
-        an input only if its output can go somewhere soon. It saves upstream
-        compute, at the cost of downstream waiting. On a device whose engines
-        share a GPU, it may lower the AoI overall.
+  \item[Gating on downstream readiness (planned, the gated mode)] An
+        upstream engine starts an input only if its output can go somewhere
+        soon. It saves upstream compute, at the cost of downstream idle time
+        (``Two goals'' above). On a device whose engines share a GPU, it may
+        lower the AoI overall. With predictive pull, it may keep both.
   \item[On-demand producers] Capture a frame when the path is ready for it,
         so that no frame waits for a token. This removes the waiting before
         admission, which for a camera is up to one frame period. Producers
@@ -1336,10 +1426,16 @@ waiting, each with the cost it pays:
 \begin{enumerate}[nosep]
   \item \textbf{Tokens stay, as a cap above the knee.} The compiler sets $C$
         by the rule in ``Choosing $C$'', so tokens never decide which input
-        is fresh. Tickets and the accounting built on them do not change.
-  \item \textbf{On the device, the per-hop limits are the control.} The open
-        question there is compute waste, so gating on downstream readiness
-        should be measured next, with engines that share a GPU.
+        is fresh. A spec may still give a count, as an override, with a
+        warning when it is below the rule. Tickets and the accounting built
+        on them do not change.
+  \item \textbf{Tokens are not the way to save compute.} A low count helps
+        only in a chain with one slow engine, freezes slots at some counts,
+        and cannot act on one branch of a fan-out.
+  \item \textbf{On the device, the per-hop limits are the control,} with two
+        modes per edge: fresh and gated. Gating should be measured next,
+        with engines that share a GPU, against fresh, and then with
+        predictive pull.
   \item \textbf{Over the network, the crossing capacity is the control.}
         With the remote server, start with an adaptive capacity, since it
         needs only signals that exist; then compare it with predictive pull
@@ -2238,9 +2334,13 @@ crossing's largest capacity, since inputs on the network hold tokens
 (``Choosing $C$'', \S\ref{sec:tokens}).
 
 \paragraph{TLS.} QUIC always encrypts, with rustls under quinn. For now, the
-remote server makes a self-signed certificate with rcgen when it starts, and
-hands it out with its address (\code{Server::certificate}). The client is
-given both, and trusts that certificate only. Real
+remote server uses a self-signed certificate made with rcgen, and hands it
+out with its address (\code{Server::certificate}). The client is given both,
+and trusts that certificate only. Given an identity directory, the server
+saves its certificate and key there the first time, and loads them after
+that, like an SSH host key. Without one, it makes a new certificate each time
+it starts, and its clients cannot reconnect after a restart: the handshake
+fails, and the client logs a warning on each try. Real
 deployments need proper certificates and client authentication; both are
 left for later.
 
@@ -3218,14 +3318,17 @@ Clocks
         holds its token until then. Whether tighter bounds are worth it is
         open.
   \item The default buffer size of a subscription to an event service.
-  \item \textbf{Gating on downstream readiness} (deferred). In a chain such as
+  \item \textbf{Gating on downstream readiness} (planned as the gated mode,
+        \S\ref{sec:alternatives}). In a chain such as
         producer $\to$ A $\to$ B $\to$ C on a branch that is not the fastest,
         A and B process inputs that a slow C later skips. An edge could send
         only while one of its engine's outgoing edges has an empty pending
         slot. The check is local to the edge's owner, and it propagates up a
         chain, and across a crossing through the crossing's capacity. It
         would be an opt-in edge flag, for engines whose own results nobody
-        reads; it only adds a condition to when an edge may send.
+        reads; it only adds a condition to when an edge may send. Open: how
+        a gate meets a crossing and a remote engine's round trip, and how
+        predictive pull estimates when the next engine will finish.
   \item \textbf{Pending slots holding more than one input} (deferred). For
         streams where every input matters, such as audio chunks, a pending
         slot could keep the last $k$ inputs and deliver them oldest first,

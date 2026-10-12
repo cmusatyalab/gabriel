@@ -299,7 +299,12 @@ impl Network {
                     }
                 }
                 // Tried again until the server is up, so not worth a warning each time.
-                Err(e) => debug!(error = %e, "failed to connect"),
+                Err(ConnectFailure::Handshake(quinn::ConnectionError::TimedOut)) => {
+                    debug!("failed to connect: no answer");
+                }
+                // The server answered, but the connection failed, e.g. because its certificate is
+                // not the one this client trusts. Trying again will not help without a fix.
+                Err(e) => warn!(error = %e, "failed to connect"),
             }
             if self
                 .without_connection(tokio::time::sleep(backoff))
@@ -398,12 +403,22 @@ impl Network {
     }
 }
 
-async fn connect(endpoint: Endpoint, addr: SocketAddr) -> Result<Connection> {
-    endpoint
-        .connect(addr, net::SERVER_NAME)
-        .map_err(|e| net::error("failed to connect", e))?
-        .await
-        .map_err(|e| net::error("failed to connect", e))
+/// Why connecting failed.
+#[derive(Debug, thiserror::Error)]
+enum ConnectFailure {
+    /// The connection could not be started.
+    #[error(transparent)]
+    Start(#[from] quinn::ConnectError),
+    /// The handshake failed.
+    #[error(transparent)]
+    Handshake(#[from] quinn::ConnectionError),
+}
+
+async fn connect(
+    endpoint: Endpoint,
+    addr: SocketAddr,
+) -> std::result::Result<Connection, ConnectFailure> {
+    Ok(endpoint.connect(addr, net::SERVER_NAME)?.await?)
 }
 
 /// Sends a control call on its own stream, and returns the reply.
@@ -477,7 +492,7 @@ async fn read_events(connection: Connection, events: UnboundedSender<ServerEvent
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use std::{os::unix::fs::PermissionsExt, time::Instant};
 
     use super::*;
     use crate::{
@@ -514,7 +529,7 @@ mod tests {
         fn new() -> Self {
             let detector = unique("detector");
             let engine = Engine::new(&detector, None, MAX_OUTPUT_SIZE).unwrap();
-            let mut server = Server::new(&unique("server"), Some("127.0.0.1:0")).unwrap();
+            let mut server = Server::new(&unique("server"), Some("127.0.0.1:0"), None).unwrap();
             server.add_engine(&detector).unwrap();
             let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
             Self {
@@ -653,7 +668,7 @@ mod tests {
     #[test]
     fn untrusted_server_is_not_connected_to() {
         let fixture = Fixture::new();
-        let other = Server::new(&unique("server"), Some("127.0.0.1:0")).unwrap();
+        let other = Server::new(&unique("server"), Some("127.0.0.1:0"), None).unwrap();
         let mut remote = RemoteServer::open(
             &fixture.node,
             &unique("client"),
@@ -667,6 +682,38 @@ mod tests {
         remote.take_events().unwrap();
 
         assert!(!remote.is_connected());
+    }
+
+    #[test]
+    fn restarted_server_with_an_identity_is_reconnected_to() {
+        let dir = tempfile::tempdir().unwrap();
+        // iceoryx2 changes the process's umask while it binds a socket, and parallel tests can
+        // leave it changed.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
+        let server = Server::new(&unique("server"), Some("127.0.0.1:0"), Some(dir.path())).unwrap();
+        let addr = server.remote_addr().unwrap();
+        let mut remote = RemoteServer::open(
+            &node,
+            &unique("client"),
+            addr,
+            server.certificate().unwrap(),
+        )
+        .unwrap();
+        wait_until(|| {
+            remote.take_events().unwrap();
+            remote.is_connected()
+        });
+
+        drop(server);
+        wait_until(|| remote.take_events().unwrap().lost);
+        let _restarted =
+            Server::new(&unique("server"), Some(&addr.to_string()), Some(dir.path())).unwrap();
+
+        wait_until(|| {
+            remote.take_events().unwrap();
+            remote.is_connected()
+        });
     }
 
     #[test]

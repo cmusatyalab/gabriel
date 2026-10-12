@@ -42,7 +42,7 @@ pub struct Recorded {
 /// Runs `spec`, and returns what it recorded.
 pub fn run(spec: &RunSpec) -> Result<Recorded> {
     let server_name = format!("{}-server", spec.name);
-    let mut server = Server::new(&server_name, None).context("failed to start the server")?;
+    let mut server = Server::new(&server_name, None, None).context("failed to start the server")?;
     let remote_engines: BTreeSet<&str> = spec
         .flow
         .engines
@@ -51,7 +51,7 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
         .map(|engine| engine.name.as_str())
         .collect();
     let mut remote = (!remote_engines.is_empty())
-        .then(|| Server::new(&format!("{}-remote", spec.name), Some(REMOTE_BIND_ADDR)))
+        .then(|| Server::new(&format!("{}-remote", spec.name), Some(REMOTE_BIND_ADDR), None))
         .transpose()
         .context("failed to start the remote server")?;
     let stop = Arc::new(AtomicBool::new(false));

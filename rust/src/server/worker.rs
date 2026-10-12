@@ -19,6 +19,7 @@ use tracing::{error, info_span, warn};
 
 use crate::{
     Error, Result,
+    net::Identity,
     server::{
         client_link::{self, ClientLink},
         dispatch::Dispatcher,
@@ -60,10 +61,10 @@ pub(super) type Spawned = (
     Option<RemoteEndpoint>,
 );
 
-/// Starts the thread of the server `name`, which also accepts remote clients on `bind_addr` if it
-/// is given. Returns its command channel once the thread has set up its ports, and where remote
-/// clients reach it.
-pub(super) fn spawn(name: &str, bind_addr: Option<SocketAddr>) -> Result<Spawned> {
+/// Starts the thread of the server `name`, which also accepts remote clients if `remote` is given:
+/// on its address, presenting its identity. Returns its command channel once the thread has set
+/// up its ports, and where remote clients reach it.
+pub(super) fn spawn(name: &str, remote: Option<(SocketAddr, Identity)>) -> Result<Spawned> {
     let (started_tx, started_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
     let name = name.to_string();
@@ -76,16 +77,17 @@ pub(super) fn spawn(name: &str, bind_addr: Option<SocketAddr>) -> Result<Spawned
             let opened = Dispatcher::new(&name).and_then(|dispatcher| {
                 let mut clients: Vec<Box<dyn ClientLink>> =
                     vec![Box::new(LocalClients::open(dispatcher.node(), &name)?)];
-                let mut remote = None;
-                if let Some(addr) = bind_addr {
-                    let remote_clients = RemoteClients::open(dispatcher.node(), &name, addr)?;
-                    remote = Some(RemoteEndpoint {
+                let mut endpoint = None;
+                if let Some((addr, identity)) = remote {
+                    let remote_clients =
+                        RemoteClients::open(dispatcher.node(), &name, addr, identity)?;
+                    endpoint = Some(RemoteEndpoint {
                         addr: remote_clients.local_addr()?,
                         certificate: remote_clients.certificate().to_vec(),
                     });
                     clients.push(Box::new(remote_clients));
                 }
-                Ok((dispatcher, clients, remote))
+                Ok((dispatcher, clients, endpoint))
             });
             let (dispatcher, clients) = match opened {
                 Ok((dispatcher, clients, remote)) => {

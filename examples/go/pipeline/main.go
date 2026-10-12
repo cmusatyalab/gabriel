@@ -113,7 +113,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	server, err := gabriel.NewServer(serverName, "")
+	server, err := gabriel.NewServer(serverName, "", "")
 	if err != nil {
 		return err
 	}

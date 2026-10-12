@@ -16,29 +16,36 @@
 
 \section{Summary}
 
-The rewrite is roughly \textbf{45\% done} by effort, measured against the
+The rewrite is roughly \textbf{60\% done} by effort, measured against the
 implementation plan in the design note (\code{docs/dag-tokens.tex}). This is a
-rough estimate. The pieces built so far are the ones that were hardest to get
-right: the token rules, duplicate protection, and alignment at a fan-out. What
-remains is mostly plumbing (processes, transports, serialization, and the C
-ABI), which takes more code but involves fewer subtle decisions.
+rough estimate. Plan steps 1--6 are done: flows run end to end through local
+engines, and across QUIC to engines on a remote server. Apps use Gabriel from
+Rust, C, Go, and Python, all through the one C ABI. What remains is result
+edges and derived results (step 7), crossings with several targets over a
+transport (step 8), disconnected operation (step 9), and optional zero copy
+(step 10).
 
-The first useful milestone, a flow running end to end through local engines
-(plan steps 1--3), is \textbf{reached}: a producer's frames go through the
-client and the local server to a chain of local engines, and the engines'
-outcomes return the producer's tokens. A flow is added from Rust with a
-\code{FlowSpec}, or from C with the same spec in TOML.
+\paragraph{Tokens on one machine: good enough.} The token rules are built and
+tested, and a sweep showed how to set the count: with too few, engines idle;
+with exactly as many as the places an input can wait, the client's pending
+slot freezes; one more keeps every slot fresh (\code{docs/evaluation.tex}).
+What is missing is the compiler computing the count, so a spec must give it
+by hand today, and a wrong guess can freeze a slot. Tokens are not the way to
+save compute: the plan is a gated mode per edge, next to today's fresh mode.
 
-Plan step 4 is done for the local server: the producer's app reads what
-happened to each of its inputs, and a client that loses its local server
-reports \code{Disconnected} and installs its flows again. The plan for
-logging, metrics, and benchmarks is in \code{docs/evaluation.tex}. Logging is
-done, every event now carries timestamps, and a benchmark binary runs a flow
-with synthetic engines and records them. A first sweep of token counts
-showed how to set them: with too few, engines idle or pending inputs freeze;
-one spare token keeps every pending slot fresh (\code{docs/evaluation.tex}).
+\paragraph{Remote server: works, not yet measured.} The client reaches a
+remote server over QUIC, on loopback and across the internet (a home desktop
+to the lab workstation, every input answered). It gets the server back after
+the server freezes or, with an identity directory, restarts. Not done yet:
+\code{Emit} across a crossing, crossings with several targets, a crossing
+capacity that adapts, and the network benchmarks against the original
+Gabriel.
 
-All 198 tests pass.
+\paragraph{Against the original Gabriel,} on one machine, the new Gabriel's
+round trip is 7 to 13 times shorter for raw 720p to 4K frames
+(\code{docs/evaluation.tex}). Most of the time left goes to copying the frame.
+
+Tests: 216 in Rust, 8 in Go, and 12 in Python, all passing.
 
 \section{Done}
 
@@ -69,9 +76,11 @@ All 198 tests pass.
         counts, engines with their location, and edges with timeouts. The
         compiler checks it (names, a DAG, edges end at engines) and splits it:
         edges between engines go to the local server, and each producer's
-        edges form one crossing. It derives the crossing and ticket
-        deadlines from the timeouts. Remote engines are rejected until QUIC
-        exists. From C, the spec is TOML: an edge list with the same shape as
+        edges form one crossing. Engines placed on the remote server
+        get their own crossings, and no edge may lead from a remote engine
+        back to a local one. It derives the crossing and ticket deadlines
+        from the timeouts, plus a bound on the round trip for remote engines.
+        From C, the spec is TOML: an edge list with the same shape as
         \code{FlowSpec}, with timeouts such as \code{"300ms"}. 13 tests.
   \item[Subscription (\code{subscription.rs}, \code{ffi.rs})] How a
         producer's app reads the events about its inputs, from
@@ -182,6 +191,29 @@ All 198 tests pass.
         and the git commit. \code{analyze.py} reports, in queueing terms,
         load, utilization, waiting, idle time, tokens in use, and the age of
         information. Three example runs. 4 tests.
+  \item[Remote server over QUIC (\code{net.rs}, \code{client/remote\_server.rs},
+        \code{server/remote\_clients.rs}, \code{wire.rs})] A server given a
+        bind address also accepts remote clients, with quinn. Each process
+        that speaks QUIC runs a network thread with its own tokio runtime,
+        which wakes the client or server thread through an iceoryx2 event.
+        Control calls use one stream each, inputs one stream each, and the
+        events of a client's flows one ordered stream. The client reconnects
+        with backoff, installs its flows again, and reports a lost server as
+        \code{Disconnected}. TLS pins the server's self-signed certificate.
+        Given an identity directory, the server keeps its certificate and key
+        there, so its clients get it back after a restart; a failed handshake
+        is logged as a warning. 7 tests over loopback, plus end-to-end tests
+        in \code{client.rs}.
+  \item[Bindings (\code{go/}, \code{python/})] Go (cgo) and Python (cffi)
+        wrap the C ABI for producers, engines, subscriptions, clients, and
+        servers, local and remote. Each failed call carries the last error's
+        message. Examples: hello and a pipeline in Go, hello in Python, and
+        YOLO on a camera in Python (\code{examples/}). 8 tests in Go, 12 in
+        Python.
+  \item[Comparison with the original Gabriel (\code{bench/compare/})] Runs
+        the new Gabriel and the original over WebSocket, ZeroMQ over TCP, and
+        ZeroMQ over a Unix socket, with raw 720p, 1080p, and 4K frames, and
+        reports round trips and CPU.
   \item[Design note (\code{docs/dag-tokens.tex})] Covers the architecture,
         ownership of edges, installing a flow, flow control, forwarding,
         copies, result events, token accounting, worked examples (early
@@ -210,7 +242,8 @@ Step & What & Status \\
 6  & The same protocol over QUIC to the remote server
    & \textbf{done}, tested over loopback: flows split between the servers,
      uplinks, remote crossings with a configured capacity; the bench runs
-     it over netem on loopback; an \code{Emit} does not cross yet \\
+     it over netem on loopback; checked across the internet; an \code{Emit}
+     does not cross yet \\
 7  & Result edges, engine inboxes, \code{Derived} results (fusion, feedback)
    & not started \\
 8  & Crossings with several targets
@@ -226,11 +259,11 @@ Step & What & Status \\
 
 \paragraph{Cross-cutting work} not tied to one step:
 \begin{itemize}[nosep]
-  \item the flow compiler, which splits a flow for the local server only so
-        far;
-  \item the C ABI for all new calls, generated with cbindgen;
-  \item reconnecting after a lost connection;
-  \item end-to-end tests across processes.
+  \item the flow compiler computing each producer's token count;
+  \item the C ABI and the bindings for each new call (the ABI is generated
+        with cbindgen);
+  \item end-to-end tests across processes, which exist only as the examples
+        and the comparison so far.
 \end{itemize}
 
 \section{Decisions since the last report}
@@ -353,6 +386,30 @@ Step & What & Status \\
         they are unused. Per-hop limits keep inputs fresh on the device; over
         the network, the crossing capacity is the control to tune. Tickets
         and token accounting stay as they are.
+  \item \textbf{The token count is of places, not of the longest path.} At a
+        fan-out, an input skipped at the fast engine still holds its token
+        on the slow branch, so the inputs holding tokens can fill every
+        branch at once. Only the count of places is sure to leave one over,
+        and one token too many costs only a skipped copy. A replaced input
+        returns its token once it has no other offer open, so in a chain
+        the spare is never used up.
+  \item \textbf{Two modes per edge, fresh and gated, not a low token count.}
+        One token saved 90\% of the upstream work in a chain with a slow end,
+        at 7.5\% of the throughput, but cost two thirds of it in a balanced
+        chain, and does nothing for a slow branch of a fan-out. A gate on
+        each edge (take an input only when the next engine can take the
+        result) acts where the waste is; predictive pull should close its
+        idle gap. Not built yet.
+  \item \textbf{A token stands for an input that is alive and has no result
+        yet.} An input skipped on one branch keeps its token while it lives
+        on another: it still holds a place, and a skip signals too much
+        supply, not free capacity.
+  \item \textbf{All bindings go through the C ABI}, not PyO3 or a Go port, so
+        there is one surface to keep stable.
+  \item \textbf{A remote server keeps its identity in a directory}, like an
+        SSH host key: made the first time, loaded after that. Without one,
+        it makes a new certificate at each start, which is fine for tests,
+        but its clients cannot come back after a restart.
   \item \textbf{An input that will get no outcome is lost:} its offer ends
         with \code{TimedOut} at once and its place is freed. This covers a
         failed delivery, an engine that has not started, and a malformed
@@ -373,31 +430,45 @@ nodes or gaps in sequence numbers.
   \item \textbf{A skip notice or an event for the app can be lost} if a send
         fails. Nothing waits on it for tokens, so only a subscriber may wait
         longer than needed.
+  \item \textbf{The app is not told why a remote server stays unreachable.}
+        It gets one \code{Disconnected}, and the client logs a warning on
+        each failed handshake, e.g.\ a certificate it does not trust, but no
+        event or call says so.
+  \item \textbf{iceoryx2 can leave the process's umask wrong.} It sets the
+        umask while it binds a socket, and threads that do this at once can
+        restore it in the wrong order. Files and directories the app makes
+        afterwards can then lack permissions. Gabriel sets its identity
+        files' permissions explicitly. Worth reporting upstream.
+  \item \textbf{Real deployments need proper certificates and client
+        authentication}; both are left for later.
 \end{itemize}
 
 \section{Next steps}
 
 \begin{enumerate}[nosep]
   \item \textbf{Compute the token count in the compiler}: engines plus
-        server edges on the producer's paths, plus one (``Choosing $C$'' in
-        the design note). Use it when the spec gives no count, and warn when
-        a spec gives fewer.
-  \item \textbf{Measure compute waste on the device} (later): engines that
-        share a GPU, and whether gating on downstream readiness lowers the
-        AoI (``Are tokens the right tool?'' in the design note). The
-        synthetic engines only sleep, so an input that is later skipped
-        costs nothing, and newest wins looks free. The bench needs an option
-        in the run file that puts some engines behind one shared lock, in
-        place of the GPU. Then measure the compute spent on inputs that are
-        later skipped, and the AoI with and without gating.
-  \item \textbf{Benchmarks} on the local server, as planned in
-        \code{docs/evaluation.tex}: longer runs, sweeps of one knob at a
-        time, and the baselines. Compare each input's age with the newest
-        input that had reached its slot.
-  \item \textbf{With the remote server}: sweep the crossing capacity by
-        hand over slower links and with loss, then an adaptive crossing
-        capacity, then predictive pull, compared on emulated links
-        (\code{bench/runs/remote.toml} is the starting point).
+        server edges on the producer's paths, plus one, plus the capacity of
+        remote crossings (``Choosing $C$'' in the design note). Keep a count
+        in the spec only as an override, with a warning when it is below the
+        rule. Small, and it removes a trap: 2 tokens in a chain with a slow
+        end made the slow engine start on inputs 525\,ms old.
+  \item \textbf{The gated mode.} First the bench: engines that share one
+        lock, in place of a GPU, so that work later skipped costs something.
+        Then compare fresh and gated edges on the AoI and the work wasted,
+        then gated with predictive pull (``Two goals'' in the design note).
+        This settles the spec format (tokens out, a gate in) before more
+        specs are written.
+  \item \textbf{Benchmarks with the remote server}: against the original's
+        transports over the same real link (home desktop to the lab
+        workstation) and over emulated links; then sweeps of the crossing
+        capacity over slower links and with loss, an adaptive crossing
+        capacity, and predictive pull (\code{bench/runs/remote.toml} is the
+        starting point).
+  \item \textbf{Tell the app when a remote server cannot be reached}, and
+        why.
+  \item \textbf{Benchmarks on the local server}, as planned in
+        \code{docs/evaluation.tex}: longer runs, repeated, with confidence
+        intervals, and an engine that reads its whole frame.
   \item \textbf{The rest of the engine ABI}: \code{subscribe} to engines'
         event services (reusing \code{Subscription}), \code{publish\_result},
         and \code{wait} for subscribed events too (plan step 7).

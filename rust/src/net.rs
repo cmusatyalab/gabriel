@@ -7,6 +7,10 @@
 //! that thread's waitset listens to.
 
 use std::{
+    fs,
+    io::{self, Write},
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    path::Path,
     sync::{Arc, mpsc},
     thread::{self, JoinHandle},
     time::Duration,
@@ -54,19 +58,106 @@ fn transport() -> Result<Arc<TransportConfig>> {
     Ok(Arc::new(transport))
 }
 
-/// A new self-signed certificate for [`SERVER_NAME`], and the configuration of a server that
-/// presents it.
-pub(crate) fn server_config() -> Result<(ServerConfig, CertificateDer<'static>)> {
-    let certified = rcgen::generate_simple_self_signed(vec![String::from(SERVER_NAME)])
-        .map_err(|e| Error::Internal(format!("failed to make a certificate: {e}")))?;
-    let certificate = certified.cert.der().clone();
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-        certified.signing_key.serialize_der(),
-    ));
-    let mut config = ServerConfig::with_single_cert(vec![certificate.clone()], key)
-        .map_err(|e| Error::Internal(format!("invalid certificate: {e}")))?;
-    config.transport_config(transport()?);
-    Ok((config, certificate))
+/// The file in a server's identity directory that holds its certificate, in DER.
+const CERTIFICATE_FILE: &str = "certificate.der";
+/// The file in a server's identity directory that holds its private key, in DER.
+const KEY_FILE: &str = "key.der";
+/// Anyone may read the certificate; it is what clients are given.
+const CERTIFICATE_MODE: u32 = 0o644;
+/// Only the owner may read the key.
+const KEY_MODE: u32 = 0o600;
+
+/// What a remote server proves itself with: a self-signed certificate for [`SERVER_NAME`], and
+/// its private key.
+pub(crate) struct Identity {
+    certificate: CertificateDer<'static>,
+    key: PrivateKeyDer<'static>,
+}
+
+impl Identity {
+    /// A new identity, which lasts as long as the server.
+    pub(crate) fn generate() -> Result<Self> {
+        let certified = rcgen::generate_simple_self_signed(vec![String::from(SERVER_NAME)])
+            .map_err(|e| Error::Internal(format!("failed to make a certificate: {e}")))?;
+        Ok(Self {
+            certificate: certified.cert.der().clone(),
+            key: PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+                certified.signing_key.serialize_der(),
+            )),
+        })
+    }
+
+    /// The identity saved in the directory `dir`, which must exist. The first time, when `dir`
+    /// holds none, a new one is made and saved there, so that the server keeps its certificate
+    /// across restarts, and its clients can still trust it.
+    pub(crate) fn load_or_generate(dir: &Path) -> Result<Self> {
+        let certificate_path = dir.join(CERTIFICATE_FILE);
+        let key_path = dir.join(KEY_FILE);
+        match (
+            read_if_exists(&certificate_path)?,
+            read_if_exists(&key_path)?,
+        ) {
+            (Some(certificate), Some(key)) => Ok(Self {
+                certificate: CertificateDer::from(certificate),
+                key: PrivateKeyDer::try_from(key).map_err(|e| {
+                    Error::InvalidArgument(format!("invalid key in {}: {e}", key_path.display()))
+                })?,
+            }),
+            (None, None) => {
+                let identity = Self::generate()?;
+                // The key first: a certificate without its key would be of no use.
+                write_new(&key_path, identity.key.secret_der(), KEY_MODE)?;
+                write_new(&certificate_path, &identity.certificate, CERTIFICATE_MODE)?;
+                Ok(identity)
+            }
+            _ => Err(Error::InvalidArgument(format!(
+                "{} must hold both {CERTIFICATE_FILE} and {KEY_FILE}, or neither",
+                dir.display()
+            ))),
+        }
+    }
+
+    /// The certificate clients must trust, in DER.
+    pub(crate) fn certificate(&self) -> &[u8] {
+        &self.certificate
+    }
+
+    /// The configuration of a server that presents this identity.
+    pub(crate) fn server_config(self) -> Result<ServerConfig> {
+        let mut config = ServerConfig::with_single_cert(vec![self.certificate], self.key)
+            .map_err(|e| Error::InvalidArgument(format!("invalid certificate or key: {e}")))?;
+        config.transport_config(transport()?);
+        Ok(config)
+    }
+}
+
+/// The contents of the file at `path`, or `None` if there is none.
+fn read_if_exists(path: &Path) -> Result<Option<Vec<u8>>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(file_error(path, e)),
+    }
+}
+
+/// Writes `bytes` to a new file at `path`, with the permissions `mode`.
+fn write_new(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(mode)
+        .open(path)
+        .and_then(|mut file| {
+            // Set again, because the umask may have taken bits off: iceoryx2 changes it for the
+            // whole process while it binds a socket.
+            file.set_permissions(fs::Permissions::from_mode(mode))?;
+            file.write_all(bytes)
+        })
+        .map_err(|e| file_error(path, e))
+}
+
+fn file_error(path: &Path, e: io::Error) -> Error {
+    Error::InvalidArgument(format!("{}: {e}", path.display()))
 }
 
 /// The configuration of a client that trusts only `certificate`.

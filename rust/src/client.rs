@@ -169,7 +169,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let server_name = unique("server");
-            let server = Server::new(&server_name, None).unwrap();
+            let server = Server::new(&server_name, None, None).unwrap();
             let mut client = Client::new(&unique("client"), &server_name, None).unwrap();
             let producer_name = unique("camera");
             let producer = Producer::new(&producer_name, MAX_INPUT_SIZE).unwrap();
@@ -594,7 +594,7 @@ mod tests {
             ..
         } = fixture;
         drop(server);
-        let mut server = Server::new(&server_name, None).unwrap();
+        let mut server = Server::new(&server_name, None, None).unwrap();
         server.add_engine(&detector_name).unwrap();
 
         // Input 1's offer ends with the connection, so its token comes back.
@@ -717,8 +717,8 @@ mod tests {
     impl Offload {
         fn new() -> Self {
             let local_name = unique("server");
-            let local = Server::new(&local_name, None).unwrap();
-            let remote = Server::new(&unique("remote"), Some("127.0.0.1:0")).unwrap();
+            let local = Server::new(&local_name, None, None).unwrap();
+            let remote = Server::new(&unique("remote"), Some("127.0.0.1:0"), None).unwrap();
             let config = RemoteServerConfig::new(
                 remote.remote_addr().unwrap(),
                 remote.certificate().unwrap().to_vec(),

@@ -22,7 +22,7 @@ use crate::{
     Error, Result,
     ipc::types::{CrossingHeader, CrossingKind},
     naming,
-    net::{self, Waker},
+    net::{self, Identity, Waker},
     server::{
         client_link::ClientLink,
         dispatch::{ClientEvent, Dispatcher},
@@ -84,16 +84,22 @@ pub(crate) struct RemoteClients {
 }
 
 impl RemoteClients {
-    /// Accepts remote clients of the server `name` on `addr`.
-    pub(crate) fn open(node: &Node<ipc::Service>, name: &str, addr: SocketAddr) -> Result<Self> {
+    /// Accepts remote clients of the server `name` on `addr`, presenting `identity`.
+    pub(crate) fn open(
+        node: &Node<ipc::Service>,
+        name: &str,
+        addr: SocketAddr,
+        identity: Identity,
+    ) -> Result<Self> {
         let ready_service = naming::server_remote_ready_service(name)?;
         let ready = services::open_remote_ready(node, &ready_service)?
             .listener_builder()
             .create()
             .map_err(|e| net::error("failed to create the remote clients' listener", e))?;
-        let (config, certificate) = net::server_config()?;
+        let certificate = identity.certificate().to_vec();
+        let config = identity.server_config()?;
         let (updates_tx, updates_rx) = mpsc::channel();
-        let ((endpoint, certificate), thread) = net::spawn(
+        let (endpoint, thread) = net::spawn(
             format!("gabriel-server-{name}-network"),
             ready_service,
             move |waker| {
@@ -101,7 +107,7 @@ impl RemoteClients {
                     .map_err(|e| net::error(&format!("failed to listen on {addr}"), e))?;
                 let span = info_span!("remote clients", addr = ?endpoint.local_addr().ok());
                 let accepting = accept(endpoint.clone(), updates_tx, waker).instrument(span);
-                Ok(((endpoint, certificate.to_vec()), accepting))
+                Ok((endpoint, accepting))
             },
         )?;
         Ok(Self {

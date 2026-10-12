@@ -37,7 +37,7 @@ func main() {
 	defer cancel()
 
 	// 1. A server, and an engine it serves.
-	server, err := gabriel.NewServer("hello-server", "")
+	server, err := gabriel.NewServer("hello-server", "", "")
 	check(err)
 	defer server.Close()
 	engine, err := gabriel.NewEngine("hello-upper", "", 1024)

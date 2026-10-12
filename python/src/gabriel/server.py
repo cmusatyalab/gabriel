@@ -1,5 +1,7 @@
 """Servers: deliver a flow's inputs to its engines."""
 
+import os
+
 from gabriel._ffi import LockedHandle, check, create, cstr, ffi, lib
 
 
@@ -7,11 +9,24 @@ class Server(LockedHandle):
     """Delivers the inputs of the flows installed on it to a dynamic set of engines. It may be used
     from any thread."""
 
-    def __init__(self, name: str, bind_addr: str | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        bind_addr: str | None = None,
+        identity_dir: str | os.PathLike[str] | None = None,
+    ) -> None:
         """Creates the server `name`. `bind_addr` is the network address to accept remote clients
-        on, e.g. "0.0.0.0:4433", or None for a server with local clients only."""
+        on, e.g. "0.0.0.0:4433", or None for a server with local clients only.
+
+        `identity_dir` is an existing directory where a remote server keeps its certificate and key, so that they stay
+        the same across restarts and its clients can reconnect. The server makes them there the
+        first time. With None, it makes a new certificate each time it starts."""
         handle = create(
-            lib.gabriel_server_create, "gabriel_server_t **", cstr(name), cstr(bind_addr)
+            lib.gabriel_server_create,
+            "gabriel_server_t **",
+            cstr(name),
+            cstr(bind_addr),
+            cstr(None if identity_dir is None else os.fspath(identity_dir)),
         )
         super().__init__(handle, lib.gabriel_server_destroy)
 

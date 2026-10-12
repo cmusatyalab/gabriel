@@ -347,6 +347,75 @@ and an AoI of 22\,ms. The slow one is always busy ($\rho = 5.5$, $U = 0.99$)
 and skips 82\% of its offers. The token returns as soon as the fast path
 completes, so the slow engine never holds it.
 
+\paragraph{Chain with a slow end:} a camera at 30 frames a second, then A
+(50\,ms, slower than the camera, so always busy), then B (500\,ms). 15\,s per
+run. Results a second, the age of each engine's inputs when it started on
+them (p50 / p99), and B's mean AoI:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Tokens & A results/s & B results/s & age at A & age at B & AoI at B \\
+\midrule
+1 & 1.85  & 1.85 & 16 / 32 & 66 / 83   & 842 \\
+2 & 2.01  & 2.01 & 25 / 29 & 525 / 530 & 1274 \\
+3 & 19.82 & 2.01 & 18 / 44 & 92 / 126  & 845 \\
+4 & 19.92 & 2.00 & 61 / 83 & 154 / 160 & 895 \\
+5 & 19.92 & 2.00 & 17 / 33 & 94 / 126  & 849 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The rule gives 5: two engines, two server edges, and one over.
+\begin{itemize}[nosep]
+  \item \textbf{With 4}, all four places hold an input, so the one waiting
+        for A holds the last token and waits for all of A's 50\,ms (its wait
+        in A's slot is 50\,ms at the median, against 16 with 5 tokens). B's
+        inputs come 60\,ms older because of it. B's own slot never freezes:
+        each of A's results replaces the input there.
+  \item \textbf{With 3}, the client admits an input only when A is free, so
+        A's slot stays empty, and nothing freezes either.
+  \item \textbf{With 2}, B's slot freezes: B works on one input, and the
+        other waits in its slot, holding the last token, for all of B's
+        500\,ms.
+  \item \textbf{With 1}, A works only on inputs B will take: a tenth of the
+        work of 3 to 5 tokens, where B skips 90\% of A's results. B loses
+        7.5\% of its throughput to waiting for A, its inputs are fresher, and
+        its AoI is the same. A's own results are older (AoI 342 against 92).
+        This is nearly free only because B is ten times slower than A; in the
+        balanced chain above, one token cost two thirds of the throughput.
+\end{itemize}
+With A at 5\,ms, 3 to 5 tokens gave the same ages, because A was nearly
+always free.
+
+\paragraph{Fan-out with a chain:} the camera feeds F and A, and A feeds B. F
+has a heavy tail (log-normal, 40\,ms mean, 80\,ms standard deviation), A takes
+50\,ms, and B 200\,ms. 30\,s per run. An input skipped at F still holds its
+token while it goes through A and B, so the inputs holding tokens can spread
+over both branches. The longest path, P $\to$ A $\to$ B, would give 5 tokens;
+the rule gives 7. ``Stuck'' is the share of inputs that waited in their
+pending slot longer than one camera interval, which happens only when no
+token is left to bring a newer frame:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+Tokens & stuck at F & stuck at A & age at F, p99 & age at A, p99 & age at B, p99 \\
+\midrule
+3 & 9.6\% & 4.2\% & 119 & 49 & 246 \\
+4 & 1.8\% & 3.8\% & 56  & 50 & 135 \\
+5 & 0.2\% & 3.0\% & 33  & 53 & 136 \\
+6 & 0     & 0     & 32  & 33 & 127 \\
+7 & 0     & 0     & 32  & 33 & 123 \\
+8 & 0     & 0     & 32  & 33 & 124 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The longest path is one token short: with 5, 3\% of A's inputs wait for all
+of A's time. 6 is enough, since F's and A's pending slots always hold the
+same input, so the rule's 7 is one more than needed. With A at 20\,ms, faster
+than the camera, A's slot stays empty and every count from 5 up gave the
+same ages: the extra places fill only when the engines are busy.
+
 \paragraph{What the sweep shows,} in the terms of the design note's
 trade-off: waiting, idle time, and waste.
 \begin{enumerate}[nosep]
@@ -385,7 +454,10 @@ design note (``Are tokens the right tool?'') draws the consequences: tokens
 become a cap above the knee, set by the rule in ``Choosing $C$''; on the
 device the per-hop limits do the work; and over the network the crossing
 capacity is the control to tune, by an adaptive capacity or by predictive
-pull, to be compared on emulated links.
+pull, to be compared on emulated links. Tokens are not the tool that saves
+compute either: a low count helps only in a chain with one slow engine, and
+cannot act on one branch of a fan-out. The design note proposes a gated mode
+per edge for that, to measure with engines that share a GPU.
 
 \subsection{First runs with the remote server}
 
@@ -443,6 +515,44 @@ passes a third of 30 frames a second), and sometimes waits because its
 service time varies. Its mean AoI at the app is 210, against 22 for the
 filter on the device. A crossing capacity sweep, a slower link, and loss come
 next.
+
+\subsection{Across the internet}
+
+A first check that the remote server works on a real link. The device was a
+desktop at home, on a residential link with an uplink of about 100\,Mbit/s.
+The remote server was the lab workstation, reached at its public address,
+about 20\,ms away. The engine answered at once, with one input in flight.
+Round trips in ms:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Input & inputs & p50 & p90 & max \\
+\midrule
+1\,KB   & 100 & 18  & 20  & 21 \\
+16\,KB  & 100 & 29  & 38  & 75 \\
+64\,KB  & 100 & 41  & 43  & 91 \\
+256\,KB & 50  & 48  & 51  & 114 \\
+1\,MB   & 20  & 100 & 111 & 235 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Every input was answered. The slowest is probably one of the first, while
+QUIC's sending rate grows on a new connection; this is not checked yet.
+
+\paragraph{Losing the server.} The client sent 1\,KB ten times a second.
+\begin{itemize}[nosep]
+  \item \textbf{A frozen server} (stopped for 15\,s): the client reported
+        \code{Disconnected} after about 4\,s, within the 5\,s idle timeout. It reconnected
+        about 1\,s after the server resumed, installed its flow again, and
+        went back to ten inputs a second.
+  \item \textbf{A restarted server} never got its client back: the new
+        server made a new certificate, which the client did not trust. The
+        client tried again forever, and only logged at debug level. Fixed:
+        a server given an identity directory keeps its certificate and key
+        there, and a failed handshake is now a warning. On loopback, a
+        restarted server had its client back within 3\,s of being stopped.
+\end{itemize}
 
 \paragraph{Next in the analysis.} Compare each input's age with that of the
 newest input that had reached its slot, to separate waiting Gabriel could

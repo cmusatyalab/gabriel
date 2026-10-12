@@ -8,6 +8,7 @@
 use std::{
     cell::RefCell,
     ffi::{CStr, CString, c_char},
+    path::Path,
     ptr,
     time::Duration,
 };
@@ -307,19 +308,27 @@ pub unsafe extern "C" fn gabriel_client_remove_flow(
 // --- Server ---
 
 /// `bind_addr` is the network address to accept remote clients on, or NULL for a local server.
+/// `identity_dir` is an existing directory a remote server keeps its certificate and key in, so
+/// that they stay the same across restarts; the server makes them there the first time. With
+/// NULL, it makes a new certificate each time it starts. It must be NULL for a local server.
 ///
 /// # Safety
-/// String arguments must be NUL-terminated (`bind_addr` may be null); `server` must be valid for
-/// writes.
+/// String arguments must be NUL-terminated (`bind_addr` and `identity_dir` may be null); `server`
+/// must be valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_create(
     name: *const c_char,
     bind_addr: *const c_char,
+    identity_dir: *const c_char,
     server: *mut *mut Server,
 ) -> Status {
     unsafe {
         create_handle(server, || {
-            Server::new(str_arg(name)?, opt_str_arg(bind_addr)?)
+            Server::new(
+                str_arg(name)?,
+                opt_str_arg(bind_addr)?,
+                opt_str_arg(identity_dir)?.map(Path::new),
+            )
         })
     }
 }

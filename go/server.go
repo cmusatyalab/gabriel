@@ -18,16 +18,26 @@ type Server struct {
 
 // NewServer creates the server name. bindAddr is the network address to accept remote clients on,
 // e.g. "0.0.0.0:4433", or empty for a server with local clients only.
-func NewServer(name, bindAddr string) (*Server, error) {
+//
+// identityDir is an existing directory where a remote server keeps its certificate and key, so that they stay the same
+// across restarts and its clients can reconnect. The server makes them there the first time. If it
+// is empty, the server makes a new certificate each time it starts.
+func NewServer(name, bindAddr, identityDir string) (*Server, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var cBindAddr *C.char
+	var cBindAddr, cIdentityDir *C.char
 	if bindAddr != "" {
 		cBindAddr = C.CString(bindAddr)
 		defer C.free(unsafe.Pointer(cBindAddr))
 	}
+	if identityDir != "" {
+		cIdentityDir = C.CString(identityDir)
+		defer C.free(unsafe.Pointer(cIdentityDir))
+	}
 	s := &Server{}
-	err := call(func() C.gabriel_status_t { return C.gabriel_server_create(cName, cBindAddr, &s.handle) })
+	err := call(func() C.gabriel_status_t {
+		return C.gabriel_server_create(cName, cBindAddr, cIdentityDir, &s.handle)
+	})
 	if err != nil {
 		return nil, err
 	}
