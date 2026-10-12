@@ -9,3 +9,4 @@ target/
 *.swp
 bench-results/
 .venv/
+*.pt

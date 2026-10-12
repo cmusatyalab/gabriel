@@ -1,0 +1,3 @@
+# Install from this directory: pip install -r requirements.txt
+-e ../../python
+ultralytics>=8.4  # YOLO26

@@ -1,0 +1,6 @@
+# Install from this directory: pip install -r requirements.txt
+-e ../../python
+gabriel-client>=5.2
+gabriel-server>=5.2
+numpy
+psutil
