@@ -1,0 +1,40 @@
+# A camera at 30 fps feeds A, slower than the camera, then B, ten times slower than A. With
+# skips, most of A's work is skipped at B.
+name = "slow-end"
+duration = "15s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+# Engines + server edges + 1 ("Choosing C" in the design note): 2 engines + 2 server edges + 1.
+tokens = 5
+
+[[flow.engines]]
+name = "a"
+location = "local"
+
+[[flow.engines]]
+name = "b"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "a"
+timeout = "1s"
+
+[[flow.edges]]
+from = "a"
+to = "b"
+timeout = "2s"
+
+[producers.camera]
+rate = 30
+input_size = 65536
+
+[engines.a]
+service_time = { distribution = "constant", time = "50ms" }
+pass_probability = 1.0
+
+[engines.b]
+service_time = { distribution = "constant", time = "500ms" }

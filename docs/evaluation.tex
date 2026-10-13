@@ -306,7 +306,7 @@ Tokens & results/s & $U$ & $\rho$ & skipped & excess p50 & excess p99 & AoI \\
 \end{tabular}
 \end{center}
 
-\paragraph{Balanced chain:} three engines of 20\,ms each, inputs at 100 a
+\paragraph{Balanced chain} (\code{balanced.toml}): three engines of 20\,ms each, inputs at 100 a
 second. At the last engine:
 \begin{center}
 \small
@@ -347,7 +347,7 @@ and an AoI of 22\,ms. The slow one is always busy ($\rho = 5.5$, $U = 0.99$)
 and skips 82\% of its offers. The token returns as soon as the fast path
 completes, so the slow engine never holds it.
 
-\paragraph{Chain with a slow end:} a camera at 30 frames a second, then A
+\paragraph{Chain with a slow end} (\code{slow-end.toml}): a camera at 30 frames a second, then A
 (50\,ms, slower than the camera, so always busy), then B (500\,ms). 15\,s per
 run. Results a second, the age of each engine's inputs when it started on
 them (p50 / p99), and B's mean AoI:
@@ -387,7 +387,7 @@ The rule gives 5: two engines, two server edges, and one over.
 With A at 5\,ms, 3 to 5 tokens gave the same ages, because A was nearly
 always free.
 
-\paragraph{Fan-out with a chain:} the camera feeds F and A, and A feeds B. F
+\paragraph{Fan-out with a chain} (\code{fanout-chain.toml}): the camera feeds F and A, and A feeds B. F
 has a heavy tail (log-normal, 40\,ms mean, 80\,ms standard deviation), A takes
 50\,ms, and B 200\,ms. 30\,s per run. An input skipped at F still holds its
 token while it goes through A and B, so the inputs holding tokens can spread
@@ -467,12 +467,21 @@ fourth. Fan-outs and engines that share a GPU are still to be measured.
 The design note plans sections (``Sections''): one pool per part of the flow
 between fan-outs, inputs that wait in order inside it, and a count set at
 runtime as $\lfloor N^* + \epsilon\rfloor$. Before building them, two checks
-used the token sweeps above, rerun for 10\,s per count. Both scripts are
-outside the repository for now.
+used the token sweeps above: the runs of the chain with a slow end and of
+the fan-out with a chain, and the other three flows rerun for 10\,s per
+count. Both checks are scripts next to \code{analyze.py}, and need only
+Python's standard library:
+\begin{itemize}[nosep]
+  \item \code{bench/shadow\_counts.py RUN\_DIR ...} prints each section's
+        estimates for each run;
+  \item \code{bench/simulate\_sections.py RUN\_DIR ...} takes the runs of
+        one token sweep and prints the table below for that flow. Its
+        docstring shows how to record a sweep.
+\end{itemize}
 
-\paragraph{Shadow estimates.} A script replays each run's events in time
-order, as the client would see them, and keeps the estimates the design note
-describes: a smoothed service time per engine (gain 1/8), the share of
+\paragraph{Shadow estimates.} \code{shadow\_counts.py} replays each run's
+events in time order, as the client would see them, and keeps the
+estimates the design note describes: a smoothed service time per engine (gain 1/8), the share of
 results it forwards, and the producer's interval. After each result it
 computes every section's $N^*$ and count, with $\epsilon = 0.1$ and a
 hysteresis of 0.05.
@@ -498,9 +507,9 @@ producer's interval in the denominator, since the camera paces the bench
 chain; and the tolerance $\epsilon$, without which three equal engines got 2
 tokens and lost a third of their throughput.
 
-\paragraph{Simulation.} A trace-driven simulation of each chain draws service
-times from the samples measured in the runs, and forwards with the measured
-shares. It runs 120\,s per count, under two rules: today's newest-wins
+\paragraph{Simulation.} \code{simulate\_sections.py} simulates each chain.
+It draws service times from the samples measured in the runs, and forwards
+with the measured shares. It runs 120\,s per count, under two rules: today's newest-wins
 pending slots, and queues in order. With newest-wins, it matches the
 measured runs within 6\,ms of AoI and 2\% of throughput at every count,
 including the frozen slots (2 tokens on one heavy-tailed engine: 159\,ms

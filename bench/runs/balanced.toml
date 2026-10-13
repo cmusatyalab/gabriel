@@ -1,0 +1,50 @@
+# Three equal engines in a chain, fed faster than they work. Below 3 tokens, engines idle.
+name = "balanced"
+duration = "10s"
+drain = "2s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+# Engines + server edges + 1 ("Choosing C" in the design note): 3 engines + 3 server edges + 1.
+tokens = 7
+
+[[flow.engines]]
+name = "a"
+location = "local"
+
+[[flow.engines]]
+name = "b"
+location = "local"
+
+[[flow.engines]]
+name = "c"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "a"
+timeout = "1s"
+
+[[flow.edges]]
+from = "a"
+to = "b"
+timeout = "1s"
+
+[[flow.edges]]
+from = "b"
+to = "c"
+timeout = "1s"
+
+[producers.camera]
+rate = 100
+input_size = 65536
+
+[engines.a]
+service_time = { distribution = "constant", time = "20ms" }
+
+[engines.b]
+service_time = { distribution = "constant", time = "20ms" }
+
+[engines.c]
+service_time = { distribution = "constant", time = "20ms" }
