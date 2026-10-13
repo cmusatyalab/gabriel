@@ -456,11 +456,91 @@ over the network the crossing capacity is the control to tune, by an
 adaptive capacity or by predictive pull, to be compared on emulated links.
 One count does not save compute either: a low count helps only in a chain
 with one slow engine, and cannot act on one branch of a fan-out. The design
-note plans one pool per section instead (``Sections''), each with its count
-kept at its knee, measured at runtime. That rule gives the counts the sweeps
-point to: 1 for the chain with a slow end, 3 for three equal engines. It
-costs estimates and slack for jitter, so it is to be measured against the
-single count on these runs, then with engines that share a GPU.
+note plans one pool per section instead (``Sections''), with inputs waiting
+in order and each count kept at its knee, measured at runtime. The next
+subsection checks it on these runs in simulation: it matches the best single
+count in three of four chains, with no wasted work, and is 6\% worse in the
+fourth. Fan-outs and engines that share a GPU are still to be measured.
+
+\subsection{Sections: shadow estimates and simulation}
+
+The design note plans sections (``Sections''): one pool per part of the flow
+between fan-outs, inputs that wait in order inside it, and a count set at
+runtime as $\lfloor N^* + \epsilon\rfloor$. Before building them, two checks
+used the token sweeps above, rerun for 10\,s per count. Both scripts are
+outside the repository for now.
+
+\paragraph{Shadow estimates.} A script replays each run's events in time
+order, as the client would see them, and keeps the estimates the design note
+describes: a smoothed service time per engine (gain 1/8), the share of
+results it forwards, and the producer's interval. After each result it
+computes every section's $N^*$ and count, with $\epsilon = 0.1$ and a
+hysteresis of 0.05.
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Flow & $N^*$ (second half, p5--p95) & Count & Changes \\
+\midrule
+One heavy-tailed engine        & 1.00        & 1 & 0 \\
+Three equal engines            & 2.97--3.00  & 3 & 1 \\
+Bench chain (\code{chain.toml}) & 0.61--1.16 & 1 & 0 \\
+Chain with a slow end          & 1.10        & 1 & 0 \\
+Fan-out with a chain: R, f, ab & 0.53--1.00, 1.00, 1.25 & 1, 1, 1 & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The estimates came out the same whatever token count the run used, from 1
+to 8, so the count does not feed back into itself. Three changes to the
+design came from this run: visit ratios from forwarding shares rather than
+from how many inputs reached each engine, which today's skips distort; the
+producer's interval in the denominator, since the camera paces the bench
+chain; and the tolerance $\epsilon$, without which three equal engines got 2
+tokens and lost a third of their throughput.
+
+\paragraph{Simulation.} A trace-driven simulation of each chain draws service
+times from the samples measured in the runs, and forwards with the measured
+shares. It runs 120\,s per count, under two rules: today's newest-wins
+pending slots, and queues in order. With newest-wins, it matches the
+measured runs within 6\,ms of AoI and 2\% of throughput at every count,
+including the frozen slots (2 tokens on one heavy-tailed engine: 159\,ms
+simulated, 155 measured; 2 tokens on the chain with a slow end: 1268 and
+1272). Mean AoI at the last engine, in ms, with queues in order:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Flow & 1 & 2 & 3 & 4 & 7 & Best newest-wins \\
+\midrule
+One heavy-tailed engine & \textbf{118} & 159  & 196  & 196  & 196  & 118 \\
+Three equal engines     & 96  & 82   & \textbf{76}  & 96   & 117  & 76 \\
+Bench chain             & \textbf{111} & 111  & 112  & 116  & 116  & 105 \\
+Chain with a slow end   & \textbf{843} & 1268 & 1766 & 2262 & 3735 & 843 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Bold is the count the shadow estimates chose.
+\begin{itemize}[nosep]
+  \item \textbf{The floor rule picks the best count with queues in order}
+        in all four chains.
+  \item \textbf{At that count, the AoI equals the best newest-wins count}
+        in three chains. In the chain with a slow end, newest-wins with 3 or
+        more tokens spent 45\% of all engine time on work B later skipped;
+        queues in order spent none.
+  \item \textbf{The bench chain is 6\% worse} (111 against 105). Its filter
+        passes inputs at random and its detector has a heavy tail, so an
+        extra input in flight helps with newest-wins, where it can be
+        replaced by a fresher one, but not in order, where it waits.
+  \item \textbf{In order, too many tokens are costly.} Each token above the
+        knee adds about one bottleneck time: 500\,ms per token in the chain
+        with a slow end, against nothing with newest-wins. So the estimates
+        must err low.
+\end{itemize}
+Mean value analysis (Reiser and Lavenberg, 1980), with the usual
+approximation for service times that are not exponential, was tried as a
+way to choose the count, and dropped: for three equal engines it predicted
+33 results a second at 3 tokens, against 49 measured, and chose 2. Fan-outs
+are not simulated yet; they need the branch pools.
 
 \subsection{First runs with the remote server}
 

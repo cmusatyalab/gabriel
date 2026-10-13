@@ -1435,9 +1435,10 @@ waiting, each with the cost it pays:
   \item \textbf{One count for the flow is not the way to save compute.} A
         low count helps only in a chain with one slow engine, freezes slots
         at some counts, and cannot act on one branch of a fan-out. One pool
-        per section can, with each count kept at its knee while the flow
-        runs (\S\ref{sec:sections}). It costs estimates, slack for jitter,
-        and code, so it pays off where skipped work costs something.
+        per section can, with inputs waiting in order and each count kept at
+        its knee while the flow runs (\S\ref{sec:sections}). It needs
+        estimates that err low, and code, so it pays off where skipped work
+        costs something.
   \item \textbf{On the device, the per-hop limits are the control, and
         sections are the next step to measure:} first on the bench's chain
         and fan-out against the single count, then with engines that share
@@ -1457,8 +1458,9 @@ waiting, each with the cost it pays:
 This is the planned replacement for the single token count of ``Choosing
 $C$''. None of it is built yet. The idea is the original Gabriel, applied
 again at every fan-out: each part of the flow between fan-outs gets its own
-pool of tokens, and each pool keeps its own count at the knee
-(\S\ref{sec:objective}), measured while the flow runs.
+pool of tokens, its inputs wait in order instead of being skipped, and each
+pool keeps its count at the knee (\S\ref{sec:objective}), measured while the
+flow runs.
 
 \paragraph{Sections.} A section starts at a producer, or at an edge that
 leaves a fan-out (an engine with two or more outgoing edges). It runs along
@@ -1475,10 +1477,7 @@ only sees when the box returns its first result for an input.
 \paragraph{When tokens are taken and returned.}
 \begin{itemize}[nosep]
   \item \textbf{An input enters a section only with a token from its pool.}
-        At the producer, this is admission, as today. At a fan-out, F's
-        result is offered on a branch only if that branch's pool has a
-        token. A branch without one skips the result there, before any work
-        on it, so that skip costs nothing.
+        At the producer, this is admission, as today.
   \item \textbf{The token returns at the input's first completion in the
         section}, or when the input dies there. This is the ticket rule of
         \S\ref{sec:tokens}, applied to a section instead of the whole flow.
@@ -1490,13 +1489,33 @@ only sees when the box returns its first result for an input.
         the first completion anywhere below the producer.
 \end{itemize}
 
-\paragraph{The count.} A section with $N$ tokens is a closed system, and its
-knee follows from bound analysis of closed queueing networks (Lazowska,
-Zahorjan, Graham, and Sevcik, 1984). It is built from parts that can each be
-measured:
+\paragraph{Waiting in order, not skipping.} Inside a section, an input that
+finds its next engine busy waits in a queue on the edge, and the engine takes
+the oldest one first. No input is skipped after work was spent on it. The
+queue needs no limit of its own: a section with $N$ tokens holds at most $N$
+of its inputs, so at most $N - 1$ wait anywhere in it. (When $N$ drops, a
+queue can hold more for a moment, since nothing is recalled.) Inputs are
+dropped in only two places, and neither wastes work:
+\begin{itemize}[nosep]
+  \item \textbf{At the producer,} which keeps only its newest input until a
+        token is free, as today. Nothing was computed on the inputs it
+        replaces.
+  \item \textbf{At a branch's entry.} F's result enters a branch only if the
+        branch's pool has a token, and a newer result replaces one waiting
+        there. A branch may drop a result only if another branch took it, so
+        F's work is never lost: a result that no branch has taken yet waits
+        at the fan-out until one has a token.
+\end{itemize}
+This is what makes a section a closed queueing network in the usual sense,
+which the count below assumes. It also helps alignment
+(\S\ref{sec:aligned}): a branch processes every input it took.
+
+\paragraph{The count.} The knee of a closed network follows from bound
+analysis (Lazowska, Zahorjan, Graham, and Sevcik, 1984). It is built from
+parts that can each be measured:
 \[
-  N^* = \frac{D + Z}{D_{\max}}, \qquad
-  N = \max\left(1,\ \lfloor N^* \rfloor\right)
+  N^* = \frac{D + Z}{\max(D_{\max},\ I)}, \qquad
+  N = \max\left(1,\ \lfloor N^* + \epsilon \rfloor\right)
 \]
 \begin{itemize}[nosep]
   \item $D$ is the \emph{service demand} per input: the sum over the
@@ -1507,18 +1526,27 @@ measured:
   \item $Z$ is the pure delay per input: the network round trips on the
         section's crossings, each weighted by its visit ratio.
   \item $D_{\max}$ is the largest $V_k S_k$: the bottleneck's demand.
+  \item $I$ is the producer's interval between inputs, for the producer's
+        own section. When the producer is slower than every engine, it sets
+        the pace, and fewer tokens are needed.
   \item \textbf{A box counts as one stage.} Its time, which goes into
         $D + Z$, is that of its branch that completes first. Its demand,
         which competes for $D_{\max}$, is the smallest $D_{\max}$ among its
         branches, since the branch with the highest rate sets the pace.
+  \item $\epsilon$ is \code{ROUNDING\_TOLERANCE}: a knee just below a whole
+        number counts as that number. Three equal engines give $N^* = 3$
+        exactly, and measurement noise puts it at 2.99; a plain floor would
+        give 2 tokens and lose a third of the throughput.
 \end{itemize}
-Below the knee the bottleneck idles; above it, inputs wait in front of the
-bottleneck. The count is rounded down, to favor latency. Rounding up makes an
-input wait for most of the bottleneck's time; that is the frozen slot of
-``Choosing $C$''. Rounding down leaves a stage idle instead, but keeps at
-least $\lfloor N^*\rfloor / N^* \ge 1/2$ of the throughput.
+The count is rounded down because with queues in order, each token above the
+knee adds one bottleneck time of waiting to every input: in the chain with a
+slow end, every token above 1 adds 500\,ms to B's AoI. Rounding down leaves a
+stage idle instead, but keeps at least $\lfloor N^*\rfloor / N^* \ge 1/2$ of
+the throughput. The simulation in \code{docs/evaluation.tex} confirms that
+this floor is the best count with queues in order, in all four chains
+measured.
 
-Two simpler ways to get the count do not work:
+Three other ways to get the count do not work:
 \begin{itemize}[nosep]
   \item \textbf{The pool's own rate and time.} With $N$ tokens, the measured
         rate is $N/W$, so Little's law always gives $N$ back, and the count
@@ -1528,6 +1556,11 @@ Two simpler ways to get the count do not work:
         path, but not with early discard: a filter that discards in 5\,ms
         makes the shortest time 5\,ms, and the count 1, while the inputs it
         passes spend 300\,ms on a remote detector and need 3.
+  \item \textbf{Mean value analysis} (Reiser and Lavenberg, 1980), which
+        predicts the throughput and delay for every $N$. Its approximation
+        for service times that are not exponential fails for engines with
+        nearly constant times: on three equal engines it predicted 33
+        results a second at 3 tokens, against 49 measured, and so chose 2.
 \end{itemize}
 
 \paragraph{Measuring.} The client measures every part from what it already
@@ -1539,12 +1572,17 @@ receives, with no new messages:
         value by a fixed share, \code{SERVICE\_TIME\_GAIN} (1/8, as TCP
         smooths its round trip in RFC 6298). Timed-out offers are not
         samples.
-  \item \textbf{$V_k$:} for each section, the share of the inputs that
-        entered it which reached engine $k$, smoothed the same way. The
-        client counts both from the events.
+  \item \textbf{$V_k$:} from the share of results each engine forwards
+        (\code{Pass} or \code{Emit}, against \code{Stop}), smoothed the same
+        way, multiplied along the chain. Not from how many inputs reached
+        each engine: with today's skips, B in the chain with a slow end sees
+        a tenth of A's results, which would make it look ten times cheaper
+        than it is.
   \item \textbf{$Z$:} for each crossing, the round trip that the QUIC
         connection already measures (quinn reports it), times the
         crossing's visit ratio.
+  \item \textbf{$I$:} the mean gap between the producer's inputs, which the
+        client sees as they are published.
 \end{itemize}
 
 \paragraph{Updating.}
@@ -1554,10 +1592,10 @@ receives, with no new messages:
         safe count: nothing waits.
   \item \textbf{After each returned token,} the client computes $N^*$
         again. Sections are small, so this is cheap.
-  \item \textbf{Hysteresis} stops the count flapping when $N^*$ is near a
-        whole number. The count rises from $N$ to $N+1$ only once $N^* \ge
-        N + 1 + H$, and falls to $N - 1$ only once $N^* < N - H$, where $H$
-        is \code{COUNT\_HYSTERESIS}.
+  \item \textbf{Hysteresis} stops the count flapping near a boundary. The
+        count rises to a new value only once $N^* + \epsilon$ is past it by
+        $H$, and falls only once $N^* + \epsilon$ is below the current count
+        by $H$, where $H$ is \code{COUNT\_HYSTERESIS}.
   \item \textbf{Raising} the count adds tokens to the pool at once.
         \textbf{Lowering} it recalls no input: returned tokens are dropped
         until fewer than $N$ are in use. The pool's invariant
@@ -1568,16 +1606,22 @@ receives, with no new messages:
         with a control call when they change. Hysteresis keeps such calls
         rare.
 \end{itemize}
+A shadow run of this estimator on recorded bench runs
+(\code{docs/evaluation.tex}) gave the same estimates whatever token count the
+run used, and changed the count at most once per run.
 
-\paragraph{Examples.} The rule gives the counts the sweeps point to
-(\code{docs/evaluation.tex}):
+\paragraph{Examples.}
 \begin{itemize}[nosep]
   \item \textbf{A chain with a slow end}, A at 50\,ms and B at 500\,ms:
-        $N^* = 550/500 = 1.1$, so $N = 1$. That is the 1-token run: A does
-        a tenth of the work, B loses 7.5\% of its throughput, and B's AoI
-        is the same as with 5 tokens. 2 tokens froze B's slot.
+        $N^* = 550/500 = 1.1$, so $N = 1$. A does a tenth of the work, B
+        loses 7.5\% of its throughput, and B's AoI is the same as the best
+        today.
   \item \textbf{Three equal engines in a chain}: $N = 3$, the knee the token
         sweep found.
+  \item \textbf{The bench's chain}: a camera every 33\,ms, a 2\,ms filter
+        that passes half, a 44\,ms detector, and a 5\,ms tracker. $D = 2 +
+        22 + 2.5 = 26.5$\,ms, and the camera's 33\,ms is slower than the
+        detector's demand of 22\,ms, so $N^* = 0.8$ and $N = 1$.
   \item \textbf{A remote detector} at 0.1\,s per frame, with a round trip of
         0.2\,s: $N^* = (0.1 + 0.2)/0.1 = 3$, as in ``The producer's rate''.
         As with the original Gabriel's tokens, the count covers the round
@@ -1594,47 +1638,50 @@ receives, with no new messages:
         1.5$, and $N = 1$. F works at the pace of C. A takes one of F's
         results only after B finishes its last one, so A does no work that B
         skips. If C slows down past A $\to$ B, the estimates follow, and no
-        part of the rule names the fast branch.
+        part of the rule names the fast branch. Not simulated or measured
+        yet.
 \end{itemize}
-In the fan-out, rounding down costs C a third of its throughput but not its
-freshness. C gets a result every 150\,ms, each 150\,ms old, for an AoI of
-about 225\,ms. With 2 tokens, it would get one every 100\,ms, but each
-200\,ms old after waiting 50\,ms in C's slot, for about 250\,ms. Not measured
-yet.
 
-\paragraph{Is it better than one count?} Not in every case. Sections save
-compute: an engine on a slow branch works only on inputs that branch will
-use. They cost four things:
+\paragraph{Is it better than one count?} Not in every case. In simulation,
+validated against the token sweeps (\code{docs/evaluation.tex}), sections
+with their counts gave:
 \begin{itemize}[nosep]
-  \item \textbf{Estimates, which can be wrong.} If $D_{\max}$ comes out too
-        low, the count is too high, and inputs wait in front of the
-        bottleneck. If it comes out too high, a stage idles. An engine
-        shared with other flows, or with a heavy tail, is hard to estimate.
-        The count of ``Choosing $C$'' needs no estimate: with a spare token,
-        newest-wins keeps every slot fresh, whatever the service times are.
-  \item \textbf{Less slack for jitter.} With a tight count, an input that
-        takes longer than usual at one engine leaves the next one idle.
-        Today's spare inputs fill that gap.
+  \item \textbf{the same AoI as the best single count} in three of four
+        chains: one heavy-tailed engine, three equal engines, and the chain
+        with a slow end. In the last, they saved the 45\% of engine time
+        that went to work B later skipped.
+  \item \textbf{a 6\% higher AoI} in the bench's chain, whose filter passes
+        inputs at random and whose detector has a heavy tail. With skips, an
+        extra input in flight can be replaced by a fresher one when it would
+        wait; in order, it waits.
+\end{itemize}
+They also cost:
+\begin{itemize}[nosep]
+  \item \textbf{A count that must not be too high.} With skips, tokens
+        above the knee cost nothing (``Choosing $C$''). In order, each one
+        adds a bottleneck time of waiting. So the estimates must err low,
+        and an engine shared with other flows, or a remote engine whose
+        round trip changes, is a risk. The single count needs no estimate.
   \item \textbf{Throughput.} Rounding down gives up to half of it, and an
         engine in the middle of a chain produces fewer results: in the chain
-        above, A's own AoI went from 92\,ms to 340\,ms. That matters when the
-        app reads A's results.
+        with a slow end, A's own AoI went from 92\,ms to 340\,ms. That
+        matters when the app reads A's results.
   \item \textbf{Code:} the estimates, the recount, tickets per section,
-        pools on servers, and a control call to set their counts.
+        queues on edges, pools on servers, and a control call to set their
+        counts.
 \end{itemize}
 So sections pay off where skipped work costs something: engines that share
 a GPU, or a device on a battery. Where every engine has its own hardware,
 the single count gives the same or fresher results with less machinery.
 Whether sections become the default, or an option per flow, is for the
-measurements to decide (``Conclusion'' above).
+measurements on fan-outs and shared engines to decide (``Conclusion''
+above).
 
-\paragraph{What stays.} Tickets, events, pending slots, the engines' pull,
-and the second condition of admission all stay. Inside a section, an input
-rarely waits, since the floor admits no more inputs than the section can
-keep busy. If one does wait, its pending slot still keeps the newest input,
-and a replaced input returns its token, as today. A crossing keeps its
-capacity as the limit on the link. A section's count, which covers the round
-trip, is a natural starting value for it.
+\paragraph{What stays.} Tickets, events, the engines' pull, and the second
+condition of admission all stay. The pending slot becomes a queue inside a
+section, and stays a newest-wins slot at a section's entry. A crossing keeps
+its capacity as the limit on the link; a section's count, which covers the
+round trip, is a natural starting value for it.
 
 \paragraph{Where the pools live.} R stays at the client. A branch's pool
 lives in the process that owns the branch's first edge: the client, for a
@@ -3529,8 +3576,13 @@ Clocks
                 them more slowly than its own time. $S_k$ from \code{Sent} to
                 \code{Result} misses that; the gap between a flow's results
                 at the engine may be the better measure.
-          \item The values of \code{SERVICE\_TIME\_GAIN}, \code{MIN\_SAMPLES},
-                and \code{COUNT\_HYSTERESIS}, to tune by measurement.
+          \item The constants, to tune by measurement. The shadow run used
+                a gain of 1/8 for \code{SERVICE\_TIME\_GAIN}, 10 for
+                \code{MIN\_SAMPLES}, 0.1 for \code{ROUNDING\_TOLERANCE},
+                and 0.05 for \code{COUNT\_HYSTERESIS}.
+          \item Fan-outs, which the simulation does not cover yet: how
+                often a result waits at a fan-out because no branch has a
+                token, and what that costs F.
           \item Large inputs on a crossing. $Z$ counts the round trip, not
                 the time to send the input's bytes; at low bandwidth, that
                 time should be added from the bandwidth estimate.
@@ -3549,11 +3601,12 @@ Clocks
                 whose branches take an input all together or not at all.
           \item Predictive pull, which would turn a count into a time.
         \end{itemize}
-  \item \textbf{Pending slots holding more than one input} (deferred). For
-        streams where every input matters, such as audio chunks, a pending
-        slot could keep the last $k$ inputs and deliver them oldest first,
-        dropping the oldest when full. This trades freshness for fewer skips,
-        so the default stays 1.
+  \item \textbf{Pending slots holding more than one input.} Sections
+        (\S\ref{sec:sections}) plan queues in order inside a section, bounded
+        by its tokens. Outside sections, for streams where every input
+        matters, such as audio chunks, a pending slot could keep the last $k$
+        inputs and deliver them oldest first, dropping the oldest when full.
+        This trades freshness for fewer skips, so the default stays 1.
   \item The buffer size of the local event stream to the client, and how
         often a gap in it is acceptable before it costs too much to install
         the flows again (\S\ref{sec:gaps}).

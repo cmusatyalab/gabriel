@@ -407,9 +407,11 @@ Step & What & Status \\
         demands and round trips the client measures from events it already
         gets. This gives 1 for the chain with a slow end and 3 for three
         equal engines, as the sweeps found, and no fast branch has to be
-        named. It is not better in every case: it needs estimates, leaves
-        less slack for jitter, and gives up throughput, so it pays off where
-        skipped work costs something. It replaces the earlier plan of fresh
+        named. Inside a section, inputs wait in order instead of being
+        skipped. In a simulation checked against the token sweeps, this
+        matched the best single count in three of four chains with no wasted
+        work, and was 6\% worse in the fourth. A count that is too high is
+        costly in order, so it pays off where skipped work costs something. It replaces the earlier plan of fresh
         and gated modes per edge. Not built yet (``Sections'' in the design
         note).
   \item \textbf{A token stands for an input that is alive and has no result
