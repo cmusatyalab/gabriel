@@ -449,15 +449,18 @@ trade-off: waiting, idle time, and waste.
         lower it.
 \end{enumerate}
 
-\paragraph{Conclusion.} Tokens are not the tool that keeps inputs fresh. The
-design note (``Are tokens the right tool?'') draws the consequences: tokens
-become a cap above the knee, set by the rule in ``Choosing $C$''; on the
-device the per-hop limits do the work; and over the network the crossing
-capacity is the control to tune, by an adaptive capacity or by predictive
-pull, to be compared on emulated links. Tokens are not the tool that saves
-compute either: a low count helps only in a chain with one slow engine, and
-cannot act on one branch of a fan-out. The design note proposes a gated mode
-per edge for that, to measure with engines that share a GPU.
+\paragraph{Conclusion.} One token count for the whole flow is not the tool
+that keeps inputs fresh. The design note (``Are tokens the right tool?'')
+draws the consequences: on the device the per-hop limits do the work, and
+over the network the crossing capacity is the control to tune, by an
+adaptive capacity or by predictive pull, to be compared on emulated links.
+One count does not save compute either: a low count helps only in a chain
+with one slow engine, and cannot act on one branch of a fan-out. The design
+note plans one pool per section instead (``Sections''), each with its count
+kept at its knee, measured at runtime. That rule gives the counts the sweeps
+point to: 1 for the chain with a slow end, 3 for three equal engines. It
+costs estimates and slack for jitter, so it is to be measured against the
+single count on these runs, then with engines that share a GPU.
 
 \subsection{First runs with the remote server}
 

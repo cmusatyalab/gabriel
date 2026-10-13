@@ -786,6 +786,13 @@ feeds both a local detector and a filter in front of a remote detector. For a
 frame the filter discards, the filter's path is fastest. For a frame the
 filter passes, the local detector's path usually is.
 
+With sections (planned, \S\ref{sec:sections}), this pool becomes the first
+of several. The input still keeps the producer's token along its whole path,
+until its first completion anywhere, as above. In addition, at each fan-out
+it takes a token from the pool of every branch it enters, and gives that one
+back at its first completion in that branch. A branch with no token skips the
+input before any work on it.
+
 \paragraph{The producer's rate.} Each token carries one input at a time: an
 input takes the token, and the token comes back when that input first
 completes. Let $T$ be the time an input takes to first complete when nothing
@@ -810,7 +817,9 @@ a network round trip of 0.2~s, so $T = 0.3$~s:
         that can be sent right away.
 \end{itemize}
 
-\paragraph{Choosing $C$.}\label{sec:choosing-c} Tokens bound how many inputs
+\paragraph{Choosing $C$.}\label{sec:choosing-c} This is the rule for one
+count per producer. Sections (\S\ref{sec:sections}) would replace it with
+tighter counts, measured at runtime. Tokens bound how many inputs
 are in flight; they should never be what keeps an input fresh or stale. A
 waiting input stays fresh only if a newer one can reach its pending slot and
 replace it (``Freshness'' in \S\ref{sec:edges}), and a newer input needs a
@@ -874,9 +883,9 @@ skipped in the pending slots, and on one machine each costs a copy. They are
 also not a way to send more over the network: a remote crossing admits only
 what its capacity allows, and inputs beyond that wait, and are replaced, in
 the client's pending slot. So the network is bounded by crossing capacities
-(\S\ref{sec:edges}), and tokens by the whole flow. The compiler will compute
-the bound from the flow, use it when the spec gives no count, and warn about
-a spec that gives fewer.
+(\S\ref{sec:edges}), and tokens by the whole flow. Until sections are
+built, the compiler can compute this bound from the flow, use it when the
+spec gives no count, and warn about a spec that gives fewer.
 
 \paragraph{Admission.} The client keeps only the newest input from each
 producer, as its client thread does (\S\ref{sec:client-thread}). It admits that input into a flow
@@ -1332,7 +1341,10 @@ while it is still alive on another branch, for two reasons:
         are too many.
 \end{itemize}
 The rule only matters when tokens are scarce. With $C$ set by ``Choosing
-$C$'', there is always a spare token, and the rule decides nothing.
+$C$'', there is always a spare token, and the rule decides nothing. With
+sections (\S\ref{sec:sections}), counts are tight, and it matters: an input
+that the fast branch skipped, but that is alive on a slow branch, holds the producer's
+token until the slow branch completes it (see the open questions).
 
 \paragraph{Two goals: freshness or compute.} A low token count is tempting
 as a way to save compute: fewer inputs enter, so fewer are processed and
@@ -1360,26 +1372,17 @@ But a token count is the wrong control for compute, for two reasons:
         per producer cannot say ``keep F at full rate, but feed B's branch
         only as fast as B uses it''.
 \end{itemize}
-The control that fits is per edge: gating on downstream readiness, below.
-The plan is two modes, set per edge (not built yet):
-\begin{description}[style=nextline, leftmargin=1.5em, nosep]
-  \item[Fresh (the default)] Engines run freely, and the newest input wins
-        at each pending slot. Upstream work that is later skipped is the
-        price of always having a fresh input. Tokens are set by ``Choosing
-        $C$'', which in practice means no limit.
-  \item[Gated] An engine takes a new input only when the next engine can
-        take its result. Demand travels upstream, as in credit-based flow
-        control. In a chain this does what one token did, and at a fan-out
-        it acts on one branch only. It costs an idle gap: once the next
-        engine finishes, it waits for this one. That gap is 7.5\% of the
-        throughput above, and up to half of it when the two engines are
-        equal. Predictive pull closes it, by starting the upstream engine
-        about one of its processing times before the next engine is
-        expected to finish.
-\end{description}
-A flow can gate where compute is shared, such as two engines on one GPU, and
-stay fresh elsewhere. Over the network, the crossing capacity plays the same
-role for bandwidth.
+What fits is one pool per section, sized by the section's own shape
+(\S\ref{sec:sections}). A branch's pool feeds that branch only as fast as it
+completes inputs, while F keeps the pace of its fastest branch. So a chain
+on a slow branch, such as A $\to$ B, gets the 1-token behavior where it
+helps, and a chain of equal engines gets the 3 tokens it needs. The cost is
+an idle gap: once B finishes, it waits for A, which was 7.5\% of B's
+throughput above. Predictive pull could close it later, by admitting an
+input about one upstream processing time before B is expected to finish;
+the count would then be a time rather than a number. An earlier plan had
+two modes per edge, fresh and gated, set in the spec. Sections replace it:
+they gate only where the measured counts say work would be skipped.
 
 \paragraph{The alternatives.} These are the approaches that can limit
 waiting, each with the cost it pays:
@@ -1411,11 +1414,12 @@ waiting, each with the cost it pays:
   \item[Age limit (optional today)] Drop an input that waited too long. It
         caps the worst waiting, but wastes what was already sent, and it does
         not lower the average.
-  \item[Gating on downstream readiness (planned, the gated mode)] An
-        upstream engine starts an input only if its output can go somewhere
-        soon. It saves upstream compute, at the cost of downstream idle time
-        (``Two goals'' above). On a device whose engines share a GPU, it may
-        lower the AoI overall. With predictive pull, it may keep both.
+  \item[Gating on downstream readiness (planned, as sections)] An
+        upstream engine starts an input only if its section's pool has a
+        token, so its output will be used (\S\ref{sec:sections}). It saves
+        upstream compute, at the cost of downstream idle time (``Two goals''
+        above). On a device whose engines share a GPU, it may lower the AoI
+        overall. With predictive pull, it may keep both.
   \item[On-demand producers] Capture a frame when the path is ready for it,
         so that no frame waits for a token. This removes the waiting before
         admission, which for a camera is up to one frame period. Producers
@@ -1424,18 +1428,21 @@ waiting, each with the cost it pays:
 
 \paragraph{Conclusion.}
 \begin{enumerate}[nosep]
-  \item \textbf{Tokens stay, as a cap above the knee.} The compiler sets $C$
-        by the rule in ``Choosing $C$'', so tokens never decide which input
-        is fresh. A spec may still give a count, as an override, with a
-        warning when it is below the rule. Tickets and the accounting built
-        on them do not change.
-  \item \textbf{Tokens are not the way to save compute.} A low count helps
-        only in a chain with one slow engine, freezes slots at some counts,
-        and cannot act on one branch of a fan-out.
-  \item \textbf{On the device, the per-hop limits are the control,} with two
-        modes per edge: fresh and gated. Gating should be measured next,
-        with engines that share a GPU, against fresh, and then with
-        predictive pull.
+  \item \textbf{Tokens stay.} Today the compiler should set one count $C$
+        per producer by the rule in ``Choosing $C$'', so tokens never decide
+        which input is fresh. A spec may still give a count, as a cap.
+        Tickets and the accounting built on them do not change.
+  \item \textbf{One count for the flow is not the way to save compute.} A
+        low count helps only in a chain with one slow engine, freezes slots
+        at some counts, and cannot act on one branch of a fan-out. One pool
+        per section can, with each count kept at its knee while the flow
+        runs (\S\ref{sec:sections}). It costs estimates, slack for jitter,
+        and code, so it pays off where skipped work costs something.
+  \item \textbf{On the device, the per-hop limits are the control, and
+        sections are the next step to measure:} first on the bench's chain
+        and fan-out against the single count, then with engines that share
+        a GPU, then with predictive pull. The measurements decide whether
+        sections become the default or an option per flow.
   \item \textbf{Over the network, the crossing capacity is the control.}
         With the remote server, start with an adaptive capacity, since it
         needs only signals that exist; then compare it with predictive pull
@@ -1443,6 +1450,199 @@ waiting, each with the cost it pays:
   \item \textbf{Every comparison uses the AoI}, with waiting, idle time, and
         waste to explain it.
 \end{enumerate}
+
+\subsection{Sections (planned)}
+\label{sec:sections}
+
+This is the planned replacement for the single token count of ``Choosing
+$C$''. None of it is built yet. The idea is the original Gabriel, applied
+again at every fan-out: each part of the flow between fan-outs gets its own
+pool of tokens, and each pool keeps its own count at the knee
+(\S\ref{sec:objective}), measured while the flow runs.
+
+\paragraph{Sections.} A section starts at a producer, or at an edge that
+leaves a fan-out (an engine with two or more outgoing edges). It runs along
+the chain that follows, up to the next fan-out or the end of the path. Each
+section has its own pool. Take P $\to$ F $\to$ \{C, A $\to$ B\}:
+\begin{itemize}[nosep]
+  \item \textbf{R} covers P $\to$ F,
+  \item \textbf{c} covers the branch C, and
+  \item \textbf{ab} covers the branch A $\to$ B.
+\end{itemize}
+To R, everything below F is one \emph{box}. R does not see inside it; it
+only sees when the box returns its first result for an input.
+
+\paragraph{When tokens are taken and returned.}
+\begin{itemize}[nosep]
+  \item \textbf{An input enters a section only with a token from its pool.}
+        At the producer, this is admission, as today. At a fan-out, F's
+        result is offered on a branch only if that branch's pool has a
+        token. A branch without one skips the result there, before any work
+        on it, so that skip costs nothing.
+  \item \textbf{The token returns at the input's first completion in the
+        section}, or when the input dies there. This is the ticket rule of
+        \S\ref{sec:tokens}, applied to a section instead of the whole flow.
+  \item \textbf{The rule is recursive.} The first completion in a box is the
+        first among its branches, and a branch's first completion is the
+        first in its own boxes. So R's token returns when the fastest branch
+        of F's box completes, and a later completion on another branch
+        returns only that branch's token. R's rule is the same as today's:
+        the first completion anywhere below the producer.
+\end{itemize}
+
+\paragraph{The count.} A section with $N$ tokens is a closed system, and its
+knee follows from bound analysis of closed queueing networks (Lazowska,
+Zahorjan, Graham, and Sevcik, 1984). It is built from parts that can each be
+measured:
+\[
+  N^* = \frac{D + Z}{D_{\max}}, \qquad
+  N = \max\left(1,\ \lfloor N^* \rfloor\right)
+\]
+\begin{itemize}[nosep]
+  \item $D$ is the \emph{service demand} per input: the sum over the
+        section's engines of $V_k S_k$. $S_k$ is engine $k$'s service time,
+        and $V_k$ its \emph{visit ratio}: the share of the section's inputs
+        that reach it. A filter that passes a third of its inputs gives the
+        engine after it $V = 1/3$.
+  \item $Z$ is the pure delay per input: the network round trips on the
+        section's crossings, each weighted by its visit ratio.
+  \item $D_{\max}$ is the largest $V_k S_k$: the bottleneck's demand.
+  \item \textbf{A box counts as one stage.} Its time, which goes into
+        $D + Z$, is that of its branch that completes first. Its demand,
+        which competes for $D_{\max}$, is the smallest $D_{\max}$ among its
+        branches, since the branch with the highest rate sets the pace.
+\end{itemize}
+Below the knee the bottleneck idles; above it, inputs wait in front of the
+bottleneck. The count is rounded down, to favor latency. Rounding up makes an
+input wait for most of the bottleneck's time; that is the frozen slot of
+``Choosing $C$''. Rounding down leaves a stage idle instead, but keeps at
+least $\lfloor N^*\rfloor / N^* \ge 1/2$ of the throughput.
+
+Two simpler ways to get the count do not work:
+\begin{itemize}[nosep]
+  \item \textbf{The pool's own rate and time.} With $N$ tokens, the measured
+        rate is $N/W$, so Little's law always gives $N$ back, and the count
+        could never grow.
+  \item \textbf{The shortest time from taking a token to its return}, over
+        the bottleneck's time. It works when every input takes the same
+        path, but not with early discard: a filter that discards in 5\,ms
+        makes the shortest time 5\,ms, and the count 1, while the inputs it
+        passes spend 300\,ms on a remote detector and need 3.
+\end{itemize}
+
+\paragraph{Measuring.} The client measures every part from what it already
+receives, with no new messages:
+\begin{itemize}[nosep]
+  \item \textbf{$S_k$:} the time from an engine's \code{Sent} event to its
+        \code{Result}. Both are stamped by the engine's server, so the
+        offset between clocks cancels. Each new sample moves a smoothed
+        value by a fixed share, \code{SERVICE\_TIME\_GAIN} (1/8, as TCP
+        smooths its round trip in RFC 6298). Timed-out offers are not
+        samples.
+  \item \textbf{$V_k$:} for each section, the share of the inputs that
+        entered it which reached engine $k$, smoothed the same way. The
+        client counts both from the events.
+  \item \textbf{$Z$:} for each crossing, the round trip that the QUIC
+        connection already measures (quinn reports it), times the
+        crossing's visit ratio.
+\end{itemize}
+
+\paragraph{Updating.}
+\begin{itemize}[nosep]
+  \item \textbf{At the start,} each pool has 1 token, until each engine of
+        its section has \code{MIN\_SAMPLES} samples. One token is always a
+        safe count: nothing waits.
+  \item \textbf{After each returned token,} the client computes $N^*$
+        again. Sections are small, so this is cheap.
+  \item \textbf{Hysteresis} stops the count flapping when $N^*$ is near a
+        whole number. The count rises from $N$ to $N+1$ only once $N^* \ge
+        N + 1 + H$, and falls to $N - 1$ only once $N^* < N - H$, where $H$
+        is \code{COUNT\_HYSTERESIS}.
+  \item \textbf{Raising} the count adds tokens to the pool at once.
+        \textbf{Lowering} it recalls no input: returned tokens are dropped
+        until fewer than $N$ are in use. The pool's invariant
+        (\S\ref{sec:accounting}) then reads: available plus held tokens
+        equal $N$, except while more than $N$ are held.
+  \item \textbf{A count in the spec} becomes a cap on $N$.
+  \item \textbf{Pools on a server} (below) get their counts from the client
+        with a control call when they change. Hysteresis keeps such calls
+        rare.
+\end{itemize}
+
+\paragraph{Examples.} The rule gives the counts the sweeps point to
+(\code{docs/evaluation.tex}):
+\begin{itemize}[nosep]
+  \item \textbf{A chain with a slow end}, A at 50\,ms and B at 500\,ms:
+        $N^* = 550/500 = 1.1$, so $N = 1$. That is the 1-token run: A does
+        a tenth of the work, B loses 7.5\% of its throughput, and B's AoI
+        is the same as with 5 tokens. 2 tokens froze B's slot.
+  \item \textbf{Three equal engines in a chain}: $N = 3$, the knee the token
+        sweep found.
+  \item \textbf{A remote detector} at 0.1\,s per frame, with a round trip of
+        0.2\,s: $N^* = (0.1 + 0.2)/0.1 = 3$, as in ``The producer's rate''.
+        As with the original Gabriel's tokens, the count covers the round
+        trip.
+  \item \textbf{Early discard}: a filter at 5\,ms that passes a third of its
+        inputs to that remote detector. $D = 5 + 100/3 = 38$\,ms, $Z =
+        200/3 = 67$\,ms, and $D_{\max} = 33$\,ms, so $N^* = 3.2$ and $N =
+        3$. Little's law agrees: the detector takes 10 inputs a second, so
+        the filter takes 30, and an input spends 105\,ms on average.
+  \item \textbf{A fan-out}, with F at 50\,ms, C at 100\,ms, A at 50\,ms,
+        and B at 500\,ms. Branch c has $N^* = 1$, and branch ab has $N^* =
+        1.1$, so both get 1 token. For R, the box's time is C's 100\,ms, and
+        its demand is $\min(100, 500) = 100$\,ms, so $N^* = (50 + 100)/100 =
+        1.5$, and $N = 1$. F works at the pace of C. A takes one of F's
+        results only after B finishes its last one, so A does no work that B
+        skips. If C slows down past A $\to$ B, the estimates follow, and no
+        part of the rule names the fast branch.
+\end{itemize}
+In the fan-out, rounding down costs C a third of its throughput but not its
+freshness. C gets a result every 150\,ms, each 150\,ms old, for an AoI of
+about 225\,ms. With 2 tokens, it would get one every 100\,ms, but each
+200\,ms old after waiting 50\,ms in C's slot, for about 250\,ms. Not measured
+yet.
+
+\paragraph{Is it better than one count?} Not in every case. Sections save
+compute: an engine on a slow branch works only on inputs that branch will
+use. They cost four things:
+\begin{itemize}[nosep]
+  \item \textbf{Estimates, which can be wrong.} If $D_{\max}$ comes out too
+        low, the count is too high, and inputs wait in front of the
+        bottleneck. If it comes out too high, a stage idles. An engine
+        shared with other flows, or with a heavy tail, is hard to estimate.
+        The count of ``Choosing $C$'' needs no estimate: with a spare token,
+        newest-wins keeps every slot fresh, whatever the service times are.
+  \item \textbf{Less slack for jitter.} With a tight count, an input that
+        takes longer than usual at one engine leaves the next one idle.
+        Today's spare inputs fill that gap.
+  \item \textbf{Throughput.} Rounding down gives up to half of it, and an
+        engine in the middle of a chain produces fewer results: in the chain
+        above, A's own AoI went from 92\,ms to 340\,ms. That matters when the
+        app reads A's results.
+  \item \textbf{Code:} the estimates, the recount, tickets per section,
+        pools on servers, and a control call to set their counts.
+\end{itemize}
+So sections pay off where skipped work costs something: engines that share
+a GPU, or a device on a battery. Where every engine has its own hardware,
+the single count gives the same or fresher results with less machinery.
+Whether sections become the default, or an option per flow, is for the
+measurements to decide (``Conclusion'' above).
+
+\paragraph{What stays.} Tickets, events, pending slots, the engines' pull,
+and the second condition of admission all stay. Inside a section, an input
+rarely waits, since the floor admits no more inputs than the section can
+keep busy. If one does wait, its pending slot still keeps the newest input,
+and a replaced input returns its token, as today. A crossing keeps its
+capacity as the limit on the link. A section's count, which covers the round
+trip, is a natural starting value for it.
+
+\paragraph{Where the pools live.} R stays at the client. A branch's pool
+lives in the process that owns the branch's first edge: the client, for a
+fan-out at a producer, or a server, for a fan-out at one of its engines. The
+client computes every count. A server's pool sees completions only on that
+server, so the first version gates only branches that stay on one server. A
+branch that leaves it, to the client or over a crossing, stays ungated, as
+today, and is limited by its crossing capacity.
 
 \section{Moving inputs}
 \label{sec:moving}
@@ -3278,7 +3478,7 @@ Clocks
   \item Whether the token rule (``Choosing $C$'' in \S\ref{sec:tokens})
         holds with the remote server, where the knee includes the network
         round trip, once each remote crossing adds its capacity to the
-        count.
+        count. With sections, the round trip is part of $Z$ instead.
   \item \textbf{Changing a flow at runtime} (later). Control calls block the
         client thread until the reply, which costs a round trip to the remote
         server each time a flow is installed. That is fine while flows are
@@ -3318,17 +3518,37 @@ Clocks
         holds its token until then. Whether tighter bounds are worth it is
         open.
   \item The default buffer size of a subscription to an event service.
-  \item \textbf{Gating on downstream readiness} (planned as the gated mode,
-        \S\ref{sec:alternatives}). In a chain such as
-        producer $\to$ A $\to$ B $\to$ C on a branch that is not the fastest,
-        A and B process inputs that a slow C later skips. An edge could send
-        only while one of its engine's outgoing edges has an empty pending
-        slot. The check is local to the edge's owner, and it propagates up a
-        chain, and across a crossing through the crossing's capacity. It
-        would be an opt-in edge flag, for engines whose own results nobody
-        reads; it only adds a condition to when an edge may send. Open: how
-        a gate meets a crossing and a remote engine's round trip, and how
-        predictive pull estimates when the next engine will finish.
+  \item \textbf{Sections} (planned, \S\ref{sec:sections}). Open:
+        \begin{itemize}[nosep]
+          \item An input that the fast branch skipped, but that is alive on
+                a slow branch, holds R's token until the slow branch
+                completes it. With a tight count, this slows the producer.
+                The second condition of admission makes it rare; how rare,
+                with jitter, needs measuring.
+          \item An engine shared by several flows or edges serves each of
+                them more slowly than its own time. $S_k$ from \code{Sent} to
+                \code{Result} misses that; the gap between a flow's results
+                at the engine may be the better measure.
+          \item The values of \code{SERVICE\_TIME\_GAIN}, \code{MIN\_SAMPLES},
+                and \code{COUNT\_HYSTERESIS}, to tune by measurement.
+          \item Large inputs on a crossing. $Z$ counts the round trip, not
+                the time to send the input's bytes; at low bandwidth, that
+                time should be added from the bandwidth estimate.
+          \item Branches that leave their server, to the client or over a
+                crossing. Their completions are seen only by the client, so
+                their pools would have to live there, at the cost of a round
+                trip per gate.
+          \item A slow network link as the bottleneck. $D_{\max}$ counts
+                engines only; the crossing capacity limits the link, as
+                today.
+          \item Engines whose results the app reads, in the middle of a
+                chain. Gating them also lowers how many results the app
+                gets.
+          \item Joins, once they exist. A join that needs results from
+                both branches makes the fork-to-join region one section,
+                whose branches take an input all together or not at all.
+          \item Predictive pull, which would turn a count into a time.
+        \end{itemize}
   \item \textbf{Pending slots holding more than one input} (deferred). For
         streams where every input matters, such as audio chunks, a pending
         slot could keep the last $k$ inputs and deliver them oldest first,

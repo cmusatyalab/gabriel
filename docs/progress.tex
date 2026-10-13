@@ -30,8 +30,10 @@ tested, and a sweep showed how to set the count: with too few, engines idle;
 with exactly as many as the places an input can wait, the client's pending
 slot freezes; one more keeps every slot fresh (\code{docs/evaluation.tex}).
 What is missing is the compiler computing the count, so a spec must give it
-by hand today, and a wrong guess can freeze a slot. Tokens are not the way to
-save compute: the plan is a gated mode per edge, next to today's fresh mode.
+by hand today, and a wrong guess can freeze a slot. One count for the whole
+flow cannot save compute at one branch: the plan is one pool per section,
+nested at each fan-out, with each count kept at its knee at runtime. It is
+not better in every case, so it is to be measured against the single count.
 
 \paragraph{Remote server: works, not yet measured.} The client reaches a
 remote server over QUIC, on loopback and across the internet (a home desktop
@@ -393,13 +395,23 @@ Step & What & Status \\
         and one token too many costs only a skipped copy. A replaced input
         returns its token once it has no other offer open, so in a chain
         the spare is never used up.
-  \item \textbf{Two modes per edge, fresh and gated, not a low token count.}
-        One token saved 90\% of the upstream work in a chain with a slow end,
-        at 7.5\% of the throughput, but cost two thirds of it in a balanced
-        chain, and does nothing for a slow branch of a fan-out. A gate on
-        each edge (take an input only when the next engine can take the
-        result) acts where the waste is; predictive pull should close its
-        idle gap. Not built yet.
+  \item \textbf{One token pool per section, to measure against one count
+        per flow.} One token saved 90\% of the upstream work in a chain with
+        a slow end, at 7.5\% of the throughput, but cost two thirds of it in
+        a balanced chain, and does nothing for a slow branch of a fan-out.
+        So each section (a chain from a producer or a fan-out to the next
+        fan-out) would get its own pool. A token returns at the input's
+        first completion in the section, which is recursive over nested
+        fan-outs. Each pool keeps its count at its knee, rounded down to
+        favor latency: $(D + Z)/D_{\max}$ from bound analysis, with service
+        demands and round trips the client measures from events it already
+        gets. This gives 1 for the chain with a slow end and 3 for three
+        equal engines, as the sweeps found, and no fast branch has to be
+        named. It is not better in every case: it needs estimates, leaves
+        less slack for jitter, and gives up throughput, so it pays off where
+        skipped work costs something. It replaces the earlier plan of fresh
+        and gated modes per edge. Not built yet (``Sections'' in the design
+        note).
   \item \textbf{A token stands for an input that is alive and has no result
         yet.} An input skipped on one branch keeps its token while it lives
         on another: it still holds a place, and a skip signals too much
@@ -448,16 +460,23 @@ nodes or gaps in sequence numbers.
 \begin{enumerate}[nosep]
   \item \textbf{Compute the token count in the compiler}: engines plus
         server edges on the producer's paths, plus one, plus the capacity of
-        remote crossings (``Choosing $C$'' in the design note). Keep a count
-        in the spec only as an override, with a warning when it is below the
-        rule. Small, and it removes a trap: 2 tokens in a chain with a slow
-        end made the slow engine start on inputs 525\,ms old.
-  \item \textbf{The gated mode.} First the bench: engines that share one
-        lock, in place of a GPU, so that work later skipped costs something.
-        Then compare fresh and gated edges on the AoI and the work wasted,
-        then gated with predictive pull (``Two goals'' in the design note).
-        This settles the spec format (tokens out, a gate in) before more
-        specs are written.
+        remote crossings (``Choosing $C$'' in the design note). Small, and it
+        removes a trap: 2 tokens in a chain with a slow end made the slow
+        engine start on inputs 525\,ms old. It is also the baseline that
+        sections are measured against, and the fallback if they lose.
+  \item \textbf{Sections, in steps} (``Sections'' in the design note).
+        Each step can be measured alone:
+        \begin{enumerate}[nosep]
+          \item The client's pool sets its own count at runtime, from the
+                service times, visit ratios, and round trips in the events
+                it already gets. No new messages.
+          \item Pools for branches at a fan-out on the client.
+          \item Pools for branches at a fan-out on a server, with a control
+                call that sets their counts.
+        \end{enumerate}
+        Measure each against the single count on the bench's chain and
+        fan-out, then with engines that share one lock in place of a GPU,
+        so that skipped work costs something.
   \item \textbf{Benchmarks with the remote server}: against the original's
         transports over the same real link (home desktop to the lab
         workstation) and over emulated links; then sweeps of the crossing
