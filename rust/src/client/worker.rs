@@ -272,7 +272,7 @@ impl Worker {
         };
         let connected = server.is_connected();
         for event in &received.events {
-            self.apply(event, now);
+            self.apply(location, event, now);
         }
         // The lost events may have ended offers, so the client can no longer tell which of the
         // server's offers are open.
@@ -513,17 +513,29 @@ impl Worker {
         }
     }
 
-    /// Applies an event from a server to its flow's router, and publishes it for the app of the
-    /// input's producer, unless it is a duplicate. `Accepted` is not published: the app learns
-    /// about each engine's offer from the events that follow.
-    fn apply(&mut self, event: &ServerEvent, now: Instant) {
+    /// Applies an event from the server at `location` to its flow's router, and publishes it for
+    /// the app of the input's producer, unless it is a duplicate. `Accepted` is not published: the
+    /// app learns about each engine's offer from the events that follow. A derived result answers
+    /// no offer, and is only relayed on the device if it comes from the remote server; the local
+    /// server published it here already.
+    fn apply(&mut self, location: Location, event: &ServerEvent, now: Instant) {
         let record = &event.record;
+        if record.kind == EventKind::Derived {
+            if location == Location::Remote {
+                warn_on_error(
+                    self.relays
+                        .publish_derived(&self.node, record, &event.result),
+                    "failed to publish an event for a relayed engine",
+                );
+            }
+            return;
+        }
         let Some(flow) = self.flows.get_mut(&record.flow) else {
             // The flow was removed since.
             return;
         };
         let Some(&offer) = record.offer.as_option_ref() else {
-            // A derived result answers no offer.
+            // Only a derived result answers no offer.
             return;
         };
         let children = || record.children.as_slice().to_vec();
@@ -551,7 +563,7 @@ impl Worker {
                 self.publish(record.clone(), &event.result);
                 return;
             }
-            // The client reports these itself, and the server answers no offer with them.
+            // The client reports `Disconnected` itself, and relays `Derived` above.
             EventKind::Disconnected | EventKind::Derived => return,
         };
         let published = record.kind != EventKind::Accepted;

@@ -876,6 +876,39 @@ mod tests {
     }
 
     #[test]
+    fn device_subscriber_gets_a_remote_engines_derived_result() {
+        const DECISION: &[u8] = b"person";
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let fusion_name = unique("fusion");
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        // In no flow: it only derives results.
+        let mut fusion = serve(&mut fixture.remote, &fusion_name);
+        // As in `device_subscriber_gets_a_remote_engines_result`, the remote server publishes the
+        // fusion engine's events on this machine itself.
+        let mut subscription = Subscription::engine(&fusion_name).unwrap();
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+        // One input through both servers, so the remote part is installed.
+        let id = publish(&mut fixture.producer, 7);
+        next_input(&mut filter);
+        filter.pass(&[]).unwrap();
+        next_input(&mut detector);
+        detector.pass(&[]).unwrap();
+
+        fusion
+            .publish_derived(&id, FLOW, "example.Decision", DECISION)
+            .unwrap();
+
+        let derived = try_next(&mut subscription, WAIT, |event| {
+            (event.kind(), *event.id(), event.result().to_vec())
+        })
+        .expect("no event arrived");
+        assert_eq!(derived, (EventKind::Derived, id, DECISION.to_vec()));
+    }
+
+    #[test]
     fn engine_cannot_be_local_in_one_flow_and_remote_in_another() {
         let mut fixture = Offload::new();
         let (filter_name, detector_name) = (unique("filter"), unique("detector"));

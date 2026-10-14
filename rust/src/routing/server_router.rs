@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Error, Result,
     clock::Timestamp,
-    ipc::types::{EngineName, EventRecord, FlowName, Forward, MAX_CHILDREN, OutcomeRecord},
+    ipc::types::{
+        DerivedRecord, EngineName, EventRecord, FlowName, Forward, MAX_CHILDREN, OutcomeRecord,
+    },
     routing::{
         edge::{EdgeAction, EdgeState},
         ids::{EdgeId, InputId, NodeId, OfferId},
@@ -426,6 +428,42 @@ impl<T: Clone> ServerRouter<T> {
         Ok(())
     }
 
+    /// The engine `engine` derived `result` from the events it subscribes to, about the input in
+    /// `derived`. It answers no offer, so it does not change routing. The engine's subscribers get
+    /// it, and so does the client of every installed flow with the flow's name; a client relays
+    /// one from the remote server on the device. A remote server has one client for now (see "Several
+    /// clients of one remote server" in the design note).
+    pub(crate) fn derived(
+        &mut self,
+        engine: &str,
+        derived: &DerivedRecord,
+        result: Option<T>,
+    ) -> Result<()> {
+        let engine = engine_name(engine)?;
+        if !self.engines.contains_key(&engine) {
+            return Err(Error::InvalidArgument(format!(
+                "engine {engine:?} does not exist"
+            )));
+        }
+        let record = EventRecord::derived(derived.id, engine, derived.flow, derived.payload_type);
+        let sessions = self
+            .flows
+            .iter()
+            .filter(|(_, flow)| flow.name == derived.flow)
+            .map(|(&session, _)| session);
+        for session in sessions {
+            self.actions.push_back(ServerAction::ToClient {
+                session,
+                record: record.clone(),
+                result: result.clone(),
+                forwarded: None,
+            });
+        }
+        self.actions
+            .push_back(ServerAction::ToSubscribers { record, result });
+        Ok(())
+    }
+
     /// The engine `engine` reported `outcome`. `output` is the new input of an `Emit`, and
     /// `result` the result bytes, if any.
     ///
@@ -726,7 +764,7 @@ fn flow_name(name: &str) -> Result<FlowName> {
 
 #[cfg(test)]
 mod tests {
-    use iceoryx2_bb_container::vector::Vector;
+    use iceoryx2_bb_container::{string::String as _, vector::Vector};
 
     use super::*;
     use crate::{
@@ -1578,5 +1616,69 @@ mod tests {
         let next = only_delivery(&steps(&mut router));
 
         assert_eq!(next.session, other);
+    }
+
+    fn derived_about(flow: &str) -> DerivedRecord {
+        DerivedRecord {
+            id: input_id(1),
+            flow: FlowName::try_from(flow).unwrap(),
+            payload_type: PayloadType::try_from("example.Decision").unwrap(),
+        }
+    }
+
+    #[test]
+    fn derived_result_goes_to_subscribers_and_the_client_of_its_flow() {
+        let (mut router, session) = installed(ONE);
+
+        router
+            .derived(TRACKER, &derived_about(FLOW), Some(OUTPUT))
+            .unwrap();
+
+        let actions: Vec<_> = std::iter::from_fn(|| router.poll_action()).collect();
+        let [
+            ServerAction::ToClient {
+                session: to,
+                record,
+                result,
+                forwarded: None,
+            },
+            ServerAction::ToSubscribers { .. },
+        ] = actions.as_slice()
+        else {
+            panic!("expected one event for the client and one for subscribers: {actions:?}");
+        };
+        assert_eq!(*to, session);
+        assert_eq!(record.kind, EventKind::Derived);
+        assert!(record.offer.as_option_ref().is_none());
+        assert_eq!(record.engine.as_str(), TRACKER);
+        assert_eq!(record.payload_type.as_str(), "example.Decision");
+        assert_eq!(*result, Some(OUTPUT));
+    }
+
+    #[test]
+    fn derived_result_about_another_flow_goes_only_to_subscribers() {
+        let (mut router, _) = installed(ONE);
+
+        router
+            .derived(TRACKER, &derived_about("other"), None)
+            .unwrap();
+
+        assert_eq!(
+            steps(&mut router),
+            vec![Step::Subscribers {
+                kind: EventKind::Derived,
+                engine: String::from(TRACKER),
+                children: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn derived_result_of_an_unknown_engine_is_rejected() {
+        let mut router = router(ONE);
+
+        let derived = router.derived("unknown", &derived_about(FLOW), None);
+
+        assert!(matches!(derived, Err(Error::InvalidArgument(_))));
     }
 }

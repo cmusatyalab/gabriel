@@ -1,5 +1,6 @@
 //! Engine: takes inputs from its server and reports one outcome for each. An engine can also
-//! subscribe to other engines' events, and wait for an input or an event with one call.
+//! subscribe to other engines' events, wait for an input or an event with one call, and publish
+//! results it derives from them.
 
 use std::{iter, mem::MaybeUninit, time::Duration};
 
@@ -12,7 +13,7 @@ use iceoryx2::sample_mut_uninit::SampleMutUninit;
 
 use crate::ipc::{
     as_uninit,
-    types::{InputHeader, OutcomeRecord, PayloadType, payload_type},
+    types::{DerivedRecord, FlowName, InputHeader, OutcomeRecord, PayloadType, payload_type},
 };
 use crate::routing::ids::{InputId, OfferId};
 use crate::subscription::{Event, Subscription};
@@ -42,8 +43,9 @@ pub struct Engine {
     /// Signalled by the server after each input it delivers.
     input_ready: Listener<ipc::Service>,
     outcomes: Publisher<ipc::Service, [u8], OutcomeRecord>,
-    /// Signalled after each outcome, so the server delivers the next input right away.
+    /// Signalled after each outcome and derived result, so the server handles it right away.
     outcome_ready: Notifier<ipc::Service>,
+    derived: Publisher<ipc::Service, [u8], DerivedRecord>,
     /// The input being processed, until its outcome is reported.
     current: Option<Sample<ipc::Service, [u8], InputHeader>>,
     /// The output being written, until it is emitted.
@@ -84,6 +86,11 @@ impl Engine {
             .notifier_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create notifier: {e}")))?;
+        let derived = services::open_engine_derived(&node, name)?
+            .publisher_builder()
+            .initial_max_slice_len(max_output_size)
+            .create()
+            .map_err(|e| Error::Internal(format!("failed to create publisher: {e}")))?;
         Ok(Self {
             result_type,
             max_output_size,
@@ -92,6 +99,7 @@ impl Engine {
             input_ready,
             outcomes,
             outcome_ready,
+            derived,
             current: None,
             output: None,
             subscriptions: Vec::new(),
@@ -245,6 +253,48 @@ impl Engine {
         output.payload_mut()[output_len..end].copy_from_slice(as_uninit(result));
         *output.user_header_mut() = record;
         self.send(output)
+    }
+
+    /// Publishes `result`, which the engine derived from the events it subscribes to, about the
+    /// input `id` in the flow `flow`; e.g. a fusion decision about a frame. `result_type` names
+    /// how to read it; empty if it has no convention. It answers no offer, so the engine can
+    /// publish it at any time. The engine's server publishes it as a `Derived` event on the
+    /// engine's event service. A result is at most the engine's maximum output size.
+    pub fn publish_derived(
+        &mut self,
+        id: &InputId,
+        flow: &str,
+        result_type: &str,
+        result: &[u8],
+    ) -> Result<()> {
+        if result.len() > self.max_output_size {
+            return Err(Error::SizeExceeded {
+                size: result.len(),
+                max: self.max_output_size,
+            });
+        }
+        let flow = FlowName::try_from(flow)
+            .ok()
+            .filter(|_| !flow.is_empty())
+            .ok_or_else(|| Error::InvalidArgument(format!("invalid flow name {flow:?}")))?;
+        let record = DerivedRecord {
+            id: *id,
+            flow,
+            payload_type: payload_type(result_type)?,
+        };
+        let mut sample = self
+            .derived
+            .loan_slice_uninit(result.len())
+            .map_err(|e| Error::Internal(format!("failed to loan a derived result: {e}")))?;
+        *sample.user_header_mut() = record;
+        sample
+            .write_from_slice(result)
+            .send()
+            .map_err(|e| Error::Internal(format!("failed to send a derived result: {e}")))?;
+        self.outcome_ready
+            .notify()
+            .map_err(|e| Error::Internal(format!("failed to notify the server: {e}")))?;
+        Ok(())
     }
 
     /// Reports `stop` or `pass`, made by `record`, with `result` as the payload.

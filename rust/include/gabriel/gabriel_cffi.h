@@ -119,6 +119,12 @@ gabriel_status_t gabriel_engine_wait(gabriel_engine_t *engine, uint32_t timeout_
 gabriel_status_t gabriel_engine_poll_input(gabriel_engine_t *engine, gabriel_input_t *input);
 gabriel_status_t gabriel_engine_subscribe(gabriel_engine_t *engine, const char *name);
 gabriel_status_t gabriel_engine_poll_event(gabriel_engine_t *engine, gabriel_event_t *event);
+gabriel_status_t gabriel_engine_publish_derived(gabriel_engine_t *engine,
+                                                const gabriel_input_id_t *id,
+                                                const char *flow,
+                                                const char *result_type,
+                                                const uint8_t *result,
+                                                size_t result_len);
 gabriel_status_t gabriel_engine_stop(gabriel_engine_t *engine,
                                      const uint8_t *result,
                                      size_t result_len);

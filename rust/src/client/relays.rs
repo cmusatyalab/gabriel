@@ -94,6 +94,22 @@ impl Relays {
         }
     }
 
+    /// Publishes `record`, a derived result of a remote engine, on the engine's service, whether
+    /// or not a flow uses the engine: an engine that only derives results, such as fusion, is in
+    /// no flow. An engine no flow uses stays relayed until the client stops.
+    pub(super) fn publish_derived(
+        &mut self,
+        node: &Node<ipc::Service>,
+        record: &EventRecord,
+        result: &[u8],
+    ) -> Result<()> {
+        self.engines.entry(record.engine).or_insert(Relay {
+            state: RelayState::Unopened,
+            flows: 0,
+        });
+        self.publish(node, record, result)
+    }
+
     /// Wakes the subscribers of every engine with events published since the last call. Returns
     /// the first error, after waking the rest.
     pub(super) fn wake_subscribers(&mut self) -> Result<()> {
@@ -195,6 +211,29 @@ mod tests {
         assert!(relays.engines.is_empty());
         // Its service was closed, so it can be published again.
         EventPublisher::engine(&node, detector.as_str()).unwrap();
+    }
+
+    #[test]
+    fn a_derived_result_of_an_engine_in_no_flow_is_relayed() {
+        let node = node();
+        let fusion = engine("fusion");
+        let mut subscription = Subscription::engine(fusion.as_str()).unwrap();
+        let mut relays = Relays::default();
+        let record = EventRecord::derived(
+            InputId::default(),
+            fusion,
+            FlowName::try_from("tracking").unwrap(),
+            Default::default(),
+        );
+
+        relays.publish_derived(&node, &record, b"person").unwrap();
+        relays.wake_subscribers().unwrap();
+
+        subscription.wait(WAIT).unwrap();
+        let Event::Published(event) = subscription.poll().unwrap() else {
+            panic!("expected an event");
+        };
+        assert_eq!(event.result(), b"person");
     }
 
     #[test]

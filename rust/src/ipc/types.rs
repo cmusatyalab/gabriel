@@ -384,6 +384,19 @@ impl ClientEventHeader {
 /// What an engine reports to its server about one offered input. The server turns it into an
 /// `EventRecord`, after it has freed the edge and created the offers that follow.
 ///
+/// A result an engine derived from the events it subscribes to, sent to its server. The payload is
+/// the result bytes. It answers no offer.
+#[derive(Debug, Clone, Default, ZeroCopySend)]
+#[repr(C)]
+pub(crate) struct DerivedRecord {
+    /// The input the result is about.
+    pub(crate) id: InputId,
+    /// The flow the input was in.
+    pub(crate) flow: FlowName,
+    /// How to read the result bytes.
+    pub(crate) payload_type: PayloadType,
+}
+
 /// The payload is the engine's new output, then the result bytes. Only `Emit` has an output. The
 /// result comes last because an engine knows it only when it reports the outcome, after it has
 /// written the output in place.

@@ -2074,7 +2074,26 @@ deliver every event, which is what subscribers such as fusion need.
 
 \paragraph{Derived results.} An engine that subscribes to events, such as a
 fusion engine, publishes its conclusions as \code{Derived} results on its own
-event service. They answer no offer, so they do not affect tokens.
+event service. They answer no offer, so they do not affect tokens. A derived
+result names the input and the flow it is about, which the engine copies from
+an event it read, and carries any bytes with a payload type of the engine's
+choice. Its path:
+\begin{enumerate}[nosep]
+  \item The engine sends it to its server on its own \code{.../derived}
+        service, not on its outcome service: outcomes are limited to one in
+        flight per input, which is why they are never dropped, but an engine
+        publishes derived results at any rate. The derived service drops the
+        oldest if the server falls 64 behind. An engine publishes derived
+        results only while a server serves it.
+  \item The server numbers it among the engine's events, and publishes it on
+        the engine's event service.
+  \item The server also sends it to the client of every installed flow with
+        the flow's name. A client relays one from the remote server on the
+        device, even for an engine in none of its flows, as fusion usually is;
+        it ignores one from the local server, which published it on the device
+        already. While the device is disconnected, a cloudlet engine's derived
+        results are dropped (see the open questions).
+\end{enumerate}
 
 \section{Token accounting}
 \label{sec:accounting}
@@ -3167,7 +3186,8 @@ on both servers.
 \label{sec:services}
 
 Seven iceoryx2 services carry an input from its producer to an engine and the
-result back to the producer's app. Each is a publish-subscribe service. The sample's user header is
+result back to the producer's app; an eighth carries an engine's derived
+results to its server. Each is a publish-subscribe service. The sample's user header is
 a fixed-size record, and its payload is a slice of bytes. Event services
 (``Wake-ups'' below) only signal that a sample is there.
 
@@ -3195,6 +3215,10 @@ Engine outcome (\code{.../outcome})
   & the offer, the input id, what it forwards, the types of the result and
     of the new input, and the length of each
   & the new input of an \code{Emit}, then the result \\
+Engine derived (\code{.../derived})
+  & engine $\to$ server
+  & the input id, the flow, the payload type
+  & the result \\
 Engine events (\code{.../events})
   & server $\to$ subscribers
   & the sequence number, the kind, the offer (none for \code{Derived}), the
@@ -3216,8 +3240,8 @@ Producer results (\code{.../result})
 \paragraph{Wake-ups.} An iceoryx2 event service goes with each service whose
 reader sleeps, so no side polls. After it delivers an input, the server
 signals the engine's \code{.../input-ready}, which ends the engine's
-\code{wait}. After it reports an outcome, the engine signals
-\code{.../outcome-ready}, which ends the server thread's wait
+\code{wait}. After it reports an outcome or a derived result, the engine
+signals \code{.../outcome-ready}, which ends the server thread's wait
 (\S\ref{sec:server-thread}). After it sends an input, a client signals the
 server's \code{.../input-ready}, which has one notifier per client. After it
 sends a client events, the server signals the client's
@@ -3298,6 +3322,31 @@ full. Each service sets this explicitly:
         they do not count.
 \end{itemize}
 
+\paragraph{Open files.} Each iceoryx2 port holds about three open files: the
+service's configuration, its shared state, and a tag that lets other processes
+clean up after a crash. Publishers also hold their data segments, and
+listeners a socket. Measured:
+\begin{center}
+\small
+\begin{tabular}{@{}lr@{}}
+\toprule
+Part & Open files \\
+\midrule
+A server, plus per engine it serves (seven ports) & 18, plus 34 \\
+An engine & 23 \\
+A client, plus per producer it takes & 35, plus 18 \\
+A producer & 13 \\
+A subscription & 14 \\
+\bottomrule
+\end{tabular}
+\end{center}
+A process is commonly limited to 1024. A server with 10 engines needs about
+360, and a process that also runs those engines, a client and its producers
+about 720, so Gabriel leaves the limit alone. A server with many more engines
+should raise its soft limit to its hard limit at startup, as systemd
+recommends and Go does on its own. The Rust tests do this, since they run
+hundreds of servers and engines in one process.
+
 \paragraph{One input at a time.} The engine library gives its engine one
 input, and expects one outcome for it, before it gives the next. No input waits
 in the engine's input service, because the server delivers the next input
@@ -3348,8 +3397,8 @@ fail at once, one warning stands for them.
         new input. Result events carry the type
         (\S\ref{sec:services}).
   \item Any process can subscribe to an engine's event service, and poll it
-        for events. An engine gets a call to publish a \code{Derived} result
-        for an \code{InputId}. An engine can also own subscriptions
+        for events. An engine publishes a \code{Derived} result about an
+        \code{InputId} with \code{gabriel\_engine\_publish\_derived}. An engine can also own subscriptions
         (\code{gabriel\_engine\_subscribe}): \code{gabriel\_engine\_wait}
         then ends for an input or an event of any of them, so that it does not
         have to poll both in a busy loop, and
@@ -3445,7 +3494,8 @@ each, became part of the client thread (\S\ref{sec:client-thread}).
           \item \code{Derived} results, sent by the engine to its server on a
                 service of their own, since outcomes are limited to one in
                 flight. The server publishes them on the engine's event
-                service, and the remote server also sends them to its client.
+                service, and the remote server also sends them to its client
+                (done).
         \end{enumerate}
         The telemetry producer comes after these.
   \item Crossings with several targets on one server.
@@ -3595,6 +3645,12 @@ Clocks
         holds its token until then. Whether tighter bounds are worth it is
         open.
   \item The default buffer size of a subscription to an event service.
+  \item \textbf{Derived results across a disconnection} (later). A cloudlet
+        engine's derived results are dropped while the device is
+        disconnected. Fusion does not mind, since a late decision is stale,
+        but a reachback request should survive: the remote server could keep
+        an engine's derived results until its client reconnects, or reachback
+        requests could take a reliable path of their own.
   \item \textbf{Several clients of one remote server} (later). For now, a
         remote server has one client. With several, the server must choose
         which clients get an engine's \code{Derived} result, which names only

@@ -94,6 +94,23 @@ class Engine(ThreadHandle):
         while True:
             yield self.next()
 
+    def publish_derived(
+        self, id: InputId, flow: str, result=b"", *, result_type: str | None = None
+    ) -> None:
+        """Publishes `result`, which the engine derived from the events it subscribes to, about
+        the input `id` in the flow `flow`; e.g. a fusion decision. Pass the `id` and `flow` of the
+        event the result is about. `result_type` names how to read it. It answers no offer, so the
+        engine can publish it at any time. Its server publishes it as a `DERIVED` event on the
+        engine's event service."""
+        # Kept alive until the call returns, since the struct only points to it.
+        producer = ffi.new("char[]", id.producer.encode())
+        c_id = ffi.new("gabriel_input_id_t *", (producer, id.session, id.seq))
+        check(
+            lib.gabriel_engine_publish_derived(
+                self._live(), c_id, cstr(flow), cstr(result_type), *bytes_arg(result)
+            )
+        )
+
     def stop(self, result=b"") -> None:
         """Reports that the engine forwards nothing. A discard is a stop with no result."""
         self._report(lib.gabriel_engine_stop, result)

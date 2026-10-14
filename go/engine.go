@@ -144,6 +144,32 @@ func next[T any](ctx context.Context, poll func() (T, error), wait func(time.Dur
 	}
 }
 
+// PublishDerived publishes result, which the engine derived from the events it subscribes to, about
+// the input id in the flow flow; e.g. a fusion decision. Pass the ID and Flow of the event the
+// result is about. resultType names how to read it; empty if it has no convention. It answers no
+// offer, so the engine can publish it at any time. Its server publishes it as an [EventDerived] on
+// the engine's event service. It fails with [ErrSizeExceeded] past the engine's maximum output
+// size.
+func (e *Engine) PublishDerived(id InputID, flow, resultType string, result []byte) error {
+	if err := e.check(); err != nil {
+		return err
+	}
+	cProducer := C.CString(id.Producer)
+	defer C.free(unsafe.Pointer(cProducer))
+	cID := C.gabriel_input_id_t{producer: cProducer, session: C.uint64_t(id.Session), seq: C.uint64_t(id.Seq)}
+	cFlow := C.CString(flow)
+	defer C.free(unsafe.Pointer(cFlow))
+	var cResultType *C.char
+	if resultType != "" {
+		cResultType = C.CString(resultType)
+		defer C.free(unsafe.Pointer(cResultType))
+	}
+	buf, n := bytesArg(result)
+	return call(func() C.gabriel_status_t {
+		return C.gabriel_engine_publish_derived(e.handle, &cID, cFlow, cResultType, buf, n)
+	})
+}
+
 // Stop reports that the engine forwards nothing. A discard is a stop with no result.
 func (e *Engine) Stop(result []byte) error {
 	return e.report(result, func(buf *C.uint8_t, n C.size_t) C.gabriel_status_t {

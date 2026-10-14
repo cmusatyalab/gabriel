@@ -432,3 +432,59 @@ func TestEngineWaitsForAnEventOfAnEngineItSubscribesTo(t *testing.T) {
 		t.Errorf("fusion got an input (err %v), want none", err)
 	}
 }
+
+func TestFusionPublishesADerivedResultItsSubscribersGet(t *testing.T) {
+	f := newFixture(t)
+	fusionName := unique("fusion")
+	fusion, err := NewEngine(fusionName, "", maxOutputSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fusion.Close()
+	if err := f.server.AddEngine(fusionName); err != nil {
+		t.Fatal(err)
+	}
+	decisions, err := SubscribeEngine(fusionName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer decisions.Close()
+	if err := fusion.Subscribe(f.names.engine); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.client.AddFlow(flowName, chain(f.names.producer, f.names.engine)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.producer.Send(flowName, []byte("frame")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.engine.Next(timeout(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.engine.Pass([]byte("cat")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := next(timeout(t), func() (Event, error) {
+		event, err := fusion.PollEvent()
+		if err == nil && event.Kind != EventResult {
+			return event, ErrAgain
+		}
+		return event, err
+	}, fusion.Wait)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fusion.PublishDerived(result.ID, result.Flow, "example.Decision", []byte("person")); err != nil {
+		t.Fatal(err)
+	}
+
+	decision, err := decisions.Next(timeout(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Kind != EventDerived || decision.Engine != fusionName || decision.ID != result.ID ||
+		!bytes.Equal(decision.Result, []byte("person")) || decision.PayloadType != "example.Decision" {
+		t.Errorf("got %+v, want a derived %q from %s about %+v", decision, "person", fusionName, result.ID)
+	}
+}

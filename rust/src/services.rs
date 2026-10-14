@@ -10,7 +10,7 @@ use iceoryx2::service::port_factory::{event, publish_subscribe, request_response
 
 use crate::envelope::Envelope;
 use crate::ipc::types::{
-    ClientEventHeader, CrossingHeader, EventRecord, InputHeader, OutcomeRecord,
+    ClientEventHeader, CrossingHeader, DerivedRecord, EventRecord, InputHeader, OutcomeRecord,
 };
 use crate::{Error, Result, naming};
 
@@ -79,6 +79,14 @@ const EVENT_BUFFER_SIZE: usize = 256;
 /// Payload of an engine's outcome service: the engine's new output, then the result bytes.
 pub(crate) type OutcomePayload = [u8];
 
+/// Payload of an engine's derived service: the result bytes.
+pub(crate) type DerivedPayload = [u8];
+
+/// Derived results an engine can have waiting for its server. An engine publishes them at any
+/// rate, unlike outcomes, so the oldest are dropped if the server falls this far behind. The
+/// server reads them all each time the engine wakes it.
+const DERIVED_BUFFER_SIZE: usize = 64;
+
 /// Outcomes an engine can have waiting for its server. An engine reports one outcome per
 /// delivered input, and the server delivers at most `ENGINE_DELIVERY_LIMIT` inputs without an
 /// outcome, so the buffer never fills. Outcomes are never dropped.
@@ -145,6 +153,23 @@ pub(crate) fn open_engine_outcome(
         .enable_safe_overflow(false)
         .open_or_create()
         .map_err(|e| Error::Internal(format!("failed to open outcome of engine {name:?}: {e}")))
+}
+
+/// Opens (or creates) the service on which the engine `name` sends its derived results to its
+/// server.
+pub(crate) fn open_engine_derived(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<publish_subscribe::PortFactory<ipc::Service, DerivedPayload, DerivedRecord>> {
+    node.service_builder(&naming::engine_derived_service(name)?)
+        .publish_subscribe::<DerivedPayload>()
+        .user_header::<DerivedRecord>()
+        .max_publishers(1)
+        .max_subscribers(1)
+        .subscriber_max_buffer_size(DERIVED_BUFFER_SIZE)
+        .enable_safe_overflow(true)
+        .open_or_create()
+        .map_err(|e| Error::Internal(format!("failed to open derived of engine {name:?}: {e}")))
 }
 
 /// Backpressure handler for the engine's input and outcome publishers. Their buffers must never

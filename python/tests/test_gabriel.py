@@ -305,3 +305,29 @@ def test_engine_waits_for_an_event_of_an_engine_it_subscribes_to(fixture):
         assert event.id.seq == seq
         assert event.result == b"cat"
         assert fusion.poll() is None
+
+
+def test_fusion_publishes_a_derived_result_its_subscribers_get(fixture):
+    fusion_name = unique("fusion")
+    with (
+        gabriel.Engine(fusion_name, max_output_size=MAX_OUTPUT_SIZE) as fusion,
+        gabriel.Subscription.engine(fusion_name) as decisions,
+    ):
+        fixture.server.add_engine(fusion_name)
+        fusion.subscribe(fixture.engine_name)
+        fixture.add_flow()
+        fixture.producer.send(FLOW, b"frame")
+        assert fixture.engine.next(WAIT) is not None
+        fixture.engine.pass_(b"cat")
+        deadline = time.monotonic() + WAIT
+        while (event := fusion.poll_event()) is None or event.kind != gabriel.EventKind.RESULT:
+            fusion.wait(deadline - time.monotonic())
+
+        fusion.publish_derived(event.id, event.flow, b"person", result_type="example.Decision")
+
+        decision = decisions.next(WAIT)
+        assert decision.kind == gabriel.EventKind.DERIVED
+        assert decision.engine == fusion_name
+        assert decision.id == event.id
+        assert decision.result == b"person"
+        assert decision.payload_type == "example.Decision"

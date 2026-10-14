@@ -26,7 +26,8 @@ use crate::{
     Error, Result,
     events::EventPublisher,
     ipc::types::{
-        ClientEventHeader, Data, EngineName, EventRecord, InputHeader, OutcomeRecord, PayloadType,
+        ClientEventHeader, Data, DerivedRecord, EngineName, EventRecord, InputHeader,
+        OutcomeRecord, PayloadType,
     },
     naming,
     routing::{
@@ -76,8 +77,9 @@ struct EnginePorts {
     /// Wakes the engine after each delivered input.
     input_ready: Notifier<ipc::Service>,
     outcomes: Subscriber<ipc::Service, [u8], OutcomeRecord>,
-    /// Wakes the server after each outcome.
+    /// Wakes the server after each outcome and derived result.
     outcome_ready: Listener<ipc::Service>,
+    derived: Subscriber<ipc::Service, [u8], DerivedRecord>,
     events: EventPublisher,
     /// The node of the engine's running process, as of the last check. A different node, or
     /// none, means that process stopped.
@@ -105,12 +107,17 @@ impl EnginePorts {
             .listener_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create outcome listener: {e}")))?;
+        let derived = services::open_engine_derived(node, name)?
+            .subscriber_builder()
+            .create()
+            .map_err(|e| Error::Internal(format!("failed to create derived subscriber: {e}")))?;
         let events = EventPublisher::engine(node, name)?;
         Ok(Self {
             inputs,
             input_ready,
             outcomes,
             outcome_ready,
+            derived,
             events,
             instance: None,
         })
@@ -259,8 +266,8 @@ impl Dispatcher {
         &self.node
     }
 
-    /// Waits until an engine reports an outcome, one of `others` is notified, or `timeout`
-    /// passes. The outcomes themselves are read by [`Dispatcher::poll`], and the notifications of
+    /// Waits until an engine reports an outcome or a derived result, one of `others` is notified,
+    /// or `timeout` passes. The outcomes themselves are read by [`Dispatcher::poll`], and the notifications of
     /// `others` by their owners.
     pub(crate) fn wait<'a>(
         &'a self,
@@ -369,6 +376,26 @@ impl Dispatcher {
                     .router
                     .outcome(engine.as_str(), outcome, output, result, now)
                 {
+                    first_error.get_or_insert(e);
+                }
+            }
+            loop {
+                let sample = match ports.derived.receive() {
+                    Ok(Some(sample)) => sample,
+                    Ok(None) => break,
+                    Err(e) => {
+                        first_error.get_or_insert(Error::Internal(format!(
+                            "failed to receive derived result of {engine:?}: {e}"
+                        )));
+                        break;
+                    }
+                };
+                let derived = sample.user_header();
+                let result = (!sample.payload().is_empty()).then(|| Data {
+                    bytes: Arc::from(sample.payload()),
+                    payload_type: derived.payload_type,
+                });
+                if let Err(e) = self.router.derived(engine.as_str(), derived, result) {
                     first_error.get_or_insert(e);
                 }
             }
@@ -688,6 +715,39 @@ mod tests {
             kinds,
             vec![EventKind::Accepted, EventKind::Sent, EventKind::Result]
         );
+    }
+
+    #[test]
+    fn derived_result_reaches_subscribers_and_the_client() {
+        const DECISION: &[u8] = b"person";
+        const DECISION_TYPE: &str = "test.v1.Decision";
+        let now = Instant::now();
+        let mut fixture = Fixture::new();
+        let mut subscription = Subscription::engine(&fixture.name).unwrap();
+        let id = InputId {
+            producer: ProducerName::try_from("camera").unwrap(),
+            session: CLIENT_SESSION,
+            seq: 1,
+        };
+
+        fixture
+            .engine
+            .publish_derived(&id, "tracking", DECISION_TYPE, DECISION)
+            .unwrap();
+        fixture.dispatcher.wait([], LONG_WAIT).unwrap();
+        fixture.dispatcher.poll(now).unwrap();
+
+        let Event::Published(event) = subscription.poll().unwrap() else {
+            panic!("expected an event");
+        };
+        assert_eq!(event.kind(), EventKind::Derived);
+        assert_eq!(event.id(), &id);
+        assert_eq!(event.result(), DECISION);
+        assert_eq!(event.payload_type(), DECISION_TYPE);
+        let event = fixture.dispatcher.poll_client_event().unwrap();
+        assert_eq!(event.session, fixture.session);
+        assert_eq!(event.record.kind, EventKind::Derived);
+        assert_eq!(&*event.result.unwrap().bytes, DECISION);
     }
 
     #[test]

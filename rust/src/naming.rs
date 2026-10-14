@@ -30,6 +30,8 @@ const READY: &str = "ready";
 const INPUT_READY: &str = "input-ready";
 /// Event signalled when an engine has reported an outcome to its server.
 const OUTCOME_READY: &str = "outcome-ready";
+/// Service carrying an engine's derived results to its server.
+const DERIVED: &str = "derived";
 /// Service carrying a server's control calls.
 const CONTROL: &str = "control";
 /// Event signalled when a server has published a client's or an engine's events.
@@ -79,6 +81,11 @@ pub fn engine_events_ready_service(name: &str) -> Result<ServiceName> {
 /// Service name of the engine `name`'s outcomes.
 pub fn engine_outcome_service(name: &str) -> Result<ServiceName> {
     service(ENGINE, name, OUTCOME)
+}
+
+/// Service name of the engine `name`'s derived results.
+pub fn engine_derived_service(name: &str) -> Result<ServiceName> {
+    service(ENGINE, name, DERIVED)
 }
 
 /// Service name of the event the engine `name`'s server signals after delivering an input.
@@ -228,6 +235,14 @@ mod tests {
         assert_eq!(
             engine_events_service("yolo").unwrap().as_str(),
             "gabriel/engine/yolo/events"
+        );
+    }
+
+    #[test]
+    fn engine_derived_name() {
+        assert_eq!(
+            engine_derived_service("yolo").unwrap().as_str(),
+            "gabriel/engine/yolo/derived"
         );
     }
 

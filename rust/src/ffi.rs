@@ -21,8 +21,8 @@ use std::{
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{
-    Client, Engine, Error, EventKind, FlowSpec, Forward, Producer, RemoteServerConfig, Result,
-    Server, Subscription, logging, subscription::Event,
+    Client, Engine, Error, EventKind, FlowSpec, Forward, InputId, Producer, RemoteServerConfig,
+    Result, Server, Subscription, logging, routing::ids::ProducerName, subscription::Event,
 };
 
 /// The version of the ABI that this library implements.
@@ -696,6 +696,48 @@ pub unsafe extern "C" fn gabriel_engine_poll_event(
         // SAFETY: `event` is non-null and writable per the caller's contract.
         .map(|polled| unsafe { event.write(EventView::new(&polled)) });
     Status::from(result)
+}
+
+/// Publishes `result`, which the engine derived from the events it subscribes to, about the input
+/// `id` in the flow `flow`; e.g. a fusion decision. Pass the `id` and `flow` of the event the
+/// result is about. `result_type` names how to read it, or is null. It answers no offer, so the
+/// engine can publish it at any time. Its server publishes it as a `DERIVED` event on the engine's
+/// event service. Fails with `ERR_SIZE_EXCEEDED` past the engine's maximum output size.
+///
+/// # Safety
+/// `engine` must be a live handle; `id` must point to a valid input id; `flow` must be
+/// NUL-terminated; `result_type` must be null or NUL-terminated; `result` must point to
+/// `result_len` readable bytes, or be null when `result_len` is 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_publish_derived(
+    engine: *mut Engine,
+    id: *const InputIdView,
+    flow: *const c_char,
+    result_type: *const c_char,
+    result: *const u8,
+    result_len: usize,
+) -> Status {
+    if id.is_null() {
+        return null_argument("id");
+    }
+    let published = (|| {
+        let engine = unsafe { handle_arg(engine) }?;
+        // SAFETY: `id` is non-null and valid per the caller's contract.
+        let id = unsafe { &*id };
+        let producer = unsafe { str_arg(id.producer) }?;
+        let id = InputId {
+            producer: ProducerName::try_from(producer).map_err(|_| {
+                Error::InvalidArgument(format!("producer name {producer:?} is too long"))
+            })?,
+            session: id.session,
+            seq: id.seq,
+        };
+        let flow = unsafe { str_arg(flow) }?;
+        let result_type = unsafe { opt_str_arg(result_type) }?.unwrap_or_default();
+        let result = unsafe { bytes_arg(result, result_len) }?;
+        engine.publish_derived(&id, flow, result_type, result)
+    })();
+    Status::from(published)
 }
 
 /// Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).
