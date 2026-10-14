@@ -51,7 +51,13 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
         .map(|engine| engine.name.as_str())
         .collect();
     let mut remote = (!remote_engines.is_empty())
-        .then(|| Server::new(&format!("{}-remote", spec.name), Some(REMOTE_BIND_ADDR), None))
+        .then(|| {
+            Server::new(
+                &format!("{}-remote", spec.name),
+                Some(REMOTE_BIND_ADDR),
+                None,
+            )
+        })
         .transpose()
         .context("failed to start the remote server")?;
     let stop = Arc::new(AtomicBool::new(false));

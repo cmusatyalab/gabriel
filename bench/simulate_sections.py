@@ -176,6 +176,8 @@ def main() -> None:
     parser.add_argument("runs", type=Path, nargs="+",
                         help="output directories of one token sweep")
     runs = {run.tokens: run for run in map(load, parser.parse_args().runs)}
+    if None in runs:
+        parser.error("each run of a sweep must give its token count")
     fit = runs[max(runs)]
     samples = service_samples(fit)
     shares = forward_shares(fit)

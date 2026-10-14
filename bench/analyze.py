@@ -276,7 +276,11 @@ def in_flight(
     first = timed.groupby(["producer", "session", "seq"]).offered_ns.min()
     last = timed.groupby(["producer", "session", "seq"]).at_ns.max()
     spans = pd.DataFrame({"start": first, "end": last}).dropna()
-    tokens = {p["name"]: p["tokens"] for p in spec["flow"]["producers"]}
+    # A spec without a count leaves it to the client ("Choosing C").
+    tokens = {
+        p["name"]: p.get("tokens", "computed")
+        for p in spec["flow"]["producers"]
+    }
     seconds = (end - start) / NS_PER_S
     published = inputs[inputs.published_ns.between(start, end)]
     rows = {}

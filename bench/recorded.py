@@ -30,8 +30,10 @@ class Run:
     events: list[dict]  # events.csv rows, in time order
 
     @property
-    def tokens(self) -> int:
-        return self.spec["flow"]["producers"][0]["tokens"]
+    def tokens(self) -> int | None:
+        """The first producer's token count, or None if the client computed
+        it. A sweep gives it in each run."""
+        return self.spec["flow"]["producers"][0].get("tokens")
 
     @property
     def engines(self) -> list[str]:

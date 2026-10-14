@@ -7,7 +7,6 @@
 //! ```toml
 //! [[producers]]
 //! name = "camera"
-//! tokens = 2
 //!
 //! [[engines]]
 //! name = "filter"
@@ -53,8 +52,11 @@ pub struct ProducerSpec {
     /// The producer's name. The client must take its inputs
     /// ([`Client::add_producer`](crate::Client::add_producer)).
     pub name: String,
-    /// How many of the producer's inputs may be in the flow at once.
-    pub tokens: usize,
+    /// How many of the producer's inputs may be in the flow at once. Leave it out, and the client
+    /// computes the count from the flow ("Choosing C" in the design note). A count below that
+    /// is used, with a warning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<usize>,
 }
 
 /// Where an engine runs.
@@ -131,7 +133,7 @@ mod tests {
             FlowSpec {
                 producers: vec![ProducerSpec {
                     name: String::from("camera"),
-                    tokens: 2,
+                    tokens: Some(2),
                 }],
                 engines: vec![EngineSpec {
                     name: String::from("detector"),
@@ -149,6 +151,9 @@ mod tests {
     #[test]
     fn spec_survives_writing_and_reading() {
         let spec: FlowSpec = r#"
+            [[producers]]
+            name = "camera"
+
             [[engines]]
             name = "detector"
             location = "remote"

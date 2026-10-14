@@ -9,8 +9,9 @@ use std::{collections::HashMap, time::Duration};
 use petgraph::{
     algo::toposort,
     graph::{DiGraph, EdgeReference, NodeIndex},
-    visit::EdgeRef,
+    visit::{Dfs, EdgeRef},
 };
+use tracing::warn;
 
 use crate::{
     Error, Result,
@@ -27,6 +28,10 @@ use crate::{
 /// How long a round trip to the remote server may take, on top of the engines' own time. Generous,
 /// because a queue on the link can multiply the round trip.
 pub(super) const REMOTE_RTT_BOUND: Duration = Duration::from_secs(1);
+
+/// The token left over when every place that can hold one of a producer's inputs holds one, so
+/// that a newer input can still replace a waiting one ("Choosing C" in the design note).
+const SPARE_TOKENS: usize = 1;
 
 /// A flow, split into the client's part and a part for each server that runs its engines.
 #[derive(Debug)]
@@ -79,8 +84,13 @@ fn wait_at(location: Location, timeout: Duration) -> Duration {
     }
 }
 
-/// Checks `spec`, and splits the flow `flow` between the client and the servers.
-pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
+/// Checks `spec`, and splits the flow `flow` between the client and the servers. Each crossing to
+/// the remote server may have `remote_crossing_capacity` inputs in flight.
+pub(super) fn compile(
+    flow: &str,
+    spec: &FlowSpec,
+    remote_crossing_capacity: usize,
+) -> Result<CompiledFlow> {
     // The nodes are the engines, then the producers. A node's index in the graph is its id.
     let mut graph = DiGraph::<&str, Duration>::new();
     let mut by_name = HashMap::new();
@@ -90,7 +100,7 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
     }
     for producer in &spec.producers {
         producer_name(&producer.name)?;
-        if producer.tokens == 0 {
+        if producer.tokens == Some(0) {
             return Err(Error::InvalidArgument(format!(
                 "producer {:?} needs at least 1 token",
                 producer.name
@@ -237,9 +247,24 @@ pub(super) fn compile(flow: &str, spec: &FlowSpec) -> Result<CompiledFlow> {
                 producer.name
             )));
         }
+        let bound = token_bound(&graph, node, location, remote_crossing_capacity);
+        let tokens = match producer.tokens {
+            Some(tokens) if tokens < bound => {
+                warn!(
+                    producer = producer.name,
+                    tokens,
+                    bound,
+                    "fewer tokens than places that can hold an input, so a waiting input can \
+                     go stale"
+                );
+                tokens
+            }
+            Some(tokens) => tokens,
+            None => bound,
+        };
         producers.push(CompiledProducer {
             name: producer_name(&producer.name)?,
-            tokens: producer.tokens,
+            tokens,
             ticket_timeout: longest_wait(&graph, &order, node, edge_wait),
         });
     }
@@ -273,6 +298,36 @@ fn add_node<'a>(
         )));
     }
     Ok(())
+}
+
+/// The token count of "Choosing C" in the design note, for the producer at `start`: one for each
+/// engine on its paths, for the input in work there; one for each edge on them, for the input
+/// waiting in its pending slot; `remote_crossing_capacity` for each crossing to the remote
+/// server, for the inputs on the network; and a spare. `location` gives where an engine runs, and
+/// `None` for a producer.
+fn token_bound(
+    graph: &DiGraph<&str, Duration>,
+    start: NodeIndex,
+    location: impl Fn(NodeIndex) -> Option<Location>,
+    remote_crossing_capacity: usize,
+) -> usize {
+    let mut places = SPARE_TOKENS;
+    let mut dfs = Dfs::new(graph, start);
+    while let Some(node) = dfs.next(graph) {
+        if node != start {
+            places += 1;
+        }
+        places += graph.edges(node).count();
+        // A node's edges from the device to the remote server form one crossing.
+        let crosses = location(node) != Some(Location::Remote)
+            && graph
+                .edges(node)
+                .any(|edge| location(edge.target()) == Some(Location::Remote));
+        if crosses {
+            places += remote_crossing_capacity;
+        }
+    }
+    places
 }
 
 /// The longest an input from the node `start` can spend in the flow: along each path, it waits
@@ -332,6 +387,7 @@ mod tests {
 
     const FLOW: &str = "tracking";
     const TOKENS: usize = 2;
+    const REMOTE_CROSSING_CAPACITY: usize = 3;
     const FILTER_TIMEOUT: Duration = Duration::from_millis(100);
     const DETECTOR_TIMEOUT: Duration = Duration::from_millis(300);
     const TRACKER_TIMEOUT: Duration = Duration::from_millis(50);
@@ -356,7 +412,7 @@ mod tests {
         FlowSpec {
             producers: vec![ProducerSpec {
                 name: String::from("camera"),
-                tokens: TOKENS,
+                tokens: Some(TOKENS),
             }],
             engines: vec![engine("filter"), engine("detector")],
             edges: vec![
@@ -367,12 +423,15 @@ mod tests {
     }
 
     fn rejects(spec: &FlowSpec) -> bool {
-        matches!(compile(FLOW, spec), Err(Error::InvalidArgument(_)))
+        matches!(
+            compile(FLOW, spec, REMOTE_CROSSING_CAPACITY),
+            Err(Error::InvalidArgument(_))
+        )
     }
 
     #[test]
     fn engine_edges_go_to_the_server_and_producer_edges_cross() {
-        let compiled = compile(FLOW, &cascade()).unwrap();
+        let compiled = compile(FLOW, &cascade(), REMOTE_CROSSING_CAPACITY).unwrap();
 
         let (filter, detector, camera) = (NodeId(0), NodeId(1), NodeId(2));
         let (to_filter, to_detector, crossing) = (EdgeId(0), EdgeId(1), EdgeId(2));
@@ -424,7 +483,7 @@ mod tests {
         spec.edges
             .push(edge("camera", "detector", DETECTOR_TIMEOUT));
 
-        let compiled = compile(FLOW, &spec).unwrap();
+        let compiled = compile(FLOW, &spec, REMOTE_CROSSING_CAPACITY).unwrap();
 
         let local = &compiled.parts[&Location::Local];
         let [crossing] = &local.crossings[..] else {
@@ -442,7 +501,7 @@ mod tests {
         spec.edges
             .push(edge("camera", "detector", DETECTOR_TIMEOUT));
 
-        let compiled = compile(FLOW, &spec).unwrap();
+        let compiled = compile(FLOW, &spec, REMOTE_CROSSING_CAPACITY).unwrap();
 
         assert_eq!(
             compiled.producers,
@@ -493,11 +552,11 @@ mod tests {
     #[test]
     fn rejects_a_producer_without_tokens_or_edges() {
         let mut no_tokens = cascade();
-        no_tokens.producers[0].tokens = 0;
+        no_tokens.producers[0].tokens = Some(0);
         let mut no_edges = cascade();
         no_edges.producers.push(ProducerSpec {
             name: String::from("lidar"),
-            tokens: TOKENS,
+            tokens: Some(TOKENS),
         });
 
         assert!(rejects(&no_tokens));
@@ -519,7 +578,7 @@ mod tests {
 
     #[test]
     fn remote_engines_get_their_own_part_and_an_uplink() {
-        let compiled = compile(FLOW, &offload()).unwrap();
+        let compiled = compile(FLOW, &offload(), REMOTE_CROSSING_CAPACITY).unwrap();
 
         let (filter, detector, tracker, camera) = (NodeId(0), NodeId(1), NodeId(2), NodeId(3));
         let (to_filter, to_detector, to_tracker) = (EdgeId(0), EdgeId(1), EdgeId(2));
@@ -582,7 +641,7 @@ mod tests {
 
     #[test]
     fn ticket_timeout_includes_the_round_trip() {
-        let compiled = compile(FLOW, &offload()).unwrap();
+        let compiled = compile(FLOW, &offload(), REMOTE_CROSSING_CAPACITY).unwrap();
 
         assert_eq!(
             compiled.producers[0].ticket_timeout,
@@ -599,7 +658,7 @@ mod tests {
         spec.edges
             .push(edge("camera", "detector", DETECTOR_TIMEOUT));
 
-        let compiled = compile(FLOW, &spec).unwrap();
+        let compiled = compile(FLOW, &spec, REMOTE_CROSSING_CAPACITY).unwrap();
 
         let from_camera: Vec<Location> = compiled
             .crossings
@@ -617,5 +676,55 @@ mod tests {
         spec.edges.push(edge("tracker", "display", FILTER_TIMEOUT));
 
         assert!(rejects(&spec));
+    }
+
+    #[test]
+    fn token_count_defaults_to_the_places_on_the_paths() {
+        let mut chain = cascade();
+        chain.producers[0].tokens = None;
+        let mut fan_out = chain.clone();
+        fan_out
+            .edges
+            .push(edge("camera", "detector", DETECTOR_TIMEOUT));
+        let mut remote = offload();
+        remote.producers[0].tokens = None;
+
+        let tokens = |spec: &FlowSpec| {
+            compile(FLOW, spec, REMOTE_CROSSING_CAPACITY)
+                .unwrap()
+                .producers[0]
+                .tokens
+        };
+
+        // 2 engines, 2 edges, and a spare.
+        assert_eq!(tokens(&chain), 5);
+        // The detector counts once, but each of its edges has a pending slot.
+        assert_eq!(tokens(&fan_out), 6);
+        // 3 engines, 3 edges, the uplink's capacity, and a spare.
+        assert_eq!(tokens(&remote), 3 + 3 + REMOTE_CROSSING_CAPACITY + 1);
+    }
+
+    #[test]
+    fn token_count_covers_only_the_producers_own_paths() {
+        let mut spec = cascade();
+        spec.producers[0].tokens = None;
+        spec.producers.push(ProducerSpec {
+            name: String::from("lidar"),
+            tokens: None,
+        });
+        spec.edges.push(edge("lidar", "detector", DETECTOR_TIMEOUT));
+
+        let compiled = compile(FLOW, &spec, REMOTE_CROSSING_CAPACITY).unwrap();
+
+        let tokens: Vec<usize> = compiled.producers.iter().map(|p| p.tokens).collect();
+        // The lidar reaches only the detector: 1 engine, 1 edge, and a spare.
+        assert_eq!(tokens, vec![5, 3]);
+    }
+
+    #[test]
+    fn a_given_token_count_is_kept_even_when_low() {
+        let compiled = compile(FLOW, &cascade(), REMOTE_CROSSING_CAPACITY).unwrap();
+
+        assert_eq!(compiled.producers[0].tokens, TOKENS);
     }
 }

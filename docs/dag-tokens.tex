@@ -883,9 +883,10 @@ skipped in the pending slots, and on one machine each costs a copy. They are
 also not a way to send more over the network: a remote crossing admits only
 what its capacity allows, and inputs beyond that wait, and are replaced, in
 the client's pending slot. So the network is bounded by crossing capacities
-(\S\ref{sec:edges}), and tokens by the whole flow. Until sections are
-built, the compiler can compute this bound from the flow, use it when the
-spec gives no count, and warn about a spec that gives fewer.
+(\S\ref{sec:edges}), and tokens by the whole flow. The compiler computes
+this bound for each producer (\code{token\_bound} in
+\code{client/compile.rs}), and uses it when the spec gives no count. A spec
+may still give one; a count below the bound is used, with a warning.
 
 \paragraph{Admission.} The client keeps only the newest input from each
 producer, as its client thread does (\S\ref{sec:client-thread}). It admits that input into a flow
@@ -1428,7 +1429,7 @@ waiting, each with the cost it pays:
 
 \paragraph{Conclusion.}
 \begin{enumerate}[nosep]
-  \item \textbf{Tokens stay.} Today the compiler should set one count $C$
+  \item \textbf{Tokens stay.} Today the compiler sets one count $C$
         per producer by the rule in ``Choosing $C$'', so tokens never decide
         which input is fresh. A spec may still give a count, as a cap.
         Tickets and the accounting built on them do not change.

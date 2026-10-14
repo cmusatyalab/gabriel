@@ -153,7 +153,8 @@ def shadow(run: Run) -> None:
                 section.changes += 1
                 section.count = count
 
-    print(f"{run.path.name}: {run.tokens} tokens in the run, "
+    tokens = run.tokens if run.tokens is not None else "computed"
+    print(f"{run.path.name}: tokens in the run {tokens}, "
           f"producer interval {interval:.1f} ms")
     for engine in sorted(s):
         print(f"  {engine:>10}: S {s[engine].value:6.1f} ms, "

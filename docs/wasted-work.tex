@@ -1,0 +1,473 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{Wasted Work in Gabriel: Push, Sections, or Gated Chains}
+\author{Design summary}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Gabriel today is a \emph{push} design: every engine works on the newest
+input it can get and passes its result on, whether or not the next engine
+can use it. This keeps results fresh, but wastes work: an engine can compute
+a result that a slower engine after it then skips. This note compares push
+with two ways to avoid that waste: per-section token pools (``sections'')
+and gated chains. The recommendation is to keep push as the default, and to
+add gated chains as an option: an engine starts an input only when the
+slowest engine after it will be ready for its result. In simulation of
+nine chains, gated chains wasted no work, kept results about as fresh as
+push, and needed no token estimates. They cost some throughput, more with
+jittery engines. Sections also wasted no work, but were never better than
+gated chains, and were clearly worse on chains with several slow engines.
+All numbers are from simulation and bench runs on one machine; fan-outs and
+remote crossings are not simulated yet.
+\end{abstract}
+
+\section{Where we are}
+
+\begin{description}[style=nextline, leftmargin=1.5em, nosep]
+  \item[Built] The client computes each producer's token count from the
+        flow. A spec no longer needs one, and a count given too low gets a
+        warning. The bench has a shadow estimator and a simulator
+        (\code{bench/shadow\_counts.py}, \code{bench/simulate\_sections.py}),
+        and run files for the sweeps.
+  \item[Decided] Do not build sections (\S\ref{sec:sections}).
+  \item[Proposed] Keep push as the default. Add gated chains
+        (\S\ref{sec:gated}) as an option per flow. Simulated on nine
+        chains; not built.
+  \item[Open] Simulations of the paper's own pipelines (\S\ref{sec:paper}),
+        fan-outs, a device engine feeding a crossing, filters inside a
+        gated chain, how early a stretch should start under jitter, and a
+        bench with a shared accelerator (\S\ref{sec:next}).
+\end{description}
+
+\section{Why this matters for SteelEagle}
+
+In SteelEagle (\code{ddil2026}), the DroneHub runs on-drone AI under tight
+size, weight, and power limits, and usually has one AI accelerator (GPU, NPU,
+or TPU) shared by every on-drone engine. Work that is computed and then
+thrown away costs battery and accelerator time that another engine could
+have used. On the cloudlet, compute is plentiful, but the link to it is
+DDIL: its bandwidth and round trip change, and it can drop.
+
+The paper describes Gabriel's flow control as ``token-based'', ``ensuring
+that delays cause data to be dropped rather than queued'', and adapting to
+the bottleneck ``regardless of whether it is in transmission, processing, or
+multi-tenant queuing.'' Any change has to keep those properties. This rules
+out designs that queue inputs, which matters for sections below.
+
+\section{Today's design: push}
+\label{sec:push}
+
+Gabriel today pushes: no engine waits for the engine after it to be ready.
+
+\begin{itemize}[nosep]
+  \item \textbf{Tokens.} Each producer has a pool of tokens. An input takes
+        one when it enters the flow and gives it back at its first
+        completion. The client computes the count from the flow: one token
+        per engine and per edge on the producer's paths, the capacity of
+        each crossing to the cloudlet, and one spare (``Choosing $C$'' in
+        \code{dag-tokens.tex}).
+  \item \textbf{Newest wins.} Each edge has one pending slot. A newer input
+        replaces the one waiting there. So an engine always starts on the
+        newest input it can get.
+  \item \textbf{Crossings} to the cloudlet have a capacity: how many inputs
+        may be on the link or waiting at the cloudlet. This is the window
+        for the network.
+\end{itemize}
+Push keeps results fresh, needs no estimates, does not care if there are
+more tokens than needed, and absorbs jitter: when an engine runs long, the
+next one still finds a recent input waiting. Its one cost is wasted work.
+That cost is real only when the wasted work takes something another engine
+needs: a shared accelerator, a battery, or a cloudlet GPU shared by several
+drones. When every engine has its own hardware, push is the right design.
+
+\section{Where wasted work comes from}
+
+Work is wasted when an engine computes a result that nobody uses. That
+happens in only one place: \textbf{an engine in a chain whose results go
+only to a slower engine}, directly or through faster ones. In a chain
+P $\to$ A $\to$ B with A at 50\,ms and B at 500\,ms, A produces ten results
+for each one B can take, and B skips the other nine. In simulation of that
+chain, 45\% of all engine time went to results B skipped. A slow engine can
+itself be wasteful, if a still slower one comes after it.
+
+Other places look similar but waste nothing:
+\begin{itemize}[nosep]
+  \item \textbf{The producer.} A camera frame that is replaced before any
+        engine starts on it costs nothing.
+  \item \textbf{A fan-out.} If F feeds a fast engine C and a slow branch,
+        C uses every one of F's results. The slow branch skips results
+        before any work on them.
+  \item \textbf{An engine the app reads.} If the app subscribes to A's
+        results, A's work is used even when B skips it. In SteelEagle, the
+        on-drone filter is such an engine: its scores drive thresholding,
+        and its data is logged and used during disconnected operation.
+\end{itemize}
+So the problem is local to chains. A fix only needs to act inside chains.
+
+\section{Options considered}
+
+\subsection{A lower token count}
+
+With one token, A only works on inputs B will take. In the chain above, that
+saved 90\% of A's work at 7.5\% of B's throughput. But it fails elsewhere:
+\begin{itemize}[nosep]
+  \item In a chain of three equal engines, one token gives a third of the
+        throughput.
+  \item Two tokens can freeze a slot: an input waits in B's slot holding the
+        last token, and nothing newer can replace it. B then starts on
+        inputs 525\,ms old.
+  \item At a fan-out, the token comes back when the fastest branch finishes,
+        so a slow branch is fed just as fast with one token as with ten.
+\end{itemize}
+One count for the whole flow cannot fit every shape.
+
+\subsection{Sections}
+\label{sec:sections}
+
+\paragraph{The idea.} Apply the original Gabriel again at every fan-out. A
+\emph{section} is a chain from a producer or a fan-out up to the next
+fan-out. Each section has its own token pool. An input enters a section only
+with one of its tokens, and returns it at its first completion in the
+section; this rule is recursive over nested fan-outs. Inside a section,
+inputs wait in order, so nothing is skipped after work was spent on it.
+
+\paragraph{The count.} Each pool would set its count while the flow runs,
+from the knee of a closed queueing network:
+\[
+  N = \max\left(1,\ \left\lfloor \frac{D + Z}{\max(D_{\max}, I)}
+  + \epsilon \right\rfloor\right)
+\]
+where $D$ is the total service time per input (each engine's time weighted by
+the share of inputs that reach it), $Z$ the network round trips, $D_{\max}$
+the slowest engine's share, $I$ the producer's interval, and $\epsilon$ a
+small tolerance. The client can measure all of these from events it already
+gets. A shadow run on recorded bench runs gave stable estimates, the same
+whatever token count the run used.
+
+\paragraph{Why not sections.}
+\begin{enumerate}[nosep]
+  \item \textbf{They queue.} Inputs that wait in order age while they wait.
+        That goes against ``dropped rather than queued''.
+  \item \textbf{A count is the wrong control.} Freshness depends on
+        \emph{when} an engine starts, and a count only sets \emph{how many}
+        inputs are in a chain. The right count is often a fraction, so it
+        must be rounded: down leaves an engine idle, up makes inputs wait.
+        With two slow engines in a chain, the fraction is 1.48: one token
+        loses a third of the throughput, and two make results about 150\,ms
+        older (Table~\ref{tab:several}).
+  \item \textbf{A count that is too high is costly.} In order, each token
+        above the right count adds one whole time of the slowest engine to
+        every input's wait: 500\,ms per token in the chain above. Shared
+        engines, a heavy tail, or a changing round trip all push the
+        estimate the wrong way. With newest wins, extra tokens cost nothing.
+  \item \textbf{Their fan-out machinery solves no waste.} Branch pools and
+        nested returns act at fan-outs, which waste nothing.
+  \item \textbf{Much more code}: pools on the client and on servers, queues
+        on edges, a central recount, a control call to push counts to
+        servers.
+\end{enumerate}
+Sections keep one real advantage: every input that enters a section is
+processed by all of it, which suits strict fusion. Gabriel has no joins yet.
+
+\subsection{Gated chains}
+\label{sec:gated}
+
+\paragraph{The rule.} Keep push, and add one condition. For an
+engine in a chain, let S be the slowest engine after it in the chain. If S
+is slower than this engine:
+\begin{quote}
+Start an input only if the next slot is empty, and no earlier than the time
+S will be ready for a new input, minus the service times of the engines in
+between.
+\end{quote}
+If no engine after it is slower, the engine pushes, as today: nothing after it
+can skip its results.
+\begin{itemize}[nosep]
+  \item \textbf{The gate} (next slot empty) means a result is never computed
+        that will be skipped: in a chain, nothing else can fill that slot.
+        This alone guarantees no wasted work.
+  \item \textbf{The timing} keeps results fresh. Without it, A would start
+        as soon as B's slot empties, and its result would wait in B's slot
+        for all of B's time.
+  \item \textbf{Inputs on their way to S count.} If B already carries the
+        input S takes next, A's result is for the run after that. A first
+        version that looked only one engine ahead got this wrong.
+  \item \textbf{Time to the slowest engine after, not the last one.} With S
+        in the middle of a chain, timing to the last engine made results
+        1308\,ms old instead of 852\,ms.
+\end{itemize}
+Each engine needs only its median service time, measured on its own server,
+and the state of the engines between it and S.
+
+\paragraph{Example.} P $\to$ A $\to$ B $\to$ S with A at 20\,ms, B at 30\,ms,
+and S at 500\,ms. S starts input $x$ at time 0 and will be free at 500. B
+starts at $500 - 30 = 470$, and A at $470 - 20 = 450$. Until then, A's slot
+keeps the newest camera frame. S starts on a frame about 50\,ms old, and A
+and B run once per run of S.
+
+\paragraph{Several slow engines.} Walk the chain from its end, keeping the
+slowest engine seen so far. An engine slower than everything after it is an
+\emph{anchor}, and pushes, as today. Every other engine is timed to the slowest
+engine after it. So a chain splits into stretches, each ending at an anchor:
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Chain (ms) & Timing \\
+\midrule
+A 20 $\to$ S1 200 $\to$ B 20 $\to$ S2 500 & A, S1, B to S2 \\
+A 20 $\to$ S1 500 $\to$ B 20 $\to$ S2 200 & A to S1; S1 free; B to S2 \\
+A 20 $\to$ S1 100 $\to$ B 20 $\to$ S2 300 $\to$ C 20 $\to$ S3 200 &
+  A, S1, B to S2; S2 free; C to S3 \\
+\bottomrule
+\end{tabular}
+\end{center}
+When two slow engines are equal, noise in their measured medians picks the
+anchor. Either choice works.
+
+\paragraph{Where a chain ends.} A gated chain stops at a fan-out, a join, an
+engine the app reads, or a crossing to another server. Beyond those points,
+push applies. So the rule never has to reason about the whole graph:
+more branches only mean more short chains.
+
+\paragraph{The cloudlet.} Timing a send to arrive just when a cloudlet
+engine frees up would need a prediction across a DDIL link, and a wrong
+guess leaves the cloudlet's GPU idle. A window does better there: the
+crossing capacity, sized to the round trip (the original Gabriel's tokens).
+The earlier simulator in \code{sim/} agrees: at 150\,ms delay, the modes
+with tokens on the link (\code{token}, \code{token-adaptive}, and
+\code{segment}) gave an AoI of 705--734\,ms, and the timed ones
+(\code{schedule}, \code{schedule-hop}) 780--868\,ms. So:
+\begin{itemize}[nosep]
+  \item a chain inside the cloudlet is gated on the cloudlet, as on the
+        device;
+  \item the link keeps its window;
+  \item a device engine whose only consumer is a crossing is gated on the
+        crossing. The crossing's ``free time'' is when its oldest input is
+        expected back: its send time, plus the round trip, plus the cloudlet
+        engine's service time. The client knows all three on its own clock.
+\end{itemize}
+This last case is not simulated yet.
+
+\section{Results}
+
+The simulator draws service times from those measured in bench runs, and
+matched the measured runs within 6\,ms of AoI and 2\% of throughput
+(\code{bench/simulate\_sections.py} for push and sections; the gated
+rule is in a scratch copy for now). Each cell gives the mean AoI at the last
+engine in ms, results a second, and the share of engine time wasted; where
+no waste is shown, it was zero. Push and the gated chains use the
+computed token count; sections use their own count, as the rule gives it.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Chain (ms) & Push & Sections & Gated chain \\
+\midrule
+One heavy-tailed engine  & 118 & 118 & 118 \\
+Three equal engines      & 76  & 76  & 76 \\
+Bench chain (filter, detector, tracker) & 105 & 111 & 110--112 \\
+A 50 $\to$ B 500         & 843; 2.0; 45\% & 843; 1.8 & 817; 2.0 \\
+A 20 $\to$ B 30 $\to$ S 500 & 829; 2.0; 56\% & 836; 1.8 & 844; 1.95 \\
+S 500 $\to$ A 20 $\to$ B 30 & 820; 2.0 & --- & 810; 2.0 \\
+\bottomrule
+\end{tabular}
+\caption{Chains with one slow engine.}
+\label{tab:one}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Chain (ms), 10\% jitter & Push & Sections & Gated chain \\
+\midrule
+A 20, S 500, C 20, D 30 (S in the middle) & 835; 2.01; 33\% & 871; 1.76 &
+  852; 1.98 \\
+A 20, S1 200, B 20, S2 500 (rising) & 1108; 2.01; 45\% & 1116; 1.36 &
+  \textbf{1035}; 1.92 \\
+A 20, S1 500, B 20, S2 200 (falling) & 1014; 1.99; 28\% & 1122; 1.36 &
+  1032; 1.97 \\
+A 20, S1 500, B 20, S2 500 (equal) & 1435; 1.97; 23\% & 1364; 1.86 &
+  1379; 1.89 \\
+Three slow engines (100, 300, 200) & 878; 3.34; 38\% & 857; 2.98 &
+  \textbf{846}; 3.18 \\
+\midrule
+\multicolumn{4}{@{}l}{With 30\% jitter:} \\
+Rising  & 1153; 1.98; 45\% & 1110; 1.40 & 1088; 1.80 \\
+Falling & 1046; 1.98; 28\% & 1120; 1.37 & 1088; 1.95 \\
+Equal   & 1508; 1.78; 25\% & 1545; 1.66 & 1541; 1.71; 1\% \\
+Three   & 918; 3.26; 38\%  & 918; 2.81  & 908; 2.94 \\
+\bottomrule
+\end{tabular}
+\caption{Chains with several slow engines. Sections use the count their
+rule gives (1 for rising, falling, and the middle case; 2 for equal and
+three). With one more token, sections reach push's throughput, but their
+AoI rises by 140--400\,ms.}
+\label{tab:several}
+\end{table}
+
+\begin{itemize}[nosep]
+  \item \textbf{Gated chains waste nothing} (at most 1\%), against up to
+        56\% with push.
+  \item \textbf{Their freshness is about push's}: from 7\% fresher to 7\%
+        older. They are fresher when a slow engine is itself wasteful, as in
+        the rising chain.
+  \item \textbf{They cost throughput}: 1--5\% with 10\% jitter, up to 10\%
+        with 30\%. Timing a stretch adds up the service times of every
+        engine in it, so their errors add up too. When a stretch runs long,
+        its slow engine waits.
+  \item \textbf{Their AoI does not depend on the token count}, so the
+        computed count can stay.
+  \item \textbf{Push keeps the most throughput}, and handles jitter best.
+        Its waste is 23--56\% of engine time in every chain with a slow
+        engine after a faster one, and none otherwise.
+  \item \textbf{Sections were never better than gated chains} on both
+        measures at once. With several slow engines, their count falls
+        between two whole numbers, and either choice loses: a third of the
+        throughput, or 140--400\,ms of freshness.
+\end{itemize}
+
+\section{Comparison}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{3.2cm}p{3.5cm}p{3.5cm}p{3.5cm}@{}}
+\toprule
+ & Push (today) & Sections & Gated chains \\
+\midrule
+Wasted work & 23--56\% in chains with a slow engine after a faster one &
+  None & None \\
+AoI & Baseline & 5\% fresher to 11\% older & 7\% fresher to 7\% older \\
+Throughput & Baseline & Up to a third lower & 1--10\% lower, more with
+  jitter \\
+Jitter & Absorbed by waiting inputs & Costs throughput or freshness &
+  Costs throughput \\
+Inputs queue? & No & Yes & No \\
+Estimates & None & Service times, visit shares, round trips, interval &
+  Median service time per engine \\
+A wrong estimate costs & --- & A whole bottleneck time per extra token &
+  About the size of the error \\
+Too many tokens & Free & Costly & Free \\
+Decisions made & Locally & Centrally, pushed to servers & Locally \\
+New code & --- & Pools, queues, recount, control call &
+  A start condition in the server's pull loop \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Which to use.}
+\begin{itemize}[nosep]
+  \item \textbf{Push} when engines have their own hardware, or the waste is
+        cheap. It is the default.
+  \item \textbf{Gated chains} when wasted work takes a shared resource: a
+        shared accelerator, a battery, a shared cloudlet GPU. Set per flow.
+  \item \textbf{Sections} never: gated chains do as well or better, without
+        queues or count estimates.
+\end{itemize}
+
+\section{For the paper}
+\label{sec:paper}
+
+\paragraph{The paper's pipelines.} The simulations above use made-up
+chains, not SteelEagle's pipelines. Mapped to Gabriel flows, the paper's
+modes are:
+\begin{center}
+\small
+\begin{tabular}{@{}p{3.3cm}p{6.3cm}p{4.3cm}@{}}
+\toprule
+Mode & Flow & Wasted work under push \\
+\midrule
+Strongly connected ($>$5\,Mbps) & camera $\to$ cloudlet detector &
+  None: no engines on the drone \\
+Weakly connected (30\,kbps--5\,Mbps) & camera (lower rate) $\to$ tiling and
+  on-drone filter $\to$ crossing $\to$ cloudlet detector &
+  Not in the filter, whose results are logged and used. Only in a separate
+  tiler or encoder before it \\
+Multi-tier fusion & camera $\to$ \{on-drone detector, cloudlet detector\}
+  $\to$ app & None: a fan-out. The on-drone engines may share one
+  accelerator \\
+Disconnected ($<$30\,kbps) & camera $\to$ on-drone AI &
+  Only if that AI is a chain that ends in a slower engine \\
+\bottomrule
+\end{tabular}
+\end{center}
+So, as the paper describes SteelEagle, push wastes little on the drone, and
+gated chains are a refinement, not a core mechanism. They matter if the
+pipeline grows chains: a tiler or encoder before the filter, a detector
+before a slow classifier, or a cloudlet chain shared by a drone swarm.
+
+\paragraph{What matters more for the paper,} and is not simulated yet:
+\begin{itemize}[nosep]
+  \item \textbf{The crossing under DDIL}: bandwidth from 30\,kbps to
+        5\,Mbps, mode switches with 20\% hysteresis, a changing round
+        trip, and outages. How the crossing capacity should adapt.
+  \item \textbf{A shared on-drone accelerator}, used by the filter and the
+        fusion detector at once. Gabriel does not model or schedule it.
+  \item \textbf{Tiling}: one 4K frame becomes many 256$\times$256 tiles, so
+        the filter is a one-to-many engine. Gabriel's \code{Emit} sends one
+        output per input.
+\end{itemize}
+The \code{sim/} package already has an emulated link with outages,
+fan-outs, filters, and joins, so it is the place for these scenarios. It
+needs measured timings: on-drone and cloudlet model latencies, frame and
+tile sizes, and the cellular round trip.
+
+\paragraph{What the paper can claim.} The paper's description of Gabriel
+stays true: token-based, drop rather than queue, adapts to the bottleneck.
+In addition:
+\begin{itemize}[nosep]
+  \item \textbf{The token count is computed from the flow}, so a pipeline
+        author does not tune it, and a wrong count cannot freeze a slot.
+  \item \textbf{The link keeps a window} sized to the round trip, as in the
+        original Gabriel.
+  \item \textbf{Gated chains} (once built and measured) avoid wasted work
+        in on-drone chains without making results older.
+\end{itemize}
+The comparison of push, sections, and gated chains could be a short design
+discussion. A claim about gated chains needs a bench with a shared
+accelerator, so that the saved work shows up as fresher or more frequent
+results.
+
+\section{Next steps}
+\label{sec:next}
+
+\begin{enumerate}[nosep]
+  \item Simulate the paper's pipelines in \code{sim/}, with measured
+        timings, comparing push with gated chains where they apply.
+  \item Move the gated rule into \code{bench/simulate\_sections.py}, so these
+        tables can be reproduced from the repository.
+  \item How early a stretch should start under jitter. Starting from a
+        pessimistic sum of service times (say the 80th percentile) instead
+        of the medians should recover throughput, at some cost in freshness.
+  \item Filters inside a gated chain. ``Slowest'' should compare each
+        engine's time weighted by the share of inputs that reach it. A
+        filter that passes inputs at random makes the timing less exact:
+        it cost 5\% of AoI in the bench chain.
+  \item Simulate a fan-out with a chain branch (F $\to$ \{C, A $\to$ B\}):
+        only A is gated, and C should stay as fresh as with push.
+  \item Simulate a device engine gated on a crossing, with a changing round
+        trip and an outage.
+  \item Add a shared accelerator to the bench, so wasted work has a cost.
+  \item If these hold, build the gate in the server's pull loop, behind a
+        setting per flow, and measure it on the bench and over the real
+        link.
+  \item Update \code{dag-tokens.tex}: replace the Sections subsection with
+        gated chains, and keep sections as a rejected alternative.
+\end{enumerate}
+
+\end{document}

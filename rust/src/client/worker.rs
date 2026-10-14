@@ -320,7 +320,7 @@ impl Worker {
                 "flow {name:?} already exists"
             )));
         }
-        let compiled = compile(name, spec)?;
+        let compiled = compile(name, spec, self.remote_crossing_capacity)?;
         if let Some(location) = compiled
             .parts
             .keys()

@@ -211,7 +211,7 @@ mod tests {
             FlowSpec {
                 producers: vec![ProducerSpec {
                     name: self.producer_name.clone(),
-                    tokens,
+                    tokens: Some(tokens),
                 }],
                 engines: chain
                     .iter()
@@ -669,7 +669,7 @@ mod tests {
         let spec = FlowSpec {
             producers: vec![ProducerSpec {
                 name: producer_name.clone(),
-                tokens: ONE_TOKEN,
+                tokens: Some(ONE_TOKEN),
             }],
             engines: vec![EngineSpec {
                 name: String::from("detector"),
@@ -746,7 +746,7 @@ mod tests {
             FlowSpec {
                 producers: vec![ProducerSpec {
                     name: self.producer_name.clone(),
-                    tokens: ONE_TOKEN,
+                    tokens: Some(ONE_TOKEN),
                 }],
                 engines: vec![
                     EngineSpec {

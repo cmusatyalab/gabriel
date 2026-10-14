@@ -29,8 +29,8 @@ transport (step 8), disconnected operation (step 9), and optional zero copy
 tested, and a sweep showed how to set the count: with too few, engines idle;
 with exactly as many as the places an input can wait, the client's pending
 slot freezes; one more keeps every slot fresh (\code{docs/evaluation.tex}).
-What is missing is the compiler computing the count, so a spec must give it
-by hand today, and a wrong guess can freeze a slot. One count for the whole
+The compiler now computes the count, so a spec need not give one, and a
+count given too low gets a warning. One count for the whole
 flow cannot save compute at one branch: the plan is one pool per section,
 nested at each fan-out, with each count kept at its knee at runtime. It is
 not better in every case, so it is to be measured against the single count.
@@ -47,7 +47,7 @@ Gabriel.
 round trip is 7 to 13 times shorter for raw 720p to 4K frames
 (\code{docs/evaluation.tex}). Most of the time left goes to copying the frame.
 
-Tests: 216 in Rust, 8 in Go, and 12 in Python, all passing.
+Tests: 219 in Rust, 8 in Go, and 12 in Python, all passing.
 
 \section{Done}
 
@@ -216,6 +216,13 @@ Tests: 216 in Rust, 8 in Go, and 12 in Python, all passing.
         the new Gabriel and the original over WebSocket, ZeroMQ over TCP, and
         ZeroMQ over a Unix socket, with raw 720p, 1080p, and 4K frames, and
         reports round trips and CPU.
+  \item[Token count (\code{client/compile.rs})] A producer's token count is
+        optional in the spec. Without one, the compiler counts the engines
+        and edges on the producer's paths, the capacity of each crossing to
+        the remote server, and a spare (``Choosing $C$'' in the design
+        note). A count given below that is used, with a warning. This
+        removes a trap: 2 tokens in a chain with a slow end made the slow
+        engine start on inputs 525\,ms old. 3 tests.
   \item[Design note (\code{docs/dag-tokens.tex})] Covers the architecture,
         ownership of edges, installing a flow, flow control, forwarding,
         copies, result events, token accounting, worked examples (early
@@ -460,12 +467,6 @@ nodes or gaps in sequence numbers.
 \section{Next steps}
 
 \begin{enumerate}[nosep]
-  \item \textbf{Compute the token count in the compiler}: engines plus
-        server edges on the producer's paths, plus one, plus the capacity of
-        remote crossings (``Choosing $C$'' in the design note). Small, and it
-        removes a trap: 2 tokens in a chain with a slow end made the slow
-        engine start on inputs 525\,ms old. It is also the baseline that
-        sections are measured against, and the fallback if they lose.
   \item \textbf{Sections, in steps} (``Sections'' in the design note).
         Each step can be measured alone:
         \begin{enumerate}[nosep]
