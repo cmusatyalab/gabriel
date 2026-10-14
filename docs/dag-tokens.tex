@@ -3349,10 +3349,15 @@ fail at once, one warning stands for them.
         (\S\ref{sec:services}).
   \item Any process can subscribe to an engine's event service, and poll it
         for events. An engine gets a call to publish a \code{Derived} result
-        for an \code{InputId}, and a call that waits until an input or a
-        subscribed event is ready, so that it does not have to poll both in a
-        busy loop. \code{gabriel\_engine\_wait} exists; it waits for inputs
-        only, until subscriptions exist.
+        for an \code{InputId}. An engine can also own subscriptions
+        (\code{gabriel\_engine\_subscribe}): \code{gabriel\_engine\_wait}
+        then ends for an input or an event of any of them, so that it does not
+        have to poll both in a busy loop, and
+        \code{gabriel\_engine\_poll\_event} returns the events, taking turns
+        between the subscriptions. Each event names its engine; so does
+        \code{LOST} on a subscription to an engine. The engine owns its
+        subscriptions, rather than waiting on separate handles, because each
+        handle stays on one thread.
   \item \code{add\_flow(name, spec)}: \code{spec} describes the nodes (local
         or remote), each producer's token count $C$, and the input edges with
         their engines' timeouts. The client rejects forbidden edges, and
@@ -3435,7 +3440,8 @@ each, became part of the client thread (\S\ref{sec:client-thread}).
           \item the client republishes the remote engines' events on the
                 device (done);
           \item an engine subscribes to event services itself, and its
-                \code{wait} ends for an input or an event of any of them;
+                \code{wait} ends for an input or an event of any of them
+                (done);
           \item \code{Derived} results, sent by the engine to its server on a
                 service of their own, since outcomes are limited to one in
                 flight. The server publishes them on the engine's event

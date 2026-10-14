@@ -67,9 +67,10 @@ func (e *Engine) check() error {
 	return e.thread.check()
 }
 
-// Wait waits until an input is ready, or timeout passes, and fails with [ErrAgain] then. The input
-// itself comes from [Engine.Poll]. A wake-up without an input is possible, so poll in a loop, or use
-// [Engine.Next].
+// Wait waits until an input or an event of a subscription is ready, or timeout passes, and fails
+// with [ErrAgain] then. The input itself comes from [Engine.Poll], and the event from
+// [Engine.PollEvent]. A wake-up with neither is possible, so poll in a loop, or use [Engine.Next]
+// for an engine without subscriptions.
 func (e *Engine) Wait(timeout time.Duration) error {
 	if err := e.check(); err != nil {
 		return err
@@ -93,9 +94,34 @@ func (e *Engine) Poll() (Input, error) {
 	}, nil
 }
 
-// Next waits for the next input, until ctx is done.
+// Next waits for the next input, until ctx is done. Events of subscriptions do not end it; an
+// engine with subscriptions uses [Engine.Wait], [Engine.Poll] and [Engine.PollEvent] instead.
 func (e *Engine) Next(ctx context.Context) (Input, error) {
 	return next(ctx, e.Poll, e.Wait)
+}
+
+// Subscribe subscribes the engine to the events of the engine name, e.g. a detector whose results
+// it fuses. Only events published from now on are read. [Engine.Wait] ends for them too.
+func (e *Engine) Subscribe(name string) error {
+	if err := e.check(); err != nil {
+		return err
+	}
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	return call(func() C.gabriel_status_t { return C.gabriel_engine_subscribe(e.handle, cName) })
+}
+
+// PollEvent returns the next event of any subscription, or fails with [ErrAgain] if none is
+// available. Its Engine says which subscription it came from.
+func (e *Engine) PollEvent() (Event, error) {
+	if err := e.check(); err != nil {
+		return Event{}, err
+	}
+	var view C.gabriel_event_t
+	if err := call(func() C.gabriel_status_t { return C.gabriel_engine_poll_event(e.handle, &view) }); err != nil {
+		return Event{}, err
+	}
+	return eventOf(&view), nil
 }
 
 // next polls until it gets a value, waiting between polls, until ctx is done.

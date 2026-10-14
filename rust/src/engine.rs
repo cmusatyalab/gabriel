@@ -1,6 +1,7 @@
-//! Engine: takes inputs from its server and reports one outcome for each.
+//! Engine: takes inputs from its server and reports one outcome for each. An engine can also
+//! subscribe to other engines' events, and wait for an input or an event with one call.
 
-use std::{mem::MaybeUninit, time::Duration};
+use std::{iter, mem::MaybeUninit, time::Duration};
 
 use iceoryx2::port::{
     listener::Listener, notifier::Notifier, publisher::Publisher, subscriber::Subscriber,
@@ -14,6 +15,7 @@ use crate::ipc::{
     types::{InputHeader, OutcomeRecord, PayloadType, payload_type},
 };
 use crate::routing::ids::{InputId, OfferId};
+use crate::subscription::{Event, Subscription};
 use crate::{Error, Result, naming, services};
 
 /// An input held by the engine until it reports its outcome.
@@ -46,6 +48,10 @@ pub struct Engine {
     current: Option<Sample<ipc::Service, [u8], InputHeader>>,
     /// The output being written, until it is emitted.
     output: Option<Output>,
+    /// The engines the engine subscribed to, by name.
+    subscriptions: Vec<(String, Subscription)>,
+    /// The subscription polled first next time, so that a busy one does not starve the others.
+    next_subscription: usize,
 }
 
 impl Engine {
@@ -88,32 +94,83 @@ impl Engine {
             outcome_ready,
             current: None,
             output: None,
+            subscriptions: Vec::new(),
+            next_subscription: 0,
         })
     }
 
-    /// Waits until an input is ready, or `timeout` passes, and returns [`Error::Again`] then. The
-    /// input itself comes from [`Engine::poll_input`]. A wake-up without an input is possible,
-    /// so a caller polls in a loop.
+    /// Waits until an input or an event of a subscription is ready, or `timeout` passes, and
+    /// returns [`Error::Again`] then. The input comes from [`Engine::poll_input`], and the event
+    /// from [`Engine::poll_event`]. A wake-up with neither is possible, so a caller polls in a
+    /// loop.
     pub fn wait(&self, timeout: Duration) -> Result<()> {
-        let failed = |e| Error::Internal(format!("failed to wait for an input: {e}"));
-        // Notifications for inputs that are already here would wake the next wait for nothing.
-        self.input_ready.try_wait(|_| {}).map_err(failed)?;
-        let has_input = || {
-            self.inputs
-                .has_samples()
-                .map_err(|e| Error::Internal(format!("failed to check for an input: {e}")))
-        };
-        if has_input()? {
+        // Notifications for what is already here would wake the next wait for nothing.
+        self.input_ready
+            .try_wait(|_| {})
+            .map_err(|e| Error::Internal(format!("failed to wait for an input: {e}")))?;
+        for (_, subscription) in &self.subscriptions {
+            subscription.drain_ready()?;
+        }
+        if self.is_ready()? {
             return Ok(());
         }
-        // The server signals after it delivers, so an input that arrived since the check above
-        // ends this wait at once.
-        let woken = services::wait_for_notification(&self.input_ready, timeout).map_err(failed)?;
-        if woken || has_input()? {
+        // Servers signal after they deliver or publish, so anything that arrived since the check
+        // above ends this wait at once.
+        let listeners = iter::once(&self.input_ready).chain(
+            self.subscriptions
+                .iter()
+                .map(|(_, subscription)| subscription.ready()),
+        );
+        services::wait_for_any(listeners, timeout)?;
+        if self.is_ready()? {
             Ok(())
         } else {
             Err(Error::Again)
         }
+    }
+
+    /// Whether an input or an event is ready.
+    fn is_ready(&self) -> Result<bool> {
+        let has_input = self
+            .inputs
+            .has_samples()
+            .map_err(|e| Error::Internal(format!("failed to check for an input: {e}")))?;
+        if has_input {
+            return Ok(true);
+        }
+        for (_, subscription) in &self.subscriptions {
+            if subscription.has_event()? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Subscribes to the events of the engine `name`, e.g. a detector whose results this engine
+    /// fuses. Only events published from now on are read. [`Engine::wait`] ends for them too.
+    pub fn subscribe(&mut self, name: &str) -> Result<()> {
+        if self.subscriptions.iter().any(|(engine, _)| engine == name) {
+            return Err(Error::InvalidArgument(format!(
+                "already subscribed to engine {name:?}"
+            )));
+        }
+        let subscription = Subscription::engine(name)?;
+        self.subscriptions.push((name.to_owned(), subscription));
+        Ok(())
+    }
+
+    /// Returns the next event of any subscription, or [`Error::Again`] if none is available. The
+    /// event stays valid until the next poll. Each event says which engine it is about.
+    pub fn poll_event(&mut self) -> Result<Event<'_>> {
+        let count = self.subscriptions.len();
+        for offset in 0..count {
+            let index = (self.next_subscription + offset) % count;
+            if self.subscriptions[index].1.has_event()? {
+                self.next_subscription = (index + 1) % count;
+                return self.subscriptions[index].1.poll();
+            }
+        }
+        Err(Error::Again)
     }
 
     /// Returns the next input, or [`Error::Again`] if none is available. The input stays valid
@@ -536,5 +593,119 @@ mod tests {
         let result = fixture.engine.stop(&[0; MAX_OUTPUT_SIZE + 1]);
 
         assert!(matches!(result, Err(Error::SizeExceeded { .. })));
+    }
+
+    /// Publishes the events of a subscribed engine, as its server does.
+    struct Events(crate::events::EventPublisher);
+
+    impl Events {
+        fn new(engine: &str) -> Self {
+            let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
+            Self(crate::events::EventPublisher::engine(&node, engine).unwrap())
+        }
+
+        /// Publishes that the input `seq` was sent to `engine`, and signals it.
+        fn sent(&mut self, engine: &str, seq: u64) {
+            let record = crate::ipc::types::EventRecord::sent(
+                OfferId {
+                    session: SESSION,
+                    edge: EdgeId(1),
+                    seq,
+                },
+                InputId {
+                    producer: ProducerName::try_from(PRODUCER).unwrap(),
+                    session: SESSION,
+                    seq,
+                },
+                crate::ipc::types::EngineName::try_from(engine).unwrap(),
+                crate::ipc::types::FlowName::try_from("tracking").unwrap(),
+            );
+            self.0.publish(record, &[]).unwrap();
+            self.0.wake_subscribers().unwrap();
+        }
+    }
+
+    /// The engine and input sequence number of a published event, or `None` for lost events.
+    fn engine_and_seq(event: Event<'_>) -> Option<(String, u64)> {
+        match event {
+            Event::Published(event) => Some((event.engine().to_owned(), event.id().seq())),
+            Event::Lost(_) => None,
+        }
+    }
+
+    #[test]
+    fn wait_ends_for_an_event_of_a_subscribed_engine() {
+        /// Far longer than a wake-up within one process takes.
+        const LONG_WAIT: Duration = Duration::from_secs(5);
+        let detector = unique("detector");
+        let (subscribed, waiting) = std::sync::mpsc::channel();
+        let engine = {
+            let detector = detector.clone();
+            std::thread::spawn(move || {
+                let mut engine = Engine::new(&unique("fusion"), None, MAX_OUTPUT_SIZE).unwrap();
+                engine.subscribe(&detector).unwrap();
+                subscribed.send(()).unwrap();
+                engine.wait(LONG_WAIT).unwrap();
+                engine_and_seq(engine.poll_event().unwrap())
+            })
+        };
+        let mut publisher = Events::new(&detector);
+        waiting.recv().unwrap();
+        let started = std::time::Instant::now();
+
+        publisher.sent(&detector, SEQ);
+
+        assert_eq!(engine.join().unwrap(), Some((detector, SEQ)));
+        // Woken by the event, not by the end of the wait.
+        assert!(started.elapsed() < LONG_WAIT / 2);
+    }
+
+    #[test]
+    fn wait_ends_for_an_input_while_subscribed() {
+        let mut fixture = Fixture::new();
+        fixture.engine.subscribe(&unique("detector")).unwrap();
+        fixture.deliver_frame();
+
+        fixture.engine.wait(WAIT_TIMEOUT).unwrap();
+
+        assert!(fixture.engine.poll_input().is_ok());
+        assert!(matches!(fixture.engine.poll_event(), Err(Error::Again)));
+    }
+
+    #[test]
+    fn poll_event_takes_turns_between_subscriptions() {
+        let mut fixture = Fixture::new();
+        let (local, remote) = (unique("local"), unique("remote"));
+        fixture.engine.subscribe(&local).unwrap();
+        fixture.engine.subscribe(&remote).unwrap();
+        let (mut local_events, mut remote_events) = (Events::new(&local), Events::new(&remote));
+        local_events.sent(&local, 1);
+        local_events.sent(&local, 2);
+        remote_events.sent(&remote, 1);
+
+        let polled: Vec<_> = iter::from_fn(|| fixture.engine.poll_event().ok().map(engine_and_seq))
+            .flatten()
+            .collect();
+
+        assert_eq!(polled, vec![(local.clone(), 1), (remote, 1), (local, 2)]);
+    }
+
+    #[test]
+    fn subscribing_twice_to_an_engine_fails() {
+        let mut fixture = Fixture::new();
+        let detector = unique("detector");
+        fixture.engine.subscribe(&detector).unwrap();
+
+        assert!(matches!(
+            fixture.engine.subscribe(&detector),
+            Err(Error::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn engine_without_subscriptions_has_no_events() {
+        let mut fixture = Fixture::new();
+
+        assert!(matches!(fixture.engine.poll_event(), Err(Error::Again)));
     }
 }

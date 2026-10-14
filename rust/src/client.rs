@@ -240,7 +240,7 @@ mod tests {
         loop {
             match subscription.poll() {
                 Ok(Event::Published(event)) => return Some(read(&event)),
-                Ok(Event::Lost { count }) => panic!("{count} events were lost"),
+                Ok(Event::Lost(lost)) => panic!("{} events were lost", lost.count()),
                 Err(Error::Again) => {}
                 Err(e) => panic!("{e}"),
             }

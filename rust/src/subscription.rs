@@ -16,7 +16,7 @@ use iceoryx2_bb_container::string::String as _;
 
 use crate::{
     Error, InputId, Result, Timestamp,
-    ipc::types::{EventGaps, EventKind, EventRecord, Forward},
+    ipc::types::{EngineName, EventGaps, EventKind, EventRecord, Forward},
     services::{self, EventPayload},
 };
 
@@ -29,6 +29,8 @@ pub struct Subscription {
     events: Subscriber<ipc::Service, EventPayload, EventRecord>,
     /// Signalled by the publisher after each batch of events.
     ready: Listener<ipc::Service>,
+    /// The engine subscribed to; `None` for a producer's results.
+    engine: Option<EngineName>,
     gaps: EventGaps,
     /// An event read right after a gap. It is returned after the [`Event::Lost`] that reports the
     /// gap.
@@ -40,11 +42,31 @@ pub struct Subscription {
 /// What a subscription read.
 #[derive(Debug)]
 pub enum Event<'a> {
-    /// `count` events were lost before the next one, because the subscriber fell behind. Inputs
-    /// whose events may be among them should not be waited for.
-    Lost { count: u64 },
+    /// Events were lost before the next one, because the subscriber fell behind. Inputs whose
+    /// events may be among them should not be waited for.
+    Lost(Lost<'a>),
     /// An event, as its publisher published it.
     Published(Published<'a>),
+}
+
+/// Events a subscription lost.
+#[derive(Debug)]
+pub struct Lost<'a> {
+    count: u64,
+    pub(crate) engine: Option<&'a EngineName>,
+}
+
+impl Lost<'_> {
+    /// How many events were lost.
+    pub fn count(&self) -> u64 {
+        self.count
+    }
+
+    /// The engine whose events were lost, for a subscription to an engine; `None` for a
+    /// producer's results.
+    pub fn engine(&self) -> Option<&str> {
+        self.engine.map(|engine| engine.as_str())
+    }
 }
 
 /// An event about an input, or about a flow for [`EventKind::Disconnected`]. Valid until the next
@@ -118,22 +140,25 @@ impl Subscription {
         let node = create_node()?;
         let events = services::open_producer_results(&node, name)?;
         let ready = services::open_producer_results_ready(&node, name)?;
-        Self::open(node, &events, &ready)
+        Self::open(node, &events, &ready, None)
     }
 
     /// Subscribes to the events of the engine `name`, which its server publishes. Only events
     /// published from now on are read.
     pub fn engine(name: &str) -> Result<Self> {
+        let engine = EngineName::try_from(name)
+            .map_err(|_| Error::InvalidArgument(format!("engine name {name:?} is too long")))?;
         let node = create_node()?;
         let events = services::open_engine_events(&node, name)?;
         let ready = services::open_engine_events_ready(&node, name)?;
-        Self::open(node, &events, &ready)
+        Self::open(node, &events, &ready, Some(engine))
     }
 
     fn open(
         node: Node<ipc::Service>,
         events: &publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>,
         ready: &event::PortFactory<ipc::Service>,
+        engine: Option<EngineName>,
     ) -> Result<Self> {
         let events = events
             .subscriber_builder()
@@ -147,6 +172,7 @@ impl Subscription {
             node,
             events,
             ready,
+            engine,
             gaps: EventGaps::default(),
             held: None,
             current: None,
@@ -156,28 +182,42 @@ impl Subscription {
     /// Waits until an event is ready, or `timeout` passes, and returns [`Error::Again`] then. The
     /// event itself comes from [`Subscription::poll`].
     pub fn wait(&self, timeout: Duration) -> Result<()> {
-        let failed = |e| Error::Internal(format!("failed to wait for an event: {e}"));
-        // Notifications for events that are already here would wake the next wait for nothing.
-        self.ready.try_wait(|_| {}).map_err(failed)?;
-        let has_event = || {
-            Ok::<_, Error>(
-                self.held.is_some()
-                    || self.events.has_samples().map_err(|e| {
-                        Error::Internal(format!("failed to check for an event: {e}"))
-                    })?,
-            )
-        };
-        if has_event()? {
+        self.drain_ready()?;
+        if self.has_event()? {
             return Ok(());
         }
         // The publisher signals after it publishes, so an event that arrived since the check
         // above ends this wait at once.
-        let woken = services::wait_for_notification(&self.ready, timeout).map_err(failed)?;
-        if woken || has_event()? {
+        let woken = services::wait_for_notification(&self.ready, timeout)
+            .map_err(|e| Error::Internal(format!("failed to wait for an event: {e}")))?;
+        if woken || self.has_event()? {
             Ok(())
         } else {
             Err(Error::Again)
         }
+    }
+
+    /// The listener the publisher signals after each batch of events.
+    pub(crate) fn ready(&self) -> &Listener<ipc::Service> {
+        &self.ready
+    }
+
+    /// Consumes the notifications for events that are already here, which would wake the next
+    /// wait for nothing.
+    pub(crate) fn drain_ready(&self) -> Result<()> {
+        self.ready
+            .try_wait(|_| {})
+            .map_err(|e| Error::Internal(format!("failed to wait for an event: {e}")))?;
+        Ok(())
+    }
+
+    /// Whether [`Subscription::poll`] has something to return.
+    pub(crate) fn has_event(&self) -> Result<bool> {
+        Ok(self.held.is_some()
+            || self
+                .events
+                .has_samples()
+                .map_err(|e| Error::Internal(format!("failed to check for an event: {e}")))?)
     }
 
     /// Returns the next event, or [`Error::Again`] if none is available. The event stays valid
@@ -195,7 +235,10 @@ impl Subscription {
                 let lost = self.gaps.observe(sample.user_header().seq);
                 if lost > 0 {
                     self.held = Some(sample);
-                    return Ok(Event::Lost { count: lost });
+                    return Ok(Event::Lost(Lost {
+                        count: lost,
+                        engine: self.engine.as_ref(),
+                    }));
                 }
                 sample
             }
@@ -237,7 +280,7 @@ mod tests {
     /// Long enough for a notification within one process, short enough to keep tests fast.
     const WAIT_TIMEOUT: Duration = Duration::from_millis(100);
 
-    /// A subscription to a producer's results, and the client's end of the service.
+    /// A subscription, and the publisher's end of its service.
     struct Fixture {
         subscription: Subscription,
         events: Publisher<ipc::Service, EventPayload, EventRecord>,
@@ -245,20 +288,34 @@ mod tests {
     }
 
     impl Fixture {
+        /// A subscription to a producer's results.
         fn new() -> Self {
             let name = unique("camera");
             let subscription = Subscription::producer(&name).unwrap();
-            let events = services::open_producer_results(&subscription.node, &name)
-                .unwrap()
+            let events = services::open_producer_results(&subscription.node, &name).unwrap();
+            let ready = services::open_producer_results_ready(&subscription.node, &name).unwrap();
+            Self::publishing(subscription, &events, &ready)
+        }
+
+        /// A subscription to the engine `name`'s events.
+        fn engine(name: &str) -> Self {
+            let subscription = Subscription::engine(name).unwrap();
+            let events = services::open_engine_events(&subscription.node, name).unwrap();
+            let ready = services::open_engine_events_ready(&subscription.node, name).unwrap();
+            Self::publishing(subscription, &events, &ready)
+        }
+
+        fn publishing(
+            subscription: Subscription,
+            events: &publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>,
+            ready: &event::PortFactory<ipc::Service>,
+        ) -> Self {
+            let events = events
                 .publisher_builder()
                 .initial_max_slice_len(RESULT.len())
                 .create()
                 .unwrap();
-            let ready = services::open_producer_results_ready(&subscription.node, &name)
-                .unwrap()
-                .notifier_builder()
-                .create()
-                .unwrap();
+            let ready = ready.notifier_builder().create().unwrap();
             Self {
                 subscription,
                 events,
@@ -300,7 +357,7 @@ mod tests {
     fn seq(event: Event<'_>) -> Option<u64> {
         match event {
             Event::Published(published) => Some(published.id().seq()),
-            Event::Lost { .. } => None,
+            Event::Lost(_) => None,
         }
     }
 
@@ -355,12 +412,27 @@ mod tests {
         fixture.publish(4);
 
         assert_eq!(seq(fixture.subscription.poll().unwrap()), Some(1));
-        assert!(matches!(
-            fixture.subscription.poll().unwrap(),
-            Event::Lost { count: 2 }
-        ));
+        let Event::Lost(lost) = fixture.subscription.poll().unwrap() else {
+            panic!("expected lost events");
+        };
+        assert_eq!((lost.count(), lost.engine()), (2, None));
         // The event after the gap is still waiting, so a wait returns at once.
         fixture.subscription.wait(WAIT_TIMEOUT).unwrap();
         assert_eq!(seq(fixture.subscription.poll().unwrap()), Some(4));
+    }
+
+    #[test]
+    fn lost_events_of_an_engine_name_it() {
+        let detector = unique("detector");
+        let mut fixture = Fixture::engine(&detector);
+        fixture.publish(1);
+        fixture.publish(3);
+        fixture.subscription.poll().unwrap();
+
+        let Event::Lost(lost) = fixture.subscription.poll().unwrap() else {
+            panic!("expected lost events");
+        };
+
+        assert_eq!((lost.count(), lost.engine()), (1, Some(detector.as_str())));
     }
 }

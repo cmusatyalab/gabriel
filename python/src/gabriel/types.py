@@ -76,8 +76,9 @@ def _known(enum_type: type[enum.IntEnum], value: int) -> enum.IntEnum | int:
 
 @dataclass(frozen=True, slots=True)
 class Event:
-    """What happened to one input at one engine. For `LOST`, only `lost` is set; for
-    `DISCONNECTED`, only `flow`.
+    """What happened to one input at one engine. For `LOST`, only `lost` is set, and `engine` for
+    a subscription to an engine; for `DISCONNECTED`, only `flow`, and `engine` for a subscription
+    to an engine.
 
     Times are in nanoseconds on the machine's monotonic clock, which `time.monotonic_ns` reads.
     """

@@ -117,6 +117,8 @@ gabriel_status_t gabriel_engine_create(const char *name,
 gabriel_status_t gabriel_engine_destroy(gabriel_engine_t *engine);
 gabriel_status_t gabriel_engine_wait(gabriel_engine_t *engine, uint32_t timeout_ms);
 gabriel_status_t gabriel_engine_poll_input(gabriel_engine_t *engine, gabriel_input_t *input);
+gabriel_status_t gabriel_engine_subscribe(gabriel_engine_t *engine, const char *name);
+gabriel_status_t gabriel_engine_poll_event(gabriel_engine_t *engine, gabriel_event_t *event);
 gabriel_status_t gabriel_engine_stop(gabriel_engine_t *engine,
                                      const uint8_t *result,
                                      size_t result_len);

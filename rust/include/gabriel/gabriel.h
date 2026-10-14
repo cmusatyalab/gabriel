@@ -170,7 +170,8 @@ typedef struct {
 
 /**
  * An event read from a subscription. Stays valid until the next poll. For `LOST`, only `lost`
- * is set; for `DISCONNECTED`, only `flow`.
+ * is set, and `engine` on a subscription to an engine; for `DISCONNECTED`, only `flow`, and
+ * `engine` on a subscription to an engine.
  */
 typedef struct {
   gabriel_event_kind_t kind;
@@ -469,8 +470,9 @@ gabriel_status_t gabriel_engine_create(const char *name,
 gabriel_status_t gabriel_engine_destroy(gabriel_engine_t *engine);
 
 /**
- * Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch
- * the input with `gabriel_engine_poll_input`, which may still return `ERR_AGAIN`.
+ * Waits until an input or an event of a subscription is ready, or `timeout_ms` passes, and
+ * returns `ERR_AGAIN` then. Fetch the input with `gabriel_engine_poll_input`, and the event with
+ * `gabriel_engine_poll_event`; either may still return `ERR_AGAIN`.
  *
  * # Safety
  * `engine` must be a live handle.
@@ -485,6 +487,24 @@ gabriel_status_t gabriel_engine_wait(gabriel_engine_t *engine, uint32_t timeout_
  * `engine` must be a live handle; `input` must be valid for writes.
  */
 gabriel_status_t gabriel_engine_poll_input(gabriel_engine_t *engine, gabriel_input_t *input);
+
+/**
+ * Subscribes the engine to the events of the engine `name`, e.g. a detector whose results it
+ * fuses. Only events published from now on are read. `gabriel_engine_wait` ends for them too.
+ *
+ * # Safety
+ * `engine` must be a live handle; `name` must be NUL-terminated.
+ */
+gabriel_status_t gabriel_engine_subscribe(gabriel_engine_t *engine, const char *name);
+
+/**
+ * Returns `ERR_AGAIN` if no event of the engine's subscriptions is available. The event stays
+ * valid until the next poll. Its `engine` says which subscription it came from.
+ *
+ * # Safety
+ * `engine` must be a live handle; `event` must be valid for writes.
+ */
+gabriel_status_t gabriel_engine_poll_event(gabriel_engine_t *engine, gabriel_event_t *event);
 
 /**
  * Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).

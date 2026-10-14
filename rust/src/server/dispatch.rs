@@ -661,7 +661,8 @@ mod tests {
         fixture.accept_frame(now);
 
         assert_eq!(subscriber.join().unwrap(), EventKind::Accepted);
-        assert!(started.elapsed() < LONG_WAIT);
+        // Woken by the event, not by the end of the wait.
+        assert!(started.elapsed() < LONG_WAIT / 2);
     }
 
     #[test]

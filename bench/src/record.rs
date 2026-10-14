@@ -55,7 +55,7 @@ impl EventRow {
     /// The row of an event about the inputs of `producer`.
     pub fn new(producer: &str, event: &Event<'_>) -> Self {
         match event {
-            Event::Lost { count } => Self {
+            Event::Lost(lost) => Self {
                 kind: String::from("Lost"),
                 producer: producer.to_owned(),
                 session: None,
@@ -66,7 +66,7 @@ impl EventRow {
                 offered_ns: None,
                 at_ns: None,
                 received_ns: None,
-                lost: Some(*count),
+                lost: Some(lost.count()),
             },
             Event::Published(event) => {
                 let kind = event.kind();

@@ -82,8 +82,9 @@ func (f Forward) String() string {
 	}
 }
 
-// Event is what happened to one input at one engine. For [EventLost], only Lost is set; for
-// [EventDisconnected], only Flow.
+// Event is what happened to one input at one engine. For [EventLost], only Lost is set, and Engine
+// for a subscription to an engine; for [EventDisconnected], only Flow, and Engine for a
+// subscription to an engine.
 type Event struct {
 	Kind EventKind
 	// Lost is how many events were lost, for [EventLost].
@@ -175,6 +176,11 @@ func (s *Subscription) Poll() (Event, error) {
 	if err := call(func() C.gabriel_status_t { return C.gabriel_subscription_poll(s.handle, &view) }); err != nil {
 		return Event{}, err
 	}
+	return eventOf(&view), nil
+}
+
+// eventOf copies an event read through the C ABI.
+func eventOf(view *C.gabriel_event_t) Event {
 	return Event{
 		Kind:        EventKind(view.kind),
 		Lost:        uint64(view.lost),
@@ -187,7 +193,7 @@ func (s *Subscription) Poll() (Event, error) {
 		At:          Timestamp(view.at_ns),
 		OfferedAt:   Timestamp(view.offered_at_ns),
 		ReceivedAt:  Timestamp(view.received_at_ns),
-	}, nil
+	}
 }
 
 // Next waits for the next event, until ctx is done.

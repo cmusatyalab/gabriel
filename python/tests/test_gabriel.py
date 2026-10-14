@@ -284,3 +284,24 @@ def test_engine_subscriber_sees_the_engines_result(fixture):
             assert event.engine == fixture.engine_name
         assert event.id.seq == seq
         assert event.result == b"cat"
+
+
+def test_engine_waits_for_an_event_of_an_engine_it_subscribes_to(fixture):
+    with gabriel.Engine(unique("fusion"), max_output_size=MAX_OUTPUT_SIZE) as fusion:
+        fusion.subscribe(fixture.engine_name)
+        fixture.add_flow()
+
+        seq = fixture.producer.send(FLOW, b"frame")
+        assert fixture.engine.next(WAIT) is not None
+        fixture.engine.pass_(b"cat")
+
+        deadline = time.monotonic() + WAIT
+        while True:
+            assert fusion.wait(deadline - time.monotonic())
+            event = fusion.poll_event()
+            if event is not None and event.kind == gabriel.EventKind.RESULT:
+                break
+        assert event.engine == fixture.engine_name
+        assert event.id.seq == seq
+        assert event.result == b"cat"
+        assert fusion.poll() is None

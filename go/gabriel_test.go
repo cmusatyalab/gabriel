@@ -385,3 +385,50 @@ func TestEngineSubscriberSeesTheEnginesResult(t *testing.T) {
 		return
 	}
 }
+
+func TestEngineWaitsForAnEventOfAnEngineItSubscribesTo(t *testing.T) {
+	f := newFixture(t)
+	fusion, err := NewEngine(unique("fusion"), "", maxOutputSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fusion.Close()
+	if err := fusion.Subscribe(f.names.engine); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.client.AddFlow(flowName, chain(f.names.producer, f.names.engine)); err != nil {
+		t.Fatal(err)
+	}
+
+	seq, err := f.producer.Send(flowName, []byte("frame"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.engine.Next(timeout(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.engine.Pass([]byte("cat")); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(wait)
+	for {
+		if err := fusion.Wait(time.Until(deadline)); err != nil {
+			t.Fatal(err)
+		}
+		event, err := fusion.PollEvent()
+		if errors.Is(err, ErrAgain) || (err == nil && event.Kind != EventResult) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if event.Engine != f.names.engine || event.ID.Seq != seq || !bytes.Equal(event.Result, []byte("cat")) {
+			t.Errorf("event %+v, want %q from %s for seq %d", event, "cat", f.names.engine, seq)
+		}
+		break
+	}
+	if _, err := fusion.Poll(); !errors.Is(err, ErrAgain) {
+		t.Errorf("fusion got an input (err %v), want none", err)
+	}
+}

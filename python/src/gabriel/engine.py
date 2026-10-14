@@ -16,7 +16,7 @@ from gabriel._ffi import (
     view,
 )
 from gabriel.errors import AgainError
-from gabriel.types import Input, InputId
+from gabriel.types import Event, Input, InputId
 
 
 class Engine(ThreadHandle):
@@ -45,8 +45,9 @@ class Engine(ThreadHandle):
         self._input: Input | None = None
 
     def wait(self, timeout: float) -> bool:
-        """Waits until an input is ready, or `timeout` seconds pass. Returns whether it may be
-        ready: a wake-up without an input is possible, so poll in a loop, or use `next`."""
+        """Waits until an input or an event of a subscription is ready, or `timeout` seconds pass.
+        Returns whether one may be ready: a wake-up with neither is possible, so poll in a loop,
+        or use `next` for an engine without subscriptions."""
         try:
             check(lib.gabriel_engine_wait(self._live(), milliseconds(timeout)))
         except AgainError:
@@ -69,8 +70,24 @@ class Engine(ThreadHandle):
 
     def next(self, timeout: float | None = None) -> Input | None:
         """Waits for the next input, for at most `timeout` seconds, or without end if it is None.
-        Returns None if the time runs out."""
+        Returns None if the time runs out. Events of subscriptions do not end it; an engine with
+        subscriptions uses `wait`, `poll` and `poll_event` instead."""
         return next_of(self.poll, self.wait, timeout)
+
+    def subscribe(self, name: str) -> None:
+        """Subscribes the engine to the events of the engine `name`, e.g. a detector whose results
+        it fuses. Only events published from now on are read. `wait` ends for them too."""
+        check(lib.gabriel_engine_subscribe(self._live(), cstr(name)))
+
+    def poll_event(self) -> Event | None:
+        """Returns the next event of any subscription, or None if none is available. Its `engine`
+        says which subscription it came from."""
+        out = ffi.new("gabriel_event_t *")
+        try:
+            check(lib.gabriel_engine_poll_event(self._live(), out))
+        except AgainError:
+            return None
+        return Event._from_c(out)
 
     def __iter__(self) -> Iterator[Input]:
         """Yields each input as it arrives. Report its outcome before asking for the next."""

@@ -619,8 +619,9 @@ pub unsafe extern "C" fn gabriel_engine_destroy(engine: *mut Engine) -> Status {
     unsafe { destroy_handle(engine) }
 }
 
-/// Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch
-/// the input with `gabriel_engine_poll_input`, which may still return `ERR_AGAIN`.
+/// Waits until an input or an event of a subscription is ready, or `timeout_ms` passes, and
+/// returns `ERR_AGAIN` then. Fetch the input with `gabriel_engine_poll_input`, and the event with
+/// `gabriel_engine_poll_event`; either may still return `ERR_AGAIN`.
 ///
 /// # Safety
 /// `engine` must be a live handle.
@@ -659,6 +660,41 @@ pub unsafe extern "C" fn gabriel_engine_poll_input(
             // SAFETY: `input` is non-null and writable per the caller's contract.
             unsafe { input.write(view) };
         });
+    Status::from(result)
+}
+
+/// Subscribes the engine to the events of the engine `name`, e.g. a detector whose results it
+/// fuses. Only events published from now on are read. `gabriel_engine_wait` ends for them too.
+///
+/// # Safety
+/// `engine` must be a live handle; `name` must be NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_subscribe(
+    engine: *mut Engine,
+    name: *const c_char,
+) -> Status {
+    let result = unsafe { handle_arg(engine) }
+        .and_then(|engine| engine.subscribe(unsafe { str_arg(name) }?));
+    Status::from(result)
+}
+
+/// Returns `ERR_AGAIN` if no event of the engine's subscriptions is available. The event stays
+/// valid until the next poll. Its `engine` says which subscription it came from.
+///
+/// # Safety
+/// `engine` must be a live handle; `event` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_engine_poll_event(
+    engine: *mut Engine,
+    event: *mut EventView,
+) -> Status {
+    if event.is_null() {
+        return null_argument("event");
+    }
+    let result = unsafe { handle_arg(engine) }
+        .and_then(Engine::poll_event)
+        // SAFETY: `event` is non-null and writable per the caller's contract.
+        .map(|polled| unsafe { event.write(EventView::new(&polled)) });
     Status::from(result)
 }
 
@@ -783,7 +819,8 @@ impl From<EventKind> for EventKindView {
 }
 
 /// An event read from a subscription. Stays valid until the next poll. For `LOST`, only `lost`
-/// is set; for `DISCONNECTED`, only `flow`.
+/// is set, and `engine` on a subscription to an engine; for `DISCONNECTED`, only `flow`, and
+/// `engine` on a subscription to an engine.
 #[repr(C)]
 pub struct EventView {
     kind: EventKindView,
@@ -814,15 +851,15 @@ pub struct EventView {
 impl EventView {
     fn new(event: &Event<'_>) -> Self {
         match event {
-            Event::Lost { count } => Self {
+            Event::Lost(lost) => Self {
                 kind: EventKindView::Lost,
-                lost: *count,
+                lost: lost.count(),
                 id: InputIdView {
                     producer: c"".as_ptr(),
                     session: 0,
                     seq: 0,
                 },
-                engine: c"".as_ptr(),
+                engine: lost.engine.map_or(c"".as_ptr(), |engine| engine.as_c_str()),
                 flow: c"".as_ptr(),
                 forward: ForwardView::Stop,
                 payload_type: c"".as_ptr(),
