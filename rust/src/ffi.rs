@@ -1,6 +1,11 @@
 //! C ABI. Every function returns a [`Status`]; handles are opaque pointers
-//! created by `*_create` and freed by `*_destroy`. After a failure, [`gabriel_last_error`] says
-//! what went wrong.
+//! created by `*_create` and freed by `*_destroy`, and a function that acts on a handle takes it
+//! first. After a failure, [`gabriel_last_error`] says what went wrong.
+//!
+//! The ABI has a version, [`ABI_VERSION`], which changes whenever a call or a struct changes in a
+//! way that breaks code built against the previous version. A binding that loads the library at
+//! run time compares the header's version with [`gabriel_abi_version`]. Enums are 32 bits wide,
+//! and new variants may be added at the end, so code should handle values it does not know.
 //!
 //! A producer, an engine and a subscription must stay on the thread that created them: create,
 //! use and destroy each on one thread. A client and a server may be used from any thread.
@@ -8,7 +13,7 @@
 use std::{
     cell::RefCell,
     ffi::{CStr, CString, c_char},
-    path::Path,
+    path::PathBuf,
     ptr,
     time::Duration,
 };
@@ -20,8 +25,18 @@ use crate::{
     Server, Subscription, logging, subscription::Event,
 };
 
+/// The version of the ABI that this library implements.
+pub const ABI_VERSION: u32 = 1;
+
+/// The version of the ABI that the library implements. A caller built with a header of another
+/// version (`GABRIEL_ABI_VERSION`) must not use the library.
+#[unsafe(no_mangle)]
+pub extern "C" fn gabriel_abi_version() -> u32 {
+    ABI_VERSION
+}
+
 /// Status code returned by every C ABI function.
-#[repr(C)]
+#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Ok = 0,
@@ -181,13 +196,16 @@ pub unsafe extern "C" fn gabriel_producer_destroy(producer: *mut Producer) -> St
 }
 
 /// # Safety
-/// `p` must be a live handle; `buf` must be valid for writes.
+/// `producer` must be a live handle; `buf` must be valid for writes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_producer_new_input(p: *mut Producer, buf: *mut *mut u8) -> Status {
+pub unsafe extern "C" fn gabriel_producer_new_input(
+    producer: *mut Producer,
+    buf: *mut *mut u8,
+) -> Status {
     if buf.is_null() {
         return null_argument("buf");
     }
-    let result = unsafe { handle_arg(p) }
+    let result = unsafe { handle_arg(producer) }
         .and_then(Producer::new_input)
         .map(|input| unsafe { *buf = input.as_mut_ptr().cast() });
     Status::from(result)
@@ -197,16 +215,16 @@ pub unsafe extern "C" fn gabriel_producer_new_input(p: *mut Producer, buf: *mut 
 /// input's sequence number, which the events about the input carry.
 ///
 /// # Safety
-/// `p` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid for
-/// writes.
+/// `producer` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid
+/// for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_producer_publish_input(
-    p: *mut Producer,
+    producer: *mut Producer,
     len: usize,
     flow: *const c_char,
     seq: *mut u64,
 ) -> Status {
-    let result = unsafe { (|| handle_arg(p)?.publish_input(len, str_arg(flow)?))() };
+    let result = unsafe { (|| handle_arg(producer)?.publish_input(len, str_arg(flow)?))() };
     Status::from(result.map(|id| {
         if !seq.is_null() {
             unsafe { seq.write(id.seq()) };
@@ -216,34 +234,101 @@ pub unsafe extern "C" fn gabriel_producer_publish_input(
 
 // --- Client ---
 
-/// Creates a client of the local server `local_server`. `remote_server_addr` is the remote
-/// server's address, e.g. "192.0.2.1:4433", or NULL for none; the client then trusts only the
-/// certificate of `certificate_len` bytes at `certificate`, in DER, as
-/// `gabriel_server_certificate` gives it. Crossings to the remote server get the default capacity.
+/// How to create a client, beyond its name and local server. New options are added as new
+/// setters, so `gabriel_client_create` keeps its signature.
+#[derive(Debug, Default)]
+pub struct ClientOptions {
+    remote: Option<RemoteServerConfig>,
+    remote_crossing_capacity: Option<usize>,
+}
+
+/// Creates client options with the defaults: no remote server.
 ///
 /// # Safety
-/// String arguments must be NUL-terminated (`remote_server_addr` may be null); `certificate` must
-/// point to `certificate_len` readable bytes; `client` must be valid for writes.
+/// `options` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_client_options_create(options: *mut *mut ClientOptions) -> Status {
+    unsafe { create_handle(options, || Ok(ClientOptions::default())) }
+}
+
+/// # Safety
+/// `options` must be null or a live handle that is not used afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_client_options_destroy(options: *mut ClientOptions) -> Status {
+    unsafe { destroy_handle(options) }
+}
+
+/// Connects the client to the remote server at `addr`, e.g. "192.0.2.1:4433". The client trusts
+/// only the certificate of `certificate_len` bytes at `certificate`, in DER, as
+/// `gabriel_server_certificate` gives it.
+///
+/// # Safety
+/// `options` must be a live handle; `addr` must be NUL-terminated; `certificate` must point to
+/// `certificate_len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_client_options_set_remote_server(
+    options: *mut ClientOptions,
+    addr: *const c_char,
+    certificate: *const u8,
+    certificate_len: usize,
+) -> Status {
+    let result = unsafe {
+        (|| {
+            let options = handle_arg(options)?;
+            let addr = str_arg(addr)?;
+            let addr = addr
+                .parse()
+                .map_err(|e| Error::InvalidArgument(format!("invalid address {addr:?}: {e}")))?;
+            let certificate = bytes_arg(certificate, certificate_len)?.to_vec();
+            options.remote = Some(RemoteServerConfig::new(addr, certificate));
+            Ok(())
+        })()
+    };
+    Status::from(result)
+}
+
+/// Sets how many inputs each crossing to the remote server may have in flight: on the network,
+/// or waiting at the server. It must be at least 1, and needs a remote server. Without it,
+/// crossings get the default capacity.
+///
+/// # Safety
+/// `options` must be a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_client_options_set_remote_crossing_capacity(
+    options: *mut ClientOptions,
+    capacity: usize,
+) -> Status {
+    let result = unsafe { handle_arg(options) }.map(|options| {
+        options.remote_crossing_capacity = Some(capacity);
+    });
+    Status::from(result)
+}
+
+/// Creates a client of the local server `local_server`. `options` may be NULL for the defaults;
+/// the client copies what it needs, so they may be destroyed right after.
+///
+/// # Safety
+/// String arguments must be NUL-terminated; `options` must be null or a live handle; `client`
+/// must be valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_create(
     name: *const c_char,
     local_server: *const c_char,
-    remote_server_addr: *const c_char,
-    certificate: *const u8,
-    certificate_len: usize,
+    options: *const ClientOptions,
     client: *mut *mut Client,
 ) -> Status {
     unsafe {
         create_handle(client, || {
-            let remote = opt_str_arg(remote_server_addr)?
-                .map(|addr| {
-                    let addr = addr.parse().map_err(|e| {
-                        Error::InvalidArgument(format!("invalid address {addr:?}: {e}"))
-                    })?;
-                    let certificate = bytes_arg(certificate, certificate_len)?.to_vec();
-                    Ok::<_, Error>(RemoteServerConfig::new(addr, certificate))
-                })
-                .transpose()?;
+            let options = options.as_ref();
+            let mut remote = options.and_then(|options| options.remote.clone());
+            if let Some(capacity) = options.and_then(|options| options.remote_crossing_capacity) {
+                let remote = remote.as_mut().ok_or_else(|| {
+                    Error::InvalidArgument(String::from(
+                        "a remote crossing capacity needs a remote server",
+                    ))
+                })?;
+                remote.crossing_capacity = capacity;
+            }
             Client::new(str_arg(name)?, str_arg(local_server)?, remote)
         })
     }
@@ -257,21 +342,21 @@ pub unsafe extern "C" fn gabriel_client_destroy(client: *mut Client) -> Status {
 }
 
 /// # Safety
-/// `name` must be NUL-terminated; `client` must be a live handle.
+/// `client` must be a live handle; `name` must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_add_producer(
-    name: *const c_char,
     client: *mut Client,
+    name: *const c_char,
 ) -> Status {
     Status::from(unsafe { (|| handle_arg(client)?.add_producer(str_arg(name)?))() })
 }
 
 /// # Safety
-/// `name` must be NUL-terminated; `client` must be a live handle.
+/// `client` must be a live handle; `name` must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_remove_producer(
-    name: *const c_char,
     client: *mut Client,
+    name: *const c_char,
 ) -> Status {
     Status::from(unsafe { (|| handle_arg(client)?.remove_producer(str_arg(name)?))() })
 }
@@ -280,12 +365,12 @@ pub unsafe extern "C" fn gabriel_client_remove_producer(
 /// of the Rust API for an example.
 ///
 /// # Safety
-/// String arguments must be NUL-terminated; `client` must be a live handle.
+/// `client` must be a live handle; string arguments must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_add_flow(
+    client: *mut Client,
     name: *const c_char,
     spec: *const c_char,
-    client: *mut Client,
 ) -> Status {
     Status::from(unsafe {
         (|| {
@@ -296,38 +381,99 @@ pub unsafe extern "C" fn gabriel_client_add_flow(
 }
 
 /// # Safety
-/// `name` must be NUL-terminated; `client` must be a live handle.
+/// `client` must be a live handle; `name` must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_client_remove_flow(
-    name: *const c_char,
     client: *mut Client,
+    name: *const c_char,
 ) -> Status {
     Status::from(unsafe { (|| handle_arg(client)?.remove_flow(str_arg(name)?))() })
 }
 
 // --- Server ---
 
-/// `bind_addr` is the network address to accept remote clients on, or NULL for a local server.
-/// `identity_dir` is an existing directory a remote server keeps its certificate and key in, so
-/// that they stay the same across restarts; the server makes them there the first time. With
-/// NULL, it makes a new certificate each time it starts. It must be NULL for a local server.
+/// How to create a server, beyond its name. New options are added as new setters, so
+/// `gabriel_server_create` keeps its signature.
+#[derive(Debug, Default)]
+pub struct ServerOptions {
+    bind_addr: Option<String>,
+    identity_dir: Option<PathBuf>,
+}
+
+/// Creates server options with the defaults: a server with local clients only.
 ///
 /// # Safety
-/// String arguments must be NUL-terminated (`bind_addr` and `identity_dir` may be null); `server`
-/// must be valid for writes.
+/// `options` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_options_create(options: *mut *mut ServerOptions) -> Status {
+    unsafe { create_handle(options, || Ok(ServerOptions::default())) }
+}
+
+/// # Safety
+/// `options` must be null or a live handle that is not used afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_options_destroy(options: *mut ServerOptions) -> Status {
+    unsafe { destroy_handle(options) }
+}
+
+/// Makes the server accept remote clients on the network address `addr`, e.g. "0.0.0.0:4433".
+///
+/// # Safety
+/// `options` must be a live handle; `addr` must be NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_options_set_bind_addr(
+    options: *mut ServerOptions,
+    addr: *const c_char,
+) -> Status {
+    let result = unsafe {
+        (|| {
+            handle_arg(options)?.bind_addr = Some(str_arg(addr)?.to_owned());
+            Ok(())
+        })()
+    };
+    Status::from(result)
+}
+
+/// Makes a server that accepts remote clients keep its certificate and key in `dir`, an existing
+/// directory, so that they stay the same across restarts; the server makes them there the first
+/// time. Without it, the server makes a new certificate each time it starts. It needs a bind
+/// address.
+///
+/// # Safety
+/// `options` must be a live handle; `dir` must be NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_server_options_set_identity_dir(
+    options: *mut ServerOptions,
+    dir: *const c_char,
+) -> Status {
+    let result = unsafe {
+        (|| {
+            handle_arg(options)?.identity_dir = Some(PathBuf::from(str_arg(dir)?));
+            Ok(())
+        })()
+    };
+    Status::from(result)
+}
+
+/// Creates the server `name`. `options` may be NULL for the defaults; the server copies what it
+/// needs, so they may be destroyed right after.
+///
+/// # Safety
+/// `name` must be NUL-terminated; `options` must be null or a live handle; `server` must be valid
+/// for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_create(
     name: *const c_char,
-    bind_addr: *const c_char,
-    identity_dir: *const c_char,
+    options: *const ServerOptions,
     server: *mut *mut Server,
 ) -> Status {
     unsafe {
         create_handle(server, || {
+            let options = options.as_ref();
             Server::new(
                 str_arg(name)?,
-                opt_str_arg(bind_addr)?,
-                opt_str_arg(identity_dir)?.map(Path::new),
+                options.and_then(|options| options.bind_addr.as_deref()),
+                options.and_then(|options| options.identity_dir.as_deref()),
             )
         })
     }
@@ -391,21 +537,21 @@ fn not_remote() -> Error {
 }
 
 /// # Safety
-/// `name` must be NUL-terminated; `server` must be a live handle.
+/// `server` must be a live handle; `name` must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_add_engine(
-    name: *const c_char,
     server: *mut Server,
+    name: *const c_char,
 ) -> Status {
     Status::from(unsafe { (|| handle_arg(server)?.add_engine(str_arg(name)?))() })
 }
 
 /// # Safety
-/// `name` must be NUL-terminated; `server` must be a live handle.
+/// `server` must be a live handle; `name` must be NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_server_remove_engine(
-    name: *const c_char,
     server: *mut Server,
+    name: *const c_char,
 ) -> Status {
     Status::from(unsafe { (|| handle_arg(server)?.remove_engine(str_arg(name)?))() })
 }
@@ -589,7 +735,7 @@ pub unsafe extern "C" fn gabriel_engine_emit(
 // --- Subscription ---
 
 /// What happened, as a subscription reports it: the kinds of published events, and `Lost`.
-#[repr(C)]
+#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventKindView {
     Accepted,
@@ -601,6 +747,25 @@ pub enum EventKindView {
     Derived,
     /// Events were lost before the next one, because the subscriber fell behind.
     Lost,
+}
+
+/// What an engine forwarded, as a subscription reports it.
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForwardView {
+    Stop,
+    Pass,
+    Emit,
+}
+
+impl From<Forward> for ForwardView {
+    fn from(forward: Forward) -> Self {
+        match forward {
+            Forward::Stop => Self::Stop,
+            Forward::Pass => Self::Pass,
+            Forward::Emit => Self::Emit,
+        }
+    }
 }
 
 impl From<EventKind> for EventKindView {
@@ -630,7 +795,7 @@ pub struct EventView {
     /// The flow the event belongs to; "" if none.
     flow: *const c_char,
     /// What the engine forwarded, for `RESULT`.
-    forward: Forward,
+    forward: ForwardView,
     /// How to read `result`; "" if there is no result.
     payload_type: *const c_char,
     result: *const u8,
@@ -659,7 +824,7 @@ impl EventView {
                 },
                 engine: c"".as_ptr(),
                 flow: c"".as_ptr(),
-                forward: Forward::default(),
+                forward: ForwardView::Stop,
                 payload_type: c"".as_ptr(),
                 result: ptr::null(),
                 result_len: 0,
@@ -679,7 +844,7 @@ impl EventView {
                     },
                     engine: record.engine.as_c_str(),
                     flow: record.flow.as_c_str(),
-                    forward: record.forward,
+                    forward: record.forward.into(),
                     payload_type: record.payload_type.as_c_str(),
                     result: published.result().as_ptr(),
                     result_len: published.result().len(),
@@ -773,22 +938,103 @@ mod tests {
         let server = CString::new(unique("server")).unwrap();
         let mut client = ptr::null_mut();
         let created = unsafe {
-            gabriel_client_create(
-                name.as_ptr(),
-                server.as_ptr(),
-                ptr::null(),
-                ptr::null(),
-                0,
-                &mut client,
-            )
+            gabriel_client_create(name.as_ptr(), server.as_ptr(), ptr::null(), &mut client)
         };
         assert_eq!(created, Status::Ok);
 
         let status =
-            unsafe { gabriel_client_add_flow(c"flow".as_ptr(), c"[[edges]".as_ptr(), client) };
+            unsafe { gabriel_client_add_flow(client, c"flow".as_ptr(), c"[[edges]".as_ptr()) };
 
         assert_eq!(status, Status::ErrInvalid);
         assert_eq!(unsafe { gabriel_client_destroy(client) }, Status::Ok);
+    }
+
+    /// Creates a client named after `name` with `options`, and destroys it if that worked.
+    fn create_client(options: *const ClientOptions) -> Status {
+        let name = CString::new(unique("client")).unwrap();
+        let server = CString::new(unique("server")).unwrap();
+        let mut client = ptr::null_mut();
+        let status =
+            unsafe { gabriel_client_create(name.as_ptr(), server.as_ptr(), options, &mut client) };
+        assert_eq!(unsafe { gabriel_client_destroy(client) }, Status::Ok);
+        status
+    }
+
+    fn client_options() -> *mut ClientOptions {
+        let mut options = ptr::null_mut();
+        assert_eq!(
+            unsafe { gabriel_client_options_create(&mut options) },
+            Status::Ok
+        );
+        options
+    }
+
+    #[test]
+    fn crossing_capacity_needs_a_remote_server() {
+        let options = client_options();
+        let set = unsafe { gabriel_client_options_set_remote_crossing_capacity(options, 4) };
+        assert_eq!(set, Status::Ok);
+
+        assert_eq!(create_client(options), Status::ErrInvalid);
+        assert_eq!(
+            unsafe { gabriel_client_options_destroy(options) },
+            Status::Ok
+        );
+    }
+
+    #[test]
+    fn zero_crossing_capacity_is_rejected() {
+        let options = client_options();
+        let set = unsafe {
+            gabriel_client_options_set_remote_server(
+                options,
+                c"127.0.0.1:4433".as_ptr(),
+                ptr::null(),
+                0,
+            )
+        };
+        assert_eq!(set, Status::Ok);
+        unsafe { gabriel_client_options_set_remote_crossing_capacity(options, 0) };
+
+        assert_eq!(create_client(options), Status::ErrInvalid);
+        unsafe { gabriel_client_options_destroy(options) };
+    }
+
+    #[test]
+    fn remote_server_address_is_checked_when_set() {
+        let options = client_options();
+
+        let set = unsafe {
+            gabriel_client_options_set_remote_server(
+                options,
+                c"not an address".as_ptr(),
+                ptr::null(),
+                0,
+            )
+        };
+
+        assert_eq!(set, Status::ErrInvalid);
+        unsafe { gabriel_client_options_destroy(options) };
+    }
+
+    #[test]
+    fn identity_dir_needs_a_bind_address() {
+        let mut options = ptr::null_mut();
+        unsafe { gabriel_server_options_create(&mut options) };
+        unsafe { gabriel_server_options_set_identity_dir(options, c"/tmp".as_ptr()) };
+        let name = CString::new(unique("server")).unwrap();
+        let mut server = ptr::null_mut();
+
+        let status = unsafe { gabriel_server_create(name.as_ptr(), options, &mut server) };
+
+        assert_eq!(status, Status::ErrInvalid);
+        assert!(server.is_null());
+        unsafe { gabriel_server_options_destroy(options) };
+    }
+
+    #[test]
+    fn abi_version_matches_the_header() {
+        assert_eq!(gabriel_abi_version(), ABI_VERSION);
     }
 
     #[test]

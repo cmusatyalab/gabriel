@@ -9,7 +9,7 @@ use iceoryx2::{port::listener::Listener, prelude::*};
 
 use crate::{
     Result,
-    ipc::types::{EventRecord, PayloadType},
+    ipc::types::{Data, EventRecord, PayloadType},
     routing::{
         ids::{InputId, OfferId},
         server_router::InstallFlow,
@@ -21,6 +21,9 @@ use crate::{
 pub(super) struct ServerEvent {
     pub(super) record: EventRecord,
     pub(super) result: Box<[u8]>,
+    /// The input the engine forwarded, when the client must send it on and does not hold it:
+    /// one an engine on the server emitted (`InstallFlow::client_sources`).
+    pub(super) forwarded: Option<Data>,
 }
 
 /// What a server sent since the client last looked.

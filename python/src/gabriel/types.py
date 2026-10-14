@@ -65,6 +65,15 @@ class Forward(enum.IntEnum):
     EMIT = lib.GABRIEL_FORWARD_T_EMIT
 
 
+def _known(enum_type: type[enum.IntEnum], value: int) -> enum.IntEnum | int:
+    """`value` as a member of `enum_type`, or as is if this version does not know it: the ABI may
+    add values at the end of an enum."""
+    try:
+        return enum_type(value)
+    except ValueError:
+        return value
+
+
 @dataclass(frozen=True, slots=True)
 class Event:
     """What happened to one input at one engine. For `LOST`, only `lost` is set; for
@@ -73,7 +82,8 @@ class Event:
     Times are in nanoseconds on the machine's monotonic clock, which `time.monotonic_ns` reads.
     """
 
-    kind: EventKind
+    kind: EventKind | int
+    """What happened; a plain int for a kind added in a newer version of the ABI."""
     lost: int
     """How many events were lost, for `LOST`."""
     id: InputId
@@ -81,8 +91,9 @@ class Event:
     """The engine the event is about; empty if none."""
     flow: str
     """The flow the event belongs to; empty if none."""
-    forward: Forward
-    """What the engine forwarded, for `RESULT`."""
+    forward: Forward | int
+    """What the engine forwarded, for `RESULT`; a plain int for a value added in a newer version
+    of the ABI."""
     payload_type: str
     """How to read `result`; empty if there is no result."""
     result: bytes
@@ -99,12 +110,12 @@ class Event:
     @classmethod
     def _from_c(cls, view) -> "Event":
         return cls(
-            kind=EventKind(view.kind),
+            kind=_known(EventKind, view.kind),
             lost=view.lost,
             id=InputId._from_c(view.id),
             engine=ffi.string(view.engine).decode(),
             flow=ffi.string(view.flow).decode(),
-            forward=Forward(view.forward),
+            forward=_known(Forward, view.forward),
             payload_type=ffi.string(view.payload_type).decode(),
             result=bytes(ffi.buffer(view.result, view.result_len)) if view.result_len else b"",
             at_ns=view.at_ns,

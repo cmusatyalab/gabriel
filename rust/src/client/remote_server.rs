@@ -25,7 +25,7 @@ use crate::{
     Error, Result,
     client::server_link::{Received, ServerEvent, ServerLink},
     clock::Timestamp,
-    ipc::types::{CrossingHeader, CrossingKind, EventRecord, PayloadType},
+    ipc::types::{ClientEventHeader, CrossingHeader, CrossingKind, PayloadType},
     naming,
     net::{self, Waker},
     routing::{
@@ -469,11 +469,13 @@ async fn read_events(connection: Connection, events: UnboundedSender<ServerEvent
         let event = frame
             .map_err(|e| net::error("failed to read an event", e))
             .and_then(|frame| {
-                let (mut record, result) = wire::decode_with_payload::<EventRecord>(&frame)?;
+                let (header, payload) = wire::decode_with_payload::<ClientEventHeader>(&frame)?;
+                let (mut record, forwarded, result) = header.split(payload)?;
                 record.received_at = RelocatableOption::Some(received_at);
                 Ok(ServerEvent {
                     record,
                     result: Box::from(result),
+                    forwarded,
                 })
             });
         match event {
@@ -571,6 +573,7 @@ mod tests {
                         timeout: EDGE_TIMEOUT,
                     }],
                 }],
+                client_sources: vec![],
             }
         }
     }

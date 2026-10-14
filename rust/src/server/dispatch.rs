@@ -24,7 +24,9 @@ use uuid::Uuid;
 
 use crate::{
     Error, Result,
-    ipc::types::{EngineName, EventRecord, InputHeader, OutcomeRecord, PayloadType},
+    ipc::types::{
+        ClientEventHeader, Data, EngineName, EventRecord, InputHeader, OutcomeRecord, PayloadType,
+    },
     naming,
     routing::{
         ids::{InputId, OfferId},
@@ -36,13 +38,6 @@ use crate::{
 /// The slice length an engine's input and event publishers start with. They grow as needed.
 const INITIAL_SLICE_LEN: usize = 4096;
 
-/// The bytes of an input or a result, as the server keeps them. Cloning shares the bytes.
-#[derive(Debug, Clone)]
-pub(crate) struct Data {
-    pub(crate) bytes: Arc<[u8]>,
-    pub(crate) payload_type: PayloadType,
-}
-
 /// An event for the client that installed the flow `session`, in the order the client must see
 /// it.
 #[derive(Debug)]
@@ -50,6 +45,28 @@ pub(crate) struct ClientEvent {
     pub(crate) session: u64,
     pub(crate) record: EventRecord,
     pub(crate) result: Option<Data>,
+    /// The input the engine forwarded, when the client needs it (`ServerAction::ToClient`).
+    pub(crate) forwarded: Option<Data>,
+}
+
+impl ClientEvent {
+    /// The header to send the event with, as event number `seq`.
+    pub(crate) fn header(&self, seq: u64) -> ClientEventHeader {
+        ClientEventHeader::new(self.record.clone().numbered(seq), self.forwarded.as_ref())
+    }
+
+    /// The bytes to send after the header: the forwarded input, then the result.
+    pub(crate) fn payload(&self) -> [&[u8]; 2] {
+        [
+            bytes_of(self.forwarded.as_ref()),
+            bytes_of(self.result.as_ref()),
+        ]
+    }
+}
+
+/// The bytes of `data`, or none.
+fn bytes_of(data: Option<&Data>) -> &[u8] {
+    data.map_or(&[], |data| &data.bytes)
 }
 
 /// The server's ends of one engine's services.
@@ -416,11 +433,13 @@ impl Dispatcher {
                     session,
                     record,
                     result,
+                    forwarded,
                 } => {
                     self.client_events.push_back(ClientEvent {
                         session,
                         record,
                         result,
+                        forwarded,
                     });
                     Ok(())
                 }
@@ -521,6 +540,7 @@ mod tests {
                             timeout: TIMEOUT,
                         }],
                     }],
+                    client_sources: vec![],
                 })
                 .unwrap();
             Self {

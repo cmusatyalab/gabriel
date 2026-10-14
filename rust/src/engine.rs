@@ -9,7 +9,10 @@ use iceoryx2::prelude::*;
 use iceoryx2::sample::Sample;
 use iceoryx2::sample_mut_uninit::SampleMutUninit;
 
-use crate::ipc::types::{InputHeader, OutcomeRecord, PayloadType, payload_type};
+use crate::ipc::{
+    as_uninit,
+    types::{InputHeader, OutcomeRecord, PayloadType, payload_type},
+};
 use crate::routing::ids::{InputId, OfferId};
 use crate::{Error, Result, naming, services};
 
@@ -244,12 +247,6 @@ impl Engine {
             .map_err(|e| Error::Internal(format!("failed to notify the server: {e}")))?;
         Ok(())
     }
-}
-
-/// Views initialized bytes as possibly uninitialized ones, for copying into a loaned buffer.
-fn as_uninit(bytes: &[u8]) -> &[MaybeUninit<u8>] {
-    // SAFETY: `MaybeUninit<u8>` has the same layout as `u8`, and every `u8` is a valid one.
-    unsafe { std::slice::from_raw_parts(bytes.as_ptr().cast(), bytes.len()) }
 }
 
 #[cfg(test)]

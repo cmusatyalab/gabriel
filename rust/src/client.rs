@@ -817,6 +817,29 @@ mod tests {
     }
 
     #[test]
+    fn input_a_local_engine_emits_is_processed_remotely() {
+        const TILES: &[u8] = b"tiles";
+        const TILES_TYPE: &str = "example.Tiles";
+        let mut fixture = Offload::new();
+        let (tiler_name, detector_name) = (unique("tiler"), unique("detector"));
+        let mut tiler = serve(&mut fixture.local, &tiler_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        let spec = fixture.spec(&tiler_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+        assert_eq!(next_input(&mut tiler), 7);
+        let output = tiler.new_output().unwrap();
+        output[..TILES.len()].copy_from_slice(crate::ipc::as_uninit(TILES));
+        tiler.emit(TILES_TYPE, TILES.len(), &[]).unwrap();
+
+        detector.wait(WAIT).unwrap();
+        let input = detector.poll_input().unwrap();
+        assert_eq!(input.data, TILES);
+        assert_eq!(input.payload_type.to_string(), TILES_TYPE);
+    }
+
+    #[test]
     fn lost_remote_server_is_reported() {
         let mut fixture = Offload::new();
         let (filter_name, detector_name) = (unique("filter"), unique("detector"));

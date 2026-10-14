@@ -42,6 +42,7 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"time"
 	"unsafe"
@@ -64,6 +65,15 @@ var (
 	// ErrClosed means the handle was already closed.
 	ErrClosed = errors.New("already closed")
 )
+
+// The library is linked statically, but a stale build of it can still be linked against a newer
+// header. Its ABI version says so before any call goes wrong.
+func init() {
+	if version := C.gabriel_abi_version(); version != C.GABRIEL_ABI_VERSION {
+		panic(fmt.Sprintf("gabriel: the library implements ABI version %d, but the header is version %d; "+
+			"run go generate github.com/cmusatyalab/gabriel/go", version, C.GABRIEL_ABI_VERSION))
+	}
+}
 
 // Error is a failed call into Gabriel. It wraps one of the errors above.
 type Error struct {

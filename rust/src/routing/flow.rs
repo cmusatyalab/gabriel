@@ -25,11 +25,20 @@ struct ProducerState<T> {
     waiting: Option<(InputId, T)>,
 }
 
-/// An edge the client owns. It tracks inputs by id; their data is in the producer's tickets.
+/// An edge the client owns. It tracks inputs by id; their data is in the producer's tickets,
+/// unless an engine emitted a new input.
 #[derive(Debug)]
-struct ClientEdge {
-    state: EdgeState<InputId>,
+struct ClientEdge<T> {
+    state: EdgeState<EdgeInput<T>>,
     target: NodeId,
+}
+
+/// An input on a client edge.
+#[derive(Debug, Clone)]
+struct EdgeInput<T> {
+    id: InputId,
+    /// The input to send, when it is not the one its ticket holds: one an engine emitted.
+    data: Option<T>,
 }
 
 /// What the client must do after calling into the router.
@@ -64,7 +73,7 @@ pub(crate) enum RouterAction<T> {
 pub(crate) struct FlowRouter<T> {
     session: u64,
     producers: HashMap<ProducerName, ProducerState<T>>,
-    edges: HashMap<EdgeId, ClientEdge>,
+    edges: HashMap<EdgeId, ClientEdge<T>>,
     /// The client's edges leaving each producer and engine.
     outgoing: HashMap<EdgeSource, Vec<EdgeId>>,
     /// The crossing offer each server offer was created from, while that crossing still holds
@@ -204,7 +213,7 @@ impl<T: Clone> FlowRouter<T> {
                     .get_mut(edge)
                     .expect("edge was added")
                     .state
-                    .offer(id, now)
+                    .offer(EdgeInput { id, data: None }, now)
             })
             .collect();
         let producer = self
@@ -227,13 +236,19 @@ impl<T: Clone> FlowRouter<T> {
         for (&edge_id, edge) in self.edges.iter_mut() {
             while let Some(action) = edge.state.poll_action() {
                 match action {
-                    // The client's edges carry input ids; the inputs are in their tickets.
-                    EdgeAction::Send { offer, input: id } => {
-                        let input = self.producers[&id.producer]
-                            .pool
-                            .input(&id)
-                            .expect("an input being sent has an open ticket")
-                            .clone();
+                    // The client's edges carry input ids; the inputs are in their tickets, unless
+                    // an engine emitted them.
+                    EdgeAction::Send {
+                        offer,
+                        input: EdgeInput { id, data },
+                    } => {
+                        let input = data.unwrap_or_else(|| {
+                            self.producers[&id.producer]
+                                .pool
+                                .input(&id)
+                                .expect("an input being sent has an open ticket")
+                                .clone()
+                        });
                         self.actions.push_back(RouterAction::Send {
                             edge: edge_id,
                             target: edge.target,
@@ -242,7 +257,10 @@ impl<T: Clone> FlowRouter<T> {
                             input,
                         });
                     }
-                    EdgeAction::Skipped { offer, input: id } => {
+                    EdgeAction::Skipped {
+                        offer,
+                        input: EdgeInput { id, .. },
+                    } => {
                         let producer = self
                             .producers
                             .get_mut(&id.producer)
@@ -256,7 +274,10 @@ impl<T: Clone> FlowRouter<T> {
                             });
                         }
                     }
-                    EdgeAction::TimedOut { offer, input: id } => {
+                    EdgeAction::TimedOut {
+                        offer,
+                        input: EdgeInput { id, .. },
+                    } => {
                         // A crossing that times out after `Accepted` no longer holds capacity, so
                         // its children's ends must not free it again. Its offer already ended in
                         // the pool, which drops this event.
@@ -287,6 +308,8 @@ impl<T: Clone> FlowRouter<T> {
     ///
     /// Otherwise the offer's edge is freed, and if the engine passed the input on, the input is
     /// offered on the client's edges leaving that engine, unless the ticket is past its deadline.
+    /// What is offered is `emitted`, if the engine forwarded an input the ticket does not hold
+    /// (one it, or an engine before it, emitted), and the ticket's input otherwise.
     /// A crossing is the exception: `Accepted` only means the server received the input, so the
     /// crossing keeps its capacity until the first of its children ends, or until it times out.
     /// Then the ticket is updated, and inputs that were waiting for a token or an edge are
@@ -297,6 +320,7 @@ impl<T: Clone> FlowRouter<T> {
         id: &InputId,
         offer: OfferId,
         end: OfferEnd,
+        emitted: Option<T>,
         now: Instant,
     ) -> Verdict {
         let producer_name = &id.producer;
@@ -350,7 +374,13 @@ impl<T: Clone> FlowRouter<T> {
                             .get_mut(&edge)
                             .expect("edge was added")
                             .state
-                            .offer(*id, now);
+                            .offer(
+                                EdgeInput {
+                                    id: *id,
+                                    data: emitted.clone(),
+                                },
+                                now,
+                            );
                         children.push(new_offer);
                     }
                 }
@@ -414,7 +444,7 @@ impl<T: Clone> FlowRouter<T> {
             .filter(|(_, offer)| on_server(offer))
             .collect();
         for (id, offer) in lost {
-            self.end_offer(&id, offer, OfferEnd::Disconnected, now);
+            self.end_offer(&id, offer, OfferEnd::Disconnected, None, now);
         }
     }
 
@@ -589,7 +619,7 @@ mod tests {
         };
 
         // The server has the input, but neither target has finished it: input 2 waits.
-        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.end_offer(&input_id(1), crossing, accepted(1), None, now);
         router.input_ready(input_id(2), 20, now).unwrap();
         assert_eq!(sends(&mut router), vec![]);
 
@@ -598,6 +628,7 @@ mod tests {
             &input_id(1),
             server_offer(FIRST_TARGET, 1),
             stopped(FAST_ENGINE),
+            None,
             now,
         );
         assert_eq!(
@@ -614,6 +645,7 @@ mod tests {
             &input_id(1),
             server_offer(SECOND_TARGET, 1),
             stopped(SLOW_ENGINE),
+            None,
             now,
         );
         router.input_ready(input_id(3), 30, now).unwrap();
@@ -628,7 +660,7 @@ mod tests {
         let [(_, crossing)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
-        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.end_offer(&input_id(1), crossing, accepted(1), None, now);
         router.input_ready(input_id(2), 20, now).unwrap();
 
         // No target finishes in time: the crossing times out, and input 2 is sent.
@@ -641,6 +673,7 @@ mod tests {
             &input_id(1),
             server_offer(FIRST_TARGET, 1),
             stopped(FAST_ENGINE),
+            None,
             now + TIMEOUT,
         );
         assert_eq!(
@@ -666,7 +699,7 @@ mod tests {
         let no_children = OfferEnd::Accepted {
             children: Vec::new(),
         };
-        router.end_offer(&input_id(1), crossing, no_children, now);
+        router.end_offer(&input_id(1), crossing, no_children, None, now);
 
         assert_eq!(sends(&mut router), vec![(FAST.0, 2, 20)]);
     }
@@ -743,7 +776,7 @@ mod tests {
             panic!("expected one send");
         };
 
-        let verdict = router.end_offer(&input_id(1), offer, stopped(FAST_ENGINE), now);
+        let verdict = router.end_offer(&input_id(1), offer, stopped(FAST_ENGINE), None, now);
 
         assert_eq!(
             verdict,
@@ -772,7 +805,7 @@ mod tests {
             panic!("expected one send");
         };
 
-        let verdict = router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), now);
+        let verdict = router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), None, now);
 
         assert_eq!(
             verdict,
@@ -782,6 +815,62 @@ mod tests {
         );
         assert!(!router.producers[&producer()].pool.has_tokens());
         assert_eq!(sends(&mut router), vec![(UPLINK.0, 1, 10)]);
+    }
+
+    /// A router whose producer feeds the filter, which feeds the detector over an uplink.
+    fn router_with_uplink() -> FlowRouter<u32> {
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, TWO)]);
+        router
+            .add_edge(
+                UPLINK,
+                EdgeSource::Engine(FAST_ENGINE),
+                SLOW_ENGINE,
+                TWO,
+                TIMEOUT,
+            )
+            .unwrap();
+        router
+    }
+
+    #[test]
+    fn emitted_input_crosses_the_uplink_in_place_of_the_original() {
+        const TILES: u32 = 99;
+        let now = Instant::now();
+        let mut router = router_with_uplink();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+
+        router.end_offer(
+            &input_id(1),
+            filter_offer,
+            passed(FAST_ENGINE),
+            Some(TILES),
+            now,
+        );
+
+        assert_eq!(sends(&mut router), vec![(UPLINK.0, 1, TILES)]);
+    }
+
+    #[test]
+    fn an_emitted_input_does_not_replace_the_tickets_input() {
+        const TILES: u32 = 99;
+        let now = Instant::now();
+        let mut router = router_with_uplink();
+        router.input_ready(input_id(1), 10, now).unwrap();
+        router.input_ready(input_id(2), 20, now).unwrap();
+        let [(_, first), (_, second)] = sent_offers(&mut router)[..] else {
+            panic!("expected two sends");
+        };
+
+        router.end_offer(&input_id(1), first, passed(FAST_ENGINE), Some(TILES), now);
+        router.end_offer(&input_id(2), second, passed(FAST_ENGINE), None, now);
+
+        assert_eq!(
+            sends(&mut router),
+            vec![(UPLINK.0, 1, TILES), (UPLINK.0, 2, 20)]
+        );
     }
 
     #[test]
@@ -801,12 +890,12 @@ mod tests {
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
-        router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), now);
+        router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), None, now);
         let [(_, uplink_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
 
-        let verdict = router.end_offer(&input_id(1), uplink_offer, stopped(SLOW_ENGINE), now);
+        let verdict = router.end_offer(&input_id(1), uplink_offer, stopped(SLOW_ENGINE), None, now);
 
         assert_eq!(
             verdict,
@@ -834,10 +923,10 @@ mod tests {
         let [(_, filter_offer)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
-        router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), now);
+        router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), None, now);
         assert_eq!(sends(&mut router), vec![(UPLINK.0, 1, 10)]);
 
-        let verdict = router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), now);
+        let verdict = router.end_offer(&input_id(1), filter_offer, passed(FAST_ENGINE), None, now);
 
         assert_eq!(verdict, Verdict::Dropped);
         assert_eq!(sends(&mut router), vec![]);
@@ -855,7 +944,7 @@ mod tests {
 
         // The fast branch finishes first: the token returns and input 2 is admitted. Only the
         // fast edge has room, so input 2 waits in the slow edge's pending slot.
-        let fast = router.end_offer(&input_id(1), fast_offer, stopped(FAST_ENGINE), now);
+        let fast = router.end_offer(&input_id(1), fast_offer, stopped(FAST_ENGINE), None, now);
         assert_eq!(
             fast,
             Verdict::Applied {
@@ -866,7 +955,7 @@ mod tests {
 
         // The slow branch finishes input 1 late. The token already came back, so it is not
         // returned again, and the slow engine moves on to input 2.
-        let slow = router.end_offer(&input_id(1), slow_offer, stopped(SLOW_ENGINE), now);
+        let slow = router.end_offer(&input_id(1), slow_offer, stopped(SLOW_ENGINE), None, now);
         assert_eq!(
             slow,
             Verdict::Applied {
@@ -899,6 +988,7 @@ mod tests {
             &input_id(1),
             filter_offer,
             passed(FAST_ENGINE),
+            None,
             now + TIMEOUT,
         );
 
@@ -947,6 +1037,7 @@ mod tests {
             &input_id(1),
             filter_offer,
             passed(FAST_ENGINE),
+            None,
             now + TIMEOUT,
         );
 
@@ -985,7 +1076,7 @@ mod tests {
             panic!("expected one send per edge");
         };
         router.input_ready(input_id(2), 20, now).unwrap();
-        router.end_offer(&input_id(1), fast_offer, stopped(FAST_ENGINE), now);
+        router.end_offer(&input_id(1), fast_offer, stopped(FAST_ENGINE), None, now);
         router
     }
 
@@ -1000,7 +1091,7 @@ mod tests {
         // The fast edge finishes input 2, so input 3 is admitted and replaces input 2 at the
         // slow edge.
         router.input_ready(input_id(3), 30, now).unwrap();
-        router.end_offer(&input_id(2), fast_offer, stopped(FAST_ENGINE), now);
+        router.end_offer(&input_id(2), fast_offer, stopped(FAST_ENGINE), None, now);
         assert_eq!(reported(&mut router), (vec![(SLOW.0, 2)], vec![]));
 
         router.expire(now + TIMEOUT);
@@ -1019,7 +1110,7 @@ mod tests {
         let [(_, crossing)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
-        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.end_offer(&input_id(1), crossing, accepted(1), None, now);
 
         router.expire(now + TIMEOUT);
 
@@ -1043,7 +1134,7 @@ mod tests {
         router.input_ready(input_id(3), 30, now).unwrap();
         assert_eq!(sends(&mut router), vec![]);
         // A result from before the disconnection is late.
-        let late = router.end_offer(&input_id(1), crossing, stopped(FAST_ENGINE), now);
+        let late = router.end_offer(&input_id(1), crossing, stopped(FAST_ENGINE), None, now);
         assert_eq!(late, Verdict::Late);
 
         router.reconnect(&[FAST], now);
@@ -1058,7 +1149,7 @@ mod tests {
         let [(_, crossing)] = sent_offers(&mut router)[..] else {
             panic!("expected one send");
         };
-        router.end_offer(&input_id(1), crossing, accepted(1), now);
+        router.end_offer(&input_id(1), crossing, accepted(1), None, now);
 
         router.disconnect(SERVER_SESSION, &[FAST], now);
         router.reconnect(&[FAST], now);
@@ -1127,6 +1218,7 @@ mod tests {
             &input_id(1),
             offer,
             stopped(FAST_ENGINE),
+            None,
             now + SHORT_TICKET_TIMEOUT,
         );
         assert_eq!(

@@ -645,8 +645,12 @@ their own pending slot and timeout (\S\ref{sec:crossing}). Their \code{from} is 
 the crossing, which is not on this server. A server reports every result
 with what its engine forwarded, so after a \code{Pass} the client offers the
 input on its own edges from that engine, such as an uplink. After an
-\code{Emit} it cannot yet: it holds the original input, not the new one
-(\S\ref{sec:open}). Each server checks that every engine it is given has
+\code{Emit}, the client does not hold the new input. So the part also lists
+\code{client\_sources}: the engines with client edges leaving them. When one
+of them forwards an input that an engine on this server emitted, the server
+sends that input with the result event, and the client offers it in place of
+the original. This costs one copy, and only after an \code{Emit}: an input the
+client sent and an engine passed is never sent back. Each server checks that every engine it is given has
 registered with \code{add\_engine}, builds an \code{EdgeState} for each of its
 edges and each crossing target, picks a new session for its \code{OfferId}s,
 and replies with that session or an error. The call also names the client,
@@ -3537,12 +3541,6 @@ Clocks
         end its open offers with events, so their tokens come back. Moving an
         engine between the device and the cloudlet also changes the client's
         router, whose open tickets must drain or move.
-  \item \textbf{An emitted input on an uplink.} After an \code{Emit}, the
-        new input is on the local server, but an uplink is the client's, and
-        the client holds only the original input. The local server could
-        send the new input with the result event when the engine has client
-        edges, at the cost of a copy. Until then, only a \code{Pass} crosses
-        to the remote server.
   \item The values of \code{IDLE\_TIMEOUT}, \code{KEEP\_ALIVE\_INTERVAL} and
         \code{REMOTE\_RTT\_BOUND} (\S\ref{sec:remote}), and whether the
         offset between the clocks is worth estimating in Gabriel or only in

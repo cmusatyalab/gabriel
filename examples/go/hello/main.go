@@ -37,7 +37,7 @@ func main() {
 	defer cancel()
 
 	// 1. A server, and an engine it serves.
-	server, err := gabriel.NewServer("hello-server", "", "")
+	server, err := gabriel.NewServer("hello-server")
 	check(err)
 	defer server.Close()
 	engine, err := gabriel.NewEngine("hello-upper", "", 1024)
@@ -54,7 +54,7 @@ func main() {
 	defer events.Close()
 
 	// 3. A client that sends the producer's inputs through the flow.
-	client, err := gabriel.NewClient("hello-client", "hello-server", nil)
+	client, err := gabriel.NewClient("hello-client", "hello-server")
 	check(err)
 	defer client.Close()
 	check(client.AddProducer("hello-app"))

@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 
-from gabriel._ffi import LockedHandle, bytes_arg, create, cstr, lib
+from gabriel._ffi import LockedHandle, bytes_arg, check, create, cstr, lib, options
+from gabriel.errors import InvalidArgumentError
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,24 +15,42 @@ class RemoteServer:
     certificate: bytes
     """The server's certificate, in DER, as `Server.certificate` gives it. The client trusts only
     this certificate."""
+    crossing_capacity: int | None = None
+    """How many inputs each crossing to the server may have in flight: on the network, or waiting
+    at the server. At least 1; None for the default."""
 
 
 class Client(LockedHandle):
     """Bridges local producers to the servers that run a flow's engines. It may be used from any
     thread."""
 
-    def __init__(self, name: str, local_server: str, remote: RemoteServer | None = None) -> None:
+    def __init__(
+        self, name: str, local_server: str, *, remote: RemoteServer | None = None
+    ) -> None:
         """Creates the client `name`, of the local server `local_server`, and of `remote`, if
         given."""
-        addr, certificate = (None, b"") if remote is None else (remote.addr, remote.certificate)
-        handle = create(
-            lib.gabriel_client_create,
-            "gabriel_client_t **",
-            cstr(name),
-            cstr(local_server),
-            cstr(addr),
-            *bytes_arg(certificate),
-        )
+        with options("client") as opts:
+            if remote is not None:
+                check(
+                    lib.gabriel_client_options_set_remote_server(
+                        opts, cstr(remote.addr), *bytes_arg(remote.certificate)
+                    )
+                )
+                if remote.crossing_capacity is not None:
+                    if remote.crossing_capacity < 0:
+                        raise InvalidArgumentError("negative crossing capacity")
+                    check(
+                        lib.gabriel_client_options_set_remote_crossing_capacity(
+                            opts, remote.crossing_capacity
+                        )
+                    )
+            handle = create(
+                lib.gabriel_client_create,
+                "gabriel_client_t **",
+                cstr(name),
+                cstr(local_server),
+                opts,
+            )
         super().__init__(handle, lib.gabriel_client_destroy)
 
     def add_producer(self, name: str) -> None:

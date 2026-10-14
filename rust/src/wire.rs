@@ -8,7 +8,7 @@ use crate::{Error, Result, routing::server_router::InstallFlow};
 
 /// The version of these messages. A server refuses a call made with another version, so a client
 /// and a server built from different versions never misread each other.
-pub(crate) const PROTOCOL_VERSION: u32 = 1;
+pub(crate) const PROTOCOL_VERSION: u32 = 2;
 
 /// A control call, with the version of the protocol it was made with.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -69,11 +69,14 @@ pub(crate) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
         .map_err(|e| Error::InvalidArgument(format!("failed to decode a message: {e}")))
 }
 
-/// Encodes `header`, followed by `payload` as it is. Inputs and events are sent this way, so their
-/// bytes are not encoded one by one.
-pub(crate) fn encode_with_payload<T: Serialize>(header: &T, payload: &[u8]) -> Result<Vec<u8>> {
+/// Encodes `header`, followed by the parts of its payload as they are. Inputs and events are sent
+/// this way, so their bytes are not encoded one by one.
+pub(crate) fn encode_with_payload<T: Serialize>(header: &T, payload: &[&[u8]]) -> Result<Vec<u8>> {
     let mut bytes = encode(header)?;
-    bytes.extend_from_slice(payload);
+    bytes.reserve(payload.iter().map(|part| part.len()).sum());
+    for part in payload {
+        bytes.extend_from_slice(part);
+    }
     Ok(bytes)
 }
 
@@ -114,6 +117,7 @@ mod tests {
                         timeout: Duration::from_millis(250),
                     }],
                 }],
+                client_sources: vec![],
             },
         });
 
@@ -144,7 +148,7 @@ mod tests {
         .offered_at(Timestamp::from_nanos(7));
         let result = [1, 2, 3];
 
-        let bytes = encode_with_payload(&record, &result).unwrap();
+        let bytes = encode_with_payload(&record, &[&result]).unwrap();
         let (decoded, payload) = decode_with_payload::<EventRecord>(&bytes).unwrap();
 
         assert_eq!(decoded, record);

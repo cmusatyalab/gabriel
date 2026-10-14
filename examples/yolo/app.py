@@ -99,7 +99,7 @@ with (
             HEIGHT, WIDTH, CHANNELS
         )
         cv2.resize(read_frame(video, args.source), (WIDTH, HEIGHT), dst=frame)
-        published[camera.publish(FRAME_SIZE, FLOW)] = time.monotonic_ns()
+        published[camera.publish(FLOW, FRAME_SIZE)] = time.monotonic_ns()
 
         # Print the detector's results until the next frame is due.
         deadline = time.monotonic() + 1 / FRAMES_PER_SECOND

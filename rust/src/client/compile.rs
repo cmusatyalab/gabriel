@@ -178,6 +178,7 @@ pub(super) fn compile(
                 engines: Vec::new(),
                 edges: Vec::new(),
                 crossings: Vec::new(),
+                client_sources: Vec::new(),
             })
             .engines
             .push((node_id(NodeIndex::new(index)), engine.name.clone()));
@@ -227,6 +228,18 @@ pub(super) fn compile(
                 .expect("an engine's server has a part")
                 .crossings
                 .push(CrossingSpec { id, targets });
+        }
+        // The local server sends the client what such an engine emits, for its crossings.
+        if let EdgeSource::Engine(node) = source
+            && crossings
+                .last()
+                .is_some_and(|crossing| crossing.source == source)
+        {
+            parts
+                .get_mut(&Location::Local)
+                .expect("a local engine's server has a part")
+                .client_sources
+                .push(node);
         }
     }
 
@@ -459,6 +472,7 @@ mod tests {
                         timeout: FILTER_TIMEOUT,
                     }],
                 }],
+                client_sources: vec![],
             }
         );
         assert_eq!(
@@ -599,6 +613,7 @@ mod tests {
                         timeout: FILTER_TIMEOUT,
                     }],
                 }],
+                client_sources: vec![filter],
             }
         );
         assert_eq!(
@@ -624,6 +639,7 @@ mod tests {
                         timeout: DETECTOR_TIMEOUT,
                     }],
                 }],
+                client_sources: vec![],
             }
         );
         assert_eq!(

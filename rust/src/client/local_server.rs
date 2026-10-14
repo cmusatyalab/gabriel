@@ -20,7 +20,7 @@ use tracing::warn;
 use crate::{
     Error, Result,
     client::server_link::{Received, ServerEvent, ServerLink},
-    ipc::types::{CrossingHeader, CrossingKind, EventGaps, EventRecord, PayloadType},
+    ipc::types::{ClientEventHeader, CrossingHeader, CrossingKind, EventGaps, PayloadType},
     naming,
     routing::{
         ids::{InputId, OfferId},
@@ -50,7 +50,7 @@ pub(super) struct LocalServer {
     inputs: Publisher<ipc::Service, CrossingPayload, CrossingHeader>,
     /// Wakes the server after each input.
     input_ready: Notifier<ipc::Service>,
-    events: Subscriber<ipc::Service, ClientEventPayload, EventRecord>,
+    events: Subscriber<ipc::Service, ClientEventPayload, ClientEventHeader>,
     /// Wakes the client after the server sends events.
     events_ready: Listener<ipc::Service>,
     /// Finds events the stream lost.
@@ -237,11 +237,13 @@ impl ServerLink for LocalServer {
             .receive()
             .map_err(|e| Error::Internal(format!("failed to receive event: {e}")))?
         {
-            let record = sample.user_header().clone();
+            let (record, forwarded, result) =
+                sample.user_header().clone().split(sample.payload())?;
             lost += self.gaps.observe(record.seq);
             events.push(ServerEvent {
                 record,
-                result: Box::from(sample.payload()),
+                result: Box::from(result),
+                forwarded,
             });
         }
         if lost > 0 {

@@ -16,7 +16,10 @@ use tracing::{debug, info};
 
 use crate::{
     Error, Result,
-    ipc::types::{CrossingHeader, CrossingKind, EventRecord},
+    ipc::{
+        as_uninit,
+        types::{ClientEventHeader, CrossingHeader, CrossingKind},
+    },
     server::{
         client_link::ClientLink,
         dispatch::{ClientEvent, Dispatcher},
@@ -30,7 +33,7 @@ const INITIAL_SLICE_LEN: usize = 4096;
 
 /// The stream of events to one client.
 struct EventStream {
-    events: Publisher<ipc::Service, ClientEventPayload, EventRecord>,
+    events: Publisher<ipc::Service, ClientEventPayload, ClientEventHeader>,
     /// Wakes the client after each batch of events.
     ready: Notifier<ipc::Service>,
     /// The sequence number of the next event, so the client can tell whether it lost any.
@@ -56,17 +59,21 @@ impl EventStream {
         })
     }
 
-    /// Numbers `event` and publishes it, with its result as the payload.
+    /// Numbers `event` and publishes it, with the input it forwarded, if any, and its result as
+    /// the payload.
     fn publish(&mut self, event: ClientEvent) -> Result<()> {
-        let bytes = event.result.as_ref().map_or(&[][..], |data| &data.bytes);
+        let [forwarded, result] = event.payload();
         let mut sample = self
             .events
-            .loan_slice_uninit(bytes.len())
+            .loan_slice_uninit(forwarded.len() + result.len())
             .map_err(|e| Error::Internal(format!("failed to loan event: {e}")))?;
-        *sample.user_header_mut() = event.record.numbered(self.next_event);
+        *sample.user_header_mut() = event.header(self.next_event);
         self.next_event += 1;
-        sample
-            .write_from_slice(bytes)
+        let (forwarded_part, result_part) = sample.payload_mut().split_at_mut(forwarded.len());
+        forwarded_part.copy_from_slice(as_uninit(forwarded));
+        result_part.copy_from_slice(as_uninit(result));
+        // SAFETY: every byte of the payload was written just above.
+        unsafe { sample.assume_init() }
             .send()
             .map_err(|e| Error::Internal(format!("failed to publish event: {e}")))?;
         Ok(())
@@ -338,6 +345,7 @@ mod tests {
                 engines: vec![],
                 edges: vec![],
                 crossings: vec![],
+                client_sources: vec![],
             },
         })
     }

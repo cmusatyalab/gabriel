@@ -27,7 +27,7 @@ class Producer(ThreadHandle):
         check(lib.gabriel_producer_new_input(self._live(), out))
         return view(out[0], self._max_input_size, writable=True)
 
-    def publish(self, length: int, flow: str) -> int:
+    def publish(self, flow: str, length: int) -> int:
         """Publishes the first `length` bytes of the loaned buffer on `flow`, and returns the
         input's sequence number, which the events about the input carry."""
         seq = ffi.new("uint64_t *")
@@ -43,4 +43,4 @@ class Producer(ThreadHandle):
             )
         buf = self.loan()
         buf[: len(data)] = data
-        return self.publish(len(data), flow)
+        return self.publish(flow, len(data))

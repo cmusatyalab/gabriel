@@ -60,7 +60,7 @@ func (p *Producer) Loan() ([]byte, error) {
 
 // Publish publishes the first n bytes of the loaned buffer on flow, and returns the input's sequence
 // number, which the events about the input carry ([InputID]).
-func (p *Producer) Publish(n int, flow string) (uint64, error) {
+func (p *Producer) Publish(flow string, n int) (uint64, error) {
 	if err := p.check(); err != nil {
 		return 0, err
 	}
@@ -86,7 +86,7 @@ func (p *Producer) Send(flow string, data []byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return p.Publish(copy(buf, data), flow)
+	return p.Publish(flow, copy(buf, data))
 }
 
 // Close destroys the producer, and unlocks the goroutine from its thread.

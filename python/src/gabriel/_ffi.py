@@ -9,6 +9,7 @@ import math
 import os
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from cffi import FFI
@@ -31,6 +32,11 @@ _HEADER = _REPOSITORY / "rust" / "include" / "gabriel" / "gabriel_cffi.h"
 ffi = FFI()
 ffi.cdef(_HEADER.read_text())
 lib = ffi.dlopen(os.environ.get(LIBRARY_ENV, str(_LIBRARY)))
+if lib.gabriel_abi_version() != lib.GABRIEL_ABI_VERSION:
+    raise ImportError(
+        f"the Gabriel library implements ABI version {lib.gabriel_abi_version()}, but the header is "
+        f"version {lib.GABRIEL_ABI_VERSION}; build both with cargo build --release -p gabriel"
+    )
 
 _ERRORS: dict[int, type[GabrielError]] = {
     lib.GABRIEL_STATUS_T_ERR_INVALID: InvalidArgumentError,
@@ -147,7 +153,7 @@ class LockedHandle(Handle):
 
     def _call(self, function, *args) -> None:
         with self._lock:
-            check(function(*args, self._live()))
+            check(function(self._live(), *args))
 
     def close(self) -> None:
         with self._lock:
@@ -176,3 +182,13 @@ def create(function, out_type: str, *args):
     out = ffi.new(out_type)
     check(function(*args, out))
     return out[0]
+
+
+@contextmanager
+def options(kind: str):
+    """The C ABI's options of `kind` ("client" or "server"), destroyed on leaving the block."""
+    handle = create(getattr(lib, f"gabriel_{kind}_options_create"), f"gabriel_{kind}_options_t **")
+    try:
+        yield handle
+    finally:
+        getattr(lib, f"gabriel_{kind}_options_destroy")(handle)

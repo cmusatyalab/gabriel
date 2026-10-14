@@ -7,6 +7,8 @@ usize_is_size_t = true
 
 [export]
 include = ["Status"]
+# Internal limits that callers never need.
+exclude = ["MAX_CHILDREN"]
 
 [export.rename]
 "Status" = "gabriel_status_t"
@@ -19,7 +21,14 @@ include = ["Status"]
 "Subscription" = "gabriel_subscription_t"
 "EventView" = "gabriel_event_t"
 "EventKindView" = "gabriel_event_kind_t"
-"Forward" = "gabriel_forward_t"
+"ForwardView" = "gabriel_forward_t"
+"ClientOptions" = "gabriel_client_options_t"
+"ServerOptions" = "gabriel_server_options_t"
+"ABI_VERSION" = "GABRIEL_ABI_VERSION"
+"MAX_FLOW_NAME" = "GABRIEL_MAX_FLOW_NAME"
+"MAX_PAYLOAD_TYPE_NAME" = "GABRIEL_MAX_PAYLOAD_TYPE_NAME"
+"MAX_ENGINE_NAME" = "GABRIEL_MAX_ENGINE_NAME"
+"MAX_PRODUCER_NAME" = "GABRIEL_MAX_PRODUCER_NAME"
 
 [enum]
 rename_variants = "QualifiedScreamingSnakeCase"

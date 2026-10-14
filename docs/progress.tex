@@ -38,16 +38,17 @@ not better in every case, so it is to be measured against the single count.
 \paragraph{Remote server: works, not yet measured.} The client reaches a
 remote server over QUIC, on loopback and across the internet (a home desktop
 to the lab workstation, every input answered). It gets the server back after
-the server freezes or, with an identity directory, restarts. Not done yet:
-\code{Emit} across a crossing, crossings with several targets, a crossing
-capacity that adapts, and the network benchmarks against the original
-Gabriel.
+the server freezes or, with an identity directory, restarts. An
+\code{Emit} on the device now crosses too: the local server sends the new
+input back to the client with the result, and the client sends it on the
+uplink. Not done yet: crossings with several targets, a crossing capacity
+that adapts, and the network benchmarks against the original Gabriel.
 
 \paragraph{Against the original Gabriel,} on one machine, the new Gabriel's
 round trip is 7 to 13 times shorter for raw 720p to 4K frames
 (\code{docs/evaluation.tex}). Most of the time left goes to copying the frame.
 
-Tests: 219 in Rust, 8 in Go, and 12 in Python, all passing.
+Tests: 235 in Rust, 13 in Go, and 17 in Python, all passing.
 
 \section{Done}
 
@@ -210,8 +211,19 @@ Tests: 219 in Rust, 8 in Go, and 12 in Python, all passing.
         wrap the C ABI for producers, engines, subscriptions, clients, and
         servers, local and remote. Each failed call carries the last error's
         message. Examples: hello and a pipeline in Go, hello in Python, and
-        YOLO on a camera in Python (\code{examples/}). 8 tests in Go, 12 in
+        YOLO on a camera in Python (\code{examples/}). 13 tests in Go, 17 in
         Python.
+  \item[A stable ABI (\code{ffi.rs}, \code{cbindgen.toml})] Every call takes
+        its handle first. A client and a server are created with an options
+        handle (\code{gabriel\_client\_options\_t},
+        \code{gabriel\_server\_options\_t}), so new options are new setters,
+        not new signatures; the crossing capacity to the remote server is one.
+        Enums are 32 bits wide, and new values may be added at the end.
+        Constants start with \code{GABRIEL\_}. \code{GABRIEL\_ABI\_VERSION}
+        changes with every break, and both bindings check it against
+        \code{gabriel\_abi\_version()} when they load. Go takes options as
+        functional options, e.g.\ \code{WithBindAddr}; Python takes them as
+        keyword arguments.
   \item[Comparison with the original Gabriel (\code{bench/compare/})] Runs
         the new Gabriel and the original over WebSocket, ZeroMQ over TCP, and
         ZeroMQ over a Unix socket, with raw 720p, 1080p, and 4K frames, and
@@ -252,7 +264,7 @@ Step & What & Status \\
    & \textbf{done}, tested over loopback: flows split between the servers,
      uplinks, remote crossings with a configured capacity; the bench runs
      it over netem on loopback; checked across the internet; an \code{Emit}
-     does not cross yet \\
+     on the device crosses too \\
 7  & Result edges, engine inboxes, \code{Derived} results (fusion, feedback)
    & not started \\
 8  & Crossings with several targets
@@ -427,6 +439,9 @@ Step & What & Status \\
         supply, not free capacity.
   \item \textbf{All bindings go through the C ABI}, not PyO3 or a Go port, so
         there is one surface to keep stable.
+  \item \textbf{Push only, for now.} Gated chains (\code{docs/wasted-work.tex})
+        would change how inputs are scheduled, not the ABI or the events, so
+        they can come later as an option for each flow.
   \item \textbf{A remote server keeps its identity in a directory}, like an
         SSH host key: made the first time, loaded after that. Without one,
         it makes a new certificate at each start, which is fine for tests,

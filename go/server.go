@@ -16,27 +16,67 @@ type Server struct {
 	handle *C.gabriel_server_t
 }
 
-// NewServer creates the server name. bindAddr is the network address to accept remote clients on,
-// e.g. "0.0.0.0:4433", or empty for a server with local clients only.
-//
-// identityDir is an existing directory where a remote server keeps its certificate and key, so that they stay the same
-// across restarts and its clients can reconnect. The server makes them there the first time. If it
-// is empty, the server makes a new certificate each time it starts.
-func NewServer(name, bindAddr, identityDir string) (*Server, error) {
+// ServerOption configures a server that [NewServer] creates.
+type ServerOption func(*serverOptions)
+
+type serverOptions struct {
+	bindAddr    string
+	identityDir string
+}
+
+// WithBindAddr makes the server accept remote clients on the network address addr, e.g.
+// "0.0.0.0:4433". Without it, the server has local clients only.
+func WithBindAddr(addr string) ServerOption {
+	return func(o *serverOptions) { o.bindAddr = addr }
+}
+
+// WithIdentityDir makes a server that accepts remote clients keep its certificate and key in dir,
+// an existing directory, so that they stay the same across restarts and its clients can reconnect.
+// The server makes them there the first time. Without it, the server makes a new certificate each
+// time it starts. It needs [WithBindAddr].
+func WithIdentityDir(dir string) ServerOption {
+	return func(o *serverOptions) { o.identityDir = dir }
+}
+
+// set writes o to the C ABI's server options.
+func (o *serverOptions) set(options *C.gabriel_server_options_t) error {
+	if o.bindAddr != "" {
+		cBindAddr := C.CString(o.bindAddr)
+		defer C.free(unsafe.Pointer(cBindAddr))
+		err := call(func() C.gabriel_status_t { return C.gabriel_server_options_set_bind_addr(options, cBindAddr) })
+		if err != nil {
+			return err
+		}
+	}
+	if o.identityDir == "" {
+		return nil
+	}
+	cIdentityDir := C.CString(o.identityDir)
+	defer C.free(unsafe.Pointer(cIdentityDir))
+	return call(func() C.gabriel_status_t {
+		return C.gabriel_server_options_set_identity_dir(options, cIdentityDir)
+	})
+}
+
+// NewServer creates the server name. Without options, it has local clients only.
+func NewServer(name string, opts ...ServerOption) (*Server, error) {
+	var o serverOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var cBindAddr, cIdentityDir *C.char
-	if bindAddr != "" {
-		cBindAddr = C.CString(bindAddr)
-		defer C.free(unsafe.Pointer(cBindAddr))
+	var options *C.gabriel_server_options_t
+	if err := call(func() C.gabriel_status_t { return C.gabriel_server_options_create(&options) }); err != nil {
+		return nil, err
 	}
-	if identityDir != "" {
-		cIdentityDir = C.CString(identityDir)
-		defer C.free(unsafe.Pointer(cIdentityDir))
+	defer C.gabriel_server_options_destroy(options)
+	if err := o.set(options); err != nil {
+		return nil, err
 	}
 	s := &Server{}
 	err := call(func() C.gabriel_status_t {
-		return C.gabriel_server_create(cName, cBindAddr, cIdentityDir, &s.handle)
+		return C.gabriel_server_create(cName, options, &s.handle)
 	})
 	if err != nil {
 		return nil, err
@@ -58,14 +98,14 @@ func (s *Server) locked(f func() C.gabriel_status_t) error {
 func (s *Server) AddEngine(name string) error {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	return s.locked(func() C.gabriel_status_t { return C.gabriel_server_add_engine(cName, s.handle) })
+	return s.locked(func() C.gabriel_status_t { return C.gabriel_server_add_engine(s.handle, cName) })
 }
 
 // RemoveEngine stops serving the engine name.
 func (s *Server) RemoveEngine(name string) error {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	return s.locked(func() C.gabriel_status_t { return C.gabriel_server_remove_engine(cName, s.handle) })
+	return s.locked(func() C.gabriel_status_t { return C.gabriel_server_remove_engine(s.handle, cName) })
 }
 
 // RemotePort returns the port remote clients reach the server on. It fails for a server created
@@ -76,7 +116,7 @@ func (s *Server) RemotePort() (uint16, error) {
 	return uint16(port), err
 }
 
-// Certificate returns the certificate remote clients must trust, in DER ([RemoteServer]). It fails
+// Certificate returns the certificate remote clients must trust, in DER ([WithRemoteServer]). It fails
 // for a server created without a bind address.
 func (s *Server) Certificate() ([]byte, error) {
 	var certificate *C.uint8_t

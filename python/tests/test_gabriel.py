@@ -99,7 +99,7 @@ def test_loaned_input_is_published_in_place(fixture):
     buf = fixture.producer.loan()
     assert len(buf) == MAX_INPUT_SIZE
     buf[:8] = b"in place"
-    fixture.producer.publish(8, FLOW)
+    fixture.producer.publish(FLOW, 8)
 
     assert bytes(fixture.engine.next(WAIT).data) == b"in place"
 
@@ -208,6 +208,64 @@ def test_closed_handle_fails():
 
 
 def test_remote_server_gives_its_port_and_certificate():
-    with gabriel.Server(unique("server"), "127.0.0.1:0") as server:
+    with gabriel.Server(unique("server"), bind_addr="127.0.0.1:0") as server:
         assert server.remote_port > 0
         assert len(server.certificate) > 0
+
+
+def test_client_takes_a_remote_server_and_a_crossing_capacity():
+    with gabriel.Server(unique("server"), bind_addr="127.0.0.1:0") as server:
+        remote = gabriel.RemoteServer(
+            f"127.0.0.1:{server.remote_port}", server.certificate, crossing_capacity=4
+        )
+        with gabriel.Client(unique("client"), unique("local"), remote=remote):
+            pass
+
+
+def test_negative_crossing_capacity_is_invalid():
+    remote = gabriel.RemoteServer("127.0.0.1:4433", b"", crossing_capacity=-1)
+    with pytest.raises(gabriel.InvalidArgumentError):
+        gabriel.Client(unique("client"), unique("local"), remote=remote)
+
+
+def test_identity_dir_without_bind_addr_is_invalid(tmp_path):
+    with pytest.raises(gabriel.InvalidArgumentError):
+        gabriel.Server(unique("server"), identity_dir=tmp_path)
+
+
+def test_an_event_kind_from_a_newer_abi_stays_an_int():
+    from gabriel.types import _known
+
+    assert _known(gabriel.EventKind, gabriel.EventKind.RESULT) is gabriel.EventKind.RESULT
+    assert _known(gabriel.EventKind, 1000) == 1000
+
+
+def test_emitted_input_reaches_the_next_engine(fixture):
+    tracker_name = unique("tracker")
+    with gabriel.Engine(tracker_name, max_output_size=MAX_OUTPUT_SIZE) as tracker:
+        fixture.server.add_engine(tracker_name)
+        fixture.client.add_flow(
+            FLOW,
+            chain(fixture.producer_name, fixture.engine_name)
+            + f"""
+[[engines]]
+name = "{tracker_name}"
+location = "local"
+
+[[edges]]
+from = "{fixture.engine_name}"
+to = "{tracker_name}"
+timeout = "5s"
+""",
+        )
+
+        fixture.producer.send(FLOW, b"frame")
+        assert fixture.engine.next(WAIT) is not None
+        output = fixture.engine.loan()
+        output[:5] = b"tiles"
+        fixture.engine.emit(5, output_type="example.Tiles")
+
+        input = tracker.next(WAIT)
+        assert bytes(input.data) == b"tiles"
+        assert input.payload_type == "example.Tiles"
+        tracker.stop()

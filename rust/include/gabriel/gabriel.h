@@ -12,46 +12,60 @@
 
 
 /**
+ * The version of the ABI that this library implements.
+ */
+#define GABRIEL_ABI_VERSION 1
+
+/**
  * Maximum length of a flow name.
  */
-#define MAX_FLOW_NAME 64
+#define GABRIEL_MAX_FLOW_NAME 64
 
 /**
  * Maximum length of a payload type name, e.g. a protobuf full name.
  */
-#define MAX_PAYLOAD_TYPE_NAME 64
+#define GABRIEL_MAX_PAYLOAD_TYPE_NAME 64
 
 /**
  * Maximum length of an engine name.
  */
-#define MAX_ENGINE_NAME 64
-
-/**
- * Maximum number of offers one event creates: one per target engine of a crossing, or one per
- * outgoing edge after a pass.
- */
-#define MAX_CHILDREN 16
+#define GABRIEL_MAX_ENGINE_NAME 64
 
 /**
  * Maximum length of a producer name.
  */
-#define MAX_PRODUCER_NAME 64
+#define GABRIEL_MAX_PRODUCER_NAME 64
 
 /**
  * Status code returned by every C ABI function.
  */
-typedef enum {
+enum gabriel_status_t
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
   GABRIEL_STATUS_T_OK = 0,
   GABRIEL_STATUS_T_ERR_INVALID,
   GABRIEL_STATUS_T_ERR_SIZE_EXCEEDED,
   GABRIEL_STATUS_T_ERR_AGAIN,
   GABRIEL_STATUS_T_ERR_INTERNAL,
-} gabriel_status_t;
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum gabriel_status_t gabriel_status_t;
+#else
+typedef uint32_t gabriel_status_t;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
  * What happened, as a subscription reports it: the kinds of published events, and `Lost`.
  */
-typedef enum {
+enum gabriel_event_kind_t
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
   GABRIEL_EVENT_KIND_T_ACCEPTED,
   GABRIEL_EVENT_KIND_T_SENT,
   GABRIEL_EVENT_KIND_T_RESULT,
@@ -63,21 +77,45 @@ typedef enum {
    * Events were lost before the next one, because the subscriber fell behind.
    */
   GABRIEL_EVENT_KIND_T_LOST,
-} gabriel_event_kind_t;
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum gabriel_event_kind_t gabriel_event_kind_t;
+#else
+typedef uint32_t gabriel_event_kind_t;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
- * What an engine forwards along its outgoing input edges.
+ * What an engine forwarded, as a subscription reports it.
  */
-typedef enum {
+enum gabriel_forward_t
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
   GABRIEL_FORWARD_T_STOP,
   GABRIEL_FORWARD_T_PASS,
   GABRIEL_FORWARD_T_EMIT,
-} gabriel_forward_t;
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum gabriel_forward_t gabriel_forward_t;
+#else
+typedef uint32_t gabriel_forward_t;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
  * Bridges local producers to the servers that run a flow's engines.
  */
 typedef struct gabriel_client_t gabriel_client_t;
+
+/**
+ * How to create a client, beyond its name and local server. New options are added as new
+ * setters, so `gabriel_client_create` keeps its signature.
+ */
+typedef struct gabriel_client_options_t gabriel_client_options_t;
 
 /**
  * Processes one input at a time and reports exactly one outcome for it: [`Engine::stop`],
@@ -95,6 +133,12 @@ typedef struct gabriel_producer_t gabriel_producer_t;
  * Delivers the inputs of the flows installed on it to a dynamic set of engines.
  */
 typedef struct gabriel_server_t gabriel_server_t;
+
+/**
+ * How to create a server, beyond its name. New options are added as new setters, so
+ * `gabriel_server_create` keeps its signature.
+ */
+typedef struct gabriel_server_options_t gabriel_server_options_t;
 
 /**
  * Reads the events of one event service.
@@ -175,6 +219,12 @@ extern "C" {
 #endif // __cplusplus
 
 /**
+ * The version of the ABI that the library implements. A caller built with a header of another
+ * version (`GABRIEL_ABI_VERSION`) must not use the library.
+ */
+uint32_t gabriel_abi_version(void);
+
+/**
  * Says what went wrong in the last call on this thread that failed. The string stays valid until
  * the next call on this thread that fails. It is "" if no call has failed yet.
  */
@@ -209,38 +259,73 @@ gabriel_status_t gabriel_producer_destroy(gabriel_producer_t *producer);
 
 /**
  * # Safety
- * `p` must be a live handle; `buf` must be valid for writes.
+ * `producer` must be a live handle; `buf` must be valid for writes.
  */
-gabriel_status_t gabriel_producer_new_input(gabriel_producer_t *p, uint8_t **buf);
+gabriel_status_t gabriel_producer_new_input(gabriel_producer_t *producer, uint8_t **buf);
 
 /**
  * Publishes the first `len` bytes of the input on `flow`. If `seq` is not null, it gets the
  * input's sequence number, which the events about the input carry.
  *
  * # Safety
- * `p` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid for
- * writes.
+ * `producer` must be a live handle; `flow` must be NUL-terminated; `seq` must be null or valid
+ * for writes.
  */
-gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *p,
+gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *producer,
                                                 size_t len,
                                                 const char *flow,
                                                 uint64_t *seq);
 
 /**
- * Creates a client of the local server `local_server`. `remote_server_addr` is the remote
- * server's address, e.g. "192.0.2.1:4433", or NULL for none; the client then trusts only the
- * certificate of `certificate_len` bytes at `certificate`, in DER, as
- * `gabriel_server_certificate` gives it. Crossings to the remote server get the default capacity.
+ * Creates client options with the defaults: no remote server.
  *
  * # Safety
- * String arguments must be NUL-terminated (`remote_server_addr` may be null); `certificate` must
- * point to `certificate_len` readable bytes; `client` must be valid for writes.
+ * `options` must be valid for writes.
+ */
+gabriel_status_t gabriel_client_options_create(gabriel_client_options_t **options);
+
+/**
+ * # Safety
+ * `options` must be null or a live handle that is not used afterwards.
+ */
+gabriel_status_t gabriel_client_options_destroy(gabriel_client_options_t *options);
+
+/**
+ * Connects the client to the remote server at `addr`, e.g. "192.0.2.1:4433". The client trusts
+ * only the certificate of `certificate_len` bytes at `certificate`, in DER, as
+ * `gabriel_server_certificate` gives it.
+ *
+ * # Safety
+ * `options` must be a live handle; `addr` must be NUL-terminated; `certificate` must point to
+ * `certificate_len` readable bytes.
+ */
+gabriel_status_t gabriel_client_options_set_remote_server(gabriel_client_options_t *options,
+                                                          const char *addr,
+                                                          const uint8_t *certificate,
+                                                          size_t certificate_len);
+
+/**
+ * Sets how many inputs each crossing to the remote server may have in flight: on the network,
+ * or waiting at the server. It must be at least 1, and needs a remote server. Without it,
+ * crossings get the default capacity.
+ *
+ * # Safety
+ * `options` must be a live handle.
+ */
+gabriel_status_t gabriel_client_options_set_remote_crossing_capacity(gabriel_client_options_t *options,
+                                                                     size_t capacity);
+
+/**
+ * Creates a client of the local server `local_server`. `options` may be NULL for the defaults;
+ * the client copies what it needs, so they may be destroyed right after.
+ *
+ * # Safety
+ * String arguments must be NUL-terminated; `options` must be null or a live handle; `client`
+ * must be valid for writes.
  */
 gabriel_status_t gabriel_client_create(const char *name,
                                        const char *local_server,
-                                       const char *remote_server_addr,
-                                       const uint8_t *certificate,
-                                       size_t certificate_len,
+                                       const gabriel_client_options_t *options,
                                        gabriel_client_t **client);
 
 /**
@@ -251,46 +336,78 @@ gabriel_status_t gabriel_client_destroy(gabriel_client_t *client);
 
 /**
  * # Safety
- * `name` must be NUL-terminated; `client` must be a live handle.
+ * `client` must be a live handle; `name` must be NUL-terminated.
  */
-gabriel_status_t gabriel_client_add_producer(const char *name, gabriel_client_t *client);
+gabriel_status_t gabriel_client_add_producer(gabriel_client_t *client, const char *name);
 
 /**
  * # Safety
- * `name` must be NUL-terminated; `client` must be a live handle.
+ * `client` must be a live handle; `name` must be NUL-terminated.
  */
-gabriel_status_t gabriel_client_remove_producer(const char *name, gabriel_client_t *client);
+gabriel_status_t gabriel_client_remove_producer(gabriel_client_t *client, const char *name);
 
 /**
  * Adds the flow `name`. `spec` describes it in TOML, as a list of edges; see the `spec` module
  * of the Rust API for an example.
  *
  * # Safety
- * String arguments must be NUL-terminated; `client` must be a live handle.
+ * `client` must be a live handle; string arguments must be NUL-terminated.
  */
-gabriel_status_t gabriel_client_add_flow(const char *name,
-                                         const char *spec,
-                                         gabriel_client_t *client);
+gabriel_status_t gabriel_client_add_flow(gabriel_client_t *client,
+                                         const char *name,
+                                         const char *spec);
 
 /**
  * # Safety
- * `name` must be NUL-terminated; `client` must be a live handle.
+ * `client` must be a live handle; `name` must be NUL-terminated.
  */
-gabriel_status_t gabriel_client_remove_flow(const char *name, gabriel_client_t *client);
+gabriel_status_t gabriel_client_remove_flow(gabriel_client_t *client, const char *name);
 
 /**
- * `bind_addr` is the network address to accept remote clients on, or NULL for a local server.
- * `identity_dir` is an existing directory a remote server keeps its certificate and key in, so
- * that they stay the same across restarts; the server makes them there the first time. With
- * NULL, it makes a new certificate each time it starts. It must be NULL for a local server.
+ * Creates server options with the defaults: a server with local clients only.
  *
  * # Safety
- * String arguments must be NUL-terminated (`bind_addr` and `identity_dir` may be null); `server`
- * must be valid for writes.
+ * `options` must be valid for writes.
+ */
+gabriel_status_t gabriel_server_options_create(gabriel_server_options_t **options);
+
+/**
+ * # Safety
+ * `options` must be null or a live handle that is not used afterwards.
+ */
+gabriel_status_t gabriel_server_options_destroy(gabriel_server_options_t *options);
+
+/**
+ * Makes the server accept remote clients on the network address `addr`, e.g. "0.0.0.0:4433".
+ *
+ * # Safety
+ * `options` must be a live handle; `addr` must be NUL-terminated.
+ */
+gabriel_status_t gabriel_server_options_set_bind_addr(gabriel_server_options_t *options,
+                                                      const char *addr);
+
+/**
+ * Makes a server that accepts remote clients keep its certificate and key in `dir`, an existing
+ * directory, so that they stay the same across restarts; the server makes them there the first
+ * time. Without it, the server makes a new certificate each time it starts. It needs a bind
+ * address.
+ *
+ * # Safety
+ * `options` must be a live handle; `dir` must be NUL-terminated.
+ */
+gabriel_status_t gabriel_server_options_set_identity_dir(gabriel_server_options_t *options,
+                                                         const char *dir);
+
+/**
+ * Creates the server `name`. `options` may be NULL for the defaults; the server copies what it
+ * needs, so they may be destroyed right after.
+ *
+ * # Safety
+ * `name` must be NUL-terminated; `options` must be null or a live handle; `server` must be valid
+ * for writes.
  */
 gabriel_status_t gabriel_server_create(const char *name,
-                                       const char *bind_addr,
-                                       const char *identity_dir,
+                                       const gabriel_server_options_t *options,
                                        gabriel_server_t **server);
 
 /**
@@ -322,15 +439,15 @@ gabriel_status_t gabriel_server_certificate(gabriel_server_t *server,
 
 /**
  * # Safety
- * `name` must be NUL-terminated; `server` must be a live handle.
+ * `server` must be a live handle; `name` must be NUL-terminated.
  */
-gabriel_status_t gabriel_server_add_engine(const char *name, gabriel_server_t *server);
+gabriel_status_t gabriel_server_add_engine(gabriel_server_t *server, const char *name);
 
 /**
  * # Safety
- * `name` must be NUL-terminated; `server` must be a live handle.
+ * `server` must be a live handle; `name` must be NUL-terminated.
  */
-gabriel_status_t gabriel_server_remove_engine(const char *name, gabriel_server_t *server);
+gabriel_status_t gabriel_server_remove_engine(gabriel_server_t *server, const char *name);
 
 /**
  * Creates an engine. Use and destroy it only on the thread that created it. `result_type` names

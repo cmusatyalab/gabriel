@@ -9,7 +9,9 @@ use iceoryx2::prelude::*;
 use iceoryx2::service::port_factory::{event, publish_subscribe, request_response};
 
 use crate::envelope::Envelope;
-use crate::ipc::types::{CrossingHeader, EventRecord, InputHeader, OutcomeRecord};
+use crate::ipc::types::{
+    ClientEventHeader, CrossingHeader, EventRecord, InputHeader, OutcomeRecord,
+};
 use crate::{Error, Result, naming};
 
 /// Payload of a producer's input service.
@@ -294,10 +296,10 @@ pub(crate) fn open_server_input_ready(
 pub(crate) fn open_client_events(
     node: &Node<ipc::Service>,
     name: &str,
-) -> Result<publish_subscribe::PortFactory<ipc::Service, ClientEventPayload, EventRecord>> {
+) -> Result<publish_subscribe::PortFactory<ipc::Service, ClientEventPayload, ClientEventHeader>> {
     node.service_builder(&naming::client_events_service(name)?)
         .publish_subscribe::<ClientEventPayload>()
-        .user_header::<EventRecord>()
+        .user_header::<ClientEventHeader>()
         .max_publishers(1)
         .max_subscribers(1)
         .subscriber_max_buffer_size(CLIENT_EVENT_BUFFER_SIZE)

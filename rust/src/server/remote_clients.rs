@@ -269,10 +269,9 @@ impl ClientLink for RemoteClients {
         let Some(peer) = self.peers.get_mut(&id) else {
             return Ok(());
         };
-        let result = event.result.as_ref().map_or(&[][..], |data| &data.bytes);
-        let record = event.record.numbered(peer.next_event);
+        let header = event.header(peer.next_event);
         peer.next_event += 1;
-        let frame = wire::encode_with_payload(&record, result)?;
+        let frame = wire::encode_with_payload(&header, &event.payload())?;
         match peer.events.try_send(Bytes::from(frame)) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(_)) => {

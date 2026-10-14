@@ -1,6 +1,8 @@
 //! Fixed-layout types that cross iceoryx2 services between the client, the servers and the
 //! engines. Payload bytes travel next to them as the sample's slice; these carry the metadata.
 
+use std::sync::Arc;
+
 use iceoryx2::prelude::ZeroCopySend;
 use iceoryx2_bb_container::{
     relocatable_option::RelocatableOption, string::StaticString, vector::StaticVec,
@@ -325,6 +327,60 @@ fn children_from(children: &[OfferId]) -> Result<StaticVec<OfferId, MAX_CHILDREN
     })
 }
 
+/// The bytes of an input or a result, with how to read them. Cloning shares the bytes.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Data {
+    pub(crate) bytes: Arc<[u8]>,
+    pub(crate) payload_type: PayloadType,
+}
+
+/// An event for the client that installed a flow, as its server sends it.
+///
+/// The payload is the input the engine forwarded, when the client needs it and does not hold it
+/// (`InstallFlow::client_sources`), then the result bytes.
+#[derive(Debug, Clone, Default, PartialEq, ZeroCopySend, Serialize, Deserialize)]
+#[repr(C)]
+pub(crate) struct ClientEventHeader {
+    pub(crate) record: EventRecord,
+    /// How to read the forwarded input. Empty when there is none.
+    pub(crate) forwarded_type: PayloadType,
+    /// The length in bytes of the forwarded input, at the start of the payload. 0 when there is
+    /// none: an emitted input is never empty.
+    pub(crate) forwarded_len: u64,
+}
+
+impl ClientEventHeader {
+    /// The header of `record`, sent with `forwarded`, if any.
+    pub(crate) fn new(record: EventRecord, forwarded: Option<&Data>) -> Self {
+        Self {
+            record,
+            forwarded_type: forwarded.map_or_else(PayloadType::new, |data| data.payload_type),
+            forwarded_len: forwarded.map_or(0, |data| data.bytes.len() as u64),
+        }
+    }
+
+    /// Splits `payload` into the forwarded input, if any, and the result bytes. Fails if the
+    /// payload is shorter than the header says.
+    pub(crate) fn split(self, payload: &[u8]) -> Result<(EventRecord, Option<Data>, &[u8])> {
+        let forwarded_len = usize::try_from(self.forwarded_len)
+            .ok()
+            .filter(|len| *len <= payload.len())
+            .ok_or_else(|| {
+                Error::InvalidArgument(format!(
+                    "an event says it carries {} forwarded bytes, but has {}",
+                    self.forwarded_len,
+                    payload.len()
+                ))
+            })?;
+        let (forwarded, result) = payload.split_at(forwarded_len);
+        let forwarded = (!forwarded.is_empty()).then(|| Data {
+            bytes: Arc::from(forwarded),
+            payload_type: self.forwarded_type,
+        });
+        Ok((self.record, forwarded, result))
+    }
+}
+
 /// What an engine reports to its server about one offered input. The server turns it into an
 /// `EventRecord`, after it has freed the edge and created the offers that follow.
 ///
@@ -481,6 +537,43 @@ mod tests {
         let result = EventRecord::accepted(offer(1), input(), engine(), flow(), &children);
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
+    }
+
+    #[test]
+    fn client_event_splits_into_the_forwarded_input_and_the_result() {
+        const TILES: &[u8] = b"tiles";
+        const RESULT: &[u8] = b"result";
+        let forwarded = Data {
+            bytes: Arc::from(TILES),
+            payload_type: payload_type("tiles").unwrap(),
+        };
+        let header = ClientEventHeader::new(EventRecord::default(), Some(&forwarded));
+        let payload = [TILES, RESULT].concat();
+
+        let (_, split_forwarded, result) = header.split(&payload).unwrap();
+
+        assert_eq!(split_forwarded, Some(forwarded));
+        assert_eq!(result, RESULT);
+    }
+
+    #[test]
+    fn client_event_without_a_forwarded_input_is_all_result() {
+        let header = ClientEventHeader::new(EventRecord::default(), None);
+
+        let (_, forwarded, result) = header.split(b"result").unwrap();
+
+        assert_eq!(forwarded, None);
+        assert_eq!(result, b"result");
+    }
+
+    #[test]
+    fn client_event_shorter_than_its_header_says_is_rejected() {
+        let header = ClientEventHeader {
+            forwarded_len: 10,
+            ..ClientEventHeader::default()
+        };
+
+        assert!(header.split(b"short").is_err());
     }
 
     #[test]

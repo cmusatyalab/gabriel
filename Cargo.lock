@@ -499,6 +499,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "cbindgen",
+ "cc",
  "futures-util",
  "humantime-serde",
  "iceoryx2",

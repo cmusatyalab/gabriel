@@ -113,7 +113,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	server, err := gabriel.NewServer(serverName, "", "")
+	server, err := gabriel.NewServer(serverName)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	client, err := gabriel.NewClient(clientName, serverName, nil)
+	client, err := gabriel.NewClient(clientName, serverName)
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func film(ctx context.Context, ready chan<- error) error {
 		}
 		draw(buf[:frameSize], frame)
 		at := gabriel.Now()
-		seq, err := camera.Publish(frameSize, flowName)
+		seq, err := camera.Publish(flowName, frameSize)
 		if err != nil {
 			return err
 		}

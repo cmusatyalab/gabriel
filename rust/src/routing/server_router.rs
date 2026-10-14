@@ -58,6 +58,10 @@ pub(crate) struct InstallFlow {
     pub(crate) edges: Vec<EdgeSpec>,
     /// Client edges arriving at this server.
     pub(crate) crossings: Vec<CrossingSpec>,
+    /// This server's engines with client edges leaving them, such as an uplink. The client
+    /// forwards what they pass on, so after an `Emit` it needs the new input, which only this
+    /// server has. The server sends it with the result.
+    pub(crate) client_sources: Vec<NodeId>,
 }
 
 /// What the server must do after calling into the router.
@@ -76,6 +80,9 @@ pub(crate) enum ServerAction<T> {
         session: u64,
         record: EventRecord,
         result: Option<T>,
+        /// The input the engine forwarded, when the client must send it on and does not hold
+        /// it: one the engine, or an engine before it on this server, emitted.
+        forwarded: Option<T>,
     },
     /// Publish `record` on the event service of the engine `record.engine`.
     ToSubscribers {
@@ -89,6 +96,9 @@ pub(crate) enum ServerAction<T> {
 struct Kept<T> {
     id: InputId,
     data: T,
+    /// Whether `data` is the input as it came on a crossing, which the client holds too, rather
+    /// than one an engine on this server emitted.
+    from_client: bool,
     /// When the server made the offer, for the events that end it.
     offered_at: Timestamp,
 }
@@ -110,6 +120,8 @@ struct FlowState<T> {
     outgoing: HashMap<NodeId, Vec<EdgeId>>,
     /// The target edges of each crossing.
     crossings: HashMap<EdgeId, Vec<EdgeId>>,
+    /// The engines with client edges leaving them.
+    client_sources: HashSet<NodeId>,
 }
 
 /// Identifies an edge across flows: `(session, edge)`.
@@ -198,6 +210,7 @@ impl<T: Clone> ServerRouter<T> {
             edges: HashMap::new(),
             outgoing: HashMap::new(),
             crossings: HashMap::new(),
+            client_sources: spec.client_sources.iter().copied().collect(),
         };
         for (node, name) in &spec.engines {
             state
@@ -290,6 +303,15 @@ impl<T: Clone> ServerRouter<T> {
                 ends_here(target)?;
             }
         }
+        if let Some(node) = spec
+            .client_sources
+            .iter()
+            .find(|node| !nodes.contains(node))
+        {
+            return Err(Error::InvalidArgument(format!(
+                "client edges leave {node:?}, which is not an engine of this server"
+            )));
+        }
         Ok(flow)
     }
 
@@ -341,6 +363,7 @@ impl<T: Clone> ServerRouter<T> {
             let kept = Kept {
                 id,
                 data: data.clone(),
+                from_client: true,
                 offered_at: accepted_at,
             };
             let child = offer_on(flow, &mut self.engines, session, target, kept, now);
@@ -357,6 +380,7 @@ impl<T: Clone> ServerRouter<T> {
             session,
             record,
             result: None,
+            forwarded: None,
         });
         for (engine, child) in children {
             let mut record = EventRecord::accepted(offer, id, engine, flow.name, &[child])
@@ -449,18 +473,23 @@ impl<T: Clone> ServerRouter<T> {
             let ended_at = Timestamp::now();
 
             let mut children = Vec::new();
+            let mut to_client = None;
             if let Some(kept) = kept {
                 let forwarded = match outcome.forward {
                     Forward::Stop => None,
-                    Forward::Pass => Some(kept.data),
-                    Forward::Emit => output,
+                    Forward::Pass => Some((kept.data, kept.from_client)),
+                    Forward::Emit => output.map(|output| (output, false)),
                 };
-                if let Some(data) = forwarded {
+                if let Some((data, from_client)) = forwarded {
+                    if !from_client && flow.client_sources.contains(&node) {
+                        to_client = Some(data.clone());
+                    }
                     let next_edges = flow.outgoing.get(&node).cloned().unwrap_or_default();
                     for next in next_edges {
                         let kept = Kept {
                             id: outcome.id,
                             data: data.clone(),
+                            from_client,
                             offered_at: ended_at,
                         };
                         children.push(offer_on(
@@ -489,7 +518,7 @@ impl<T: Clone> ServerRouter<T> {
             if let Some(offered_at) = offered_at {
                 record = record.offered_at(offered_at);
             }
-            publish(&mut self.actions, offer.session, record, result);
+            publish(&mut self.actions, offer.session, record, result, to_client);
         }
         self.settle(now);
         Ok(())
@@ -613,7 +642,7 @@ impl<T: Clone> ServerRouter<T> {
                         EdgeAction::Send { offer, input } => {
                             let record = EventRecord::sent(offer, input.id, engine, flow.name)
                                 .offered_at(input.offered_at);
-                            publish(&mut self.actions, session, record, None);
+                            publish(&mut self.actions, session, record, None, None);
                             self.actions.push_back(ServerAction::Deliver {
                                 engine,
                                 offer,
@@ -624,12 +653,12 @@ impl<T: Clone> ServerRouter<T> {
                         EdgeAction::Skipped { offer, input } => {
                             let record = EventRecord::skipped(offer, input.id, engine, flow.name)
                                 .offered_at(input.offered_at);
-                            publish(&mut self.actions, session, record, None);
+                            publish(&mut self.actions, session, record, None, None);
                         }
                         EdgeAction::TimedOut { offer, input } => {
                             let record = EventRecord::timed_out(offer, input.id, engine, flow.name)
                                 .offered_at(input.offered_at);
-                            publish(&mut self.actions, session, record, None);
+                            publish(&mut self.actions, session, record, None, None);
                         }
                     }
                 }
@@ -661,17 +690,20 @@ fn offer_on<T: Clone>(
     offer
 }
 
-/// Queues `record` for the client of the flow `session` and for the engine's subscribers.
+/// Queues `record` for the client of the flow `session` and for the engine's subscribers. Only
+/// the client gets `forwarded` (see [`ServerAction::ToClient`]).
 fn publish<T: Clone>(
     actions: &mut VecDeque<ServerAction<T>>,
     session: u64,
     record: EventRecord,
     result: Option<T>,
+    forwarded: Option<T>,
 ) {
     actions.push_back(ServerAction::ToClient {
         session,
         record: record.clone(),
         result: result.clone(),
+        forwarded,
     });
     actions.push_back(ServerAction::ToSubscribers { record, result });
 }
@@ -839,6 +871,7 @@ mod tests {
             ],
             edges: vec![edge(TO_TRACKER, DETECTOR_NODE, TRACKER_NODE)],
             crossings: vec![crossing(CROSSING, TO_DETECTOR)],
+            client_sources: vec![],
         }
     }
 
@@ -1095,6 +1128,110 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(String::from(TRACKER), OUTPUT)]
         );
+    }
+
+    /// A router with `spec()` installed, where client edges leave `client_sources`.
+    fn installed_with_client_sources(client_sources: Vec<NodeId>) -> (ServerRouter<u32>, u64) {
+        let mut router = router(ONE);
+        let session = router
+            .install(InstallFlow {
+                client_sources,
+                ..spec()
+            })
+            .unwrap();
+        (router, session)
+    }
+
+    fn emit(offer: OfferId, seq: u64) -> OutcomeRecord {
+        OutcomeRecord::emit(
+            offer,
+            input_id(seq),
+            PayloadType::new(),
+            PayloadType::new(),
+            1,
+            0,
+        )
+        .unwrap()
+    }
+
+    /// What the router sent the client with each result, in order.
+    fn forwarded_to_client(router: &mut ServerRouter<u32>) -> Vec<Option<u32>> {
+        std::iter::from_fn(|| router.poll_action())
+            .filter_map(|action| match action {
+                ServerAction::ToClient {
+                    record, forwarded, ..
+                } if record.kind == EventKind::Result => Some(forwarded),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn emit_at_a_client_source_sends_the_new_input_to_the_client() {
+        let now = Instant::now();
+        let (mut router, session) = installed_with_client_sources(vec![DETECTOR_NODE]);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+
+        router
+            .outcome(DETECTOR, &emit(offer, 1), Some(OUTPUT), None, now)
+            .unwrap();
+
+        assert_eq!(forwarded_to_client(&mut router), vec![Some(OUTPUT)]);
+    }
+
+    #[test]
+    fn pass_at_a_client_source_sends_nothing_the_client_holds() {
+        let now = Instant::now();
+        let (mut router, session) = installed_with_client_sources(vec![DETECTOR_NODE]);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+
+        router
+            .outcome(DETECTOR, &pass(offer, 1), None, None, now)
+            .unwrap();
+
+        assert_eq!(forwarded_to_client(&mut router), vec![None]);
+    }
+
+    #[test]
+    fn pass_after_an_emit_sends_the_emitted_input_to_the_client() {
+        let now = Instant::now();
+        let (mut router, session) = installed_with_client_sources(vec![TRACKER_NODE]);
+        let to_detector = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+        router
+            .outcome(DETECTOR, &emit(to_detector, 1), Some(OUTPUT), None, now)
+            .unwrap();
+        let to_tracker = only_delivery(&steps(&mut router));
+
+        router
+            .outcome(TRACKER, &pass(to_tracker, 1), None, None, now)
+            .unwrap();
+
+        assert_eq!(forwarded_to_client(&mut router), vec![Some(OUTPUT)]);
+    }
+
+    #[test]
+    fn emit_without_client_edges_sends_nothing_to_the_client() {
+        let now = Instant::now();
+        let (mut router, session) = installed(ONE);
+        let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
+
+        router
+            .outcome(DETECTOR, &emit(offer, 1), Some(OUTPUT), None, now)
+            .unwrap();
+
+        assert_eq!(forwarded_to_client(&mut router), vec![None]);
+    }
+
+    #[test]
+    fn install_rejects_client_edges_from_an_engine_elsewhere() {
+        let mut router = router(ONE);
+
+        let result = router.install(InstallFlow {
+            client_sources: vec![SOURCE],
+            ..spec()
+        });
+
+        assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
 
     #[test]

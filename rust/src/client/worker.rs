@@ -19,10 +19,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        Arc,
-        mpsc::{self, TryRecvError},
-    },
+    sync::mpsc::{self, TryRecvError},
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -42,7 +39,7 @@ use crate::{
         remote_server::RemoteServer,
         server_link::{ServerEvent, ServerLink},
     },
-    ipc::types::{EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
+    ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
     naming,
     routing::{
         flow::{FlowRouter, RouterAction},
@@ -106,7 +103,7 @@ struct Crossing {
 /// One flow the client added.
 struct ClientFlow {
     /// Producer inputs are kept as shared bytes; the router clones them for each crossing.
-    router: FlowRouter<Arc<[u8]>>,
+    router: FlowRouter<Data>,
     parts: HashMap<Location, Part>,
     /// The node of each engine, so an event names the node it is about.
     nodes: HashMap<EngineName, NodeId>,
@@ -493,14 +490,12 @@ impl Worker {
                 let Some(&node) = flow.nodes.get(&record.engine) else {
                     return;
                 };
-                if record.forward == Forward::Emit {
-                    // The client has only the input, not what the engine emitted, so it cannot
-                    // send that on its own edges, such as an uplink.
-                    debug!(engine = %record.engine, "an emitted input does not cross to the remote server yet");
-                }
+                // After an `Emit`, the server sends the new input if the client has edges leaving
+                // the engine, and the client offers it on them.
                 OfferEnd::Result {
                     node,
-                    forwarded: record.forward == Forward::Pass,
+                    forwarded: record.forward == Forward::Pass
+                        || (record.forward == Forward::Emit && event.forwarded.is_some()),
                     children: children(),
                 }
             }
@@ -515,7 +510,9 @@ impl Worker {
             EventKind::Disconnected | EventKind::Derived => return,
         };
         let published = record.kind != EventKind::Accepted;
-        let verdict = flow.router.end_offer(&record.id, offer, end, now);
+        let verdict = flow
+            .router
+            .end_offer(&record.id, offer, end, event.forwarded.clone(), now);
         if verdict == Verdict::Dropped {
             // A duplicate, an event for an offer that already ended, e.g. with a lost connection,
             // or one for an offer the client never made.
@@ -542,8 +539,12 @@ impl Worker {
             return;
         };
         if flow.producers.contains(&input.id.producer) {
+            let data = Data {
+                bytes: input.data,
+                payload_type: PayloadType::new(),
+            };
             flow.router
-                .input_ready(input.id, input.data, now)
+                .input_ready(input.id, data, now)
                 .expect("the flow's producers are in its router");
         }
     }
@@ -648,15 +649,14 @@ impl Worker {
                             continue;
                         };
                         // An input the server did not get times out on its crossing, which frees
-                        // the crossing and, later, the input's token. Producers set no payload
-                        // type yet.
+                        // the crossing and, later, the input's token.
                         warn_on_error(
                             self.servers[&location].send(
                                 session,
                                 offer,
                                 input_id,
-                                PayloadType::new(),
-                                input,
+                                input.payload_type,
+                                input.bytes,
                             ),
                             "failed to send an input to a server",
                         );
@@ -710,7 +710,7 @@ impl Worker {
 fn install(
     server: &dyn ServerLink,
     part: &mut Part,
-    router: &mut FlowRouter<Arc<[u8]>>,
+    router: &mut FlowRouter<Data>,
     now: Instant,
 ) -> Result<()> {
     let session = server.install(part.install.clone())?;

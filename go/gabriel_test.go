@@ -61,7 +61,7 @@ func newFixture(t *testing.T) *fixture {
 	f.names.producer, f.names.engine = unique("camera"), unique("detector")
 	serverName := unique("server")
 	var err error
-	if f.server, err = NewServer(serverName, "", ""); err != nil {
+	if f.server, err = NewServer(serverName); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.server.Close() })
@@ -72,7 +72,7 @@ func newFixture(t *testing.T) *fixture {
 	if err := f.server.AddEngine(f.names.engine); err != nil {
 		t.Fatal(err)
 	}
-	if f.client, err = NewClient(unique("client"), serverName, nil); err != nil {
+	if f.client, err = NewClient(unique("client"), serverName); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.client.Close() })
@@ -156,7 +156,7 @@ func TestLoanedInputIsPublishedInPlace(t *testing.T) {
 		t.Fatalf("loaned %d bytes, want %d", len(buf), maxInputSize)
 	}
 	n := copy(buf, "in place")
-	if _, err := f.producer.Publish(n, flowName); err != nil {
+	if _, err := f.producer.Publish(flowName, n); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +233,7 @@ func TestClosedHandleFails(t *testing.T) {
 }
 
 func TestRemoteServerGivesItsPortAndCertificate(t *testing.T) {
-	server, err := NewServer(unique("server"), "127.0.0.1:0", "")
+	server, err := NewServer(unique("server"), WithBindAddr("127.0.0.1:0"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,5 +246,102 @@ func TestRemoteServerGivesItsPortAndCertificate(t *testing.T) {
 	certificate, err := server.Certificate()
 	if err != nil || len(certificate) == 0 {
 		t.Errorf("got %d certificate bytes, %v; want a certificate", len(certificate), err)
+	}
+}
+
+func TestClientTakesARemoteServerAndACrossingCapacity(t *testing.T) {
+	server, err := NewServer(unique("server"), WithBindAddr("127.0.0.1:0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	port, err := server.RemotePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := server.Certificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+	client, err := NewClient(unique("client"), unique("local"), WithRemoteServer(addr, certificate), WithCrossingCapacity(4))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+}
+
+func TestNegativeCrossingCapacityIsInvalid(t *testing.T) {
+	_, err := NewClient(unique("client"), unique("local"), WithRemoteServer("127.0.0.1:4433", nil), WithCrossingCapacity(-1))
+
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
+func TestIdentityDirWithoutBindAddrIsInvalid(t *testing.T) {
+	_, err := NewServer(unique("server"), WithIdentityDir(t.TempDir()))
+
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
+func TestCrossingCapacityNeedsARemoteServer(t *testing.T) {
+	_, err := NewClient(unique("client"), unique("local"), WithCrossingCapacity(4))
+
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
+func TestEmittedInputReachesTheNextEngine(t *testing.T) {
+	f := newFixture(t)
+	trackerName := unique("tracker")
+	tracker, err := NewEngine(trackerName, "", maxOutputSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tracker.Close()
+	if err := f.server.AddEngine(trackerName); err != nil {
+		t.Fatal(err)
+	}
+	flow := chain(f.names.producer, f.names.engine) + fmt.Sprintf(`
+[[engines]]
+name = %q
+location = "local"
+
+[[edges]]
+from = %q
+to = %q
+timeout = "5s"
+`, trackerName, f.names.engine, trackerName)
+	if err := f.client.AddFlow(flowName, flow); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.producer.Send(flowName, []byte("frame")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.engine.Next(timeout(t)); err != nil {
+		t.Fatal(err)
+	}
+	output, err := f.engine.Loan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := copy(output, "tiles")
+	if err := f.engine.Emit("example.Tiles", n, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	input, err := tracker.Next(timeout(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(input.Data, []byte("tiles")) || input.PayloadType != "example.Tiles" {
+		t.Errorf("tracker got %q of type %q, want %q of type %q", input.Data, input.PayloadType, "tiles", "example.Tiles")
 	}
 }
