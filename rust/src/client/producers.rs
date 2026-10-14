@@ -12,7 +12,7 @@ use crate::{
     Error, Result,
     envelope::Envelope,
     events::EventPublisher,
-    ipc::types::{EventRecord, FlowName},
+    ipc::types::{EventRecord, FlowName, PayloadType},
     routing::ids::{InputId, ProducerName},
     services::{self, InputPayload},
 };
@@ -29,6 +29,8 @@ pub(super) struct ReceivedInput {
     /// The flow the producer published the input on.
     pub(super) flow: FlowName,
     pub(super) data: Arc<[u8]>,
+    /// How to read `data`, as the producer names it.
+    pub(super) payload_type: PayloadType,
 }
 
 impl Producers {
@@ -170,6 +172,7 @@ impl ProducerPorts {
             },
             flow: header.flow,
             data: Arc::from(data),
+            payload_type: header.payload_type,
         }))
     }
 }
@@ -195,7 +198,7 @@ mod tests {
     #[test]
     fn nothing_is_taken_when_nothing_is_published() {
         let name = unique("producer");
-        let _producer = Producer::new(&name, MAX_INPUT_SIZE).unwrap();
+        let _producer = Producer::new(&name, None, MAX_INPUT_SIZE).unwrap();
         let mut producers = Producers::default();
         producers.add_producer(&node(), &name).unwrap();
 
@@ -205,8 +208,8 @@ mod tests {
     #[test]
     fn newest_input_of_each_producer_is_taken() {
         let (name_a, name_b) = (unique("producer-a"), unique("producer-b"));
-        let mut producer_a = Producer::new(&name_a, MAX_INPUT_SIZE).unwrap();
-        let mut producer_b = Producer::new(&name_b, MAX_INPUT_SIZE).unwrap();
+        let mut producer_a = Producer::new(&name_a, None, MAX_INPUT_SIZE).unwrap();
+        let mut producer_b = Producer::new(&name_b, None, MAX_INPUT_SIZE).unwrap();
         let node = node();
         let mut producers = Producers::default();
         producers.add_producer(&node, &name_a).unwrap();
@@ -240,7 +243,7 @@ mod tests {
     #[test]
     fn taken_inputs_are_not_taken_again() {
         let name = unique("producer");
-        let mut producer = Producer::new(&name, MAX_INPUT_SIZE).unwrap();
+        let mut producer = Producer::new(&name, None, MAX_INPUT_SIZE).unwrap();
         let mut producers = Producers::default();
         producers.add_producer(&node(), &name).unwrap();
 

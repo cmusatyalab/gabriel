@@ -1,6 +1,7 @@
 //! Producer: publishes inputs into shared memory for engines to consume.
 
 use crate::envelope::{Envelope, MAX_FLOW_NAME};
+use crate::ipc::types::{PayloadType, payload_type};
 use crate::routing::ids::{InputId, ProducerName};
 use crate::{Error, Result, services};
 use iceoryx2::port::notifier::Notifier;
@@ -20,6 +21,8 @@ pub struct Producer {
     session: u64,
     /// Sequence number of the next input.
     next_seq: u64,
+    /// How to read the producer's inputs; empty if they have no convention.
+    input_type: PayloadType,
     max_input_size: usize,
     node: Node<ipc::Service>,
     publisher: Publisher<ipc::Service, [u8], Envelope>,
@@ -28,10 +31,13 @@ pub struct Producer {
 }
 
 impl Producer {
-    /// Creates the producer `name` whose inputs are at most `max_input_size` bytes.
-    pub fn new(name: &str, max_input_size: usize) -> Result<Self> {
+    /// Creates the producer `name` whose inputs are at most `max_input_size` bytes. `input_type`
+    /// names how to read its inputs, e.g. a protobuf message name; `None` if they have no
+    /// convention. Engines see it as each input's payload type.
+    pub fn new(name: &str, input_type: Option<&str>, max_input_size: usize) -> Result<Self> {
         let producer = ProducerName::try_from(name)
             .map_err(|_| Error::InvalidArgument(format!("producer name {name:?} is too long")))?;
+        let input_type = payload_type(input_type.unwrap_or_default())?;
         let node_name = NodeName::new(name).map_err(|e| Error::InvalidArgument(e.to_string()))?;
         let node = NodeBuilder::new()
             .name(&node_name)
@@ -55,6 +61,7 @@ impl Producer {
             name: producer,
             session,
             next_seq: 1,
+            input_type,
             max_input_size,
             node,
             publisher,
@@ -98,6 +105,7 @@ impl Producer {
             seq: id.seq,
             len: len as u64,
             flow,
+            payload_type: self.input_type,
         };
         self.next_seq += 1;
 

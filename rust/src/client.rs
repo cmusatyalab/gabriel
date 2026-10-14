@@ -151,6 +151,8 @@ mod tests {
     };
 
     const MAX_OUTPUT_SIZE: usize = 16;
+    /// The type of the inputs of the producers that name one.
+    const INPUT_TYPE: &str = "example.Frame";
     const OFFER_TIMEOUT: Duration = Duration::from_secs(5);
     /// Far longer than anything here takes, so a test fails rather than hangs.
     const WAIT: Duration = Duration::from_secs(5);
@@ -173,7 +175,7 @@ mod tests {
             let server = Server::new(&server_name, None, None).unwrap();
             let mut client = Client::new(&unique("client"), &server_name, None).unwrap();
             let producer_name = unique("camera");
-            let producer = Producer::new(&producer_name, MAX_INPUT_SIZE).unwrap();
+            let producer = Producer::new(&producer_name, None, MAX_INPUT_SIZE).unwrap();
             client.add_producer(&producer_name).unwrap();
             Self {
                 server,
@@ -296,6 +298,8 @@ mod tests {
         let input = detector.poll_input().unwrap();
         assert_eq!(input.data, [7; INPUT_LEN]);
         assert_eq!(input.id.producer.to_string(), fixture.producer_name);
+        // The fixture's producer names no type.
+        assert_eq!(input.payload_type(), "");
     }
 
     #[test]
@@ -707,6 +711,7 @@ mod tests {
     }
 
     /// A local and a remote server, a client of both, and a producer the client takes inputs from.
+    /// The producer's inputs are of type `INPUT_TYPE`.
     struct Offload {
         local: Server,
         remote: Server,
@@ -726,7 +731,7 @@ mod tests {
             );
             let mut client = Client::new(&unique("client"), &local_name, Some(config)).unwrap();
             let producer_name = unique("camera");
-            let producer = Producer::new(&producer_name, MAX_INPUT_SIZE).unwrap();
+            let producer = Producer::new(&producer_name, Some(INPUT_TYPE), MAX_INPUT_SIZE).unwrap();
             client.add_producer(&producer_name).unwrap();
             Self {
                 local,
@@ -815,6 +820,24 @@ mod tests {
                 (EventKind::Result, detector_name, true, RESULT.to_vec()),
             ]
         );
+    }
+
+    #[test]
+    fn producers_input_type_reaches_local_and_remote_engines() {
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+        filter.wait(WAIT).unwrap();
+        assert_eq!(filter.poll_input().unwrap().payload_type(), INPUT_TYPE);
+        filter.pass(&[]).unwrap();
+
+        detector.wait(WAIT).unwrap();
+        assert_eq!(detector.poll_input().unwrap().payload_type(), INPUT_TYPE);
     }
 
     #[test]

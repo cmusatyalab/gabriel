@@ -245,7 +245,7 @@ func detect(engine *gabriel.Engine, input gabriel.Input) error {
 // film publishes frames from the camera until ctx is done. It reports on ready once the camera
 // exists.
 func film(ctx context.Context, ready chan<- error) error {
-	camera, err := gabriel.NewProducer(cameraName, frameSize)
+	camera, err := gabriel.NewProducer(cameraName, "", frameSize)
 	ready <- err
 	if err != nil {
 		return err

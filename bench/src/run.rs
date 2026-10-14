@@ -248,7 +248,7 @@ fn start_producer(
     let max_input_size = payloads.iter().map(Vec::len).max().unwrap_or_default();
     spawn(
         format!("producer {name}"),
-        move || Ok(Producer::new(&producer_name, max_input_size)?),
+        move || Ok(Producer::new(&producer_name, None, max_input_size)?),
         move |mut producer| {
             let mut rng = StdRng::seed_from_u64(seed);
             let mut inputs = Vec::new();

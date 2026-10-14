@@ -44,7 +44,7 @@ use crate::{
         remote_server::RemoteServer,
         server_link::{ServerEvent, ServerLink},
     },
-    ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Forward, PayloadType},
+    ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Forward},
     naming,
     routing::{
         flow::{FlowRouter, RouterAction},
@@ -600,7 +600,7 @@ impl Worker {
         if flow.producers.contains(&input.id.producer) {
             let data = Data {
                 bytes: input.data,
-                payload_type: PayloadType::new(),
+                payload_type: input.payload_type,
             };
             flow.router
                 .input_ready(input.id, data, now)

@@ -46,7 +46,7 @@ func main() {
 	check(server.AddEngine("hello-upper"))
 
 	// 2. A producer for the app's inputs, and a subscription to what happens to them.
-	producer, err := gabriel.NewProducer("hello-app", 1024)
+	producer, err := gabriel.NewProducer("hello-app", "", 1024)
 	check(err)
 	defer producer.Close()
 	events, err := gabriel.SubscribeProducer("hello-app")

@@ -20,15 +20,22 @@ type Producer struct {
 	maxInputSize int
 }
 
-// NewProducer creates the producer name, whose inputs are at most maxInputSize bytes. A client
-// takes its inputs once it adds the producer ([Client.AddProducer]).
-func NewProducer(name string, maxInputSize int) (*Producer, error) {
+// NewProducer creates the producer name, whose inputs are at most maxInputSize bytes. inputType
+// names how to read its inputs, e.g. a protobuf message name; "" if they have no convention.
+// Engines see it as each input's payload type. A client takes its inputs once it adds the
+// producer ([Client.AddProducer]).
+func NewProducer(name, inputType string, maxInputSize int) (*Producer, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
+	var cInputType *C.char
+	if inputType != "" {
+		cInputType = C.CString(inputType)
+		defer C.free(unsafe.Pointer(cInputType))
+	}
 	t := lockThread()
 	p := &Producer{thread: t, maxInputSize: maxInputSize}
 	err := call(func() C.gabriel_status_t {
-		return C.gabriel_producer_create(cName, C.size_t(maxInputSize), &p.handle)
+		return C.gabriel_producer_create(cName, cInputType, C.size_t(maxInputSize), &p.handle)
 	})
 	if err != nil {
 		t.release()

@@ -243,12 +243,15 @@ const char *gabriel_last_error(void);
 gabriel_status_t gabriel_log_init(const char *filter);
 
 /**
- * Creates a producer. Use and destroy it only on the thread that created it.
+ * Creates a producer. Use and destroy it only on the thread that created it. `input_type` names
+ * how to read the producer's inputs, e.g. a protobuf message name. It may be NULL.
  *
  * # Safety
- * String arguments must be NUL-terminated; `producer` must be valid for writes.
+ * String arguments must be NUL-terminated (`input_type` may be null); `producer` must be valid
+ * for writes.
  */
 gabriel_status_t gabriel_producer_create(const char *name,
+                                         const char *input_type,
                                          size_t max_input_size,
                                          gabriel_producer_t **producer);
 

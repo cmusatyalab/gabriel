@@ -16,6 +16,8 @@ const (
 	maxInputSize  = 64
 	maxOutputSize = 64
 	flowName      = "flow"
+	// inputType is the type of the fixture producer's inputs.
+	inputType = "example.Frame"
 	// wait is far longer than anything here takes, so a test fails rather than hangs.
 	wait = 5 * time.Second
 )
@@ -76,7 +78,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.client.Close() })
-	if f.producer, err = NewProducer(f.names.producer, maxInputSize); err != nil {
+	if f.producer, err = NewProducer(f.names.producer, inputType, maxInputSize); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.producer.Close() })
@@ -116,6 +118,9 @@ func TestInputReachesEngineAndResultReachesApp(t *testing.T) {
 	}
 	if input.ID.Producer != f.names.producer || input.ID.Seq != seq {
 		t.Errorf("engine got input %+v, want seq %d of %s", input.ID, seq, f.names.producer)
+	}
+	if input.PayloadType != inputType {
+		t.Errorf("engine got an input of type %q, want %q", input.PayloadType, inputType)
 	}
 	if err := f.engine.Pass([]byte("cat")); err != nil {
 		t.Fatal(err)
@@ -219,7 +224,7 @@ func TestEngineUsedFromAnotherGoroutineFails(t *testing.T) {
 }
 
 func TestClosedHandleFails(t *testing.T) {
-	producer, err := NewProducer(unique("camera"), maxInputSize)
+	producer, err := NewProducer(unique("camera"), "", maxInputSize)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,6 +67,7 @@ uint32_t gabriel_abi_version(void);
 const char *gabriel_last_error(void);
 gabriel_status_t gabriel_log_init(const char *filter);
 gabriel_status_t gabriel_producer_create(const char *name,
+                                         const char *input_type,
                                          size_t max_input_size,
                                          gabriel_producer_t **producer);
 gabriel_status_t gabriel_producer_destroy(gabriel_producer_t *producer);

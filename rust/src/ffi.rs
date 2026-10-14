@@ -175,17 +175,24 @@ pub unsafe extern "C" fn gabriel_log_init(filter: *const c_char) -> Status {
 
 // --- Producer ---
 
-/// Creates a producer. Use and destroy it only on the thread that created it.
+/// Creates a producer. Use and destroy it only on the thread that created it. `input_type` names
+/// how to read the producer's inputs, e.g. a protobuf message name. It may be NULL.
 ///
 /// # Safety
-/// String arguments must be NUL-terminated; `producer` must be valid for writes.
+/// String arguments must be NUL-terminated (`input_type` may be null); `producer` must be valid
+/// for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gabriel_producer_create(
     name: *const c_char,
+    input_type: *const c_char,
     max_input_size: usize,
     producer: *mut *mut Producer,
 ) -> Status {
-    unsafe { create_handle(producer, || Producer::new(str_arg(name)?, max_input_size)) }
+    unsafe {
+        create_handle(producer, || {
+            Producer::new(str_arg(name)?, opt_str_arg(input_type)?, max_input_size)
+        })
+    }
 }
 
 /// # Safety
@@ -1021,7 +1028,8 @@ mod tests {
 
     #[test]
     fn create_rejects_null_out_pointer() {
-        let status = unsafe { gabriel_producer_create(c"p".as_ptr(), 0, ptr::null_mut()) };
+        let status =
+            unsafe { gabriel_producer_create(c"p".as_ptr(), ptr::null(), 0, ptr::null_mut()) };
         assert_eq!(status, Status::ErrInvalid);
     }
 
@@ -1150,7 +1158,7 @@ mod tests {
     #[test]
     fn last_error_says_what_failed() {
         let mut producer = ptr::null_mut();
-        unsafe { gabriel_producer_create(ptr::null(), 0, &mut producer) };
+        unsafe { gabriel_producer_create(ptr::null(), ptr::null(), 0, &mut producer) };
 
         let message = unsafe { CStr::from_ptr(gabriel_last_error()) };
 
@@ -1160,7 +1168,7 @@ mod tests {
     #[test]
     fn create_rejects_null_name() {
         let mut producer = ptr::null_mut();
-        let status = unsafe { gabriel_producer_create(ptr::null(), 0, &mut producer) };
+        let status = unsafe { gabriel_producer_create(ptr::null(), ptr::null(), 0, &mut producer) };
         assert_eq!(status, Status::ErrInvalid);
         assert!(producer.is_null());
     }

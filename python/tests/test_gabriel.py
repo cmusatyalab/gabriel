@@ -12,6 +12,8 @@ import gabriel
 MAX_INPUT_SIZE = 64
 MAX_OUTPUT_SIZE = 64
 FLOW = "flow"
+# The type of the fixture producer's inputs.
+INPUT_TYPE = "example.Frame"
 # Far longer than anything here takes, so a test fails rather than hangs.
 WAIT = 5.0
 # How long a test lets a wait run before interrupting it.
@@ -54,7 +56,9 @@ class Fixture:
         self.engine = gabriel.Engine(self.engine_name, max_output_size=MAX_OUTPUT_SIZE)
         self.server.add_engine(self.engine_name)
         self.client = gabriel.Client(unique("client"), server_name)
-        self.producer = gabriel.Producer(self.producer_name, max_input_size=MAX_INPUT_SIZE)
+        self.producer = gabriel.Producer(
+            self.producer_name, input_type=INPUT_TYPE, max_input_size=MAX_INPUT_SIZE
+        )
         self.client.add_producer(self.producer_name)
 
     def add_flow(self) -> None:
@@ -81,6 +85,7 @@ def test_input_reaches_engine_and_result_reaches_app(fixture):
         assert bytes(input.data) == b"frame"
         assert input.id.producer == fixture.producer_name
         assert input.id.seq == seq
+        assert input.payload_type == INPUT_TYPE
         fixture.engine.pass_(b"cat")
 
         deadline = time.monotonic() + WAIT

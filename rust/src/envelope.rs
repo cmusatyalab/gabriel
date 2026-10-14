@@ -3,6 +3,8 @@
 use iceoryx2::prelude::ZeroCopySend;
 use iceoryx2_bb_container::string::StaticString;
 
+use crate::ipc::types::PayloadType;
+
 /// Maximum length of a flow name.
 pub const MAX_FLOW_NAME: usize = 64;
 
@@ -17,4 +19,6 @@ pub struct Envelope {
     pub len: u64,
     /// Flow the input was published on.
     pub flow: StaticString<MAX_FLOW_NAME>,
+    /// How to read the input, as its producer names it; empty if it has no convention.
+    pub payload_type: PayloadType,
 }

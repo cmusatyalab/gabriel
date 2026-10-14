@@ -11,11 +11,17 @@ class Producer(ThreadHandle):
     A producer must be used and closed on the thread that created it.
     """
 
-    def __init__(self, name: str, *, max_input_size: int) -> None:
-        """Creates the producer `name`, whose inputs are at most `max_input_size` bytes. A client
-        takes its inputs once it adds the producer (`Client.add_producer`)."""
+    def __init__(self, name: str, *, input_type: str | None = None, max_input_size: int) -> None:
+        """Creates the producer `name`, whose inputs are at most `max_input_size` bytes.
+        `input_type` names how to read its inputs, e.g. a protobuf message name; engines see it as
+        each input's payload type. A client takes its inputs once it adds the producer
+        (`Client.add_producer`)."""
         handle = create(
-            lib.gabriel_producer_create, "gabriel_producer_t **", cstr(name), max_input_size
+            lib.gabriel_producer_create,
+            "gabriel_producer_t **",
+            cstr(name),
+            cstr(input_type),
+            max_input_size,
         )
         super().__init__(handle, lib.gabriel_producer_destroy)
         self._max_input_size = max_input_size
