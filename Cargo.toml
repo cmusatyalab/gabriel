@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["rust", "bench"]
+members = ["rust", "bench", "server"]
 
 [workspace.package]
 edition = "2024"

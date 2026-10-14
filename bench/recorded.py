@@ -3,6 +3,10 @@ of results each engine forwards, the producer's interval, the throughput and
 age of information at an engine, and wasted work.
 
 Used by shadow_counts.py and simulate_sections.py. Times are in ms.
+
+A remote server elsewhere stamps its events with its own clock, so a time
+from it is only compared with another from it, as in service times. The
+device knows of a remote event when the client receives it.
 """
 
 import csv
@@ -42,6 +46,12 @@ class Run:
         return [engine["name"] for engine in self.spec["flow"]["engines"]]
 
 
+def known_ns(event: dict) -> int:
+    """When the device knew of `event`, on its clock: when the client
+    received it, for a remote server's event."""
+    return int(event.get("received_ns") or event["at_ns"])
+
+
 def load(path: Path) -> Run:
     """Read the run in the output directory `path`."""
     spec = tomllib.loads((path / "run.toml").read_text())
@@ -52,7 +62,7 @@ def load(path: Path) -> Run:
     with open(path / "events.csv") as f:
         events = list(csv.DictReader(f))
     events = [e for e in events if e["at_ns"]]
-    events.sort(key=lambda e: int(e["at_ns"]))
+    events.sort(key=known_ns)
     # Runs recorded before the bench wrote work.csv have none.
     work = []
     if (path / "work.csv").exists():
@@ -150,12 +160,13 @@ def throughput_and_aoi(
 
 
 def measured(run: Run, engine: str, trim_s: float = DEFAULT_TRIM_S):
-    """Results a second and mean AoI in ms at `engine`."""
+    """Results a second and mean AoI in ms at `engine`, as the app sees its
+    results."""
     published = run.published_ns.values()
     start = (min(published) / NS_PER_MS) + trim_s * MS_PER_S
     end = (max(published) / NS_PER_MS) - trim_s * MS_PER_S
     at = [
-        (int(e["at_ns"]) / NS_PER_MS, run.published_ns[e["seq"]] / NS_PER_MS)
+        (known_ns(e) / NS_PER_MS, run.published_ns[e["seq"]] / NS_PER_MS)
         for e in run.events
         if e["kind"] == "Result"
         and e["engine"] == engine

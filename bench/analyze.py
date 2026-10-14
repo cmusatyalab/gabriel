@@ -31,13 +31,25 @@ Per input an engine got:
                idle before it got this input.
   back         received - result, for a remote engine: the result's trip
                back to the client.
+  link         for a remote engine, the time from the previous engine's
+               result (or from publishing, for a first engine) to the
+               client receiving this engine's result, less the time at the
+               remote server: uplink and back together, plus the wait for a
+               token for a first engine.
 
 Age of information (AoI), per engine: at each moment, the age of the input
 behind the newest result the app has: its time average, and its peaks just
 before each new result. A remote engine's result counts from when the client
 received it.
 
-Both servers run on this machine, so all timestamps share one clock.
+Clocks: when the bench runs the remote server, both servers share this
+machine's clock. A remote server elsewhere (`addr` in the run's [remote])
+stamps its events with its own clock, which no one syncs to the device's.
+Then a time from the remote server is only compared with another from it
+(service time, edge wait, idle), and the device's view of a remote event is
+when the client received it (link, AoI, and the run's start and end). The
+waits that need both clocks (age, excess, uplink, back, and before at a
+remote first engine) are left out for remote engines.
 
 Per producer, by Little's law: the average number of its inputs in flight,
 from reaching the server to their last event, against its tokens.
@@ -60,7 +72,10 @@ PERCENTILES = [0.5, 0.9, 0.99]
 INPUT = ["producer", "session", "seq", "flow"]
 # The events that end an offer at an engine.
 ENDS = ["Result", "Skipped", "TimedOut"]
-WAITS = ["age", "excess", "before", "uplink", "edge_wait", "idle", "back"]
+WAITS = ["age", "excess", "before", "uplink", "edge_wait", "idle", "back", "link"]
+# The waits of a remote engine that subtract a time on one clock from a time
+# on the other, when the remote server's clock is its own.
+CROSS_CLOCK_WAITS = ["age", "excess", "before", "uplink", "back"]
 # Inputs published this close to the start or the end of a run are left out
 # of waits and ages: engines are still starting, or no newer input comes to
 # replace a waiting one.
@@ -77,7 +92,24 @@ def load(run: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     if "received_ns" not in events:
         events["received_ns"] = float("nan")
     spec = tomllib.loads((run / "run.toml").read_text())
+    # When the device knew of each event: a remote server's events reach it
+    # when the client receives them.
+    events["known_ns"] = events.received_ns.fillna(events.at_ns)
     return inputs, events, spec
+
+
+def two_clocks(spec: dict) -> bool:
+    """Whether the remote server is elsewhere, with its own clock."""
+    return "addr" in spec.get("remote", {})
+
+
+def remote_engines(spec: dict) -> set[str]:
+    """The engines on the remote server."""
+    return {
+        engine["name"]
+        for engine in spec["flow"]["engines"]
+        if engine["location"] == "remote"
+    }
 
 
 def offers(
@@ -89,7 +121,7 @@ def offers(
         [*INPUT, "engine", "offered_ns", "kind", "at_ns", "received_ns"]
     ]
     offers = (
-        sent.drop(columns="received_ns")
+        sent.rename(columns={"received_ns": "sent_received_ns"})
         .merge(
             ended.rename(
                 columns={
@@ -112,6 +144,10 @@ def offers(
     offers["back"] = offers.ended_received_ns - offers.ended_ns
     # When the app learned how the offer ended.
     offers["seen_ns"] = offers.ended_received_ns.fillna(offers.ended_ns)
+    # When the device knew the input was sent to the engine.
+    offers["sent_known_ns"] = offers.sent_received_ns.fillna(offers.sent_ns)
+    remote = offers.engine.isin(remote_engines(spec))
+    separate = two_clocks(spec)
 
     # Walk each offer back to the result that made it, in the order offers
     # were made, so a parent's waiting is known before its children's. On
@@ -134,30 +170,47 @@ def offers(
     results = defaultdict(list)
     for index, row in offers[offers.end == "Result"].iterrows():
         results[tuple(row[INPUT])].append((row.ended_ns, row.engine, index))
-    excess, before, uplink = {}, {}, {}
-    for index, row in offers.sort_values("offered_ns").iterrows():
+    excess, before, uplink, link = {}, {}, {}, {}
+    # Parents first: on one clock in the order offers were made, and with two
+    # clocks in the order the device knew of them.
+    order = "sent_known_ns" if separate else "offered_ns"
+    for index, row in offers.sort_values(order).iterrows():
         key = tuple(row[INPUT])
         parent = made_by.get((*key, row.offered_ns))
         if parent is not None:
             excess[index] = excess[parent] + row.edge_wait
             continue
+        # The offer was made on another server, after the latest result
+        # before it from an engine with an edge to this one. With two clocks,
+        # the device only knows that the result came before it heard of the
+        # send.
+        made_at = row.sent_known_ns if separate else row.offered_ns
         earlier = [
             (ended_ns, parent)
             for ended_ns, engine, parent in results[key]
-            if engine in feeds[row.engine] and ended_ns <= row.offered_ns
+            if engine in feeds[row.engine] and ended_ns <= made_at
         ]
         if earlier:
             ended_ns, parent = max(earlier)
             uplink[index] = row.offered_ns - ended_ns
             excess[index] = excess[parent] + uplink[index] + row.edge_wait
         else:
+            ended_ns = row.published_ns
             before[index] = row.offered_ns - row.published_ns
             excess[index] = before[index] + row.edge_wait
+        # Both on the device's clock, less a time measured on the remote
+        # server's.
+        link[index] = (
+            row.ended_received_ns - ended_ns - (row.ended_ns - row.offered_ns)
+        )
     # Typed, so a wait no offer has, such as the uplink on one server, is
     # still a column of numbers.
     offers["before"] = pd.Series(before, dtype=float)
     offers["uplink"] = pd.Series(uplink, dtype=float)
     offers["excess"] = pd.Series(excess, dtype=float)
+    offers["link"] = pd.Series(link, dtype=float)
+    if separate:
+        offers.loc[remote, CROSS_CLOCK_WAITS] = float("nan")
 
     # Each engine works on one input at a time, so the time from one result
     # to the next send is idle time.
@@ -187,9 +240,9 @@ def engine_load(
     """
     seconds = (end - start) / NS_PER_S
     at_engines = events[
-        events.engine.notna() & events.at_ns.between(start, end)
+        events.engine.notna() & events.known_ns.between(start, end)
     ]
-    sent = offers[offers.sent_ns.between(start, end)]
+    sent = offers[offers.sent_known_ns.between(start, end)]
     # Offers the server made: sent ones, and ones skipped in its slots.
     made = at_engines[
         (at_engines.kind == "Sent")
@@ -217,8 +270,13 @@ def engine_load(
 
 
 def busy_ns(offers: pd.DataFrame, start: float, end: float) -> float:
-    """How long the engine worked between `start` and `end`."""
-    worked = offers.ended_ns.clip(upper=end) - offers.sent_ns.clip(lower=start)
+    """How long the engine worked between `start` and `end`, on the
+    device's clock. A remote engine's work is counted whole if the device
+    knew it was sent in between."""
+    if offers.sent_received_ns.isna().all():
+        worked = offers.ended_ns.clip(upper=end) - offers.sent_ns.clip(lower=start)
+    else:
+        worked = offers.service.where(offers.sent_known_ns.between(start, end))
     return worked.where(offers.end == "Result").clip(lower=0).sum()
 
 
@@ -273,8 +331,12 @@ def in_flight(
     these can exceed the tokens there. The average is over `start` to `end`.
     """
     timed = events.dropna(subset=["seq"])
-    first = timed.groupby(["producer", "session", "seq"]).offered_ns.min()
-    last = timed.groupby(["producer", "session", "seq"]).at_ns.max()
+    # On the device's clock: an offer at a remote server counts from when the
+    # device heard of it.
+    offered = timed.offered_ns.where(timed.received_ns.isna(), timed.received_ns)
+    by_input = ["producer", "session", "seq"]
+    first = offered.groupby([timed[c] for c in by_input]).min()
+    last = timed.groupby(by_input).known_ns.max()
     spans = pd.DataFrame({"start": first, "end": last}).dropna()
     # A spec without a count leaves it to the client ("Choosing C").
     tokens = {

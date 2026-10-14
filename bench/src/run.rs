@@ -3,10 +3,12 @@
 //! thread, plus a thread per producer that records the events about its inputs. iceoryx2 carries
 //! everything between them as it would between processes, and QUIC on loopback carries what goes
 //! between the client and the remote server. External engines run in their own processes, and the
-//! servers only take them in.
+//! servers only take them in. A remote server already running elsewhere, e.g. on an edge server,
+//! takes the place of the bench's own, and serves the remote engines itself.
 
 use std::{
     collections::{BTreeSet, HashMap},
+    net::ToSocketAddrs,
     sync::{
         Arc, Barrier, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -52,7 +54,8 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
         .filter(|engine| engine.location == Location::Remote)
         .map(|engine| engine.name.as_str())
         .collect();
-    let mut remote = (!remote_engines.is_empty())
+    // A remote server elsewhere is already running; otherwise the bench runs one.
+    let mut remote = (!remote_engines.is_empty() && spec.remote.addr.is_none())
         .then(|| {
             Server::new(
                 &format!("{}-remote", spec.name),
@@ -79,21 +82,14 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
         if !load.external {
             engines.push(start_engine(name, load, accelerator, seed, &stop)?);
         }
-        match &mut remote {
-            Some(remote) if remote_engines.contains(name.as_str()) => remote.add_engine(name)?,
-            _ => server.add_engine(name)?,
+        if !remote_engines.contains(name.as_str()) {
+            server.add_engine(name)?;
+        } else if let Some(remote) = &mut remote {
+            remote.add_engine(name)?;
         }
+        // Otherwise the remote server elsewhere serves the engine.
     }
-    let remote_config = remote.as_ref().map(|remote| RemoteServerConfig {
-        addr: remote
-            .remote_addr()
-            .expect("the remote server accepts remote clients"),
-        certificate: remote
-            .certificate()
-            .expect("the remote server accepts remote clients")
-            .to_vec(),
-        crossing_capacity: spec.remote.crossing_capacity,
-    });
+    let remote_config = remote_config(spec, remote.as_ref())?;
 
     // Every producer and recorder is ready before the client takes their inputs, and they start
     // together once the flow is added.
@@ -230,6 +226,41 @@ fn start_engine(
             Ok(worked)
         },
     )
+}
+
+/// How the client reaches the remote server: the one the bench runs, `remote`, or the one already
+/// running at the spec's address. None if the flow has no remote engines.
+fn remote_config(spec: &RunSpec, remote: Option<&Server>) -> Result<Option<RemoteServerConfig>> {
+    let crossing_capacity = spec.remote.crossing_capacity;
+    if let Some(remote) = remote {
+        return Ok(Some(RemoteServerConfig {
+            addr: remote
+                .remote_addr()
+                .expect("the remote server accepts remote clients"),
+            certificate: remote
+                .certificate()
+                .expect("the remote server accepts remote clients")
+                .to_vec(),
+            crossing_capacity,
+        }));
+    }
+    let (Some(addr), Some(certificate)) = (&spec.remote.addr, &spec.remote.certificate) else {
+        return Ok(None);
+    };
+    Ok(Some(RemoteServerConfig {
+        addr: addr
+            .to_socket_addrs()
+            .with_context(|| format!("failed to resolve the remote server {addr}"))?
+            .next()
+            .with_context(|| format!("the remote server {addr} has no address"))?,
+        certificate: std::fs::read(certificate).with_context(|| {
+            format!(
+                "failed to read the remote server's certificate {}",
+                certificate.display()
+            )
+        })?,
+        crossing_capacity,
+    }))
 }
 
 /// Starts the producer `name`, which publishes on `flow` from the start of the run for

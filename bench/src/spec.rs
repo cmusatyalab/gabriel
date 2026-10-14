@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use gabriel::{FlowSpec, client::DEFAULT_REMOTE_CROSSING_CAPACITY};
+use gabriel::{FlowSpec, client::DEFAULT_REMOTE_CROSSING_CAPACITY, spec::Location};
 use rand::{Rng, distr::Uniform};
 use rand_distr::{Distribution, Exp, LogNormal};
 use serde::Deserialize;
@@ -40,18 +40,27 @@ pub struct RunSpec {
     pub network: Option<NetworkSpec>,
 }
 
-/// How the client uses the remote server.
+/// How the client uses the remote server. A field not given takes its default.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct RemoteSettings {
     /// How many inputs each crossing to the remote server may have in flight.
     pub crossing_capacity: usize,
+    /// The address of a remote server that is already running, e.g. one `gabriel-server` runs on
+    /// another machine, as "host:port". Its engines are external. Without it, the bench runs
+    /// the remote server itself, on loopback.
+    pub addr: Option<String>,
+    /// The certificate of the server at `addr`, in DER: a copy of the one in its identity
+    /// directory. Relative to the working directory.
+    pub certificate: Option<PathBuf>,
 }
 
 impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
             crossing_capacity: DEFAULT_REMOTE_CROSSING_CAPACITY,
+            addr: None,
+            certificate: None,
         }
     }
 }
@@ -197,6 +206,23 @@ impl RunSpec {
             self.remote.crossing_capacity > 0,
             "remote crossings need a capacity of at least 1"
         );
+        ensure!(
+            self.remote.addr.is_some() == self.remote.certificate.is_some(),
+            "a remote server's address and certificate go together"
+        );
+        if self.remote.addr.is_some() {
+            ensure!(
+                self.network.is_none(),
+                "the network is emulated on loopback, so not with a remote server elsewhere"
+            );
+            for engine in &self.flow.engines {
+                ensure!(
+                    engine.location != Location::Remote || self.engines[&engine.name].external,
+                    "engine {:?} runs on a remote server elsewhere, so it must be external",
+                    engine.name
+                );
+            }
+        }
         if let Some(network) = &self.network {
             ensure!(
                 (0.0..1.0).contains(&network.loss),

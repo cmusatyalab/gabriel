@@ -113,9 +113,29 @@ Not stamped yet:
         between two of its stamps stay valid; $t_\mathit{offer} -
         t_\mathit{publish}$ does not, across machines. The client's
         $t_\mathit{received}$ gives the AoI at the app on the device's clock
-        (``Timestamps across machines'' in the design note). So far both
-        servers run on one machine, so every stamp compares directly.
+        (``Timestamps across machines'' in the design note).
 \end{itemize}
+
+\paragraph{Two machines, two clocks.} When the bench runs the remote server
+itself, both servers share one clock and every stamp compares directly. A
+remote server elsewhere (\code{gabriel-server}, reached by \code{addr} in a
+run's \code{[remote]}) stamps with its own clock, and no one syncs the two.
+The analysis (\code{analyze.py}, \code{recorded.py}) then follows one rule:
+it only subtracts two stamps from the same clock.
+\begin{itemize}[nosep]
+  \item \textbf{On the remote clock:} service time, the wait at the edge,
+        and idle time of remote engines.
+  \item \textbf{On the device's clock:} AoI, and the \emph{link} time:
+        from the previous engine's result (or from publishing) to
+        $t_\mathit{received}$ of the remote result, less
+        $t_\mathit{end} - t_\mathit{offer}$ at the remote server. The link
+        is the uplink and the trip back together. Without synced clocks, it
+        cannot be split into the two.
+  \item \textbf{Left out} for remote engines: the input's age, the uplink and
+        the trip back alone, and the excess.
+\end{itemize}
+A check: the same run, with every remote stamp moved by $10^{15}$\,ns,
+gives the same service times, link times, AoI, and load.
 
 \subsection{Recording}
 
@@ -747,5 +767,100 @@ its CPU per frame is far lower than the percentages suggest.
         a network, with QUIC against the original's transports on emulated
         links.
 \end{itemize}
+
+\subsection{A real engine on the Tachyon}
+
+The first runs with a real model. The device is a Particle Tachyon
+(Qualcomm QCM6490): four slow cores (0--3, Cortex-A55, up to 1.96\,GHz),
+four fast ones (4--7, Cortex-A78, up to 2.4 and 2.7\,GHz), and an NPU. The
+engine is the QNN inference server from \code{tachyon-inference}, run as an
+external Gabriel engine (\code{--gabriel\_engine}). It runs YOLO26 at
+$640\times640$, quantized, on the NPU. A camera at 30\,fps feeds it alone
+(\code{bench/runs/tachyon-detect*.toml}), for 30\,s. The engine logs how
+long each stage of each frame takes.
+
+\paragraph{1080p JPEGs: the CPU, not the NPU, sets the pace.} With six 1080p
+JPEGs, the engine takes 97\,ms a frame, gives 10 results a second, and skips
+two thirds of the frames. Its mean AoI is 166\,ms. Mean stages, in ms:
+\begin{center}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Decode & Preprocess & Inference & Postprocess & Total \\
+\midrule
+43.7 & 30.0 & 19.3 & 3.8 & 96.8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+The NPU itself (\code{graphExecute}) takes 11\,ms of the inference stage;
+the rest of that stage is the CPU reading the output. So the NPU is busy
+about a tenth of each frame, and decoding and resizing on the CPU take most
+of it.
+
+\paragraph{720p frames, decoded or not.} Producers now name the type of their
+inputs (\code{input\_type}), so a camera can publish a decoded frame as a
+SteelEagle \code{RawFrame}: packed RGB, 2.8\,MB at 720p. The engine then
+skips decoding. \code{bench/raw\_frames.py} makes 720p frames from five
+drone frames, both as \code{RawFrame}s and as JPEGs of the same pixels.
+Times in ms:
+\begin{center}
+\small
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Frames & Engine's cores & Per frame & Results/s & AoI & Skipped \\
+\midrule
+1080p JPEG & any        & 99 & 10.0 & 168 & 66\% \\
+720p JPEG  & any        & 49 & 20.2 & 94  & 33\% \\
+720p raw   & any        & 44 & 22.8 & 85  & 24\% \\
+720p JPEG  & fast (4--7) & 49 & 20.3 & 94  & 32\% \\
+720p raw   & fast (4--7) & \textbf{31} & \textbf{30.0} & \textbf{56} & \textbf{0\%} \\
+\bottomrule
+\end{tabular}
+\end{center}
+Median stages with the engine on the fast cores, in ms (the NPU's part of
+inference in parentheses):
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Frames & Decode & Preprocess & Inference & Postprocess \\
+\midrule
+720p JPEG & 26.6 & 1.6 & 16.8 (10.9) & 2.5 \\
+720p raw  & 0    & 2.5 & 23.0 (11.8) & 4.0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{What the runs show.}
+\begin{enumerate}[nosep]
+  \item \textbf{Decoded 720p frames let YOLO keep up with the camera.} On the
+        fast cores it handles every frame in 31\,ms, and the mean AoI falls
+        from 168 to 56\,ms.
+  \item \textbf{Gabriel adds about 1.6\,ms a frame}, the time from its offer
+        to its result less the engine's own time, even for 2.8\,MB frames.
+  \item \textbf{Where the scheduler puts the engine matters.} Left alone, the
+        engine spent about 85\% of its samples on the slow cores. Pinning it to the
+        fast ones (\code{taskset -c 4-7}) cut a raw frame from 44 to 31\,ms.
+        Gabriel's own threads use about 20\% of a core each, mostly on the
+        slow cores.
+  \item \textbf{Clock scaling slows the CPU stages of raw frames.} The
+        governor (\code{schedutil}) lowers a core's clock when the core is
+        often idle. With no decoding to do, the engine idles while the NPU
+        runs, and its cores slow down: they averaged 0.8\,GHz with raw
+        frames and 1.2\,GHz with JPEGs, of 2.4\,GHz. So reading the output
+        and postprocessing take about twice as long with raw frames, for the
+        same work. Gabriel copying frames is not the cause: at 10\,fps, raw
+        frames take as long as at 30\,fps.
+  \item \textbf{The raw path is exact.} Results are recorded by size
+        (\code{result\_len} in \code{events.csv}), and a detector's grows
+        with what it finds. Lossless PNGs of the same pixels give the same
+        results as the raw frames on all five frames. The JPEGs differ on
+        two frames by one or two detections near the confidence threshold.
+\end{enumerate}
+
+\paragraph{Next.} Decide whether to run with the \code{performance}
+governor, which would keep the cores at full clock: it is faster, but a
+drone would not run that way. Then YOLO on the Tachyon as an early discard
+for RF-DETR on the server, over LTE, with H.264 on the link.
 
 \end{document}

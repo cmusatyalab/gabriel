@@ -15,6 +15,8 @@ use crate::{
     server::worker::{Command, RemoteEndpoint},
 };
 
+pub use crate::net::CERTIFICATE_FILE;
+
 /// Delivers the inputs of the flows installed on it to a dynamic set of engines.
 #[derive(Debug)]
 pub struct Server {

@@ -58,8 +58,9 @@ fn transport() -> Result<Arc<TransportConfig>> {
     Ok(Arc::new(transport))
 }
 
-/// The file in a server's identity directory that holds its certificate, in DER.
-const CERTIFICATE_FILE: &str = "certificate.der";
+/// The file in a server's identity directory that holds its certificate, in DER. Remote clients
+/// are given a copy of it.
+pub const CERTIFICATE_FILE: &str = "certificate.der";
 /// The file in a server's identity directory that holds its private key, in DER.
 const KEY_FILE: &str = "key.der";
 /// Anyone may read the certificate; it is what clients are given.
