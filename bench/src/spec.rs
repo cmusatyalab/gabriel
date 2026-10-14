@@ -87,6 +87,9 @@ pub struct ProducerLoad {
     /// A directory of files, e.g. JPEG frames, that the producer publishes in name order, over
     /// and over, in place of zeros. Relative to the working directory.
     pub frames: Option<PathBuf>,
+    /// How engines read the inputs, e.g. "steeleagle_protocol.v1.messages.stream.RawFrame" for
+    /// the frames `raw_frames.py` writes. None if they have no convention.
+    pub input_type: Option<String>,
 }
 
 /// When a producer's inputs are published.
@@ -357,6 +360,7 @@ mod tests {
             arrivals: Arrivals::Poisson,
             input_size: 1,
             frames: None,
+            input_type: None,
         };
 
         assert!(close(

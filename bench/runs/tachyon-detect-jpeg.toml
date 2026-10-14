@@ -1,0 +1,26 @@
+# On a Tachyon: as tachyon-detect-raw, but the camera publishes the same 720p frames as JPEGs,
+# so YOLO decodes each one. Comparing the two runs shows what decoding costs.
+name = "tachyon-detect-jpeg"
+duration = "30s"
+drain = "3s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+
+[[flow.engines]]
+name = "yolo"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "yolo"
+timeout = "1s"
+
+[producers.camera]
+rate = 30
+frames = "frames-720p/jpeg"
+
+[engines.yolo]
+external = true
+accelerator = "npu"

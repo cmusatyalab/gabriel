@@ -246,9 +246,16 @@ fn start_producer(
     let gaps = load.gaps()?;
     let payloads = load.payloads()?;
     let max_input_size = payloads.iter().map(Vec::len).max().unwrap_or_default();
+    let input_type = load.input_type.clone();
     spawn(
         format!("producer {name}"),
-        move || Ok(Producer::new(&producer_name, None, max_input_size)?),
+        move || {
+            Ok(Producer::new(
+                &producer_name,
+                input_type.as_deref(),
+                max_input_size,
+            )?)
+        },
         move |mut producer| {
             let mut rng = StdRng::seed_from_u64(seed);
             let mut inputs = Vec::new();

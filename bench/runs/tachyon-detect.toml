@@ -1,0 +1,30 @@
+# On a Tachyon: a camera at 30 fps feeds YOLO alone, the QNN inference server running as an
+# external Gabriel engine on the NPU. Start it before the run:
+#
+#   qnn-sample-app --model <yolo.so> --backend libQnnHtp.so --gabriel_engine yolo
+#
+# The camera replays the JPEG files in ./frames.
+name = "tachyon-detect"
+duration = "30s"
+drain = "3s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+
+[[flow.engines]]
+name = "yolo"
+location = "local"
+
+[[flow.edges]]
+from = "camera"
+to = "yolo"
+timeout = "1s"
+
+[producers.camera]
+rate = 30
+frames = "frames"
+
+[engines.yolo]
+external = true
+accelerator = "npu"
