@@ -2,7 +2,7 @@
 //! in long form, which is what pandas and polars work with best. Times are nanoseconds on the
 //! machine's monotonic clock.
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use anyhow::{Context, Result};
 use gabriel::{InputId, Timestamp, subscription::Event};
@@ -25,6 +25,31 @@ impl InputRow {
             session: id.session(),
             seq: id.seq(),
             published_ns: published_at.as_nanos(),
+        }
+    }
+}
+
+/// An input a synthetic engine worked on: when it started, once it had its accelerator, and for
+/// how long. The event's service time also counts the wait for the accelerator; this does not.
+#[derive(Debug, Serialize)]
+pub struct WorkRow {
+    pub engine: String,
+    pub producer: String,
+    pub session: u64,
+    pub seq: u64,
+    pub started_ns: u64,
+    pub work_ns: u64,
+}
+
+impl WorkRow {
+    pub fn new(engine: &str, id: &InputId, started_at: Timestamp, work: Duration) -> Self {
+        Self {
+            engine: engine.to_owned(),
+            producer: id.producer().to_owned(),
+            session: id.session(),
+            seq: id.seq(),
+            started_ns: started_at.as_nanos(),
+            work_ns: u64::try_from(work.as_nanos()).unwrap_or(u64::MAX),
         }
     }
 }
@@ -93,6 +118,7 @@ impl EventRow {
 /// The names of the files a run writes in its output directory.
 pub const INPUTS_FILE: &str = "inputs.csv";
 pub const EVENTS_FILE: &str = "events.csv";
+pub const WORK_FILE: &str = "work.csv";
 /// A copy of the run's TOML file, so the rows are never separated from what produced them.
 pub const RUN_FILE: &str = "run.toml";
 /// When and from which commit the run was made.

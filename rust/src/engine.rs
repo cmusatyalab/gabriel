@@ -8,6 +8,7 @@ use iceoryx2::port::{
     listener::Listener, notifier::Notifier, publisher::Publisher, subscriber::Subscriber,
 };
 use iceoryx2::prelude::*;
+use iceoryx2_bb_container::string::String as _;
 use iceoryx2::sample::Sample;
 use iceoryx2::sample_mut_uninit::SampleMutUninit;
 
@@ -26,6 +27,18 @@ pub struct Input<'a> {
     pub(crate) payload_type: &'a PayloadType,
     /// The input's bytes, in shared memory. Only the payload type says how to read them.
     pub data: &'a [u8],
+}
+
+impl Input<'_> {
+    /// The input's id, which names it in events and derived results.
+    pub fn id(&self) -> &InputId {
+        self.id
+    }
+
+    /// How to read the input's bytes. Empty if its producer gave no type.
+    pub fn payload_type(&self) -> &str {
+        self.payload_type.as_str()
+    }
 }
 
 /// An outcome being built by [`Engine::new_output`] and [`Engine::emit`].

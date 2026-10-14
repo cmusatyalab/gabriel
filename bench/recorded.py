@@ -1,6 +1,6 @@
 """Reading a recorded benchmark run without pandas: service times, the share
-of results each engine forwards, the producer's interval, and the throughput
-and age of information at an engine.
+of results each engine forwards, the producer's interval, the throughput and
+age of information at an engine, and wasted work.
 
 Used by shadow_counts.py and simulate_sections.py. Times are in ms.
 """
@@ -28,6 +28,7 @@ class Run:
     spec: dict
     published_ns: dict[str, int]  # seq -> when the input was published
     events: list[dict]  # events.csv rows, in time order
+    work: list[dict]  # work.csv rows: what each engine worked on, and how long
 
     @property
     def tokens(self) -> int | None:
@@ -52,7 +53,12 @@ def load(path: Path) -> Run:
         events = list(csv.DictReader(f))
     events = [e for e in events if e["at_ns"]]
     events.sort(key=lambda e: int(e["at_ns"]))
-    return Run(path, spec, published, events)
+    # Runs recorded before the bench wrote work.csv have none.
+    work = []
+    if (path / "work.csv").exists():
+        with open(path / "work.csv") as f:
+            work = list(csv.DictReader(f))
+    return Run(path, spec, published, events, work)
 
 
 def results(run: Run) -> Iterator[tuple[dict, float]]:
@@ -78,6 +84,34 @@ def service_samples(run: Run) -> dict[str, list[float]]:
     for event, service in results(run):
         samples[event["engine"]].append(service)
     return samples
+
+
+def work_rows(run: Run) -> Iterator[tuple[str, str, float]]:
+    """Each engine's own work per input, as (engine, seq, ms), without
+    waiting for a shared accelerator. For engines the bench did not record
+    work for, such as external ones, the service times stand in for it, so
+    their waits for a shared accelerator count as work."""
+    recorded = set()
+    for row in run.work:
+        recorded.add(row["engine"])
+        yield row["engine"], row["seq"], int(row["work_ns"]) / NS_PER_MS
+    for event, service in results(run):
+        if event["engine"] not in recorded:
+            yield event["engine"], event["seq"], service
+
+
+def work_samples(run: Run) -> dict[str, list[float]]:
+    """Every engine's own work per input, as work_rows gives it."""
+    samples = defaultdict(list)
+    for engine, _, work in work_rows(run):
+        samples[engine].append(work)
+    return samples
+
+
+def accelerators(run: Run) -> dict[str, str | None]:
+    """The accelerator each engine works on, if it shares one."""
+    return {name: load.get("accelerator")
+            for name, load in run.spec["engines"].items()}
 
 
 def forward_shares(run: Run) -> dict[str, float]:
@@ -128,3 +162,48 @@ def measured(run: Run, engine: str, trim_s: float = DEFAULT_TRIM_S):
         and e["seq"] in run.published_ns
     ]
     return throughput_and_aoi(at, start, end)
+
+
+def wasted_work(
+    run: Run, trim_s: float = DEFAULT_TRIM_S
+) -> dict[str, tuple[float, float]]:
+    """Per engine, the ms of work wasted and the ms of work done, on the
+    inputs published away from the ends of the run.
+
+    A run of an engine is used if the engine stopped the input (a filter's
+    decision is a result), if nothing comes after the engine, or if some
+    engine after it used the input. Otherwise its work was wasted: every
+    engine after it skipped the input or timed out. Work is as work_rows
+    gives it."""
+    children = defaultdict(list)
+    for edge in run.spec["flow"]["edges"]:
+        children[edge["from"]].append(edge["to"])
+    decided = {}  # (engine, seq) -> whether it passed the input on
+    for event in run.events:
+        if event["kind"] == "Result":
+            decided[event["engine"], event["seq"]] = forwards(event)
+
+    used = {}
+
+    def is_used(engine: str, seq: str) -> bool:
+        key = (engine, seq)
+        if key not in used:
+            passed = decided.get(key)
+            used[key] = passed is not None and (
+                not passed
+                or not children[engine]
+                or any(is_used(child, seq) for child in children[engine])
+            )
+        return used[key]
+
+    published = run.published_ns.values()
+    start = min(published) + trim_s * MS_PER_S * NS_PER_MS
+    end = max(published) - trim_s * MS_PER_S * NS_PER_MS
+    totals = defaultdict(lambda: [0.0, 0.0])
+    for engine, seq, work in work_rows(run):
+        if not start <= run.published_ns.get(seq, -1) <= end:
+            continue
+        totals[engine][1] += work
+        if not is_used(engine, seq):
+            totals[engine][0] += work
+    return {engine: (w, t) for engine, (w, t) in totals.items()}

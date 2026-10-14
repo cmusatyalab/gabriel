@@ -133,7 +133,7 @@ impl Drop for Client {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -837,7 +837,7 @@ mod tests {
         detector.wait(WAIT).unwrap();
         let input = detector.poll_input().unwrap();
         assert_eq!(input.data, TILES);
-        assert_eq!(input.payload_type.to_string(), TILES_TYPE);
+        assert_eq!(input.payload_type(), TILES_TYPE);
     }
 
     #[test]
@@ -922,6 +922,51 @@ mod tests {
 
         assert!(
             matches!(added, Err(Error::InvalidArgument(message)) if message.contains(&detector_name))
+        );
+    }
+
+    #[test]
+    fn crossing_with_two_remote_targets_sends_the_input_once_to_both() {
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name, segmenter_name) =
+            (unique("filter"), unique("detector"), unique("segmenter"));
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        let mut segmenter = serve(&mut fixture.remote, &segmenter_name);
+        let mut subscription = Subscription::producer(&fixture.producer_name).unwrap();
+        let mut spec = fixture.spec(&filter_name, &detector_name);
+        spec.engines.push(EngineSpec {
+            name: segmenter_name.clone(),
+            location: Location::Remote,
+        });
+        spec.edges.push(EdgeSpec {
+            from: filter_name.clone(),
+            to: segmenter_name.clone(),
+            timeout: OFFER_TIMEOUT,
+        });
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+        assert_eq!(next_input(&mut filter), 7);
+        filter.pass(&[]).unwrap();
+        assert_eq!(next_input(&mut detector), 7);
+        assert_eq!(next_input(&mut segmenter), 7);
+        detector.pass(b"box").unwrap();
+        segmenter.pass(b"mask").unwrap();
+
+        let mut results = HashSet::new();
+        while results.len() < 2 {
+            let (kind, _, engine, result) = next_event(&mut subscription);
+            if kind == EventKind::Result && engine != filter_name {
+                results.insert((engine, result));
+            }
+        }
+        assert_eq!(
+            results,
+            HashSet::from([
+                (detector_name, b"box".to_vec()),
+                (segmenter_name, b"mask".to_vec()),
+            ])
         );
     }
 

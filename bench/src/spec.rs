@@ -3,7 +3,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::Path,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -31,7 +31,7 @@ pub struct RunSpec {
     pub flow: FlowSpec,
     /// The load of each of the flow's producers, by name.
     pub producers: BTreeMap<String, ProducerLoad>,
-    /// The behavior of each of the flow's engines, by name.
+    /// The behavior of each of the flow's engines, by name. External engines are listed too.
     pub engines: BTreeMap<String, EngineLoad>,
     /// How the client uses the remote server, if the flow has remote engines.
     #[serde(default)]
@@ -81,8 +81,12 @@ pub struct ProducerLoad {
     pub rate: f64,
     #[serde(default)]
     pub arrivals: Arrivals,
-    /// The size of each input in bytes.
+    /// The size of each input in bytes, for inputs of zeros. Not given with `frames`.
+    #[serde(default)]
     pub input_size: usize,
+    /// A directory of files, e.g. JPEG frames, that the producer publishes in name order, over
+    /// and over, in place of zeros. Relative to the working directory.
+    pub frames: Option<PathBuf>,
 }
 
 /// When a producer's inputs are published.
@@ -96,12 +100,16 @@ pub enum Arrivals {
     Poisson,
 }
 
-/// How a synthetic engine handles each input.
+/// How an engine handles each input: a synthetic engine that the bench runs, or an external one.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineLoad {
-    /// How long the engine works on an input. It sleeps for that long.
-    pub service_time: ServiceTime,
+    /// The engine runs in its own process, e.g. a real model, and the bench only adds it to its
+    /// server. Start it before the run. Of the other fields, only `accelerator` applies to it.
+    #[serde(default)]
+    pub external: bool,
+    /// How long a synthetic engine works on an input. It sleeps for that long.
+    pub service_time: Option<ServiceTime>,
     /// The share of inputs the engine passes on; it stops the rest, as an early-discard filter
     /// does.
     #[serde(default = "always")]
@@ -109,6 +117,11 @@ pub struct EngineLoad {
     /// The size of the result it reports for each input, in bytes.
     #[serde(default)]
     pub result_size: usize,
+    /// The accelerator the engine works on, e.g. "npu". Engines that name the same one take turns
+    /// on it, as engines sharing one GPU do, so an input waits for the accelerator after it is
+    /// sent, and that wait counts in its service time. An engine without one has its own. For an
+    /// external engine, it only tells the analysis; the hardware makes the engines take turns.
+    pub accelerator: Option<String>,
 }
 
 fn always() -> f64 {
@@ -172,6 +185,10 @@ impl RunSpec {
                 load.rate.is_finite() && load.rate > 0.0,
                 "producer {name:?} needs a positive rate"
             );
+            ensure!(
+                load.frames.is_some() != (load.input_size > 0),
+                "producer {name:?} needs either an input size or frames"
+            );
         }
         ensure!(
             self.remote.crossing_capacity > 0,
@@ -188,15 +205,54 @@ impl RunSpec {
                 (0.0..=1.0).contains(&load.pass_probability),
                 "engine {name:?} needs a pass probability between 0 and 1"
             );
-            load.service_time
-                .sampler()
-                .with_context(|| format!("engine {name:?} has an invalid service time"))?;
+            if load.external {
+                ensure!(
+                    load.service_time.is_none(),
+                    "external engine {name:?} does its own work, so it has no service time"
+                );
+            } else {
+                load.service_time()
+                    .with_context(|| format!("engine {name:?} has an invalid service time"))?;
+            }
         }
         Ok(())
     }
 }
 
+impl EngineLoad {
+    /// How long a synthetic engine works on each input.
+    pub fn service_time(&self) -> Result<Sampler> {
+        self.service_time
+            .context("a synthetic engine needs a service time")?
+            .sampler()
+    }
+}
+
 impl ProducerLoad {
+    /// What the producer publishes, in turn: the files in `frames`, or one input of zeros.
+    pub fn payloads(&self) -> Result<Vec<Vec<u8>>> {
+        let Some(frames) = &self.frames else {
+            return Ok(vec![vec![0; self.input_size]]);
+        };
+        let mut paths = Vec::new();
+        for entry in std::fs::read_dir(frames)
+            .with_context(|| format!("failed to read frames from {}", frames.display()))?
+        {
+            let path = entry?.path();
+            if path.is_file() {
+                paths.push(path);
+            }
+        }
+        ensure!(!paths.is_empty(), "no frames in {}", frames.display());
+        paths.sort();
+        paths
+            .iter()
+            .map(|path| {
+                std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))
+            })
+            .collect()
+    }
+
     /// The gaps between inputs.
     pub fn gaps(&self) -> Result<Sampler> {
         let mean = Duration::from_secs_f64(self.rate.recip());
@@ -300,6 +356,7 @@ mod tests {
             rate: 50.0,
             arrivals: Arrivals::Poisson,
             input_size: 1,
+            frames: None,
         };
 
         assert!(close(

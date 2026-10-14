@@ -30,7 +30,7 @@ use clap::Parser;
 use serde::Serialize;
 
 use crate::{
-    record::{EVENTS_FILE, INPUTS_FILE, META_FILE, RUN_FILE},
+    record::{EVENTS_FILE, INPUTS_FILE, META_FILE, RUN_FILE, WORK_FILE},
     spec::RunSpec,
 };
 
@@ -38,7 +38,7 @@ use crate::{
 const RESULTS_DIR: &str = "bench-results";
 
 #[derive(Debug, Parser)]
-#[command(about = "Runs a Gabriel flow with synthetic engines and records its events")]
+#[command(about = "Runs a Gabriel flow with synthetic or external engines and records its events")]
 struct Args {
     /// The run's TOML file.
     run: PathBuf,
@@ -86,6 +86,7 @@ fn main() -> Result<()> {
 
     record::write_csv(&out, INPUTS_FILE, &recorded.inputs)?;
     record::write_csv(&out, EVENTS_FILE, &recorded.events)?;
+    record::write_csv(&out, WORK_FILE, &recorded.work)?;
     record::write_text(&out, RUN_FILE, &text)?;
     let meta = Meta {
         started_unix,

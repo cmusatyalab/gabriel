@@ -2,12 +2,13 @@
 //! synthetic engine per engine of the flow, a client, and a producer per producer, each on its own
 //! thread, plus a thread per producer that records the events about its inputs. iceoryx2 carries
 //! everything between them as it would between processes, and QUIC on loopback carries what goes
-//! between the client and the remote server.
+//! between the client and the remote server. External engines run in their own processes, and the
+//! servers only take them in.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     sync::{
-        Arc, Barrier,
+        Arc, Barrier, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -23,7 +24,7 @@ use gabriel::{
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
-    record::{EventRow, InputRow},
+    record::{EventRow, InputRow, WorkRow},
     spec::{EngineLoad, ProducerLoad, RunSpec},
 };
 
@@ -37,6 +38,7 @@ const REMOTE_BIND_ADDR: &str = "127.0.0.1:0";
 pub struct Recorded {
     pub inputs: Vec<InputRow>,
     pub events: Vec<EventRow>,
+    pub work: Vec<WorkRow>,
 }
 
 /// Runs `spec`, and returns what it recorded.
@@ -64,9 +66,19 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
 
     // Each thread gets its own stream of random numbers, derived from the run's seed.
     let mut seeds = StdRng::seed_from_u64(spec.seed);
+    let mut accelerators: HashMap<&str, Arc<Mutex<()>>> = HashMap::new();
     let mut engines = Vec::new();
     for (name, load) in &spec.engines {
-        engines.push(start_engine(name, load, seeds.random(), &stop)?);
+        let accelerator = load
+            .accelerator
+            .as_deref()
+            .map(|accelerator| Arc::clone(accelerators.entry(accelerator).or_default()));
+        // Every engine draws a seed, so adding an external engine leaves the others' draws as
+        // they were.
+        let seed = seeds.random();
+        if !load.external {
+            engines.push(start_engine(name, load, accelerator, seed, &stop)?);
+        }
         match &mut remote {
             Some(remote) if remote_engines.contains(name.as_str()) => remote.add_engine(name)?,
             _ => server.add_engine(name)?,
@@ -117,12 +129,16 @@ pub fn run(spec: &RunSpec) -> Result<Recorded> {
     thread::sleep(spec.drain);
     stop.store(true, Ordering::Relaxed);
     let events = join_all(recorders)?;
-    join_all(engines)?;
+    let work = join_all(engines)?;
     // The client removes its flow from the servers as it stops.
     drop(client);
     drop(remote);
     drop(server);
-    Ok(Recorded { inputs, events })
+    Ok(Recorded {
+        inputs,
+        events,
+        work,
+    })
 }
 
 /// Waits for every thread, and gathers the rows they recorded.
@@ -166,15 +182,17 @@ fn spawn<S, T: Send + 'static>(
 }
 
 /// Starts the synthetic engine `name`: it works on each input for a time drawn from its service
-/// time, then passes the input on or stops it, until the run is over.
+/// time, then passes the input on or stops it, until the run is over. With an `accelerator`, it
+/// holds it while it works. Returns what it worked on.
 fn start_engine(
     name: &str,
     load: &EngineLoad,
+    accelerator: Option<Arc<Mutex<()>>>,
     seed: u64,
     stop: &Arc<AtomicBool>,
-) -> Result<JoinHandle<Result<Vec<()>>>> {
-    let (engine_name, stop) = (name.to_owned(), Arc::clone(stop));
-    let service_time = load.service_time.sampler()?;
+) -> Result<JoinHandle<Result<Vec<WorkRow>>>> {
+    let (engine_name, name, stop) = (name.to_owned(), name.to_owned(), Arc::clone(stop));
+    let service_time = load.service_time()?;
     let pass_probability = load.pass_probability;
     let result_size = load.result_size;
     let result = vec![0; result_size];
@@ -183,24 +201,33 @@ fn start_engine(
         move || Ok(Engine::new(&engine_name, None, result_size)?),
         move |mut engine| {
             let mut rng = StdRng::seed_from_u64(seed);
+            let mut worked = Vec::new();
             while !stop.load(Ordering::Relaxed) {
                 match engine.wait(STOP_POLL_INTERVAL) {
                     Ok(()) | Err(Error::Again) => {}
                     Err(e) => return Err(e.into()),
                 }
-                match engine.poll_input() {
-                    Ok(_) => {}
+                let id = match engine.poll_input() {
+                    Ok(input) => *input.id(),
                     Err(Error::Again) => continue,
                     Err(e) => return Err(e.into()),
-                }
-                thread::sleep(service_time.sample(&mut rng));
+                };
+                let work = service_time.sample(&mut rng);
+                // A poisoned lock only means another engine's thread panicked; the run fails
+                // when that thread is joined.
+                let turn = accelerator
+                    .as_ref()
+                    .map(|accelerator| accelerator.lock().unwrap_or_else(|e| e.into_inner()));
+                worked.push(WorkRow::new(&name, &id, Timestamp::now(), work));
+                thread::sleep(work);
+                drop(turn);
                 if rng.random_bool(pass_probability) {
                     engine.pass(&result)?;
                 } else {
                     engine.stop(&result)?;
                 }
             }
-            Ok(Vec::new())
+            Ok(worked)
         },
     )
 }
@@ -217,10 +244,11 @@ fn start_producer(
 ) -> Result<JoinHandle<Result<Vec<InputRow>>>> {
     let (producer_name, flow, start) = (name.to_owned(), flow.to_owned(), Arc::clone(start));
     let gaps = load.gaps()?;
-    let input_size = load.input_size;
+    let payloads = load.payloads()?;
+    let max_input_size = payloads.iter().map(Vec::len).max().unwrap_or_default();
     spawn(
         format!("producer {name}"),
-        move || Ok(Producer::new(&producer_name, input_size)?),
+        move || Ok(Producer::new(&producer_name, max_input_size)?),
         move |mut producer| {
             let mut rng = StdRng::seed_from_u64(seed);
             let mut inputs = Vec::new();
@@ -229,13 +257,14 @@ fn start_producer(
             // Inputs are due at fixed times from the start, so a late publish does not delay the
             // ones after it.
             let mut due = Instant::now();
-            while due < end {
-                thread::sleep(due.saturating_duration_since(Instant::now()));
-                for byte in producer.new_input()? {
-                    byte.write(0);
+            for payload in payloads.iter().cycle() {
+                if due >= end {
+                    break;
                 }
+                thread::sleep(due.saturating_duration_since(Instant::now()));
+                producer.new_input()?[..payload.len()].write_copy_of_slice(payload);
                 let published_at = Timestamp::now();
-                let id = producer.publish_input(input_size, &flow)?;
+                let id = producer.publish_input(payload.len(), &flow)?;
                 inputs.push(InputRow::new(&id, published_at));
                 due += gaps.sample(&mut rng);
             }
