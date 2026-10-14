@@ -9,9 +9,9 @@
 use std::time::Duration;
 
 use iceoryx2::port::{listener::Listener, subscriber::Subscriber};
-use iceoryx2::service::port_factory::{event, publish_subscribe};
 use iceoryx2::prelude::*;
 use iceoryx2::sample::Sample;
+use iceoryx2::service::port_factory::{event, publish_subscribe};
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{

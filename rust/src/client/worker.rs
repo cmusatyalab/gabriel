@@ -15,6 +15,10 @@
 //! remote part is also installed late if the remote server was not connected when the flow was
 //! added; until then, the flow's crossings to it send nothing.
 //!
+//! The events of the remote engines are also published on the device, under the engines' names,
+//! so device processes can subscribe to them. Each relayed engine gets the events a producer's
+//! app gets about it, and `Disconnected` when the remote server is lost.
+//!
 //! Failures the thread carries on after are logged as warnings, with [`tracing`].
 
 use std::{
@@ -36,6 +40,7 @@ use crate::{
         compile::compile,
         local_server::LocalServer,
         producers::{Producers, ReceivedInput},
+        relays::Relays,
         remote_server::RemoteServer,
         server_link::{ServerEvent, ServerLink},
     },
@@ -109,11 +114,14 @@ struct ClientFlow {
     nodes: HashMap<EngineName, NodeId>,
     crossings: HashMap<EdgeId, Crossing>,
     producers: HashSet<ProducerName>,
+    /// The flow's engines on the remote server, whose events the client relays.
+    remote: HashSet<EngineName>,
 }
 
 struct Worker {
     node: Node<ipc::Service>,
     producers: Producers,
+    relays: Relays,
     servers: HashMap<Location, Box<dyn ServerLink>>,
     /// How many inputs each crossing to the remote server may have in flight.
     remote_crossing_capacity: usize,
@@ -189,6 +197,7 @@ impl Worker {
         Ok(Self {
             node,
             producers: Producers::default(),
+            relays: Relays::default(),
             servers,
             remote_crossing_capacity,
             flows: HashMap::new(),
@@ -238,6 +247,10 @@ impl Worker {
             warn_on_error(
                 self.producers.wake_subscribers(),
                 "failed to wake a producer's subscribers",
+            );
+            warn_on_error(
+                self.relays.wake_subscribers(),
+                "failed to wake a relayed engine's subscribers",
             );
         }
     }
@@ -366,6 +379,18 @@ impl Worker {
             .iter()
             .map(|(&engine, &node)| (node, engine))
             .collect();
+        let remote: HashSet<EngineName> = compiled
+            .parts
+            .get(&Location::Remote)
+            .map_or_else(HashSet::new, |part| {
+                part.engines.iter().map(|(node, _)| engines[node]).collect()
+            });
+        if let Some(engine) = self.moved_engine(&compiled.nodes, &remote) {
+            return Err(Error::InvalidArgument(format!(
+                "engine {:?} is local in one flow and remote in another",
+                engine.as_str()
+            )));
+        }
         let mut crossings = HashMap::new();
         let mut parts = HashMap::new();
         for (location, install) in compiled.parts {
@@ -397,6 +422,7 @@ impl Worker {
             nodes: compiled.nodes,
             crossings,
             producers,
+            remote,
         };
 
         // Last, so a flow the client rejects is never installed.
@@ -427,9 +453,26 @@ impl Worker {
                 }
             }
         }
+        self.relays.add(flow_state.remote.iter().copied());
         self.flows.insert(flow, flow_state);
         info!(flow = name, "added flow");
         Ok(())
+    }
+
+    /// An engine of a new flow, with the engines `nodes` of which `remote` are remote, that is on
+    /// the other server in a flow the client has. Its events could not be told apart on the
+    /// device.
+    fn moved_engine(
+        &self,
+        nodes: &HashMap<EngineName, NodeId>,
+        remote: &HashSet<EngineName>,
+    ) -> Option<EngineName> {
+        nodes.keys().copied().find(|engine| {
+            self.flows.values().any(|flow| {
+                flow.nodes.contains_key(engine)
+                    && flow.remote.contains(engine) != remote.contains(engine)
+            })
+        })
     }
 
     /// Removes the flow `name` from the client and from the servers. Its open tickets are dropped.
@@ -439,6 +482,7 @@ impl Worker {
             .and_then(|flow| self.flows.remove(&flow))
             .ok_or_else(|| Error::InvalidArgument(format!("flow {name:?} does not exist")))?;
         info!(flow = name, "removed flow");
+        self.relays.remove(flow.remote.iter().copied());
         let mut first_error = None;
         for (location, part) in &flow.parts {
             let Some(session) = part.session else {
@@ -459,6 +503,7 @@ impl Worker {
     /// Removes every flow from the servers, so that a client that stops leaves nothing installed.
     fn remove_all_flows(&mut self) {
         for (_, flow) in self.flows.drain() {
+            self.relays.remove(flow.remote.iter().copied());
             for (location, part) in &flow.parts {
                 // The server may be gone already; then there is nothing to remove.
                 if let Some(session) = part.session {
@@ -522,13 +567,15 @@ impl Worker {
         }
     }
 
-    /// Publishes `record` for the app of its input's producer. An event the app misses only
-    /// leaves it waiting, so the thread carries on after a failure.
+    /// Publishes `record` for the app of its input's producer, and on its engine's service if the
+    /// engine is relayed.
     fn publish(&mut self, record: EventRecord, result: &[u8]) {
-        let producer = record.id.producer;
-        warn_on_error(
-            self.producers.publish(&producer, record, result),
-            "failed to publish an event for a producer's app",
+        publish(
+            &self.node,
+            &mut self.producers,
+            &mut self.relays,
+            record,
+            result,
         );
     }
 
@@ -595,6 +642,17 @@ impl Worker {
                     self.producers.publish(producer, record, &[]),
                     "failed to publish an event for a producer's app",
                 );
+            }
+            // The subscribers of the remote engines learn it too, under each engine's name.
+            if location == Location::Remote {
+                for &engine in &flow.remote {
+                    let mut record = EventRecord::disconnected(name);
+                    record.engine = engine;
+                    warn_on_error(
+                        self.relays.publish(&self.node, &record, &[]),
+                        "failed to publish an event for a relayed engine",
+                    );
+                }
             }
         }
         self.reconnect(location, now);
@@ -669,13 +727,16 @@ impl Worker {
                         let crossing = &flow.crossings[&edge];
                         for &engine in &crossing.targets {
                             let record = EventRecord::skipped(offer, input_id, engine, name);
-                            warn_on_error(
-                                self.producers.publish(&input_id.producer, record, &[]),
-                                "failed to publish an event for a producer's app",
+                            publish(
+                                &self.node,
+                                &mut self.producers,
+                                &mut self.relays,
+                                record,
+                                &[],
                             );
                         }
-                        // The engines' subscribers learn it from the server. A notice that does
-                        // not arrive only leaves them waiting.
+                        // The engines' subscribers on the server's machine learn it from the
+                        // server. A notice that does not arrive only leaves them waiting.
                         let part = &flow.parts[&crossing.location];
                         if part.connected
                             && let Some(session) = part.session
@@ -694,9 +755,12 @@ impl Worker {
                     } => {
                         for &engine in &flow.crossings[&edge].targets {
                             let record = EventRecord::timed_out(offer, input_id, engine, name);
-                            warn_on_error(
-                                self.producers.publish(&input_id.producer, record, &[]),
-                                "failed to publish an event for a producer's app",
+                            publish(
+                                &self.node,
+                                &mut self.producers,
+                                &mut self.relays,
+                                record,
+                                &[],
                             );
                         }
                     }
@@ -704,6 +768,27 @@ impl Worker {
             }
         }
     }
+}
+
+/// Publishes `record` for the app of its input's producer, and on its engine's service if the
+/// engine is relayed. An event a subscriber misses only leaves it waiting, so the thread carries
+/// on after a failure.
+fn publish(
+    node: &Node<ipc::Service>,
+    producers: &mut Producers,
+    relays: &mut Relays,
+    record: EventRecord,
+    result: &[u8],
+) {
+    warn_on_error(
+        relays.publish(node, &record, result),
+        "failed to publish an event for a relayed engine",
+    );
+    let producer = record.id.producer;
+    warn_on_error(
+        producers.publish(&producer, record, result),
+        "failed to publish an event for a producer's app",
+    );
 }
 
 /// Installs `part` on `server`, and lets its crossings in `router` send.

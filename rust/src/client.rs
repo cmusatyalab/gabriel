@@ -5,6 +5,7 @@
 mod compile;
 mod local_server;
 mod producers;
+mod relays;
 mod remote_server;
 mod server_link;
 mod worker;
@@ -837,6 +838,58 @@ mod tests {
         let input = detector.poll_input().unwrap();
         assert_eq!(input.data, TILES);
         assert_eq!(input.payload_type.to_string(), TILES_TYPE);
+    }
+
+    #[test]
+    fn device_subscriber_gets_a_remote_engines_result() {
+        const RESULT: &[u8] = &[4, 2];
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let mut filter = serve(&mut fixture.local, &filter_name);
+        let mut detector = serve(&mut fixture.remote, &detector_name);
+        // Both servers run on this machine, so the remote server publishes the detector's events
+        // here itself, and the client does not relay them (see `client::relays`).
+        let mut subscription = Subscription::engine(&detector_name).unwrap();
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        publish(&mut fixture.producer, 7);
+        next_input(&mut filter);
+        filter.pass(&[]).unwrap();
+        next_input(&mut detector);
+        detector.pass(RESULT).unwrap();
+
+        let result = (0..)
+            .map(|_| {
+                try_next(&mut subscription, WAIT, |event| {
+                    (
+                        event.kind(),
+                        event.engine().to_owned(),
+                        event.result().to_vec(),
+                    )
+                })
+                .expect("no event arrived")
+            })
+            .find(|(kind, ..)| *kind == EventKind::Result)
+            .unwrap();
+        assert_eq!(result, (EventKind::Result, detector_name, RESULT.to_vec()));
+    }
+
+    #[test]
+    fn engine_cannot_be_local_in_one_flow_and_remote_in_another() {
+        let mut fixture = Offload::new();
+        let (filter_name, detector_name) = (unique("filter"), unique("detector"));
+        let _filter = serve(&mut fixture.local, &filter_name);
+        let _detector = serve(&mut fixture.remote, &detector_name);
+        let spec = fixture.spec(&filter_name, &detector_name);
+        fixture.client.add_flow(FLOW, &spec).unwrap();
+
+        let swapped = fixture.spec(&detector_name, &unique("verifier"));
+        let added = fixture.client.add_flow("swapped", &swapped);
+
+        assert!(
+            matches!(added, Err(Error::InvalidArgument(message)) if message.contains(&detector_name))
+        );
     }
 
     #[test]

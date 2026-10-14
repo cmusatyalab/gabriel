@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 use crate::{
     Error, Result,
+    events::EventPublisher,
     ipc::types::{
         ClientEventHeader, Data, EngineName, EventRecord, InputHeader, OutcomeRecord, PayloadType,
     },
@@ -35,7 +36,7 @@ use crate::{
     services,
 };
 
-/// The slice length an engine's input and event publishers start with. They grow as needed.
+/// The slice length an engine's input publisher starts with. It grows as needed.
 const INITIAL_SLICE_LEN: usize = 4096;
 
 /// An event for the client that installed the flow `session`, in the order the client must see
@@ -77,13 +78,7 @@ struct EnginePorts {
     outcomes: Subscriber<ipc::Service, [u8], OutcomeRecord>,
     /// Wakes the server after each outcome.
     outcome_ready: Listener<ipc::Service>,
-    events: Publisher<ipc::Service, [u8], EventRecord>,
-    /// Wakes the subscribers of `events` after each batch of events.
-    events_ready: Notifier<ipc::Service>,
-    /// The sequence number of the next event on the engine's event service.
-    next_event: u64,
-    /// Whether events were published since the subscribers were last woken.
-    unannounced: bool,
+    events: EventPublisher,
     /// The node of the engine's running process, as of the last check. A different node, or
     /// none, means that process stopped.
     instance: Option<UniqueNodeId>,
@@ -110,25 +105,13 @@ impl EnginePorts {
             .listener_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create outcome listener: {e}")))?;
-        let events = services::open_engine_events(node, name)?
-            .publisher_builder()
-            .initial_max_slice_len(INITIAL_SLICE_LEN)
-            .allocation_strategy(AllocationStrategy::PowerOfTwo)
-            .create()
-            .map_err(|e| Error::Internal(format!("failed to create event publisher: {e}")))?;
-        let events_ready = services::open_engine_events_ready(node, name)?
-            .notifier_builder()
-            .create()
-            .map_err(|e| Error::Internal(format!("failed to create event notifier: {e}")))?;
+        let events = EventPublisher::engine(node, name)?;
         Ok(Self {
             inputs,
             input_ready,
             outcomes,
             outcome_ready,
             events,
-            events_ready,
-            next_event: 1,
-            unannounced: false,
             instance: None,
         })
     }
@@ -167,30 +150,7 @@ impl EnginePorts {
 
     /// Numbers `record` and publishes it, with `result` as the payload.
     fn publish(&mut self, record: EventRecord, result: Option<&Data>) -> Result<()> {
-        let bytes = result.map_or(&[][..], |data| &data.bytes);
-        let mut sample = self
-            .events
-            .loan_slice_uninit(bytes.len())
-            .map_err(|e| Error::Internal(format!("failed to loan event: {e}")))?;
-        *sample.user_header_mut() = record.numbered(self.next_event);
-        self.next_event += 1;
-        sample
-            .write_from_slice(bytes)
-            .send()
-            .map_err(|e| Error::Internal(format!("failed to publish event: {e}")))?;
-        self.unannounced = true;
-        Ok(())
-    }
-
-    /// Wakes the subscribers if events were published since they were last woken.
-    fn wake_subscribers(&mut self) -> Result<()> {
-        if !std::mem::take(&mut self.unannounced) {
-            return Ok(());
-        }
-        self.events_ready
-            .notify()
-            .map_err(|e| Error::Internal(format!("failed to wake event subscribers: {e}")))?;
-        Ok(())
+        self.events.publish(record, bytes_of(result))
     }
 }
 
@@ -476,7 +436,7 @@ impl Dispatcher {
         }
         // A subscriber that is not woken still finds the events at its next wait.
         for ports in self.engines.values_mut() {
-            if let Err(e) = ports.wake_subscribers() {
+            if let Err(e) = ports.events.wake_subscribers() {
                 first_error.get_or_insert(e);
             }
         }

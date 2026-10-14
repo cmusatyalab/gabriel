@@ -30,6 +30,7 @@ pub use spec::FlowSpec;
 pub use subscription::Subscription;
 
 mod envelope;
+mod events;
 mod ipc;
 mod net;
 mod routing;

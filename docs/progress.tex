@@ -48,7 +48,7 @@ that adapts, and the network benchmarks against the original Gabriel.
 round trip is 7 to 13 times shorter for raw 720p to 4K frames
 (\code{docs/evaluation.tex}). Most of the time left goes to copying the frame.
 
-Tests: 237 in Rust, 14 in Go, and 18 in Python, all passing.
+Tests: 244 in Rust, 14 in Go, and 18 in Python, all passing.
 
 \section{Done}
 
@@ -267,7 +267,8 @@ Step & What & Status \\
      on the device crosses too \\
 7  & Event services and subscriptions, waiting for inputs and events
      together, \code{Derived} results (fusion, feedback)
-   & started: subscriptions to an engine's events on its own machine \\
+   & started: subscriptions to an engine's events, and the client relays the
+     remote engines' events on the device \\
 8  & Crossings with several targets
    & routing done on both sides; not yet carried over a transport \\
 9  & Disconnected operation: priority producers, deduplication, stream
@@ -507,8 +508,7 @@ nodes or gaps in sequence numbers.
   \item \textbf{Benchmarks on the local server}, as planned in
         \code{docs/evaluation.tex}: longer runs, repeated, with confidence
         intervals, and an engine that reads its whole frame.
-  \item \textbf{The rest of plan step 7}: the client relays the remote
-        engines' events on the device; an engine subscribes to event
+  \item \textbf{The rest of plan step 7}: an engine subscribes to event
         services, and its \code{wait} ends for an event too; and
         \code{Derived} results.
 \end{enumerate}

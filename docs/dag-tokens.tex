@@ -2010,7 +2010,14 @@ services}, where any process can read them.
         \code{gabriel\_subscribe\_engine} in C.
   \item The client receives the remote engines' events over QUIC, and
         republishes them on the device. Device processes can therefore
-        subscribe to remote engines too. Cloudlet processes can subscribe only
+        subscribe to remote engines too. A relayed engine gets the events that
+        the producer's app gets about it (so no \code{Accepted}), and
+        \code{Disconnected}, naming the engine, when the remote server is
+        lost. The client opens an engine's service at its first event. If the
+        service has a publisher already, the engine is served on the device
+        too, e.g.\ because the remote server runs on the same machine, and the
+        client does not relay it. An engine cannot be local in one of a
+        client's flows and remote in another. Cloudlet processes can subscribe only
         to remote engines, which matches the rule that only results come back
         to the device, and nothing goes the other way.
   \item The client also publishes every event about a producer's inputs on
@@ -3426,8 +3433,7 @@ each, became part of the client thread (\S\ref{sec:client-thread}).
           \item subscriptions to an engine's event service on its own
                 machine, woken after each batch of events (done);
           \item the client republishes the remote engines' events on the
-                device, and refuses a remote engine whose name a local engine
-                already has;
+                device (done);
           \item an engine subscribes to event services itself, and its
                 \code{wait} ends for an input or an event of any of them;
           \item \code{Derived} results, sent by the engine to its server on a

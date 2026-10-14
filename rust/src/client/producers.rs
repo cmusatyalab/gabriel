@@ -4,20 +4,18 @@
 use std::{collections::HashMap, sync::Arc};
 
 use iceoryx2::{
-    port::{listener::Listener, notifier::Notifier, publisher::Publisher, subscriber::Subscriber},
+    port::{listener::Listener, subscriber::Subscriber},
     prelude::*,
 };
 
 use crate::{
     Error, Result,
     envelope::Envelope,
+    events::EventPublisher,
     ipc::types::{EventRecord, FlowName},
     routing::ids::{InputId, ProducerName},
-    services::{self, EventPayload, InputPayload},
+    services::{self, InputPayload},
 };
-
-/// The slice length a result publisher starts with. It grows as needed.
-const INITIAL_SLICE_LEN: usize = 4096;
 
 #[derive(Debug, Default)]
 pub(super) struct Producers {
@@ -54,25 +52,10 @@ impl Producers {
             .create()
             .map_err(|e| Error::Internal(format!("failed to create listener: {e}")))?;
 
-        let results = services::open_producer_results(node, name)?
-            .publisher_builder()
-            .initial_max_slice_len(INITIAL_SLICE_LEN)
-            .allocation_strategy(AllocationStrategy::PowerOfTwo)
-            .create()
-            .map_err(|e| Error::Internal(format!("failed to create result publisher: {e}")))?;
-
-        let results_ready = services::open_producer_results_ready(node, name)?
-            .notifier_builder()
-            .create()
-            .map_err(|e| Error::Internal(format!("failed to create result notifier: {e}")))?;
-
         let producer_ports = ProducerPorts {
             subscriber,
             listener,
-            results,
-            results_ready,
-            next_result: 1,
-            unannounced: false,
+            results: EventPublisher::producer(node, name)?,
         };
 
         self.producers.insert(producer, producer_ports);
@@ -113,34 +96,16 @@ impl Producers {
         let Some(ports) = self.producers.get_mut(producer) else {
             return Ok(());
         };
-        let mut sample = ports
-            .results
-            .loan_slice_uninit(result.len())
-            .map_err(|e| Error::Internal(format!("failed to loan event: {e}")))?;
-        *sample.user_header_mut() = record.numbered(ports.next_result);
-        ports.next_result += 1;
-        sample
-            .write_from_slice(result)
-            .send()
-            .map_err(|e| Error::Internal(format!("failed to publish event: {e}")))?;
-        ports.unannounced = true;
-        Ok(())
+        ports.results.publish(record, result)
     }
 
     /// Wakes the subscribers of every producer with events published since the last call.
     /// Returns the first error, after waking the rest.
     pub(super) fn wake_subscribers(&mut self) -> Result<()> {
         let mut first_error = None;
-        for ports in self
-            .producers
-            .values_mut()
-            .filter(|ports| ports.unannounced)
-        {
-            ports.unannounced = false;
-            if let Err(e) = ports.results_ready.notify() {
-                first_error.get_or_insert(Error::Internal(format!(
-                    "failed to wake result subscribers: {e}"
-                )));
+        for ports in self.producers.values_mut() {
+            if let Err(e) = ports.results.wake_subscribers() {
+                first_error.get_or_insert(e);
             }
         }
         first_error.map_or(Ok(()), Err)
@@ -162,13 +127,7 @@ struct ProducerPorts {
     subscriber: Subscriber<ipc::Service, InputPayload, Envelope>,
     listener: Listener<ipc::Service>,
     /// The events about the producer's inputs, for its app.
-    results: Publisher<ipc::Service, EventPayload, EventRecord>,
-    /// Wakes the subscribers of `results` after each batch of events.
-    results_ready: Notifier<ipc::Service>,
-    /// The sequence number of the next event on `results`.
-    next_result: u64,
-    /// Whether events were published since the subscribers were last woken.
-    unannounced: bool,
+    results: EventPublisher,
 }
 
 impl ProducerPorts {
