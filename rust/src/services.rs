@@ -201,6 +201,15 @@ pub(crate) fn open_engine_events(
     open_events(node, &naming::engine_events_service(name)?)
 }
 
+/// Opens (or creates) the event the server signals after publishing events of the engine `name`,
+/// so subscribers can wait for them.
+pub(crate) fn open_engine_events_ready(
+    node: &Node<ipc::Service>,
+    name: &str,
+) -> Result<event::PortFactory<ipc::Service>> {
+    open_events_ready(node, &naming::engine_events_ready_service(name)?)
+}
+
 /// Opens (or creates) the result service of the producer `name`: every event about its inputs, in
 /// order, for the producer's app. Its one publisher is the client that takes the producer's
 /// inputs. Like an engine's event service, it drops the oldest events for a subscriber that falls
@@ -218,8 +227,16 @@ pub(crate) fn open_producer_results_ready(
     node: &Node<ipc::Service>,
     name: &str,
 ) -> Result<event::PortFactory<ipc::Service>> {
-    let service = naming::producer_result_ready_service(name)?;
-    node.service_builder(&service)
+    open_events_ready(node, &naming::producer_result_ready_service(name)?)
+}
+
+/// Opens (or creates) the event that the one publisher of an event service signals after each
+/// batch of events.
+fn open_events_ready(
+    node: &Node<ipc::Service>,
+    service: &ServiceName,
+) -> Result<event::PortFactory<ipc::Service>> {
+    node.service_builder(service)
         .event()
         .max_notifiers(EVENT_PUBLISHERS)
         .max_listeners(EVENT_SUBSCRIBERS)

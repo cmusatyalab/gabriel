@@ -84,7 +84,7 @@ signal.signal(signal.SIGTERM, signal.default_int_handler)
 
 with (
     gabriel.Producer(PRODUCER, max_input_size=FRAME_SIZE) as camera,
-    gabriel.Subscription(PRODUCER) as events,
+    gabriel.Subscription.producer(PRODUCER) as events,
     gabriel.Client("yolo-app", SERVER) as client,
     contextlib.suppress(KeyboardInterrupt),
 ):

@@ -1,4 +1,4 @@
-"""Subscriptions: what happened to a producer's inputs."""
+"""Subscriptions: what happened to a producer's inputs, or at an engine."""
 
 from collections.abc import Iterator
 
@@ -8,15 +8,27 @@ from gabriel.types import Event
 
 
 class Subscription(ThreadHandle):
-    """Reads the events about the inputs of one producer: what happened to each at each engine,
-    and lost connections. Only events published after it subscribes are read.
+    """Reads the events of one event service. Only events published after it subscribes are read.
+    Create one with `Subscription.producer` or `Subscription.engine`.
 
     A subscription must be used and closed on the thread that created it.
     """
 
-    def __init__(self, producer: str) -> None:
-        handle = create(lib.gabriel_subscribe_producer, "gabriel_subscription_t **", cstr(producer))
+    def __init__(self, subscribe, name: str) -> None:
+        handle = create(subscribe, "gabriel_subscription_t **", cstr(name))
         super().__init__(handle, lib.gabriel_subscription_destroy)
+
+    @classmethod
+    def producer(cls, name: str) -> "Subscription":
+        """Subscribes to the events about the inputs of the producer `name`: what happened to each
+        at each engine, and lost connections."""
+        return cls(lib.gabriel_subscribe_producer, name)
+
+    @classmethod
+    def engine(cls, name: str) -> "Subscription":
+        """Subscribes to the events of the engine `name`: what happened to each input at that
+        engine."""
+        return cls(lib.gabriel_subscribe_engine, name)
 
     def wait(self, timeout: float) -> bool:
         """Waits until an event is ready, or `timeout` seconds pass. Returns whether it may be

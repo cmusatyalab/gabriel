@@ -2004,7 +2004,10 @@ services}, where any process can read them.
 \paragraph{Where events are published.}
 \begin{itemize}[nosep]
   \item Each server publishes the events of its engines on iceoryx2, on the
-        machine where they run, one event service per engine.
+        machine where they run, one event service per engine, and signals
+        \nolinkurl{gabriel/engine/<name>/events-ready} after each batch. A
+        process reads them with \code{Subscription::engine} in Rust, or
+        \code{gabriel\_subscribe\_engine} in C.
   \item The client receives the remote engines' events over QUIC, and
         republishes them on the device. Device processes can therefore
         subscribe to remote engines too. Cloudlet processes can subscribe only
@@ -3213,7 +3216,8 @@ server's \code{.../input-ready}, which has one notifier per client. After it
 sends a client events, the server signals the client's
 \code{.../events-ready}. After it publishes events about a producer's inputs,
 the client signals the producer's \code{.../result-ready}, which ends a
-subscriber's \code{wait}. A signal always follows the samples it announces, so
+subscriber's \code{wait}; the server signals an engine's
+\code{.../events-ready} the same way. A signal always follows the samples it announces, so
 a woken side finds them.
 
 \paragraph{Node names.} An engine's iceoryx2 node is named
@@ -3360,8 +3364,9 @@ fail at once, one warning stands for them.
         \code{gabriel\_subscription\_poll}. A polled event stays valid until
         the next poll. Besides the published kinds, a poll can return
         \code{LOST}, with the number of events lost. Each event carries its
-        timestamps in nanoseconds (\S\ref{sec:events}). Subscriptions to
-        engines' event services will use the same calls.
+        timestamps in nanoseconds (\S\ref{sec:events}). A subscription to an
+        engine's event service, made with \code{gabriel\_subscribe\_engine},
+        uses the same calls.
   \item Producers stamp each frame with its \code{InputId}. A live producer
         does this automatically, and \code{publish\_input} returns the id (in
         C, its sequence number), so the app can match events to its frames,
@@ -3416,7 +3421,21 @@ each, became part of the client thread (\S\ref{sec:client-thread}).
         \end{enumerate}
   \item Event services and subscriptions, waiting for inputs and events
         together, \code{Derived} results, and the client's telemetry producer.
-        Multi-tier fusion and feedback work end to end.
+        Multi-tier fusion and feedback work end to end. In this order:
+        \begin{enumerate}[nosep]
+          \item subscriptions to an engine's event service on its own
+                machine, woken after each batch of events (done);
+          \item the client republishes the remote engines' events on the
+                device, and refuses a remote engine whose name a local engine
+                already has;
+          \item an engine subscribes to event services itself, and its
+                \code{wait} ends for an input or an event of any of them;
+          \item \code{Derived} results, sent by the engine to its server on a
+                service of their own, since outcomes are limited to one in
+                flight. The server publishes them on the engine's event
+                service, and the remote server also sends them to its client.
+        \end{enumerate}
+        The telemetry producer comes after these.
   \item Crossings with several targets on one server.
   \item On-demand producers, the record of completed inputs on the remote
         server, and stream priorities: prioritized reintegration and
@@ -3564,6 +3583,11 @@ Clocks
         holds its token until then. Whether tighter bounds are worth it is
         open.
   \item The default buffer size of a subscription to an event service.
+  \item \textbf{Several clients of one remote server} (later). For now, a
+        remote server has one client. With several, the server must choose
+        which clients get an engine's \code{Derived} result, which names only
+        a flow and an input; and two clients on one device that relay the
+        same remote engine would both publish its event service.
   \item \textbf{Sections} (planned, \S\ref{sec:sections}). Open:
         \begin{itemize}[nosep]
           \item An input that the fast branch skipped, but that is alive on

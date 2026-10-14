@@ -32,7 +32,7 @@ const INPUT_READY: &str = "input-ready";
 const OUTCOME_READY: &str = "outcome-ready";
 /// Service carrying a server's control calls.
 const CONTROL: &str = "control";
-/// Event signalled when a server has published events for a client.
+/// Event signalled when a server has published a client's or an engine's events.
 const EVENTS_READY: &str = "events-ready";
 /// Service carrying the events about a producer's inputs, for the producer's app.
 const RESULT: &str = "result";
@@ -69,6 +69,11 @@ pub fn engine_service(name: &str) -> Result<ServiceName> {
 /// Service name of the engine `name`'s events.
 pub fn engine_events_service(name: &str) -> Result<ServiceName> {
     service(ENGINE, name, EVENTS)
+}
+
+/// Service name of the event the engine `name`'s server signals after publishing its events.
+pub fn engine_events_ready_service(name: &str) -> Result<ServiceName> {
+    service(ENGINE, name, EVENTS_READY)
 }
 
 /// Service name of the engine `name`'s outcomes.
@@ -243,6 +248,10 @@ mod tests {
         assert_eq!(
             engine_outcome_ready_service("yolo").unwrap().as_str(),
             "gabriel/engine/yolo/outcome-ready"
+        );
+        assert_eq!(
+            engine_events_ready_service("yolo").unwrap().as_str(),
+            "gabriel/engine/yolo/events-ready"
         );
     }
 

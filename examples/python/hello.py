@@ -37,7 +37,7 @@ with (
     # to them.
     with (
         gabriel.Producer("hello-app", max_input_size=1024) as producer,
-        gabriel.Subscription("hello-app") as events,
+        gabriel.Subscription.producer("hello-app") as events,
         # 3. A client that sends the producer's inputs through the flow.
         gabriel.Client("hello-client", "hello-server") as client,
     ):

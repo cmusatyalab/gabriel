@@ -78,8 +78,12 @@ struct EnginePorts {
     /// Wakes the server after each outcome.
     outcome_ready: Listener<ipc::Service>,
     events: Publisher<ipc::Service, [u8], EventRecord>,
+    /// Wakes the subscribers of `events` after each batch of events.
+    events_ready: Notifier<ipc::Service>,
     /// The sequence number of the next event on the engine's event service.
     next_event: u64,
+    /// Whether events were published since the subscribers were last woken.
+    unannounced: bool,
     /// The node of the engine's running process, as of the last check. A different node, or
     /// none, means that process stopped.
     instance: Option<UniqueNodeId>,
@@ -112,13 +116,19 @@ impl EnginePorts {
             .allocation_strategy(AllocationStrategy::PowerOfTwo)
             .create()
             .map_err(|e| Error::Internal(format!("failed to create event publisher: {e}")))?;
+        let events_ready = services::open_engine_events_ready(node, name)?
+            .notifier_builder()
+            .create()
+            .map_err(|e| Error::Internal(format!("failed to create event notifier: {e}")))?;
         Ok(Self {
             inputs,
             input_ready,
             outcomes,
             outcome_ready,
             events,
+            events_ready,
             next_event: 1,
+            unannounced: false,
             instance: None,
         })
     }
@@ -168,6 +178,18 @@ impl EnginePorts {
             .write_from_slice(bytes)
             .send()
             .map_err(|e| Error::Internal(format!("failed to publish event: {e}")))?;
+        self.unannounced = true;
+        Ok(())
+    }
+
+    /// Wakes the subscribers if events were published since they were last woken.
+    fn wake_subscribers(&mut self) -> Result<()> {
+        if !std::mem::take(&mut self.unannounced) {
+            return Ok(());
+        }
+        self.events_ready
+            .notify()
+            .map_err(|e| Error::Internal(format!("failed to wake event subscribers: {e}")))?;
         Ok(())
     }
 }
@@ -452,6 +474,12 @@ impl Dispatcher {
                 first_error.get_or_insert(e);
             }
         }
+        // A subscriber that is not woken still finds the events at its next wait.
+        for ports in self.engines.values_mut() {
+            if let Err(e) = ports.wake_subscribers() {
+                first_error.get_or_insert(e);
+            }
+        }
         first_error.map_or(Ok(()), Err)
     }
 }
@@ -489,12 +517,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        Engine,
+        Engine, Subscription,
         ipc::types::{EventKind, Forward, payload_type},
         routing::{
             ids::{EdgeId, NodeId, ProducerName},
             server_router::{CrossingSpec, EdgeSpec},
         },
+        subscription::Event,
         test_util::unique,
     };
 
@@ -648,6 +677,55 @@ mod tests {
                 (2, EventKind::Sent),
                 (3, EventKind::Result),
             ]
+        );
+    }
+
+    #[test]
+    fn subscriber_is_woken_for_the_engines_events() {
+        let now = Instant::now();
+        let mut fixture = Fixture::new();
+        let (subscribed, waiting) = std::sync::mpsc::channel();
+        let name = fixture.name.clone();
+        let subscriber = std::thread::spawn(move || {
+            let mut subscription = Subscription::engine(&name).unwrap();
+            subscribed.send(()).unwrap();
+            subscription.wait(LONG_WAIT).unwrap();
+            let Event::Published(event) = subscription.poll().unwrap() else {
+                panic!("expected an event");
+            };
+            event.kind()
+        });
+        waiting.recv().unwrap();
+        let started = Instant::now();
+
+        fixture.accept_frame(now);
+
+        assert_eq!(subscriber.join().unwrap(), EventKind::Accepted);
+        assert!(started.elapsed() < LONG_WAIT);
+    }
+
+    #[test]
+    fn engine_subscriber_reads_each_event_with_its_result() {
+        let now = Instant::now();
+        let mut fixture = Fixture::new();
+        let mut subscription = Subscription::engine(&fixture.name).unwrap();
+        fixture.accept_frame(now);
+        fixture.engine.poll_input().unwrap();
+        fixture.engine.pass(&RESULT).unwrap();
+        fixture.dispatcher.poll(now).unwrap();
+
+        let mut kinds = Vec::new();
+        while let Ok(Event::Published(event)) = subscription.poll() {
+            kinds.push(event.kind());
+            if event.kind() == EventKind::Result {
+                assert_eq!(event.result(), RESULT);
+                assert_eq!(event.payload_type(), RESULT_TYPE);
+            }
+        }
+
+        assert_eq!(
+            kinds,
+            vec![EventKind::Accepted, EventKind::Sent, EventKind::Result]
         );
     }
 

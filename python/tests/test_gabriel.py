@@ -73,7 +73,7 @@ def fixture():
 
 
 def test_input_reaches_engine_and_result_reaches_app(fixture):
-    with gabriel.Subscription(fixture.producer_name) as events:
+    with gabriel.Subscription.producer(fixture.producer_name) as events:
         fixture.add_flow()
 
         seq = fixture.producer.send(FLOW, b"frame")
@@ -269,3 +269,18 @@ timeout = "5s"
         assert bytes(input.data) == b"tiles"
         assert input.payload_type == "example.Tiles"
         tracker.stop()
+
+
+def test_engine_subscriber_sees_the_engines_result(fixture):
+    with gabriel.Subscription.engine(fixture.engine_name) as events:
+        fixture.add_flow()
+
+        seq = fixture.producer.send(FLOW, b"frame")
+        assert fixture.engine.next(WAIT) is not None
+        fixture.engine.pass_(b"cat")
+
+        deadline = time.monotonic() + WAIT
+        while (event := events.next(deadline - time.monotonic())).kind != gabriel.EventKind.RESULT:
+            assert event.engine == fixture.engine_name
+        assert event.id.seq == seq
+        assert event.result == b"cat"

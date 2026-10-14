@@ -20,8 +20,8 @@ The rewrite is roughly \textbf{60\% done} by effort, measured against the
 implementation plan in the design note (\code{docs/dag-tokens.tex}). This is a
 rough estimate. Plan steps 1--6 are done: flows run end to end through local
 engines, and across QUIC to engines on a remote server. Apps use Gabriel from
-Rust, C, Go, and Python, all through the one C ABI. What remains is result
-edges and derived results (step 7), crossings with several targets over a
+Rust, C, Go, and Python, all through the one C ABI. What remains is
+subscriptions and derived results (step 7), crossings with several targets over a
 transport (step 8), disconnected operation (step 9), and optional zero copy
 (step 10).
 
@@ -48,7 +48,7 @@ that adapts, and the network benchmarks against the original Gabriel.
 round trip is 7 to 13 times shorter for raw 720p to 4K frames
 (\code{docs/evaluation.tex}). Most of the time left goes to copying the frame.
 
-Tests: 235 in Rust, 13 in Go, and 17 in Python, all passing.
+Tests: 237 in Rust, 14 in Go, and 18 in Python, all passing.
 
 \section{Done}
 
@@ -265,8 +265,9 @@ Step & What & Status \\
      uplinks, remote crossings with a configured capacity; the bench runs
      it over netem on loopback; checked across the internet; an \code{Emit}
      on the device crosses too \\
-7  & Result edges, engine inboxes, \code{Derived} results (fusion, feedback)
-   & not started \\
+7  & Event services and subscriptions, waiting for inputs and events
+     together, \code{Derived} results (fusion, feedback)
+   & started: subscriptions to an engine's events on its own machine \\
 8  & Crossings with several targets
    & routing done on both sides; not yet carried over a transport \\
 9  & Disconnected operation: priority producers, deduplication, stream
@@ -506,9 +507,10 @@ nodes or gaps in sequence numbers.
   \item \textbf{Benchmarks on the local server}, as planned in
         \code{docs/evaluation.tex}: longer runs, repeated, with confidence
         intervals, and an engine that reads its whole frame.
-  \item \textbf{The rest of the engine ABI}: \code{subscribe} to engines'
-        event services (reusing \code{Subscription}), \code{publish\_result},
-        and \code{wait} for subscribed events too (plan step 7).
+  \item \textbf{The rest of plan step 7}: the client relays the remote
+        engines' events on the device; an engine subscribes to event
+        services, and its \code{wait} ends for an event too; and
+        \code{Derived} results.
 \end{enumerate}
 
 The first version copies a frame at each service boundary

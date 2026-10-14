@@ -871,6 +871,20 @@ pub unsafe extern "C" fn gabriel_subscribe_producer(
     unsafe { create_handle(subscription, || Subscription::producer(str_arg(name)?)) }
 }
 
+/// Subscribes to the events of the engine `name`: what happened to each input at that engine.
+/// Only events published from now on are read. Use and destroy the subscription only on the
+/// thread that created it.
+///
+/// # Safety
+/// `name` must be NUL-terminated; `subscription` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_subscribe_engine(
+    name: *const c_char,
+    subscription: *mut *mut Subscription,
+) -> Status {
+    unsafe { create_handle(subscription, || Subscription::engine(str_arg(name)?)) }
+}
+
 /// # Safety
 /// `subscription` must be null or a live handle that is not used afterwards.
 #[unsafe(no_mangle)]

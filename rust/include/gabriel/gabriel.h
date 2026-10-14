@@ -540,6 +540,16 @@ gabriel_status_t gabriel_subscribe_producer(const char *name,
                                             gabriel_subscription_t **subscription);
 
 /**
+ * Subscribes to the events of the engine `name`: what happened to each input at that engine.
+ * Only events published from now on are read. Use and destroy the subscription only on the
+ * thread that created it.
+ *
+ * # Safety
+ * `name` must be NUL-terminated; `subscription` must be valid for writes.
+ */
+gabriel_status_t gabriel_subscribe_engine(const char *name, gabriel_subscription_t **subscription);
+
+/**
  * # Safety
  * `subscription` must be null or a live handle that is not used afterwards.
  */

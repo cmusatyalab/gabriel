@@ -109,7 +109,7 @@ type Event struct {
 	ReceivedAt Timestamp
 }
 
-// Subscription reads the events about the inputs of one producer.
+// Subscription reads the events about the inputs of one producer, or the events of one engine.
 //
 // A Subscription must be used and closed in the goroutine that created it (see Threads in the
 // package documentation).
@@ -126,6 +126,21 @@ func SubscribeProducer(name string) (*Subscription, error) {
 	t := lockThread()
 	s := &Subscription{thread: t}
 	err := call(func() C.gabriel_status_t { return C.gabriel_subscribe_producer(cName, &s.handle) })
+	if err != nil {
+		t.release()
+		return nil, err
+	}
+	return s, nil
+}
+
+// SubscribeEngine subscribes to the events of the engine name: what happened to each input at
+// that engine. Only events published from now on are read.
+func SubscribeEngine(name string) (*Subscription, error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	t := lockThread()
+	s := &Subscription{thread: t}
+	err := call(func() C.gabriel_status_t { return C.gabriel_subscribe_engine(cName, &s.handle) })
 	if err != nil {
 		t.release()
 		return nil, err

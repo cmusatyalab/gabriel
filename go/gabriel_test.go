@@ -345,3 +345,43 @@ timeout = "5s"
 		t.Errorf("tracker got %q of type %q, want %q of type %q", input.Data, input.PayloadType, "tiles", "example.Tiles")
 	}
 }
+
+func TestEngineSubscriberSeesTheEnginesResult(t *testing.T) {
+	f := newFixture(t)
+	events, err := SubscribeEngine(f.names.engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer events.Close()
+	if err := f.client.AddFlow(flowName, chain(f.names.producer, f.names.engine)); err != nil {
+		t.Fatal(err)
+	}
+
+	seq, err := f.producer.Send(flowName, []byte("frame"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.engine.Next(timeout(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.engine.Pass([]byte("cat")); err != nil {
+		t.Fatal(err)
+	}
+
+	for {
+		event, err := events.Next(timeout(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if event.Engine != f.names.engine {
+			t.Errorf("event from %s, want only events of %s", event.Engine, f.names.engine)
+		}
+		if event.Kind != EventResult {
+			continue
+		}
+		if event.ID.Seq != seq || !bytes.Equal(event.Result, []byte("cat")) {
+			t.Errorf("result %+v, want %q for seq %d", event, "cat", seq)
+		}
+		return
+	}
+}

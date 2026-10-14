@@ -131,6 +131,7 @@ gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
                                      size_t result_len);
 gabriel_status_t gabriel_subscribe_producer(const char *name,
                                             gabriel_subscription_t **subscription);
+gabriel_status_t gabriel_subscribe_engine(const char *name, gabriel_subscription_t **subscription);
 gabriel_status_t gabriel_subscription_destroy(gabriel_subscription_t *subscription);
 gabriel_status_t gabriel_subscription_wait(gabriel_subscription_t *subscription,
                                            uint32_t timeout_ms);

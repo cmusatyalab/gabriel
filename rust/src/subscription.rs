@@ -1,7 +1,7 @@
 //! Subscription: reads the events about a producer's inputs, which the client publishes for the
-//! producer's app ("Event services and subscriptions" in the design note). Every event is
-//! delivered, in order; a subscriber that falls too far behind loses the oldest, and learns how
-//! many as [`Event::Lost`].
+//! producer's app, or the events of an engine, which its server publishes ("Event services and
+//! subscriptions" in the design note). Every event is delivered, in order; a subscriber that falls
+//! too far behind loses the oldest, and learns how many as [`Event::Lost`].
 //!
 //! Each event says when it happened, and for an engine's offer, when the offer was made. With the
 //! time the app published the input, these tell how long the input waited, and where.
@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use iceoryx2::port::{listener::Listener, subscriber::Subscriber};
+use iceoryx2::service::port_factory::{event, publish_subscribe};
 use iceoryx2::prelude::*;
 use iceoryx2::sample::Sample;
 use iceoryx2_bb_container::string::String as _;
@@ -114,14 +115,31 @@ impl Subscription {
     /// Subscribes to the events about the inputs of the producer `name`. Only events published
     /// from now on are read.
     pub fn producer(name: &str) -> Result<Self> {
-        let node = NodeBuilder::new()
-            .create::<ipc::Service>()
-            .map_err(|e| Error::Internal(format!("failed to create node: {e}")))?;
-        let events = services::open_producer_results(&node, name)?
+        let node = create_node()?;
+        let events = services::open_producer_results(&node, name)?;
+        let ready = services::open_producer_results_ready(&node, name)?;
+        Self::open(node, &events, &ready)
+    }
+
+    /// Subscribes to the events of the engine `name`, which its server publishes. Only events
+    /// published from now on are read.
+    pub fn engine(name: &str) -> Result<Self> {
+        let node = create_node()?;
+        let events = services::open_engine_events(&node, name)?;
+        let ready = services::open_engine_events_ready(&node, name)?;
+        Self::open(node, &events, &ready)
+    }
+
+    fn open(
+        node: Node<ipc::Service>,
+        events: &publish_subscribe::PortFactory<ipc::Service, EventPayload, EventRecord>,
+        ready: &event::PortFactory<ipc::Service>,
+    ) -> Result<Self> {
+        let events = events
             .subscriber_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create subscriber: {e}")))?;
-        let ready = services::open_producer_results_ready(&node, name)?
+        let ready = ready
             .listener_builder()
             .create()
             .map_err(|e| Error::Internal(format!("failed to create listener: {e}")))?;
@@ -188,6 +206,12 @@ impl Subscription {
             result: sample.payload(),
         }))
     }
+}
+
+fn create_node() -> Result<Node<ipc::Service>> {
+    NodeBuilder::new()
+        .create::<ipc::Service>()
+        .map_err(|e| Error::Internal(format!("failed to create node: {e}")))
 }
 
 impl std::fmt::Debug for Subscription {
