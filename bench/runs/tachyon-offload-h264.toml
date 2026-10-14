@@ -1,0 +1,81 @@
+# On a Tachyon: a camera at 30 fps publishes decoded 720p frames to YOLO on the device, which
+# passes frames with objects to a detector on an edge server, over the network. On the way, the
+# frames are encoded with H.264 (examples/h264): the encoder runs on the device, the decoder on
+# the edge. YOLO is the QNN inference server as an external engine, on the fast cores; the edge
+# server runs gabriel-server. Start them before the run:
+#
+#   edge:   gabriel-server --identity-dir identity --engine h264-decode --engine detector
+#           h264-decode
+#   device: taskset -c 4-7 qnn-sample-app --model <yolo.so> --backend libQnnHtp.so \
+#               --gabriel_engine yolo
+#           taskset -c 4-7 h264-encode --encoder "qtic2venc control-rate=2 target-bitrate=3000000 b-frames=0"
+#
+# Copy the edge server's identity/certificate.der to the device, next to this file's run
+# directory. Make the frames with raw_frames.py, as tachyon-detect-raw says.
+name = "tachyon-offload-h264"
+duration = "30s"
+drain = "3s"
+seed = 1
+
+[[flow.producers]]
+name = "camera"
+
+[[flow.engines]]
+name = "yolo"
+location = "local"
+
+[[flow.engines]]
+name = "h264-encode"
+location = "local"
+
+[[flow.engines]]
+name = "h264-decode"
+location = "remote"
+
+[[flow.engines]]
+name = "detector"
+location = "remote"
+
+[[flow.edges]]
+from = "camera"
+to = "yolo"
+timeout = "1s"
+
+[[flow.edges]]
+from = "yolo"
+to = "h264-encode"
+timeout = "1s"
+
+[[flow.edges]]
+from = "h264-encode"
+to = "h264-decode"
+timeout = "2s"
+
+[[flow.edges]]
+from = "h264-decode"
+to = "detector"
+timeout = "1s"
+
+[producers.camera]
+rate = 30
+frames = "frames-720p/raw"
+input_type = "steeleagle_protocol.v1.messages.stream.RawFrame"
+
+[engines.yolo]
+external = true
+accelerator = "npu"
+
+[engines.h264-encode]
+external = true
+
+[engines.h264-decode]
+external = true
+
+[engines.detector]
+external = true
+accelerator = "gpu"
+
+[remote]
+# gs25450's public address.
+addr = "128.2.211.57:4433"
+certificate = "certificate.der"

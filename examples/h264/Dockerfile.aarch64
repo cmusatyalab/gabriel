@@ -1,0 +1,45 @@
+# Cross-compiles the H.264 engines for an aarch64 device with Ubuntu 20.04, such as a Particle
+# Tachyon: glibc 2.31 and GStreamer 1.16. Build the image, then the engines, from the repository
+# root:
+#
+#   docker build -t gabriel-h264-aarch64 -f examples/h264/Dockerfile.aarch64 examples/h264
+#   docker run --rm -u $(id -u):$(id -g) -v $PWD:/src -w /src \
+#       -e CARGO_TARGET_DIR=/src/target/aarch64 gabriel-h264-aarch64 \
+#       cargo build --release --target aarch64-unknown-linux-gnu -p gabriel-h264
+#
+# A target directory of its own keeps its build scripts, linked against glibc 2.31, apart from
+# the host's. The engines are in target/aarch64/aarch64-unknown-linux-gnu/release/. They need
+# the device's GStreamer runtime, which a Tachyon has.
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Packages for amd64 from the main archive, and for arm64, GStreamer to link against, from the
+# ports archive.
+RUN sed -i 's/^deb http/deb [arch=amd64] http/' /etc/apt/sources.list \
+    && dpkg --add-architecture arm64 \
+    && for suite in focal focal-updates focal-security; do \
+        echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $suite main universe" \
+            >> /etc/apt/sources.list; \
+    done \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gcc g++ libc6-dev pkg-config \
+        gcc-aarch64-linux-gnu libc6-dev-arm64-cross libclang-dev clang \
+        libgstreamer1.0-dev:arm64 libgstreamer-plugins-base1.0-dev:arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG RUST_VERSION=1.98.1
+ENV RUSTUP_HOME=/rustup CARGO_HOME=/cargo PATH=/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+            --target aarch64-unknown-linux-gnu \
+    && chmod -R a+rwX /cargo /rustup
+
+# The arm64 libraries live in Ubuntu's multiarch directory, which the cross linker does not search
+# by itself.
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-L/usr/lib/aarch64-linux-gnu -Clink-arg=-Wl,-rpath-link,/usr/lib/aarch64-linux-gnu -Clink-arg=-Wl,-rpath-link,/lib/aarch64-linux-gnu" \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu="--sysroot=/usr/aarch64-linux-gnu" \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    PKG_CONFIG_LIBDIR_aarch64_unknown_linux_gnu=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig

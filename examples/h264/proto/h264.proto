@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2026 Carnegie Mellon University
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// The messages the H.264 encoder and decoder engines exchange.
+syntax = "proto3";
+
+package gabriel.examples.h264.v1;
+
+// One frame, encoded: what the encoder emits and the decoder takes.
+message EncodedVideoFrame {
+  // Counts the frames the encoder encoded, from 0. A frame that does not
+  // follow the last one the decoder decoded means frames were lost, and the
+  // decoder waits for a keyframe.
+  uint64 frame_number = 1;
+  // An IDR frame, with its SPS and PPS: it decodes without earlier frames.
+  bool keyframe = 2;
+  // One H.264 access unit, in Annex B byte-stream format.
+  bytes data = 3;
+  // The payload type of the raw frame the encoder took, e.g.
+  // "steeleagle_protocol.v1.messages.telemetry.RawFrame". The decoder emits
+  // the frame it decodes with this type.
+  string raw_frame_type = 4;
+  // That raw frame without its pixels: its size, and any other fields, such
+  // as a capture timestamp, which the decoder passes on unchanged.
+  bytes raw_frame = 5;
+}
+
+// The decoder's result for an encoded frame.
+message DecodeResult {
+  // Whether the frame was decoded and emitted.
+  bool decoded = 1;
+  // The decoder dropped the frame because a frame before it was lost, and
+  // waits for a keyframe. The encoder subscribes to the decoder's events, and
+  // makes its next frame one.
+  bool keyframe_needed = 2;
+}
+
+// The fields of a SteelEagle RawFrame that the engines read and write, with
+// the same field numbers. SteelEagle's messages of either package
+// (messages.stream or messages.telemetry) parse as this one, and the fields
+// it leaves out are kept as unknown fields, so they pass through unchanged.
+message RawFrameView {
+  // Packed 8-bit pixels, row by row.
+  bytes data = 2;
+  // Width in pixels.
+  uint64 h_res = 3;
+  // Height in pixels.
+  uint64 v_res = 4;
+  // Channels per pixel; 3 for RGB.
+  uint64 channels = 6;
+}

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["rust", "bench", "server"]
+members = ["rust", "bench", "server", "examples/h264"]
 
 [workspace.package]
 edition = "2024"

@@ -397,7 +397,8 @@ detail.
         runs on the device; a \emph{remote} engine runs on the cloudlet.
   \item[Input] A frame, or the data an engine produced from a frame. Each
         input has an \code{InputId}, and a payload type that says how to read
-        its bytes.
+        its bytes: the type its producer names for all its inputs, or the one
+        an engine names when it emits it.
   \item[Input edge] Carries inputs from a producer or an engine to another
         engine. Edges always end at an engine, since producers have no
         incoming edges. A node can have
@@ -2625,6 +2626,13 @@ fails, and the client logs a warning on each try. Real
 deployments need proper certificates and client authentication; both are
 left for later.
 
+\paragraph{Running a remote server.} \code{gabriel-server} runs a remote
+server on its own, e.g.\ on the cloudlet next to engines in their own
+containers: \code{gabriel-server --identity-dir DIR --engine NAME ...}. It
+listens on \code{0.0.0.0:4433} unless told otherwise, keeps its identity in
+\code{DIR}, and stops on SIGINT or SIGTERM. Clients are given a copy of
+\code{DIR/certificate.der}.
+
 \paragraph{Testing.} Unit tests run the client and both servers in one
 process, with QUIC over loopback. The experiments do too, but in a network
 namespace of their own, made without root
@@ -2896,6 +2904,46 @@ and give their inputs ids like any producer. So any process can use them:
   \item a flow can take them as its producer, when the consumer wants them
         rate-limited and newest-wins.
 \end{itemize}
+
+\subsection{Video coding across a crossing}
+\label{sec:video-coding}
+
+A raw 720p frame is 2.8\,MB; over a link of a few Mbit/s, one takes seconds.
+Video coding shrinks frames a hundredfold, but it clashes with freshness:
+an H.264 P-frame decodes only after every frame before it, back to a
+keyframe, while Gabriel skips stale frames on purpose, at edges and at
+crossings. \code{examples/h264} resolves this with two engines and a
+subscription, and no change to Gabriel:
+\begin{center}
+\begin{tikzpicture}[node distance=0.6cm and 0.9cm]
+  \node[box] (cam) {camera};
+  \node[box, right=of cam] (filter) {filter\\(local)};
+  \node[box, right=of filter] (enc) {encoder\\(local)};
+  \node[box, right=of enc] (dec) {decoder\\(remote)};
+  \node[box, right=of dec] (det) {detector\\(remote)};
+  \draw[arrow] (cam) -- (filter);
+  \draw[arrow] (filter) -- node[lbl] {pass} (enc);
+  \draw[arrow] (enc) -- node[lbl] {emit} (dec);
+  \draw[arrow] (dec) -- node[lbl] {emit} (det);
+  \draw[arrow, dashed] (dec.south) to[bend left=25] node[lbl, below] {events} (enc.south);
+\end{tikzpicture}
+\end{center}
+\begin{itemize}[nosep]
+  \item The encoder emits each frame encoded, numbered in the order it
+        encoded them. The decoder emits it decoded, of the payload type the
+        camera gave it, so the detector sees the camera's frames.
+  \item After a gap in the numbers, the decoder drops frames until the next
+        keyframe, and its result says it needs one.
+  \item The encoder subscribes to the decoder's events. When a frame it
+        encoded since its last keyframe is skipped, times out, or is dropped
+        by the decoder, its next frame is a keyframe. A skip at the crossing
+        happens on the device, so the encoder learns of it without a round
+        trip; but a frame is skipped only once a newer one replaces it, so a
+        few frames after a gap are still dropped.
+\end{itemize}
+Freshness still decides which frames go: a frame skipped for a newer one costs
+one keyframe instead of a stale backlog. The encoder must not hold frames back
+(no B-frames or lookahead), since each input's outcome waits for its output.
 
 \subsection{Combining them}
 
@@ -3396,6 +3444,11 @@ fail at once, one warning stands for them.
         once when it is created. When it emits, it also names the type of the
         new input. Result events carry the type
         (\S\ref{sec:services}).
+  \item A producer names the type of its inputs once, when it is created:
+        \code{gabriel\_producer\_create(name, input\_type, ...)}, where
+        \code{input\_type} may be NULL. It travels in each input's envelope,
+        and engines see it as the input's payload type, e.g.\ a camera that
+        publishes decoded frames as SteelEagle \code{RawFrame}s.
   \item Any process can subscribe to an engine's event service, and poll it
         for events. An engine publishes a \code{Derived} result about an
         \code{InputId} with \code{gabriel\_engine\_publish\_derived}. An engine can also own subscriptions
@@ -3478,7 +3531,12 @@ each, became part of the client thread (\S\ref{sec:client-thread}).
                 to end (done);
           \item the bench runs the remote side in a network namespace with
                 netem, and \code{analyze.py} reports the uplink, the return
-                trip, and the AoI at the app (done).
+                trip, and the AoI at the app (done);
+          \item a standalone remote server (\code{gabriel-server}), which
+                the bench can use on another machine. The analysis then
+                compares no stamps across the two clocks
+                (\S\ref{sec:remote}): the uplink and the return trip are
+                reported together, as the link time (done).
         \end{enumerate}
   \item Event services and subscriptions, waiting for inputs and events
         together, \code{Derived} results, and the client's telemetry producer.
@@ -3546,6 +3604,24 @@ needs no new mechanism:
         back with \code{Skipped}. The server owns the slot and decides, so no
         change to the protocol is needed, only a rule for $C$ (``Choosing
         $C$'' in \S\ref{sec:tokens}).
+\end{itemize}
+
+The first runs across two machines, over a slow link, found two more. Neither
+is fixed yet:
+\begin{itemize}[nosep]
+  \item \textbf{A late result is lost if its crossing timed out before
+        \code{Accepted}} (goal 4: a late result is still delivered,
+        \S\ref{sec:events}). The client remembers the crossing's offer as
+        timed out, but the result answers the remote server's offer to its
+        engine, a child of the crossing that the client learns of only from
+        \code{Accepted}. If the crossing times out first, the result matches
+        nothing the client knows, and is dropped as a duplicate. The fix
+        needs no new mechanism: a late \code{Accepted} for a timed-out
+        crossing records its children as timed out too.
+  \item \textbf{A late \code{Sent} is still published.} After such a
+        timeout, the remote server's \code{Sent} for the child offer reaches
+        the app, so the app sees an input sent after its offer ended. It
+        should be marked late, like a late result, or dropped.
 \end{itemize}
 
 \subsection{Failure modes}

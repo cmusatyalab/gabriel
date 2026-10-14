@@ -861,6 +861,102 @@ Frames & Decode & Preprocess & Inference & Postprocess \\
 \paragraph{Next.} Decide whether to run with the \code{performance}
 governor, which would keep the cores at full clock: it is faster, but a
 drone would not run that way. Then YOLO on the Tachyon as an early discard
-for RF-DETR on the server, over LTE, with H.264 on the link.
+for a detector on the server (next subsection).
+
+\subsection{Offloading from the Tachyon over Wi-Fi}
+
+The first runs across two machines. YOLO runs on the Tachyon, pinned to the
+fast cores, on decoded 720p frames, as above. Every frame has objects, so it
+passes them all to a detector on the lab workstation, which runs
+\code{gabriel-server} at its public address
+(\code{bench/runs/tachyon-offload*.toml}). The detector is a stand-in that
+checks each frame and answers. The Tachyon was on Wi-Fi, not yet LTE, with a
+weak signal: $-72$\,dBm, a link rate of 19.5\,Mbit/s, about 3 to 4\,Mbit/s
+uploaded in practice, and an 18\,ms round trip. The two machines' clocks are
+not synced, so the analysis only compares stamps from the same machine
+(``Two machines, two clocks'').
+
+\paragraph{Raw frames do not fit the link.} One raw 720p frame takes 5 to 8\,s
+to upload. In 30\,s, three frames crossed, sharing the link, in about 21\,s
+each. Gabriel did what it should with the rest: it skipped 871 newer frames at
+the crossing instead of queueing them, and timed the three out on the client
+after about 5\,s (the 2\,s edge timeout, extended to let the engine finish the
+inputs it holds, plus the round trip). No result came back. YOLO on the device
+was unaffected: 30 results a second, with a mean AoI of 60\,ms.
+
+\paragraph{With H.264 on the link.} \code{examples/h264} adds an encoder on
+the device and a decoder on the server (``Video coding across a crossing'' in
+the design note). The encoder uses the Tachyon's hardware encoder
+(\code{qtic2venc}) at 3\,Mbit/s, constant bitrate; the decoder uses libav.
+The flow is camera $\to$ YOLO $\to$ encoder $\Rightarrow$ decoder $\to$
+detector, 30\,s at 30\,fps:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Engine & Results/s & $S$ mean (ms) & Skipped & AoI mean (ms) \\
+\midrule
+YOLO (device)     & 29.2 & 30.5 & 3\%  & 61 \\
+encoder (device)  & 21.4 & 45.3 & 27\% & 161 \\
+decoder (server)  & 21.2 & 5.0  & 1\%  & 217 \\
+detector (server) & 20.7 & 7.7  & 0\%  & 226 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{enumerate}[nosep]
+  \item \textbf{H.264 makes offloading work on this link.} The detector gets
+        21 frames a second, against none with raw frames. Frames are about
+        16\,KB, 2.8\,Mbit/s in all.
+  \item \textbf{Keyframe on gap works.} Each of five gaps cost the decoder
+        1 to 5 frames (2.6 on average, 13 in all) before a keyframe ended it.
+        The wait is inherent: a frame is skipped at the crossing when a newer
+        one replaces it, so by the time the encoder hears of the skip, it has
+        encoded the frames after it. Besides the forced keyframes, the
+        hardware encoder makes one every 30 frames by itself (its default
+        IDR interval), which bounds a wait even if an event is lost. Every
+        frame the detector got had the right type and size, and its other
+        fields (timestamp, camera id) came through unchanged.
+  \item \textbf{The encoder is now the bottleneck.} It takes about 38\,ms a
+        frame inside GStreamer, more than the camera's 33\,ms, so it skips a
+        quarter of the frames, and adds about 100\,ms to the AoI. Converting
+        RGB to NV12 on the CPU takes under 7\,ms; the rest is not explained
+        yet. A real camera gives NV12 directly, which removes the conversion.
+        At the start of each run, two or three frames take over a second in
+        the hardware encoder; after that it is steady.
+  \item \textbf{The image quality here says little.} The median PSNR is
+        23\,dB, but the camera replays five unrelated photos, so every frame
+        is a cut. Real video, where frames follow each other, compresses far
+        better at the same bitrate.
+\end{enumerate}
+
+\paragraph{What the hardware encoder needed.} Each of these silently
+broke the runs until it was found:
+\begin{itemize}[nosep]
+  \item \code{qtic2venc} ignores its bitrate unless rate control is turned
+        on (\code{control-rate=2}, constant bitrate with a variable frame
+        rate, which suits frames that Gabriel thins out). Without it, frames
+        were 210\,KB.
+  \item It ignores GStreamer's events that ask for a keyframe, from either
+        direction. It has its own action, \code{trigger-iframe}, which the
+        engine uses when the pipeline has it. Before its first frame, the
+        action crashes the encoder process, so it is not sent then; the first
+        frame is a keyframe anyway.
+  \item GStreamer's video encoders shift timestamps by 1000 hours when a
+        decoding timestamp would be negative, as near 0. The engines match
+        each output to its input by timestamp, so their timestamps start at
+        1000 hours.
+\end{itemize}
+A unit test checks that a keyframe asked for is the very next frame; it passes
+with OpenH264 and with \code{qtic2venc}.
+
+\paragraph{A gap in the design found here.} The three raw frames' results were
+lost although they came back, late: their crossing timed out before the
+server's \code{Accepted} arrived, so the client never learned of the offers
+the results answered (``Known gaps'' in the design note). Their late
+\code{Sent} events did reach the app.
+
+\paragraph{Next.} Find where the encoder's time goes. Then the detector on the
+server: RF-DETR, run with the decoder and \code{gabriel-server} under Docker
+Compose. Then the same runs over LTE, with real drone video.
 
 \end{document}
