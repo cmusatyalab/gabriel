@@ -602,6 +602,9 @@ dependencies = [
  "humantime-serde",
  "iceoryx2",
  "iceoryx2-bb-container",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "metrics-util",
  "petgraph",
  "postcard",
  "quinn",
@@ -658,7 +661,6 @@ dependencies = [
  "clap",
  "gabriel",
  "metrics",
- "metrics-exporter-prometheus",
  "signal-hook",
 ]
 
@@ -1595,7 +1597,9 @@ dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
  "hashbrown 0.16.1",
+ "indexmap",
  "metrics",
+ "ordered-float",
  "quanta",
  "rand 0.9.5",
  "rand_xoshiro",
@@ -1718,6 +1722,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aca39cf52b03268400c16eeb9b56382ea3c3353409309b63f5c8f0b1faf42754"
 dependencies = [
  "pastey",
+]
+
+[[package]]
+name = "ordered-float"
+version = "5.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

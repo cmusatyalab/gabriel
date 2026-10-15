@@ -25,6 +25,14 @@ class Producer(ThreadHandle):
         )
         super().__init__(handle, lib.gabriel_producer_destroy)
         self._max_input_size = max_input_size
+        session = ffi.new("uint64_t *")
+        check(lib.gabriel_producer_session(handle, session))
+        self._session = session[0]
+
+    @property
+    def session(self) -> int:
+        """Chosen randomly when the producer started; the ids of its inputs carry it."""
+        return self._session
 
     def loan(self) -> memoryview:
         """Returns a buffer in shared memory for the next input, of the producer's maximum input

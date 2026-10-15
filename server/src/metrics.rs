@@ -16,7 +16,6 @@
 
 use std::{
     collections::HashMap,
-    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -31,27 +30,12 @@ use gabriel::{
     subscription::{Event, Published},
 };
 use metrics::{counter, histogram};
-use metrics_exporter_prometheus::PrometheusBuilder;
 
-/// Histogram buckets, in seconds: from a fast engine on a GPU to one that is badly overloaded.
-const LATENCY_BUCKETS: &[f64] = &[
-    0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-];
 /// How long a watcher waits for an event before it checks whether to stop.
 const STOP_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 /// How long a watcher remembers when an input was sent, waiting for its result. A late result
 /// can still come after the offer timed out, so this is longer than any engine's timeout.
 const SENT_WINDOW: Duration = Duration::from_secs(60);
-
-/// Serves the metrics at `http://<addr>/metrics`, on a thread of the exporter's own.
-pub fn serve(addr: SocketAddr) -> Result<()> {
-    PrometheusBuilder::new()
-        .with_http_listener(addr)
-        .set_buckets(LATENCY_BUCKETS)
-        .context("invalid histogram buckets")?
-        .install()
-        .with_context(|| format!("failed to serve metrics on {addr}"))
-}
 
 /// Watches the events of each of `engines` on a thread of its own, until `stop` is set.
 pub fn watch_engines(engines: &[String], stop: &Arc<AtomicBool>) -> Vec<JoinHandle<()>> {

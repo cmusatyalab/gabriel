@@ -84,6 +84,7 @@ def test_input_reaches_engine_and_result_reaches_app(fixture):
         input = fixture.engine.next(WAIT)
         assert bytes(input.data) == b"frame"
         assert input.id.producer == fixture.producer_name
+        assert input.id.session == fixture.producer.session
         assert input.id.seq == seq
         assert input.payload_type == INPUT_TYPE
         fixture.engine.pass_(b"cat")

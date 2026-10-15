@@ -300,6 +300,20 @@ impl<T: Clone> FlowRouter<T> {
         }
     }
 
+    /// Each producer's tokens: how many it has, and how many its inputs hold.
+    pub(crate) fn token_use(&self) -> impl Iterator<Item = (&ProducerName, usize, usize)> {
+        self.producers
+            .iter()
+            .map(|(name, producer)| (name, producer.pool.capacity(), producer.pool.in_use()))
+    }
+
+    /// How many inputs the edge `edge` has in flight; 0 for an edge the router does not have.
+    pub(crate) fn in_flight(&self, edge: EdgeId) -> usize {
+        self.edges
+            .get(&edge)
+            .map_or(0, |edge| edge.state.in_flight())
+    }
+
     /// Whether `offer` of the input `id` has not ended yet.
     pub(crate) fn is_offer_open(&self, id: &InputId, offer: OfferId) -> bool {
         self.producers
@@ -614,6 +628,34 @@ mod tests {
                 server_offer(SECOND_TARGET, seq),
             ],
         }
+    }
+
+    #[test]
+    fn token_use_and_in_flight_follow_the_inputs() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        assert_eq!(
+            router.token_use().collect::<Vec<_>>(),
+            [(&producer(), TWO, 0)]
+        );
+        assert_eq!(router.in_flight(FAST), 0);
+
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, offer)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+        assert_eq!(
+            router.token_use().collect::<Vec<_>>(),
+            [(&producer(), TWO, 1)]
+        );
+        assert_eq!(router.in_flight(FAST), 1);
+
+        router.end_offer(&input_id(1), offer, stopped(FAST_ENGINE), None, now);
+        assert_eq!(
+            router.token_use().collect::<Vec<_>>(),
+            [(&producer(), TWO, 0)]
+        );
+        assert_eq!(router.in_flight(FAST), 0);
     }
 
     #[test]

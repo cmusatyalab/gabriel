@@ -18,6 +18,7 @@ type Producer struct {
 	handle       *C.gabriel_producer_t
 	thread       thread
 	maxInputSize int
+	session      uint64
 }
 
 // NewProducer creates the producer name, whose inputs are at most maxInputSize bytes. inputType
@@ -41,7 +42,18 @@ func NewProducer(name, inputType string, maxInputSize int) (*Producer, error) {
 		t.release()
 		return nil, err
 	}
+	var session C.uint64_t
+	if err := call(func() C.gabriel_status_t { return C.gabriel_producer_session(p.handle, &session) }); err != nil {
+		p.Close()
+		return nil, err
+	}
+	p.session = uint64(session)
 	return p, nil
+}
+
+// Session is chosen randomly when the producer starts; the ids of its inputs carry it ([InputID]).
+func (p *Producer) Session() uint64 {
+	return p.session
 }
 
 func (p *Producer) check() error {

@@ -243,6 +243,17 @@ const char *gabriel_last_error(void);
 gabriel_status_t gabriel_log_init(const char *filter);
 
 /**
+ * Serves the metrics of Gabriel's clients and servers in this process to Prometheus, at
+ * `http://<addr>/metrics`, e.g. "0.0.0.0:9464". Call it once, before creating clients and servers.
+ * Fails with `ERR_INVALID` for a malformed address. Also fails if the address is taken, or when
+ * called a second time.
+ *
+ * # Safety
+ * `addr` must be NUL-terminated.
+ */
+gabriel_status_t gabriel_metrics_serve(const char *addr);
+
+/**
  * Creates a producer. Use and destroy it only on the thread that created it. `input_type` names
  * how to read the producer's inputs, e.g. a protobuf message name. It may be NULL.
  *
@@ -279,6 +290,15 @@ gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *producer,
                                                 size_t len,
                                                 const char *flow,
                                                 uint64_t *seq);
+
+/**
+ * Writes the producer's session to `session`: chosen randomly when the producer started, and
+ * carried by the ids of its inputs.
+ *
+ * # Safety
+ * `producer` must be a live handle; `session` must be valid for writes.
+ */
+gabriel_status_t gabriel_producer_session(gabriel_producer_t *producer, uint64_t *session);
 
 /**
  * Creates client options with the defaults: no remote server.

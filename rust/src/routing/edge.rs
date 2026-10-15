@@ -71,6 +71,10 @@ impl<T: Clone> EdgeState<T> {
     }
 
     /// Whether an offer made now would be sent right away. Never for a pulled or suspended edge.
+    pub(crate) fn in_flight(&self) -> usize {
+        self.in_flight.len()
+    }
+
     pub(crate) fn has_spare_capacity(&self) -> bool {
         !self.suspended
             && self

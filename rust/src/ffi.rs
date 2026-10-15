@@ -173,6 +173,26 @@ pub unsafe extern "C" fn gabriel_log_init(filter: *const c_char) -> Status {
     Status::from(unsafe { opt_str_arg(filter) }.and_then(logging::init))
 }
 
+// --- Metrics ---
+
+/// Serves the metrics of Gabriel's clients and servers in this process to Prometheus, at
+/// `http://<addr>/metrics`, e.g. "0.0.0.0:9464". Call it once, before creating clients and servers.
+/// Fails with `ERR_INVALID` for a malformed address. Also fails if the address is taken, or when
+/// called a second time.
+///
+/// # Safety
+/// `addr` must be NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_metrics_serve(addr: *const c_char) -> Status {
+    let result = unsafe { str_arg(addr) }.and_then(|addr| {
+        let addr = addr.parse().map_err(|e| {
+            Error::InvalidArgument(format!("invalid metrics address {addr:?}: {e}"))
+        })?;
+        crate::metrics::serve(addr)
+    });
+    Status::from(result)
+}
+
 // --- Producer ---
 
 /// Creates a producer. Use and destroy it only on the thread that created it. `input_type` names
@@ -237,6 +257,23 @@ pub unsafe extern "C" fn gabriel_producer_publish_input(
             unsafe { seq.write(id.seq()) };
         }
     }))
+}
+
+/// Writes the producer's session to `session`: chosen randomly when the producer started, and
+/// carried by the ids of its inputs.
+///
+/// # Safety
+/// `producer` must be a live handle; `session` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_producer_session(
+    producer: *mut Producer,
+    session: *mut u64,
+) -> Status {
+    if session.is_null() {
+        return null_argument("session");
+    }
+    let result = unsafe { handle_arg(producer) }.map(|producer| producer.session());
+    Status::from(result.map(|value| unsafe { session.write(value) }))
 }
 
 // --- Client ---
@@ -1017,6 +1054,26 @@ mod tests {
 
     use super::*;
     use crate::test_util::unique;
+
+    #[test]
+    fn producer_session_matches_its_inputs() {
+        let name = CString::new(unique("producer")).unwrap();
+        let mut producer = ptr::null_mut();
+        let created =
+            unsafe { gabriel_producer_create(name.as_ptr(), ptr::null(), 8, &mut producer) };
+        assert_eq!(created, Status::Ok);
+        let mut session = 0;
+        assert_eq!(
+            unsafe { gabriel_producer_session(producer, &mut session) },
+            Status::Ok
+        );
+
+        let handle = unsafe { &mut *producer };
+        handle.new_input().unwrap();
+        let id = handle.publish_input(0, "flow").unwrap();
+        assert_eq!(id.session(), session);
+        assert_eq!(unsafe { gabriel_producer_destroy(producer) }, Status::Ok);
+    }
 
     #[test]
     fn destroy_null_is_ok() {

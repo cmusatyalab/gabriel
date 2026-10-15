@@ -12,6 +12,7 @@ pub mod engine;
 pub mod error;
 pub mod ffi;
 pub mod logging;
+pub mod metrics;
 pub mod naming;
 pub mod producer;
 pub mod server;

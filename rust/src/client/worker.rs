@@ -30,6 +30,7 @@ use std::{
 
 use iceoryx2::prelude::*;
 use iceoryx2_bb_container::{string::String as _, vector::Vector as _};
+use metrics::{Gauge, gauge};
 use tracing::{debug, error, info, info_span, warn};
 use uuid::Uuid;
 
@@ -45,7 +46,7 @@ use crate::{
         server_link::{ServerEvent, ServerLink},
     },
     ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Forward},
-    naming,
+    metrics as gabriel_metrics, naming,
     routing::{
         flow::{FlowRouter, RouterAction},
         ids::{EdgeId, NodeId, ProducerName},
@@ -116,6 +117,80 @@ struct ClientFlow {
     producers: HashSet<ProducerName>,
     /// The flow's engines on the remote server, whose events the client relays.
     remote: HashSet<EngineName>,
+    metrics: FlowMetrics,
+}
+
+/// The gauges of a flow's tokens and crossings, kept so that they are not looked up on every pass
+/// of the thread's loop. They drop to 0 when the flow is removed.
+struct FlowMetrics {
+    tokens_in_use: Vec<(ProducerName, Gauge)>,
+    crossings_in_flight: Vec<(EdgeId, Gauge)>,
+}
+
+impl FlowMetrics {
+    fn new(
+        flow: &str,
+        router: &FlowRouter<Data>,
+        crossings: &HashMap<EdgeId, Crossing>,
+        remote_capacity: usize,
+    ) -> Self {
+        let tokens_in_use = router
+            .token_use()
+            .map(|(producer, tokens, _)| {
+                let labels = [
+                    ("flow", flow.to_owned()),
+                    ("producer_id", producer.as_str().to_owned()),
+                ];
+                gauge!(gabriel_metrics::TOKENS, &labels).set(tokens as f64);
+                (*producer, gauge!(gabriel_metrics::TOKENS_IN_USE, &labels))
+            })
+            .collect();
+        let crossings_in_flight = crossings
+            .iter()
+            .map(|(&edge, crossing)| {
+                let (location, capacity) = match crossing.location {
+                    Location::Local => ("local", LOCAL_CROSSING_CAPACITY),
+                    Location::Remote => ("remote", remote_capacity),
+                };
+                let targets: Vec<&str> = crossing.targets.iter().map(|t| t.as_str()).collect();
+                let labels = [
+                    ("flow", flow.to_owned()),
+                    ("location", location.to_owned()),
+                    ("targets", targets.join(",")),
+                ];
+                gauge!(gabriel_metrics::CROSSING_CAPACITY, &labels).set(capacity as f64);
+                (edge, gauge!(gabriel_metrics::CROSSING_IN_FLIGHT, &labels))
+            })
+            .collect();
+        Self {
+            tokens_in_use,
+            crossings_in_flight,
+        }
+    }
+
+    fn record(&self, router: &FlowRouter<Data>) {
+        let in_use: HashMap<&ProducerName, usize> = router
+            .token_use()
+            .map(|(producer, _, in_use)| (producer, in_use))
+            .collect();
+        for (producer, gauge) in &self.tokens_in_use {
+            gauge.set(in_use.get(producer).copied().unwrap_or(0) as f64);
+        }
+        for (edge, gauge) in &self.crossings_in_flight {
+            gauge.set(router.in_flight(*edge) as f64);
+        }
+    }
+}
+
+impl Drop for FlowMetrics {
+    fn drop(&mut self) {
+        for (_, gauge) in &self.tokens_in_use {
+            gauge.set(0.0);
+        }
+        for (_, gauge) in &self.crossings_in_flight {
+            gauge.set(0.0);
+        }
+    }
 }
 
 struct Worker {
@@ -243,6 +318,9 @@ impl Worker {
                 self.next_server_check = now + SERVER_CHECK_INTERVAL;
             }
             self.carry_out();
+            for flow in self.flows.values() {
+                flow.metrics.record(&flow.router);
+            }
             // A subscriber that is not woken still finds the events at its next wait.
             warn_on_error(
                 self.producers.wake_subscribers(),
@@ -416,6 +494,7 @@ impl Worker {
             router.suspend(&part.crossings);
             parts.insert(location, part);
         }
+        let metrics = FlowMetrics::new(name, &router, &crossings, self.remote_crossing_capacity);
         let mut flow_state = ClientFlow {
             router,
             parts,
@@ -423,6 +502,7 @@ impl Worker {
             crossings,
             producers,
             remote,
+            metrics,
         };
 
         // Last, so a flow the client rejects is never installed.

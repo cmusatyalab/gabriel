@@ -80,6 +80,11 @@ impl Producer {
         Ok(self.pending.insert(sample).payload_mut())
     }
 
+    /// Chosen randomly when the producer started; the ids of its inputs carry it.
+    pub fn session(&self) -> u64 {
+        self.session
+    }
+
     /// Publishes the first `len` bytes of the loaned buffer on `flow`, and returns the input's id,
     /// which the events about the input carry.
     pub fn publish_input(&mut self, len: usize, flow: &str) -> Result<InputId> {

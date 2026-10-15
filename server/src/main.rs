@@ -4,7 +4,8 @@
 //! The server keeps its certificate in its identity directory, so that it stays the same across
 //! restarts. Give clients a copy of it. The server stops on Ctrl-C or SIGTERM.
 //!
-//! The server also serves Prometheus metrics of its engines (see `metrics`).
+//! The server also serves Prometheus metrics: its engines' (see `metrics`), and Gabriel's own
+//! (see `gabriel::metrics`).
 
 mod metrics;
 
@@ -70,6 +71,9 @@ fn main() -> Result<()> {
     // killing it.
     let mut signals = Signals::new([SIGINT, SIGTERM])?;
 
+    // Before the server, so that the metrics it registers are recorded.
+    gabriel::metrics::serve(args.metrics_listen)
+        .with_context(|| format!("failed to serve metrics on {}", args.metrics_listen))?;
     let mut server = Server::new(&args.name, Some(&args.listen), Some(&args.identity_dir))
         .context("failed to start the server")?;
     for engine in &args.engines {
@@ -87,7 +91,6 @@ fn main() -> Result<()> {
         args.identity_dir.join(CERTIFICATE_FILE).display(),
     );
 
-    metrics::serve(args.metrics_listen)?;
     let stop_watching = Arc::new(AtomicBool::new(false));
     let watchers = metrics::watch_engines(&args.engines, &stop_watching);
     eprintln!("metrics on http://{}/metrics", args.metrics_listen);

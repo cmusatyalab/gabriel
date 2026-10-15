@@ -27,11 +27,14 @@ futures-util = { version = "0.3.34", default-features = false, features = ["sink
 bytes = "1.12.1"
 quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 tokio = { version = "1.53.2", features = ["rt", "sync", "macros", "time"] }
+metrics = { version = "0.24.6", default-features = false }
+metrics-exporter-prometheus = { version = "0.18.3", default-features = false, features = ["http-listener"] }
 
 [build-dependencies]
 cbindgen = "0.29"
 cc = "1.5.1"
 
 [dev-dependencies]
+metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }
 rlimit = "0.11.0"
 tempfile = "3.27.0"

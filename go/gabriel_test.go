@@ -116,8 +116,9 @@ func TestInputReachesEngineAndResultReachesApp(t *testing.T) {
 	if !bytes.Equal(input.Data, []byte("frame")) {
 		t.Errorf("engine got %q, want %q", input.Data, "frame")
 	}
-	if input.ID.Producer != f.names.producer || input.ID.Seq != seq {
-		t.Errorf("engine got input %+v, want seq %d of %s", input.ID, seq, f.names.producer)
+	want := InputID{Producer: f.names.producer, Session: f.producer.Session(), Seq: seq}
+	if input.ID != want {
+		t.Errorf("engine got input %+v, want %+v", input.ID, want)
 	}
 	if input.PayloadType != inputType {
 		t.Errorf("engine got an input of type %q, want %q", input.PayloadType, inputType)

@@ -130,6 +130,16 @@ func InitLog(filter string) error {
 	return call(func() C.gabriel_status_t { return C.gabriel_log_init(cFilter) })
 }
 
+// ServeMetrics serves the metrics of Gabriel's clients and servers in this process to Prometheus, at
+// http://<addr>/metrics, e.g. "0.0.0.0:9464": how producers use their tokens, how full crossings
+// are, and how the connection to the remote server is doing. Call it once, before creating clients
+// and servers.
+func ServeMetrics(addr string) error {
+	cAddr := C.CString(addr)
+	defer C.free(unsafe.Pointer(cAddr))
+	return call(func() C.gabriel_status_t { return C.gabriel_metrics_serve(cAddr) })
+}
+
 // Timestamp is a reading of the machine's monotonic clock (CLOCK_MONOTONIC), the clock every event
 // is stamped with. Timestamps from processes on one machine compare directly.
 type Timestamp time.Duration

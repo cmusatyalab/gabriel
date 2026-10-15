@@ -39,6 +39,13 @@ def init_log(filter: str | None = None) -> None:
     _check(_lib.gabriel_log_init(_cstr(filter)))
 
 
+def serve_metrics(addr: str) -> None:
+    """Serves the metrics of Gabriel's clients and servers in this process to Prometheus, at
+    http://<addr>/metrics, e.g. "0.0.0.0:9464". Call it once, before creating clients and
+    servers."""
+    _check(_lib.gabriel_metrics_serve(_cstr(addr)))
+
+
 __all__ = [
     "AgainError",
     "Client",
@@ -59,4 +66,5 @@ __all__ = [
     "Subscription",
     "WrongThreadError",
     "init_log",
+    "serve_metrics",
 ]

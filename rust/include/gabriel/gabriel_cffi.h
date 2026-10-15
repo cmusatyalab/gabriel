@@ -66,6 +66,7 @@ typedef struct {
 uint32_t gabriel_abi_version(void);
 const char *gabriel_last_error(void);
 gabriel_status_t gabriel_log_init(const char *filter);
+gabriel_status_t gabriel_metrics_serve(const char *addr);
 gabriel_status_t gabriel_producer_create(const char *name,
                                          const char *input_type,
                                          size_t max_input_size,
@@ -76,6 +77,7 @@ gabriel_status_t gabriel_producer_publish_input(gabriel_producer_t *producer,
                                                 size_t len,
                                                 const char *flow,
                                                 uint64_t *seq);
+gabriel_status_t gabriel_producer_session(gabriel_producer_t *producer, uint64_t *session);
 gabriel_status_t gabriel_client_options_create(gabriel_client_options_t **options);
 gabriel_status_t gabriel_client_options_destroy(gabriel_client_options_t *options);
 gabriel_status_t gabriel_client_options_set_remote_server(gabriel_client_options_t *options,

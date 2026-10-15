@@ -16,7 +16,8 @@ use std::{
 use futures_util::StreamExt;
 use iceoryx2::{port::listener::Listener, prelude::*};
 use iceoryx2_bb_container::relocatable_option::RelocatableOption;
-use quinn::{Connection, Endpoint};
+use metrics::{Counter, Gauge, counter, gauge};
+use quinn::{Connection, ConnectionStats, Endpoint};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio_util::codec::FramedRead;
 use tracing::{Instrument, debug, info, info_span, warn};
@@ -26,7 +27,7 @@ use crate::{
     client::server_link::{Received, ServerEvent, ServerLink},
     clock::Timestamp,
     ipc::types::{ClientEventHeader, CrossingHeader, CrossingKind, PayloadType},
-    naming,
+    metrics as gabriel_metrics, naming,
     net::{self, Waker},
     routing::{
         ids::{InputId, OfferId},
@@ -43,6 +44,8 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 const RECONNECT_MIN_BACKOFF: Duration = Duration::from_millis(100);
 /// The longest the network thread waits before connecting again.
 const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(5);
+/// How often the network thread records the connection's statistics.
+const STATS_INTERVAL: Duration = Duration::from_secs(1);
 /// Lets the system pick the client's port.
 const ANY_PORT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
 
@@ -342,8 +345,11 @@ impl Network {
         self.update(Update::Connected);
         let (events_tx, mut events) = unbounded_channel();
         let reader = tokio::spawn(read_events(connection.clone(), events_tx));
+        let mut metrics = ConnectionMetrics::new(self.addr);
+        let mut stats_timer = tokio::time::interval(STATS_INTERVAL);
         let outcome = loop {
             tokio::select! {
+                _ = stats_timer.tick() => metrics.record(connection.stats()),
                 request = self.requests.recv() => {
                     let Some(request) = request else {
                         connection.close(net::CLOSED, b"client stopped");
@@ -389,6 +395,8 @@ impl Network {
             }
         };
         reader.abort();
+        metrics.record(connection.stats());
+        metrics.connected.set(0.0);
         if outcome.is_ok() {
             self.update(Update::Lost);
         }
@@ -400,6 +408,54 @@ impl Network {
         // thread first, so the update has a reader.
         let _ = self.updates.send(update);
         self.waker.wake();
+    }
+}
+
+/// The metrics of one connection to the remote server (`crate::metrics`). quinn counts from 0 on
+/// each connection, so the counters add what changed since the statistics last recorded.
+struct ConnectionMetrics {
+    connected: Gauge,
+    rtt: Gauge,
+    congestion_window: Gauge,
+    lost_packets: Counter,
+    congestion_events: Counter,
+    sent_bytes: Counter,
+    received_bytes: Counter,
+    last: ConnectionStats,
+}
+
+impl ConnectionMetrics {
+    fn new(server: SocketAddr) -> Self {
+        let labels = [("server", server.to_string())];
+        let metrics = Self {
+            connected: gauge!(gabriel_metrics::REMOTE_CONNECTED, &labels),
+            rtt: gauge!(gabriel_metrics::REMOTE_RTT, &labels),
+            congestion_window: gauge!(gabriel_metrics::REMOTE_CONGESTION_WINDOW, &labels),
+            lost_packets: counter!(gabriel_metrics::REMOTE_LOST_PACKETS, &labels),
+            congestion_events: counter!(gabriel_metrics::REMOTE_CONGESTION_EVENTS, &labels),
+            sent_bytes: counter!(gabriel_metrics::REMOTE_SENT_BYTES, &labels),
+            received_bytes: counter!(gabriel_metrics::REMOTE_RECEIVED_BYTES, &labels),
+            last: ConnectionStats::default(),
+        };
+        metrics.connected.set(1.0);
+        metrics
+    }
+
+    fn record(&mut self, stats: ConnectionStats) {
+        let (path, last) = (stats.path, self.last.path);
+        self.rtt.set(path.rtt.as_secs_f64());
+        self.congestion_window.set(path.cwnd as f64);
+        self.lost_packets
+            .increment(path.lost_packets.saturating_sub(last.lost_packets));
+        self.congestion_events.increment(
+            path.congestion_events
+                .saturating_sub(last.congestion_events),
+        );
+        self.sent_bytes
+            .increment(stats.udp_tx.bytes.saturating_sub(self.last.udp_tx.bytes));
+        self.received_bytes
+            .increment(stats.udp_rx.bytes.saturating_sub(self.last.udp_rx.bytes));
+        self.last = stats;
     }
 }
 
@@ -494,7 +550,9 @@ async fn read_events(connection: Connection, events: UnboundedSender<ServerEvent
 
 #[cfg(test)]
 mod tests {
-    use std::{os::unix::fs::PermissionsExt, time::Instant};
+    use std::{collections::HashMap, os::unix::fs::PermissionsExt, time::Instant};
+
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 
     use super::*;
     use crate::{
@@ -756,5 +814,44 @@ mod tests {
             Err(Error::InvalidArgument(_))
         ));
         owner.remove_flow(session).unwrap();
+    }
+
+    #[test]
+    fn connection_metrics_add_what_changed_across_connections() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let server = SocketAddr::from((Ipv4Addr::LOCALHOST, 4433));
+        metrics::with_local_recorder(&recorder, || {
+            let mut stats = ConnectionStats::default();
+            stats.path.lost_packets = 3;
+            stats.udp_tx.bytes = 100;
+            let mut first = ConnectionMetrics::new(server);
+            first.record(stats);
+            first.record(stats);
+            first.connected.set(0.0);
+            // quinn counts from 0 on the next connection.
+            stats.path.lost_packets = 2;
+            stats.udp_tx.bytes = 50;
+            ConnectionMetrics::new(server).record(stats);
+        });
+
+        let values: HashMap<String, DebugValue> = snapshotter
+            .snapshot()
+            .into_vec()
+            .into_iter()
+            .map(|(key, _, _, value)| (key.key().name().to_owned(), value))
+            .collect();
+        assert_eq!(
+            values[gabriel_metrics::REMOTE_LOST_PACKETS],
+            DebugValue::Counter(5)
+        );
+        assert_eq!(
+            values[gabriel_metrics::REMOTE_SENT_BYTES],
+            DebugValue::Counter(150)
+        );
+        assert_eq!(
+            values[gabriel_metrics::REMOTE_CONNECTED],
+            DebugValue::Gauge(1.0.into())
+        );
     }
 }

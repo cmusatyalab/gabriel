@@ -86,6 +86,16 @@ impl<T> TokenPool<T> {
         }
     }
 
+    /// How many tokens the pool has.
+    pub(crate) fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// How many tokens admitted inputs hold.
+    pub(crate) fn in_use(&self) -> usize {
+        self.capacity - self.available
+    }
+
     /// Whether a token is available.
     pub(crate) fn has_tokens(&self) -> bool {
         self.available > 0
