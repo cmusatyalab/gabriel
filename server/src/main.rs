@@ -3,8 +3,19 @@
 //!
 //! The server keeps its certificate in its identity directory, so that it stays the same across
 //! restarts. Give clients a copy of it. The server stops on Ctrl-C or SIGTERM.
+//!
+//! The server also serves Prometheus metrics of its engines (see `metrics`).
 
-use std::path::PathBuf;
+mod metrics;
+
+use std::{
+    net::SocketAddr,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -17,6 +28,9 @@ use signal_hook::{
 /// Where the server accepts remote clients unless told otherwise: every address, on the port
 /// Gabriel's examples use.
 const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0:4433";
+/// Where the server serves its metrics unless told otherwise: the port the Python Gabriel server
+/// served them on.
+const DEFAULT_METRICS_ADDR: &str = "0.0.0.0:8000";
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -37,6 +51,10 @@ struct Args {
     /// server.
     #[arg(long = "engine", required = true)]
     engines: Vec<String>,
+
+    /// The address and port to serve Prometheus metrics on, at /metrics.
+    #[arg(long, default_value = DEFAULT_METRICS_ADDR)]
+    metrics_listen: SocketAddr,
 }
 
 fn main() -> Result<()> {
@@ -69,7 +87,17 @@ fn main() -> Result<()> {
         args.identity_dir.join(CERTIFICATE_FILE).display(),
     );
 
+    metrics::serve(args.metrics_listen)?;
+    let stop_watching = Arc::new(AtomicBool::new(false));
+    let watchers = metrics::watch_engines(&args.engines, &stop_watching);
+    eprintln!("metrics on http://{}/metrics", args.metrics_listen);
+
     signals.forever().next();
     eprintln!("stopping");
+    stop_watching.store(true, Ordering::Relaxed);
+    for watcher in watchers {
+        // A watcher that panicked has nothing left to stop.
+        let _ = watcher.join();
+    }
     Ok(())
 }
