@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Carnegie Mellon University
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Builds need the sources only.
+.git
+target/
+build/
+build-*/
+bench-results/
+**/.venv/
+**/__pycache__/
+docs/
+figures/
+*.pt

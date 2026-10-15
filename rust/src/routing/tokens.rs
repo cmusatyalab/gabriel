@@ -40,7 +40,8 @@ pub(crate) enum OfferEnd {
 pub(crate) enum Verdict {
     /// The event was applied; `token_returned` says whether the input's token came back.
     Applied { token_returned: bool },
-    /// A `Result` for an offer that already timed out: deliver it marked late.
+    /// A `Result` for an offer that already timed out: deliver it marked late. Or an `Accepted`
+    /// for one, whose children are then timed out too.
     Late,
     /// A duplicate or unknown event: drop it.
     Dropped,
@@ -148,17 +149,21 @@ impl<T> TokenPool<T> {
         }
     }
 
-    /// Classifies an event for an offer that is no longer open. A `Result` for an offer that
-    /// recently timed out is late, and is reported `Late` only once. Anything else is `Dropped`.
-    /// Decides what to do with an event for an unknown input or offer: a `Result` for an offer
-    /// that timed out is late, anything else is a duplicate.
+    /// Classifies an event for an offer that is no longer open. A `Result` or `Accepted` for an
+    /// offer that recently timed out is `Late`, once. Its children are recorded as timed out too,
+    /// so that their results are late as well, not duplicates: a crossing can time out before
+    /// its `Accepted` arrives, and only that names the offer the engine answers. Anything else is
+    /// `Dropped`.
     pub(crate) fn classify_stale(&mut self, offer: OfferId, end: &OfferEnd) -> Verdict {
-        let is_result = matches!(end, OfferEnd::Result { .. });
-        if is_result && self.timed_out.remove(&offer).is_some() {
-            Verdict::Late
-        } else {
-            Verdict::Dropped
-        }
+        let (OfferEnd::Result { children, .. } | OfferEnd::Accepted { children }) = end else {
+            return Verdict::Dropped;
+        };
+        let Some(ended_at) = self.timed_out.remove(&offer) else {
+            return Verdict::Dropped;
+        };
+        self.timed_out
+            .extend(children.iter().map(|&child| (child, ended_at)));
+        Verdict::Late
     }
 
     /// Applies the end of one offer of the input `id`, returning the token at the input's first
@@ -466,6 +471,32 @@ mod tests {
         assert_eq!(
             pool.end_offer(&id, offer(1), completed(), now),
             Verdict::Dropped
+        );
+        pool.check_invariant();
+    }
+
+    #[test]
+    fn late_accepted_makes_its_childrens_results_late() {
+        let now = Instant::now();
+        let mut pool = pool(ONE_TOKEN);
+        let id = admit_with(&mut pool, now, &[offer(1)]);
+        pool.end_offer(&id, offer(1), OfferEnd::TimedOut, now);
+
+        let accepted = OfferEnd::Accepted {
+            children: vec![offer(2), offer(3)],
+        };
+        assert_eq!(pool.end_offer(&id, offer(1), accepted, now), Verdict::Late);
+        assert_eq!(
+            pool.end_offer(&id, offer(2), completed(), now),
+            Verdict::Late
+        );
+        assert_eq!(
+            pool.end_offer(&id, offer(2), completed(), now),
+            Verdict::Dropped
+        );
+        assert_eq!(
+            pool.end_offer(&id, offer(3), completed(), now),
+            Verdict::Late
         );
         pool.check_invariant();
     }

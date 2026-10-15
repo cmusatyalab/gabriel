@@ -558,9 +558,16 @@ impl Worker {
             }
             EventKind::Skipped => OfferEnd::Skipped,
             EventKind::TimedOut => OfferEnd::TimedOut,
-            // Sending ends no offer, but the app learns that a result may come.
+            // Sending ends no offer, but the app learns that a result may come. Not for an offer
+            // that already ended: the target of a crossing that timed out before `Accepted`.
+            // The server sends a child's `Accepted` or `Result` before its `Sent`, so a child
+            // that is not open has ended.
             EventKind::Sent => {
-                self.publish(record.clone(), &event.result);
+                if flow.router.is_offer_open(&record.id, offer) {
+                    self.publish(record.clone(), &event.result);
+                } else {
+                    debug!(?offer, input = ?record.id, "dropped a Sent for an offer that ended");
+                }
                 return;
             }
             // The client reports `Disconnected` itself, and relays `Derived` above.

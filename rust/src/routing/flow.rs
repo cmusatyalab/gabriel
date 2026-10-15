@@ -300,6 +300,13 @@ impl<T: Clone> FlowRouter<T> {
         }
     }
 
+    /// Whether `offer` of the input `id` has not ended yet.
+    pub(crate) fn is_offer_open(&self, id: &InputId, offer: OfferId) -> bool {
+        self.producers
+            .get(&id.producer)
+            .is_some_and(|producer| producer.pool.is_offer_open(id, offer))
+    }
+
     /// Handles the end of one offer of the input `id`, as reported by an engine, a server or an
     /// edge.
     ///
@@ -1100,6 +1107,26 @@ mod tests {
             reported(&mut router),
             (vec![], vec![(FAST.0, 3), (SLOW.0, 1)])
         );
+    }
+
+    #[test]
+    fn results_after_a_crossing_timed_out_before_accepted_are_late() {
+        let now = Instant::now();
+        let mut router = router(TWO, &[(FAST, FAST_ENGINE, ONE)]);
+        router.input_ready(input_id(1), 10, now).unwrap();
+        let [(_, crossing)] = sent_offers(&mut router)[..] else {
+            panic!("expected one send");
+        };
+        router.expire(now + TIMEOUT);
+
+        let later = now + TIMEOUT;
+        let verdict = router.end_offer(&input_id(1), crossing, accepted(1), None, later);
+        assert_eq!(verdict, Verdict::Late);
+        // The children ended with their crossing, so their `Sent` is not published.
+        let child = server_offer(FIRST_TARGET, 1);
+        assert!(!router.is_offer_open(&input_id(1), child));
+        let late = router.end_offer(&input_id(1), child, stopped(FAST_ENGINE), None, later);
+        assert_eq!(late, Verdict::Late);
     }
 
     #[test]

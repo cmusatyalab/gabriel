@@ -3606,23 +3606,153 @@ needs no new mechanism:
         $C$'' in \S\ref{sec:tokens}).
 \end{itemize}
 
-The first runs across two machines, over a slow link, found two more. Neither
-is fixed yet:
+The first runs across two machines, over a slow link, found two more. Both
+happen when a crossing times out before its \code{Accepted} arrives, and both
+are now fixed:
 \begin{itemize}[nosep]
-  \item \textbf{A late result is lost if its crossing timed out before
-        \code{Accepted}} (goal 4: a late result is still delivered,
-        \S\ref{sec:events}). The client remembers the crossing's offer as
-        timed out, but the result answers the remote server's offer to its
-        engine, a child of the crossing that the client learns of only from
-        \code{Accepted}. If the crossing times out first, the result matches
-        nothing the client knows, and is dropped as a duplicate. The fix
-        needs no new mechanism: a late \code{Accepted} for a timed-out
-        crossing records its children as timed out too.
-  \item \textbf{A late \code{Sent} is still published.} After such a
-        timeout, the remote server's \code{Sent} for the child offer reaches
-        the app, so the app sees an input sent after its offer ended. It
-        should be marked late, like a late result, or dropped.
+  \item \textbf{A late result was lost} (goal 4: a late result is still
+        delivered, \S\ref{sec:events}). The client remembered the crossing's
+        offer as timed out, but the result answers the remote server's offer
+        to its engine, a child of the crossing that the client learns of only
+        from \code{Accepted}. So the result matched nothing the client knew,
+        and was dropped as a duplicate. Now a late \code{Accepted} records its
+        children as timed out too, and so does a late \code{Result} that
+        forwarded, so their results are late, not duplicates.
+  \item \textbf{A late \code{Sent} was still published}, so the app saw an
+        input sent after its offer ended. Now the client publishes
+        \code{Sent} only for an open offer. A server sends a child's
+        \code{Accepted} or \code{Result} before its \code{Sent}, on one
+        ordered stream, so a child that is not open has ended. Events have no
+        \code{late} flag yet, so a late \code{Sent} is dropped rather than
+        marked.
 \end{itemize}
+
+\subsection{Cancelling a wait}
+\label{sec:wake}
+
+Not fixed yet. An app cannot end a wait that it started.
+
+\paragraph{The problem.} \code{gabriel\_engine\_wait} and
+\code{gabriel\_subscription\_wait} block on an iceoryx2 waitset until a
+server, client or engine signals one of the waiter's event services
+(``Wake-ups'' in \S\ref{sec:services}), or until the timeout passes. Nothing
+else ends the wait. So when an app wants to stop a waiting engine or
+subscriber, for example on shutdown or when a Go context is cancelled, it can
+only wait for the timeout. The bindings therefore wait in short steps, and
+check between steps whether to stop:
+\begin{itemize}[nosep]
+  \item \textbf{Go.} \code{Engine.Next(ctx)} and \code{Subscription.Next(ctx)}
+        wait \code{cancelCheckInterval} (100\,ms) at a time, then check
+        \code{ctx.Err()}. Cancelling takes up to 100\,ms, and an idle engine
+        or subscriber wakes ten times a second.
+  \item \textbf{Python.} A signal handler cannot end the wait either. When
+        SIGTERM arrives, CPython's C-level handler only sets a flag. The
+        Python handler runs later, on the main thread, between two bytecodes.
+        While the main thread is inside Gabriel's C library, no bytecodes run,
+        so the handler waits for the call to return. Two things keep the call
+        from returning early. First, the kernel may deliver the signal to
+        another thread: Gabriel's library starts its own threads. Second, even
+        if the main thread's wait is interrupted (\code{EINTR}), the wait may
+        just go on (not yet checked in iceoryx2). So a Python engine also waits
+        in steps: SteelEagle's telemetry engine calls
+        \code{engine.next(timeout=0.5)} and then checks a stop flag that its
+        handler sets.
+  \item \textbf{C.} An app that stops a waiting thread from another thread has
+        the same problem, and the same workaround.
+\end{itemize}
+The steps work, and cost little: a delay of at most one step to stop, and a
+few wake-ups a second while idle. But a cancelled Go context should end
+\code{Next} at once, as it does for Go's own blocking calls.
+
+\paragraph{The proposal: a waker.} Add one more event source to the waitset,
+one that the app owns, and that any thread can signal. A signal makes the
+current wait return \code{ERR\_AGAIN} at once. This is the usual ``waker''
+pattern, e.g.\ \code{mio::Waker} in Rust, or the self-pipe trick in C. The ABI
+gains three functions:
+\begin{lstlisting}
+/* On the engine's thread: a waker for the engine's waits. */
+gabriel_status_t gabriel_engine_waker(gabriel_engine_t *engine,
+                                      gabriel_waker_t **out);
+/* From any thread: end the current wait, or else the next one. */
+gabriel_status_t gabriel_waker_wake(gabriel_waker_t *waker);
+/* From any thread, when done with the waker. */
+void gabriel_waker_destroy(gabriel_waker_t *waker);
+\end{lstlisting}
+\code{gabriel\_subscription\_waker} does the same for a subscription. The
+rules:
+\begin{itemize}[nosep]
+  \item \textbf{A separate handle.} An engine or subscription handle stays on
+        the thread that created it, and every call checks that. A wake comes
+        from another thread by definition, so it cannot take that handle. A
+        waker is a small handle that any thread may use, and it can do only
+        one thing: wake.
+  \item \textbf{Its own lifetime.} A waker is reference-counted. If its
+        engine is destroyed first, a wake does nothing, rather than touch
+        freed memory. In Go and Python, the cancelling goroutine or thread may
+        run after the engine is closed.
+  \item \textbf{No lost wake-ups.} A wake that comes before the wait starts,
+        for example just after the app checked its stop flag, still ends that
+        wait. Otherwise the wait would block until the next input. A counting
+        notification keeps the wake until a wait takes it, e.g.\ a Linux
+        \code{eventfd}.
+  \item \textbf{Not from a signal handler.} A wake may lock or allocate, so it
+        is not safe inside a C signal handler. A C app takes signals on a
+        thread of its own (\code{sigwait} or \code{signalfd}), and wakes from
+        there. Python's handlers are safe, because they are ordinary Python
+        code.
+  \item \textbf{Additive.} Old callers are unaffected. A wait without a
+        waker behaves as now.
+\end{itemize}
+
+\paragraph{Implementation.} \code{services::wait\_for\_any} attaches the
+waker's listener to the waitset next to the others, and drains it before
+returning. Either of two event sources would do, to be checked against
+iceoryx2:
+\begin{itemize}[nosep]
+  \item a plain \code{eventfd} (a pipe on other systems), if the waitset can
+        watch any file descriptor; or
+  \item a private iceoryx2 event service per waiter, whose notifier lives
+        behind a mutex, if iceoryx2 lets that notifier move between threads.
+\end{itemize}
+The tests: a wake before the wait, a wake during the wait, a wake after the
+engine is destroyed, and wakes from many threads at once.
+
+\paragraph{In the bindings.}
+\begin{itemize}[nosep]
+  \item \textbf{Go.} \code{Next(ctx)} makes a waker, registers
+        \code{context.AfterFunc(ctx, waker.Wake)}, and waits without a
+        timeout. Cancelling \code{ctx} ends the wait at once.
+        \code{cancelCheckInterval} goes away.
+  \item \textbf{Python.} \code{Engine.waker()} and
+        \code{Subscription.waker()} return a waker. The waker alone does not
+        let a signal end a wait on the main thread, because the handler still
+        cannot run there. So the engine runs on a worker thread, the main
+        thread stays free to take the signal, and the handler wakes the engine:
+\end{itemize}
+\begin{lstlisting}
+def run(stopping, wakers):
+    with gabriel.Engine("telemetry", max_output_size=1024) as engine:
+        wakers.put(engine.waker())
+        while not stopping.is_set():
+            input = engine.next()        # no timeout
+            if input is not None:
+                handle(input)
+                engine.stop()
+
+stopping, wakers = threading.Event(), queue.Queue()
+worker = threading.Thread(target=run, args=(stopping, wakers))
+worker.start()
+waker = wakers.get()
+def on_signal(*_):
+    stopping.set()
+    waker.wake()
+signal.signal(signal.SIGTERM, on_signal)
+worker.join()
+\end{lstlisting}
+This needs one change to \code{Engine.next}: with no timeout, it now waits
+until an input arrives. It would also return \code{None} after a wake, so the
+loop can check its flag. \code{worker.join} lets the handler run, because
+CPython's lock waits are interrupted by signals.
 
 \subsection{Failure modes}
 

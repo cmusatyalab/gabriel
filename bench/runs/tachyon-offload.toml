@@ -38,7 +38,7 @@ timeout = "2s"
 [producers.camera]
 rate = 30
 frames = "frames-720p/raw"
-input_type = "steeleagle_protocol.v1.messages.stream.RawFrame"
+input_type = "steeleagle_protocol.v1.messages.telemetry.RawFrame"
 
 [engines.yolo]
 external = true

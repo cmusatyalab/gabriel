@@ -15,7 +15,7 @@ RawFrames with:
 
     [producers.camera]
     frames = "frames-720p/raw"
-    input_type = "steeleagle_protocol.v1.messages.stream.RawFrame"
+    input_type = "steeleagle_protocol.v1.messages.telemetry.RawFrame"
 """
 
 import argparse
@@ -27,31 +27,32 @@ from pathlib import Path
 from grpc_tools import protoc
 from PIL import Image, ImageOps
 
-STREAM_PROTO = "steeleagle_protocol/v1/messages/stream/stream.proto"
-COMMON_PROTO = "steeleagle_protocol/v1/common.proto"
-STREAM_MODULE = "steeleagle_protocol.v1.messages.stream.stream_pb2"
+TELEMETRY_PROTO = "steeleagle_protocol/v1/messages/telemetry/telemetry.proto"
+COMMON_PROTO = "steeleagle_protocol/v1/common/common.proto"
+TELEMETRY_MODULE = "steeleagle_protocol.v1.messages.telemetry.telemetry_pb2"
 RGB_CHANNELS = 3
 DEFAULT_WIDTH, DEFAULT_HEIGHT = 1280, 720
 # OpenCV's default JPEG quality, as a camera app using it would encode.
 JPEG_QUALITY = 95
 
 
-def load_stream_messages(proto_path: Path, out: Path):
-    """Compiles the SteelEagle stream messages into `out`, and imports them."""
-    # protoc's own include directory has google/protobuf/timestamp.proto.
+def load_telemetry_messages(proto_path: Path, out: Path):
+    """Compiles the SteelEagle telemetry messages into `out`, and imports them."""
+    # protoc's own include directory has the well-known types, e.g.
+    # google/protobuf/timestamp.proto.
     well_known = Path(protoc.__file__).parent / "_proto"
     status = protoc.main([
         "protoc",
         f"-I{proto_path}",
         f"-I{well_known}",
         f"--python_out={out}",
-        STREAM_PROTO,
+        TELEMETRY_PROTO,
         COMMON_PROTO,
     ])
     if status != 0:
-        sys.exit(f"protoc failed to compile {STREAM_PROTO} from {proto_path}")
+        sys.exit(f"protoc failed to compile {TELEMETRY_PROTO} from {proto_path}")
     sys.path.insert(0, str(out))
-    return importlib.import_module(STREAM_MODULE)
+    return importlib.import_module(TELEMETRY_MODULE)
 
 
 def main() -> None:
@@ -68,12 +69,12 @@ def main() -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     jpeg_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as generated:
-        stream = load_stream_messages(args.proto_path, Path(generated))
+        telemetry = load_telemetry_messages(args.proto_path, Path(generated))
         size = (args.width, args.height)
         for path in sorted(args.images):
             # Crops to the aspect ratio if it differs, rather than stretching.
             image = ImageOps.fit(Image.open(path).convert("RGB"), size, Image.Resampling.LANCZOS)
-            frame = stream.RawFrame(
+            frame = telemetry.RawFrame(
                 data=image.tobytes(),
                 h_res=args.width,
                 v_res=args.height,
