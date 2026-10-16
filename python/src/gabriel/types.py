@@ -35,6 +35,24 @@ class Input:
     `numpy.frombuffer` must not be used after the outcome either."""
 
 
+@dataclass(frozen=True, slots=True)
+class ReadInput:
+    """An input a `Reader` read, as its producer published it."""
+
+    id: InputId
+    flow: str
+    """The flow the producer published the input on."""
+    payload_type: str
+    """How to read `data`; empty if the input has no convention."""
+    data: memoryview
+    """The input's bytes, in shared memory, read-only. It is released at the reader's next poll;
+    copy it (`bytes(data)`) to keep it longer. A numpy array made from it with `numpy.frombuffer`
+    must not be used after that either."""
+    lost: int
+    """How many inputs of the producer's session were lost right before this one, because the
+    reader fell behind."""
+
+
 class EventKind(enum.IntEnum):
     """What happened to an input."""
 

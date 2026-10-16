@@ -130,6 +130,11 @@ typedef struct gabriel_engine_t gabriel_engine_t;
 typedef struct gabriel_producer_t gabriel_producer_t;
 
 /**
+ * Reads the inputs of one producer. Only inputs published from now on are read.
+ */
+typedef struct gabriel_reader_t gabriel_reader_t;
+
+/**
  * Delivers the inputs of the flows installed on it to a dynamic set of engines.
  */
 typedef struct gabriel_server_t gabriel_server_t;
@@ -214,6 +219,28 @@ typedef struct {
    */
   uint64_t received_at_ns;
 } gabriel_event_t;
+
+/**
+ * An input read from a reader. Stays valid until the next poll.
+ */
+typedef struct {
+  gabriel_input_id_t id;
+  /**
+   * The flow the producer published the input on.
+   */
+  const char *flow;
+  /**
+   * How to read `buf`; "" if the input has no convention.
+   */
+  const char *payload_type;
+  const uint8_t *buf;
+  size_t len;
+  /**
+   * How many inputs of the producer's session were lost right before this one, because the
+   * reader fell behind.
+   */
+  uint64_t lost;
+} gabriel_read_input_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -635,6 +662,39 @@ gabriel_status_t gabriel_subscription_wait(gabriel_subscription_t *subscription,
  */
 gabriel_status_t gabriel_subscription_poll(gabriel_subscription_t *subscription,
                                            gabriel_event_t *event);
+
+/**
+ * Reads the inputs that the producer `name` publishes, in order, alongside the client that takes
+ * them. The producer need not exist yet. Only inputs published from now on are read. Use and
+ * destroy the reader only on the thread that created it.
+ *
+ * # Safety
+ * `name` must be NUL-terminated; `reader` must be valid for writes.
+ */
+gabriel_status_t gabriel_reader_create(const char *name, gabriel_reader_t **reader);
+
+/**
+ * # Safety
+ * `reader` must be null or a live handle that is not used afterwards.
+ */
+gabriel_status_t gabriel_reader_destroy(gabriel_reader_t *reader);
+
+/**
+ * Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch the
+ * input with `gabriel_reader_poll`.
+ *
+ * # Safety
+ * `reader` must be a live handle.
+ */
+gabriel_status_t gabriel_reader_wait(gabriel_reader_t *reader, uint32_t timeout_ms);
+
+/**
+ * Returns `ERR_AGAIN` if no input is available. The input stays valid until the next poll.
+ *
+ * # Safety
+ * `reader` must be a live handle; `input` must be valid for writes.
+ */
+gabriel_status_t gabriel_reader_poll(gabriel_reader_t *reader, gabriel_read_input_t *input);
 
 #ifdef __cplusplus
 }  // extern "C"

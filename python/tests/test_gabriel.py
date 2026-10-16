@@ -337,3 +337,50 @@ def test_fusion_publishes_a_derived_result_its_subscribers_get(fixture):
         assert decision.id == event.id
         assert decision.result == b"person"
         assert decision.payload_type == "example.Decision"
+
+
+def test_reader_and_engine_both_get_the_input(fixture):
+    with gabriel.Reader(fixture.producer_name) as reader:
+        fixture.add_flow()
+
+        seq = fixture.producer.send(FLOW, b"frame")
+        input = reader.next(WAIT)
+
+        assert input.id == gabriel.InputId(fixture.producer_name, fixture.producer.session, seq)
+        assert (bytes(input.data), input.flow, input.payload_type) == (b"frame", FLOW, INPUT_TYPE)
+        assert input.lost == 0
+        assert fixture.engine.next(WAIT) is not None
+
+
+def test_reader_reads_inputs_in_order():
+    name = unique("camera")
+    with (
+        gabriel.Reader(name) as reader,
+        gabriel.Producer(name, max_input_size=MAX_INPUT_SIZE) as producer,
+    ):
+        producer.send(FLOW, b"one")
+        producer.send(FLOW, b"two")
+
+        assert bytes(reader.next(WAIT).data) == b"one"
+        assert bytes(reader.next(WAIT).data) == b"two"
+        assert reader.poll() is None
+
+
+def test_read_input_cannot_be_read_after_the_next_poll():
+    name = unique("camera")
+    with (
+        gabriel.Reader(name) as reader,
+        gabriel.Producer(name, max_input_size=MAX_INPUT_SIZE) as producer,
+    ):
+        producer.send(FLOW, b"frame")
+        input = reader.next(WAIT)
+
+        reader.poll()
+
+        with pytest.raises(ValueError):
+            bytes(input.data)
+
+
+def test_reader_without_input_times_out():
+    with gabriel.Reader(unique("camera")) as reader:
+        assert reader.next(0.01) is None

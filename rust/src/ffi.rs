@@ -7,8 +7,8 @@
 //! run time compares the header's version with [`gabriel_abi_version`]. Enums are 32 bits wide,
 //! and new variants may be added at the end, so code should handle values it does not know.
 //!
-//! A producer, an engine and a subscription must stay on the thread that created them: create,
-//! use and destroy each on one thread. A client and a server may be used from any thread.
+//! A producer, an engine, a subscription and a reader must stay on the thread that created them:
+//! create, use and destroy each on one thread. A client and a server may be used from any thread.
 
 use std::{
     cell::RefCell,
@@ -21,8 +21,9 @@ use std::{
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{
-    Client, Engine, Error, EventKind, FlowSpec, Forward, InputId, Producer, RemoteServerConfig,
-    Result, Server, Subscription, logging, routing::ids::ProducerName, subscription::Event,
+    Client, Engine, Error, EventKind, FlowSpec, Forward, InputId, Producer, Reader,
+    RemoteServerConfig, Result, Server, Subscription, logging, reader::ReadInput,
+    routing::ids::ProducerName, subscription::Event,
 };
 
 /// The version of the ABI that this library implements.
@@ -1048,6 +1049,91 @@ pub unsafe extern "C" fn gabriel_subscription_poll(
     Status::from(result)
 }
 
+// --- Reader ---
+
+/// An input read from a reader. Stays valid until the next poll.
+#[repr(C)]
+pub struct ReadInputView {
+    id: InputIdView,
+    /// The flow the producer published the input on.
+    flow: *const c_char,
+    /// How to read `buf`; "" if the input has no convention.
+    payload_type: *const c_char,
+    buf: *const u8,
+    len: usize,
+    /// How many inputs of the producer's session were lost right before this one, because the
+    /// reader fell behind.
+    lost: u64,
+}
+
+impl ReadInputView {
+    fn new(input: &ReadInput<'_>) -> Self {
+        Self {
+            id: InputIdView {
+                producer: input.producer.as_c_str(),
+                session: input.id().session(),
+                seq: input.id().seq(),
+            },
+            flow: input.envelope.flow.as_c_str(),
+            payload_type: input.envelope.payload_type.as_c_str(),
+            buf: input.data().as_ptr(),
+            len: input.data().len(),
+            lost: input.lost(),
+        }
+    }
+}
+
+/// Reads the inputs that the producer `name` publishes, in order, alongside the client that takes
+/// them. The producer need not exist yet. Only inputs published from now on are read. Use and
+/// destroy the reader only on the thread that created it.
+///
+/// # Safety
+/// `name` must be NUL-terminated; `reader` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_reader_create(
+    name: *const c_char,
+    reader: *mut *mut Reader,
+) -> Status {
+    unsafe { create_handle(reader, || Reader::new(str_arg(name)?)) }
+}
+
+/// # Safety
+/// `reader` must be null or a live handle that is not used afterwards.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_reader_destroy(reader: *mut Reader) -> Status {
+    unsafe { destroy_handle(reader) }
+}
+
+/// Waits until an input is ready, or `timeout_ms` passes, and returns `ERR_AGAIN` then. Fetch the
+/// input with `gabriel_reader_poll`.
+///
+/// # Safety
+/// `reader` must be a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_reader_wait(reader: *mut Reader, timeout_ms: u32) -> Status {
+    let timeout = Duration::from_millis(u64::from(timeout_ms));
+    Status::from(unsafe { handle_arg(reader) }.and_then(|r| r.wait(timeout)))
+}
+
+/// Returns `ERR_AGAIN` if no input is available. The input stays valid until the next poll.
+///
+/// # Safety
+/// `reader` must be a live handle; `input` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gabriel_reader_poll(
+    reader: *mut Reader,
+    input: *mut ReadInputView,
+) -> Status {
+    if input.is_null() {
+        return null_argument("input");
+    }
+    let result = unsafe { handle_arg(reader) }
+        .and_then(Reader::poll)
+        // SAFETY: `input` is non-null and writable per the caller's contract.
+        .map(|polled| unsafe { input.write(ReadInputView::new(&polled)) });
+    Status::from(result)
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::CString;
@@ -1210,6 +1296,41 @@ mod tests {
             unsafe { gabriel_subscription_destroy(subscription) },
             Status::Ok
         );
+    }
+
+    #[test]
+    fn reader_reads_a_published_input() {
+        let name = CString::new(unique("camera")).unwrap();
+        let mut reader = ptr::null_mut();
+        let created = unsafe { gabriel_reader_create(name.as_ptr(), &mut reader) };
+        assert_eq!(created, Status::Ok);
+        let mut input = std::mem::MaybeUninit::<ReadInputView>::uninit();
+        assert_eq!(
+            unsafe { gabriel_reader_poll(reader, input.as_mut_ptr()) },
+            Status::ErrAgain
+        );
+
+        let mut producer = Producer::new(name.to_str().unwrap(), None, 8).unwrap();
+        let buf = producer.new_input().unwrap();
+        buf[0].write(42);
+        let id = producer.publish_input(1, "flow").unwrap();
+        assert_eq!(unsafe { gabriel_reader_wait(reader, 200) }, Status::Ok);
+        let polled = unsafe { gabriel_reader_poll(reader, input.as_mut_ptr()) };
+
+        assert_eq!(polled, Status::Ok);
+        let input = unsafe { input.assume_init() };
+        assert_eq!(
+            unsafe { CStr::from_ptr(input.id.producer) },
+            name.as_c_str()
+        );
+        assert_eq!((input.id.session, input.id.seq), (id.session(), id.seq()));
+        assert_eq!(unsafe { CStr::from_ptr(input.flow) }, c"flow");
+        assert_eq!(
+            unsafe { std::slice::from_raw_parts(input.buf, input.len) },
+            [42]
+        );
+        assert_eq!(input.lost, 0);
+        assert_eq!(unsafe { gabriel_reader_destroy(reader) }, Status::Ok);
     }
 
     #[test]

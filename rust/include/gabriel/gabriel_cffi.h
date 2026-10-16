@@ -35,6 +35,7 @@ typedef struct gabriel_client_t gabriel_client_t;
 typedef struct gabriel_client_options_t gabriel_client_options_t;
 typedef struct gabriel_engine_t gabriel_engine_t;
 typedef struct gabriel_producer_t gabriel_producer_t;
+typedef struct gabriel_reader_t gabriel_reader_t;
 typedef struct gabriel_server_t gabriel_server_t;
 typedef struct gabriel_server_options_t gabriel_server_options_t;
 typedef struct gabriel_subscription_t gabriel_subscription_t;
@@ -63,6 +64,14 @@ typedef struct {
   uint64_t offered_at_ns;
   uint64_t received_at_ns;
 } gabriel_event_t;
+typedef struct {
+  gabriel_input_id_t id;
+  const char *flow;
+  const char *payload_type;
+  const uint8_t *buf;
+  size_t len;
+  uint64_t lost;
+} gabriel_read_input_t;
 uint32_t gabriel_abi_version(void);
 const char *gabriel_last_error(void);
 gabriel_status_t gabriel_log_init(const char *filter);
@@ -148,3 +157,7 @@ gabriel_status_t gabriel_subscription_wait(gabriel_subscription_t *subscription,
                                            uint32_t timeout_ms);
 gabriel_status_t gabriel_subscription_poll(gabriel_subscription_t *subscription,
                                            gabriel_event_t *event);
+gabriel_status_t gabriel_reader_create(const char *name, gabriel_reader_t **reader);
+gabriel_status_t gabriel_reader_destroy(gabriel_reader_t *reader);
+gabriel_status_t gabriel_reader_wait(gabriel_reader_t *reader, uint32_t timeout_ms);
+gabriel_status_t gabriel_reader_poll(gabriel_reader_t *reader, gabriel_read_input_t *input);
