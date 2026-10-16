@@ -1,8 +1,0 @@
-2026-10-12 15:34:30,154 local WARNING No config file was loaded, a config with default values will be used.
-2026-10-12 15:34:30,163 local INFO local server listening on gsd6660c6d7a/local
-2026-10-12 15:34:30,203 local INFO client cd07dfb118c34873ad0d3e7dc58701da connected
-No config file was loaded, a config with default values will be used.
-No config file was loaded, a config with default values will be used.
-2026-10-12 15:34:39,127 local INFO remote link down for flows
-2026-10-12 15:34:39,144 local INFO remote link up for flows
-2026-10-12 15:34:45,781 local INFO client cd07dfb118c34873ad0d3e7dc58701da disconnected
