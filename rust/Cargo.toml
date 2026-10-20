@@ -32,7 +32,6 @@ metrics-exporter-prometheus = { version = "0.18.3", default-features = false, fe
 
 [build-dependencies]
 cbindgen = "0.29"
-cc = "1.5.1"
 
 [dev-dependencies]
 metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }
