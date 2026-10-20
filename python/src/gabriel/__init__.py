@@ -9,8 +9,6 @@ producer's inputs from a `Subscription`, and anyone can read a producer's inputs
 A `Producer`, an `Engine`, a `Subscription` and a `Reader` must stay on the thread that created
 them; using one from another thread raises `WrongThreadError`. A `Client` and a `Server` may be
 used from any thread. Close every handle when done with it, or use it in a `with` block.
-
-Build the C library before importing this package: ``cargo build --release -p gabriel``.
 """
 
 from gabriel._ffi import check as _check

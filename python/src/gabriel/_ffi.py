@@ -1,19 +1,15 @@
 """Loads Gabriel's C library, and turns its status codes into exceptions.
 
-The library is ``libgabriel.so``, which ``cargo build --release -p gabriel`` builds, and its
-declarations come from ``gabriel_cffi.h``, which the same build writes. Both are found in the
-repository this package lives in, unless ``GABRIEL_LIBRARY`` names the library.
+The library and its declarations are in ``gabriel._native``, which maturin builds from the Rust
+crate along with the package, so the two always match.
 """
 
 import math
-import os
 import threading
 import time
 from contextlib import contextmanager
-from pathlib import Path
 
-from cffi import FFI
-
+from gabriel._native import ffi, lib
 from gabriel.errors import (
     AgainError,
     ClosedError,
@@ -23,20 +19,6 @@ from gabriel.errors import (
     SizeExceededError,
     WrongThreadError,
 )
-
-LIBRARY_ENV = "GABRIEL_LIBRARY"
-_REPOSITORY = Path(__file__).resolve().parents[3]
-_LIBRARY = _REPOSITORY / "target" / "release" / "libgabriel.so"
-_HEADER = _REPOSITORY / "rust" / "include" / "gabriel" / "gabriel_cffi.h"
-
-ffi = FFI()
-ffi.cdef(_HEADER.read_text())
-lib = ffi.dlopen(os.environ.get(LIBRARY_ENV, str(_LIBRARY)))
-if lib.gabriel_abi_version() != lib.GABRIEL_ABI_VERSION:
-    raise ImportError(
-        f"the Gabriel library implements ABI version {lib.gabriel_abi_version()}, but the header is "
-        f"version {lib.GABRIEL_ABI_VERSION}; build both with cargo build --release -p gabriel"
-    )
 
 _ERRORS: dict[int, type[GabrielError]] = {
     lib.GABRIEL_STATUS_T_ERR_INVALID: InvalidArgumentError,

@@ -1,0 +1,38 @@
+# Cross-builds the Python package's wheel for an aarch64 device with Ubuntu 20.04, such as a
+# Particle Tachyon: glibc 2.31. Build the image, then the wheel, from the repository root:
+#
+#   docker build -t gabriel-wheel-aarch64 -f python/Dockerfile.aarch64 python
+#   docker run --rm -u $(id -u):$(id -g) -v $PWD:/src -w /src/python \
+#       -e CARGO_TARGET_DIR=/src/target/aarch64 gabriel-wheel-aarch64 \
+#       uv build -o /src/target/wheels
+#
+# uv builds the sdist, then the wheel from it, so the wheel has only the files git tracks.
+#
+# Built on Ubuntu 20.04, the library links against glibc 2.31 at most. maturin's --zig, which
+# would do without this image, fails: zig's linker rejects a flag Rust passes for aarch64
+# (--fix-cortex-a53-843419).
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gcc libc6-dev gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG RUST_VERSION=1.98.1
+ENV RUSTUP_HOME=/rustup CARGO_HOME=/cargo PATH=/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+            --target aarch64-unknown-linux-gnu \
+    && chmod -R a+rwX /cargo /rustup
+
+# The build runs maturin and cffi in a Python of uv's; Ubuntu 20.04's is 3.8. The cache is
+# writable by the user the container runs as.
+ARG PYTHON_VERSION=3.11
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
+ENV UV_PYTHON_INSTALL_DIR=/uv/python UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON=${PYTHON_VERSION}
+RUN uv python install ${PYTHON_VERSION} && chmod -R a+rwX /uv
+
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    MATURIN_PEP517_ARGS="--target aarch64-unknown-linux-gnu --compatibility manylinux_2_31"

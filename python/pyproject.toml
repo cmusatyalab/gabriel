@@ -4,18 +4,26 @@ version = "0.1.0"
 description = "Python bindings for Gabriel, through its C ABI"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = ["cffi>=1.17"]
 
 [dependency-groups]
 dev = ["pytest>=8", "numpy>=2"]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# maturin runs cffi to write the declarations of gabriel._native.
+requires = ["maturin>=1.9,<2", "cffi>=1.17"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/gabriel"]
+[tool.maturin]
+manifest-path = "../rust/Cargo.toml"
+bindings = "cffi"
+python-source = "src"
+module-name = "gabriel._native"
+
+[tool.uv]
+# uv rebuilds the package when these change, not only when Python files do.
+cache-keys = [{ file = "pyproject.toml" }, { file = "../rust/Cargo.toml" }, { file = "../rust/src/**/*.rs" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
