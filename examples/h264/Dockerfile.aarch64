@@ -35,6 +35,13 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             --target aarch64-unknown-linux-gnu \
     && chmod -R a+rwX /cargo /rustup
 
+# cargo-c installs Gabriel's library with its header and pkg-config file, for the Go bindings.
+# Its release is a static binary, so it runs on this older Ubuntu.
+ARG CARGO_C_VERSION=0.10.26
+RUN curl --proto '=https' --tlsv1.2 -sSfL \
+        https://github.com/lu-zero/cargo-c/releases/download/v${CARGO_C_VERSION}/cargo-c-x86_64-unknown-linux-musl.tar.gz \
+        | tar -xz -C /cargo/bin
+
 # The arm64 libraries live in Ubuntu's multiarch directory, which the cross linker does not search
 # by itself.
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \

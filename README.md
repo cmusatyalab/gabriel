@@ -13,9 +13,18 @@ Every connection runs in one of two modes, chosen by its address prefix. A singl
 cargo build && cargo test                     # Rust library (rust/) + C header at rust/include/gabriel/gabriel.h
 cmake -S . -B build && cmake --build build   # C library (gabriel) + tests
 (cd build && ctest --output-on-failure)       # or ./build/c/test_gabriel [test ...]
-go test ./go/                                 # Go bindings (cgo builds the C sources)
+(cd go && go test ./...)                      # Go bindings (needs libgabriel installed; see below)
 pip install . && pytest python/tests          # Python bindings
 ```
+
+The Go bindings link libgabriel statically and find it with pkg-config, so install it first. [cargo-c](https://github.com/lu-zero/cargo-c) (`cargo install cargo-c`) installs the library, its header and `gabriel.pc`:
+
+```sh
+cargo cinstall --release -p gabriel --library-type staticlib --prefix ~/.local --libdir lib
+export PKG_CONFIG_PATH=~/.local/lib/pkgconfig
+```
+
+Install it again whenever the Rust library changes. A Go program built against it needs nothing of Gabriel's where it runs. The Go module is `github.com/cmusatyalab/gabriel/go`, tagged `go/vX.Y.Z`; build it against the libgabriel of the same release. A library with another ABI version stops the build.
 
 Set `GABRIEL_LOG=1` when running `test_gabriel` to print Gabriel's internal log. The C library is Linux-only (it uses `memfd_create` and `eventfd`).
 

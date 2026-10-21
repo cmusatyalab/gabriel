@@ -16,21 +16,28 @@
 //
 // # Building
 //
-// The package links the Rust library statically. Build it before using the package:
+// The package links libgabriel, the Rust library, statically, and finds it with pkg-config.
+// Install the library from the same release as the package before building it. cargo-c
+// (cargo install cargo-c) installs it from a Gabriel checkout, here into ~/.local:
 //
-//	go generate github.com/cmusatyalab/gabriel/go
+//	cargo cinstall --release -p gabriel --library-type staticlib --prefix ~/.local --libdir lib
+//	export PKG_CONFIG_PATH=~/.local/lib/pkgconfig
 //
-// which runs cargo build --release -p gabriel.
+// Install only the static library: the program then needs nothing of Gabriel's where it runs.
 package gabriel
 
-//go:generate cargo build --release -p gabriel
-
 /*
-#cgo CFLAGS: -I${SRCDIR}/../rust/include
-#cgo LDFLAGS: ${SRCDIR}/../target/release/libgabriel.a -lgcc_s -lutil -lrt -lpthread -lm -ldl
+#cgo pkg-config: gabriel
 #include <stdlib.h>
 #include <time.h>
 #include <gabriel/gabriel.h>
+
+// The ABI version of the header this package was written for. Installing a library of another
+// version stops the build here, rather than failing when the package runs.
+#define GABRIEL_GO_ABI_VERSION 2
+#if GABRIEL_ABI_VERSION != GABRIEL_GO_ABI_VERSION
+#error "the installed libgabriel has a different ABI version than this package; install the release that matches it"
+#endif
 
 static uint64_t gabriel_go_now_ns(void) {
 	struct timespec ts;
@@ -66,12 +73,12 @@ var (
 	ErrClosed = errors.New("already closed")
 )
 
-// The library is linked statically, but a stale build of it can still be linked against a newer
-// header. Its ABI version says so before any call goes wrong.
+// The build checks the installed header's ABI version, but the installed library could still be
+// from another build than the header. Its ABI version says so before any call goes wrong.
 func init() {
 	if version := C.gabriel_abi_version(); version != C.GABRIEL_ABI_VERSION {
 		panic(fmt.Sprintf("gabriel: the library implements ABI version %d, but the header is version %d; "+
-			"run go generate github.com/cmusatyalab/gabriel/go", version, C.GABRIEL_ABI_VERSION))
+			"reinstall libgabriel", version, C.GABRIEL_ABI_VERSION))
 	}
 }
 

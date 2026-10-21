@@ -8,6 +8,24 @@ description = "Gabriel: token-based flow control over iceoryx2, exposed through 
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
 
+# cargo cinstall (cargo-c) installs the library as a C library: libgabriel, its header, and a
+# gabriel.pc for pkg-config, which the Go bindings link through.
+[features]
+# Marks this as the workspace's C library for cargo-c; it enables nothing.
+capi = []
+
+[package.metadata.capi.header]
+# build.rs already writes the header, so cargo-c installs that one instead of running cbindgen.
+generation = false
+
+[package.metadata.capi.pkg_config]
+# Callers include <gabriel/gabriel.h>, so the include path is the directory above the header's.
+strip_include_path_components = 1
+
+[package.metadata.capi.install.include]
+# Installed to include/gabriel/, the header's default subdirectory.
+asset = [{ from = "include/gabriel/gabriel.h" }]
+
 [dependencies]
 iceoryx2 = "0.10"
 thiserror = "2"

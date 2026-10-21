@@ -5,7 +5,6 @@
 // finds the square in each frame it gets. The app prints each detection, and how old the newest
 // detection is (its age of information).
 //
-//	go generate github.com/cmusatyalab/gabriel/go   # builds the Rust library, once
 //	go run ./examples/go/pipeline
 //
 // In a real deployment the server, each engine, and the app are separate processes; here they are
