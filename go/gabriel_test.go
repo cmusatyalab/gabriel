@@ -123,7 +123,7 @@ func TestInputReachesEngineAndResultReachesApp(t *testing.T) {
 	if input.PayloadType != inputType {
 		t.Errorf("engine got an input of type %q, want %q", input.PayloadType, inputType)
 	}
-	if err := f.engine.Pass([]byte("cat")); err != nil {
+	if err := f.engine.Forward([]byte("cat")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +135,7 @@ func TestInputReachesEngineAndResultReachesApp(t *testing.T) {
 		if event.Kind != EventResult {
 			continue
 		}
-		if event.Engine != f.names.engine || event.ID.Seq != seq || event.Forward != ForwardPass {
+		if event.Engine != f.names.engine || event.ID.Seq != seq || event.Outcome != OutcomeForward {
 			t.Errorf("result %+v, want a pass of seq %d by %s", event, seq, f.names.engine)
 		}
 		if !bytes.Equal(event.Result, []byte("cat")) {
@@ -303,7 +303,7 @@ func TestCrossingCapacityNeedsARemoteServer(t *testing.T) {
 	}
 }
 
-func TestEmittedInputReachesTheNextEngine(t *testing.T) {
+func TestReplacementReachesTheNextEngine(t *testing.T) {
 	f := newFixture(t)
 	trackerName := unique("tracker")
 	tracker, err := NewEngine(trackerName, "", maxOutputSize)
@@ -339,7 +339,7 @@ timeout = "5s"
 		t.Fatal(err)
 	}
 	n := copy(output, "tiles")
-	if err := f.engine.Emit("example.Tiles", n, nil); err != nil {
+	if err := f.engine.Replace("example.Tiles", n, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,7 +370,7 @@ func TestEngineSubscriberSeesTheEnginesResult(t *testing.T) {
 	if _, err := f.engine.Next(timeout(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.engine.Pass([]byte("cat")); err != nil {
+	if err := f.engine.Forward([]byte("cat")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -413,7 +413,7 @@ func TestEngineWaitsForAnEventOfAnEngineItSubscribesTo(t *testing.T) {
 	if _, err := f.engine.Next(timeout(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.engine.Pass([]byte("cat")); err != nil {
+	if err := f.engine.Forward([]byte("cat")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -467,7 +467,7 @@ func TestFusionPublishesADerivedResultItsSubscribersGet(t *testing.T) {
 	if _, err := f.engine.Next(timeout(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.engine.Pass([]byte("cat")); err != nil {
+	if err := f.engine.Forward([]byte("cat")); err != nil {
 		t.Fatal(err)
 	}
 	result, err := next(timeout(t), func() (Event, error) {

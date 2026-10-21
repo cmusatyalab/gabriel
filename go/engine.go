@@ -25,8 +25,8 @@ type Input struct {
 	Data []byte
 }
 
-// Engine processes one input at a time and reports exactly one outcome for it: [Engine.Stop],
-// [Engine.Pass] or [Engine.Emit]. A server delivers inputs to it once the server adds it
+// Engine processes one input at a time and reports exactly one outcome for it: [Engine.Drop],
+// [Engine.Forward] or [Engine.Replace]. A server delivers inputs to it once the server adds it
 // ([Server.AddEngine]).
 //
 // An Engine must be used and closed in the goroutine that created it (see Threads in the package
@@ -170,17 +170,18 @@ func (e *Engine) PublishDerived(id InputID, flow, resultType string, result []by
 	})
 }
 
-// Stop reports that the engine forwards nothing. A discard is a stop with no result.
-func (e *Engine) Stop(result []byte) error {
+// Drop reports that the engine drops the input: it forwards nothing. A discard is a drop with no
+// result.
+func (e *Engine) Drop(result []byte) error {
 	return e.report(result, func(buf *C.uint8_t, n C.size_t) C.gabriel_status_t {
-		return C.gabriel_engine_stop(e.handle, buf, n)
+		return C.gabriel_engine_drop(e.handle, buf, n)
 	})
 }
 
-// Pass reports that the engine forwards the input unchanged along every outgoing edge.
-func (e *Engine) Pass(result []byte) error {
+// Forward reports that the engine forwards the input unchanged along every outgoing edge.
+func (e *Engine) Forward(result []byte) error {
 	return e.report(result, func(buf *C.uint8_t, n C.size_t) C.gabriel_status_t {
-		return C.gabriel_engine_pass(e.handle, buf, n)
+		return C.gabriel_engine_forward(e.handle, buf, n)
 	})
 }
 
@@ -193,7 +194,7 @@ func (e *Engine) report(result []byte, send func(*C.uint8_t, C.size_t) C.gabriel
 }
 
 // Loan returns a buffer in shared memory for a new input, of the engine's maximum output size.
-// Write the input into it, then forward it with [Engine.Emit].
+// Write the input into it, then forward it with [Engine.Replace].
 func (e *Engine) Loan() ([]byte, error) {
 	if err := e.check(); err != nil {
 		return nil, err
@@ -205,9 +206,10 @@ func (e *Engine) Loan() ([]byte, error) {
 	return unsafe.Slice((*byte)(unsafe.Pointer(buf)), e.maxOutputSize), nil
 }
 
-// Emit reports that the engine forwards the first n bytes of the loaned buffer as a new input along
-// every outgoing edge. outputType names how to read it; empty if it has no convention.
-func (e *Engine) Emit(outputType string, n int, result []byte) error {
+// Replace reports that the engine replaces the input: it forwards the first n bytes of the loaned
+// buffer as a new input, in place of the input, along every outgoing edge. outputType names how to
+// read it; empty if it has no convention.
+func (e *Engine) Replace(outputType string, n int, result []byte) error {
 	if err := e.check(); err != nil {
 		return err
 	}
@@ -218,7 +220,7 @@ func (e *Engine) Emit(outputType string, n int, result []byte) error {
 	}
 	buf, resultLen := bytesArg(result)
 	return call(func() C.gabriel_status_t {
-		return C.gabriel_engine_emit(e.handle, cOutputType, C.size_t(n), buf, resultLen)
+		return C.gabriel_engine_replace(e.handle, cOutputType, C.size_t(n), buf, resultLen)
 	})
 }
 

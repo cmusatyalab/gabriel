@@ -21,13 +21,13 @@ use std::{
 use iceoryx2_bb_container::string::String as _;
 
 use crate::{
-    Client, Engine, Error, EventKind, FlowSpec, Forward, InputId, Producer, Reader,
+    Client, Engine, Error, EventKind, FlowSpec, InputId, Outcome, Producer, Reader,
     RemoteServerConfig, Result, Server, Subscription, logging, reader::ReadInput,
     routing::ids::ProducerName, subscription::Event,
 };
 
 /// The version of the ABI that this library implements.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 /// The version of the ABI that the library implements. A caller built with a header of another
 /// version (`GABRIEL_ABI_VERSION`) must not use the library.
@@ -785,34 +785,35 @@ pub unsafe extern "C" fn gabriel_engine_publish_derived(
     Status::from(published)
 }
 
-/// Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).
+/// Drop: forward nothing; the input ends at the engine. A discard is a drop with no result
+/// (`result` null, `result_len` 0).
 ///
 /// # Safety
 /// `engine` must be a live handle; `result` must point to `result_len` readable bytes, or be
 /// null when `result_len` is 0.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_engine_stop(
+pub unsafe extern "C" fn gabriel_engine_drop(
     engine: *mut Engine,
     result: *const u8,
     result_len: usize,
 ) -> Status {
-    Status::from(unsafe { (|| handle_arg(engine)?.stop(bytes_arg(result, result_len)?))() })
+    Status::from(unsafe { (|| handle_arg(engine)?.drop(bytes_arg(result, result_len)?))() })
 }
 
-/// Pass: forward the input unchanged along every outgoing input edge.
+/// Forward: forward the input unchanged along every outgoing input edge.
 ///
 /// # Safety
-/// As for [`gabriel_engine_stop`].
+/// As for [`gabriel_engine_drop`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_engine_pass(
+pub unsafe extern "C" fn gabriel_engine_forward(
     engine: *mut Engine,
     result: *const u8,
     result_len: usize,
 ) -> Status {
-    Status::from(unsafe { (|| handle_arg(engine)?.pass(bytes_arg(result, result_len)?))() })
+    Status::from(unsafe { (|| handle_arg(engine)?.forward(bytes_arg(result, result_len)?))() })
 }
 
-/// Loans a buffer for a new input. Fill it, then call `gabriel_engine_emit`.
+/// Loans a buffer for a new input. Fill it, then call `gabriel_engine_replace`.
 ///
 /// # Safety
 /// `engine` must be a live handle; `buf` must be valid for writes.
@@ -831,13 +832,14 @@ pub unsafe extern "C" fn gabriel_engine_new_output(
     Status::from(result)
 }
 
-/// Emit: forward the first `output_len` bytes of the loaned buffer as a new input along every
-/// outgoing input edge. `output_type` names how to read it; it may be NULL.
+/// Replace: forward the first `output_len` bytes of the loaned buffer as a new input, in place
+/// of the input, along every outgoing input edge. `output_type` names how to read it; it may be
+/// NULL.
 ///
 /// # Safety
-/// As for [`gabriel_engine_stop`]; `output_type` must be NUL-terminated or null.
+/// As for [`gabriel_engine_drop`]; `output_type` must be NUL-terminated or null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabriel_engine_emit(
+pub unsafe extern "C" fn gabriel_engine_replace(
     engine: *mut Engine,
     output_type: *const c_char,
     output_len: usize,
@@ -846,7 +848,7 @@ pub unsafe extern "C" fn gabriel_engine_emit(
 ) -> Status {
     Status::from(unsafe {
         (|| {
-            handle_arg(engine)?.emit(
+            handle_arg(engine)?.replace(
                 opt_str_arg(output_type)?.unwrap_or_default(),
                 output_len,
                 bytes_arg(result, result_len)?,
@@ -872,21 +874,21 @@ pub enum EventKindView {
     Lost,
 }
 
-/// What an engine forwarded, as a subscription reports it.
+/// What an engine did with an input, as a subscription reports it.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ForwardView {
-    Stop,
-    Pass,
-    Emit,
+pub enum OutcomeView {
+    Drop,
+    Forward,
+    Replace,
 }
 
-impl From<Forward> for ForwardView {
-    fn from(forward: Forward) -> Self {
-        match forward {
-            Forward::Stop => Self::Stop,
-            Forward::Pass => Self::Pass,
-            Forward::Emit => Self::Emit,
+impl From<Outcome> for OutcomeView {
+    fn from(outcome: Outcome) -> Self {
+        match outcome {
+            Outcome::Drop => Self::Drop,
+            Outcome::Forward => Self::Forward,
+            Outcome::Replace => Self::Replace,
         }
     }
 }
@@ -918,8 +920,8 @@ pub struct EventView {
     engine: *const c_char,
     /// The flow the event belongs to; "" if none.
     flow: *const c_char,
-    /// What the engine forwarded, for `RESULT`.
-    forward: ForwardView,
+    /// What the engine did with the input, for `RESULT`.
+    outcome: OutcomeView,
     /// How to read `result`; "" if there is no result.
     payload_type: *const c_char,
     result: *const u8,
@@ -948,7 +950,7 @@ impl EventView {
                 },
                 engine: lost.engine.map_or(c"".as_ptr(), |engine| engine.as_c_str()),
                 flow: c"".as_ptr(),
-                forward: ForwardView::Stop,
+                outcome: OutcomeView::Drop,
                 payload_type: c"".as_ptr(),
                 result: ptr::null(),
                 result_len: 0,
@@ -968,7 +970,7 @@ impl EventView {
                     },
                     engine: record.engine.as_c_str(),
                     flow: record.flow.as_c_str(),
-                    forward: record.forward.into(),
+                    outcome: record.outcome.into(),
                     payload_type: record.payload_type.as_c_str(),
                     result: published.result().as_ptr(),
                     result_len: published.result().len(),

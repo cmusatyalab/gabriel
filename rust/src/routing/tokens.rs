@@ -16,10 +16,10 @@ const LATE_RESULT_WINDOW: Duration = Duration::from_secs(60);
 /// How an offer ended, as reported to the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum OfferEnd {
-    /// The engine `node` reported an outcome. `forwarded` says whether it passed the input on
-    /// (`Pass` or `Emit`), so the client can forward it on its own edges. `children` are the offers
-    /// this created: the server's, plus the client's own (e.g. an uplink after `Pass`). No children
-    /// means the input completed on this path.
+    /// The engine `node` reported an outcome. `forwarded` says whether it forwarded the input or
+    /// its replacement (`Forward` or `Replace`), so the client can forward it on its own edges.
+    /// `children` are the offers this created: the server's, plus the client's own (e.g. an
+    /// uplink after `Forward`). No children means the input completed on this path.
     Result {
         node: NodeId,
         forwarded: bool,

@@ -153,7 +153,7 @@ fn main() -> Result<()> {
         let started = Instant::now();
         let Some(encoded) = encoded else {
             eprintln!("discarding input {seq}: not an {encoded_type}");
-            engine.stop(&dropped)?;
+            engine.drop(&dropped)?;
             continue;
         };
         let frame = RawFrameView::parse_from_bytes(&encoded.raw_frame)?;
@@ -166,7 +166,7 @@ fn main() -> Result<()> {
                     "frame {number} input {seq} follows a lost frame; waiting for a keyframe"
                 );
             }
-            engine.stop(&keyframe_needed)?;
+            engine.drop(&keyframe_needed)?;
             continue;
         }
         // The decoder keeps this frame as a reference whether or not its output comes in time,
@@ -181,7 +181,7 @@ fn main() -> Result<()> {
                 "frame {number} took over {} ms to decode; discarding it",
                 args.timeout_ms
             );
-            engine.stop(&dropped)?;
+            engine.drop(&dropped)?;
             continue;
         };
         let info = VideoInfo::from_caps(sample.caps().context("decoded sample has caps")?)?;
@@ -193,16 +193,16 @@ fn main() -> Result<()> {
                 frame.h_res,
                 frame.v_res
             );
-            engine.stop(&dropped)?;
+            engine.drop(&dropped)?;
             continue;
         }
 
         let Some(size) = write_raw_frame(&encoded.raw_frame, &sample, engine.new_output()?)? else {
             eprintln!("frame {number} is larger than --max-width x --max-height; discarding it");
-            engine.stop(&dropped)?;
+            engine.drop(&dropped)?;
             continue;
         };
-        engine.emit(&encoded.raw_frame_type, size, &decoded)?;
+        engine.replace(&encoded.raw_frame_type, size, &decoded)?;
         if args.log_frames {
             eprintln!(
                 "frame {number} input {seq} keyframe={} ms={:.2}",

@@ -557,7 +557,7 @@ mod tests {
     use super::*;
     use crate::{
         Engine, EventKind, Server,
-        ipc::types::{FlowName, Forward},
+        ipc::types::{FlowName, Outcome},
         routing::{
             ids::{EdgeId, NodeId, ProducerName},
             server_router::{CrossingSpec, EdgeSpec},
@@ -680,7 +680,7 @@ mod tests {
         fixture.engine.wait(NETWORK_TIMEOUT).unwrap();
         let input = fixture.engine.poll_input().unwrap();
         assert_eq!(input.data, INPUT);
-        fixture.engine.pass(RESULT).unwrap();
+        fixture.engine.forward(RESULT).unwrap();
 
         let mut events = Vec::new();
         wait_until(|| {
@@ -696,7 +696,7 @@ mod tests {
         );
         let result = &events[2];
         assert_eq!(&*result.result, RESULT);
-        assert_eq!(result.record.forward, Forward::Pass);
+        assert_eq!(result.record.outcome, Outcome::Forward);
         assert_eq!(result.record.flow, FlowName::try_from(FLOW).unwrap());
         assert!(
             events

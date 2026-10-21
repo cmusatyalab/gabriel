@@ -61,7 +61,7 @@ class EventKind(enum.IntEnum):
     SENT = lib.GABRIEL_EVENT_KIND_T_SENT
     """The offer was sent to the engine; a result may come."""
     RESULT = lib.GABRIEL_EVENT_KIND_T_RESULT
-    """The engine finished the input. `Event.forward` says what it passed on."""
+    """The engine finished the input. `Event.outcome` says what it forwarded."""
     SKIPPED = lib.GABRIEL_EVENT_KIND_T_SKIPPED
     """A newer input replaced the offer before it was sent."""
     TIMED_OUT = lib.GABRIEL_EVENT_KIND_T_TIMED_OUT
@@ -75,12 +75,15 @@ class EventKind(enum.IntEnum):
     """Events were lost before the next one, because the subscriber fell behind."""
 
 
-class Forward(enum.IntEnum):
-    """What an engine forwarded along its outgoing edges."""
+class Outcome(enum.IntEnum):
+    """What an engine did with an input: what it forwarded along its outgoing edges."""
 
-    STOP = lib.GABRIEL_FORWARD_T_STOP
-    PASS = lib.GABRIEL_FORWARD_T_PASS
-    EMIT = lib.GABRIEL_FORWARD_T_EMIT
+    DROP = lib.GABRIEL_OUTCOME_T_DROP
+    """Nothing; the input ended at the engine."""
+    FORWARD = lib.GABRIEL_OUTCOME_T_FORWARD
+    """The input, unchanged."""
+    REPLACE = lib.GABRIEL_OUTCOME_T_REPLACE
+    """A new input, in place of the input."""
 
 
 def _known(enum_type: type[enum.IntEnum], value: int) -> enum.IntEnum | int:
@@ -110,9 +113,9 @@ class Event:
     """The engine the event is about; empty if none."""
     flow: str
     """The flow the event belongs to; empty if none."""
-    forward: Forward | int
-    """What the engine forwarded, for `RESULT`; a plain int for a value added in a newer version
-    of the ABI."""
+    outcome: Outcome | int
+    """What the engine did with the input, for `RESULT`; a plain int for a value added in a newer
+    version of the ABI."""
     payload_type: str
     """How to read `result`; empty if there is no result."""
     result: bytes
@@ -134,7 +137,7 @@ class Event:
             id=InputId._from_c(view.id),
             engine=ffi.string(view.engine).decode(),
             flow=ffi.string(view.flow).decode(),
-            forward=_known(Forward, view.forward),
+            outcome=_known(Outcome, view.outcome),
             payload_type=ffi.string(view.payload_type).decode(),
             result=bytes(ffi.buffer(view.result, view.result_len)) if view.result_len else b"",
             at_ns=view.at_ns,

@@ -431,7 +431,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ipc::types::{EngineName, EventKind, FlowName, Forward, PayloadType},
+        ipc::types::{EngineName, EventKind, FlowName, Outcome, PayloadType},
         routing::ids::{EdgeId, InputId, OfferId, ProducerName},
         test_util::unique,
     };
@@ -529,7 +529,7 @@ mod tests {
             id,
             engine,
             flow,
-            Forward::Pass,
+            Outcome::Forward,
             &[],
             PayloadType::new(),
         )
@@ -569,7 +569,7 @@ mod tests {
             session: SESSION,
             seq: SEQ,
         };
-        let record = OutcomeRecord::emit(
+        let record = OutcomeRecord::replace(
             offer,
             id,
             PayloadType::new(),
@@ -585,7 +585,7 @@ mod tests {
 
         let received = subscriber.receive().unwrap().unwrap();
         let header = received.user_header();
-        assert_eq!(header.forward, Forward::Emit);
+        assert_eq!(header.outcome, Outcome::Replace);
         assert_eq!(header.result_len as usize, RESULT.len());
         assert_eq!(header.output_len as usize, OUTPUT.len());
         assert_eq!(received.payload(), payload.as_slice());

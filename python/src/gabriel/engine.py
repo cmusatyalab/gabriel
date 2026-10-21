@@ -20,14 +20,14 @@ from gabriel.types import Event, Input, InputId
 
 
 class Engine(ThreadHandle):
-    """Processes one input at a time and reports exactly one outcome for it: `stop`, `pass_` or
-    `emit`. A server delivers inputs to it once the server adds it (`Server.add_engine`).
+    """Processes one input at a time and reports exactly one outcome for it: `drop`, `forward` or
+    `replace`. A server delivers inputs to it once the server adds it (`Server.add_engine`).
 
     An engine must be used and closed on the thread that created it.
 
         with Engine("detector", max_output_size=4096) as engine:
             for input in engine:
-                engine.stop(detect(input.data))
+                engine.drop(result=detect(input.data))
     """
 
     def __init__(self, name: str, *, result_type: str | None = None, max_output_size: int) -> None:
@@ -111,13 +111,14 @@ class Engine(ThreadHandle):
             )
         )
 
-    def stop(self, result=b"") -> None:
-        """Reports that the engine forwards nothing. A discard is a stop with no result."""
-        self._report(lib.gabriel_engine_stop, result)
+    def drop(self, *, result=b"") -> None:
+        """Reports that the engine drops the input: it forwards nothing. `result` still goes to
+        the subscribers. A discard is a drop with no result."""
+        self._report(lib.gabriel_engine_drop, result)
 
-    def pass_(self, result=b"") -> None:
+    def forward(self, *, result=b"") -> None:
         """Reports that the engine forwards the input unchanged along every outgoing edge."""
-        self._report(lib.gabriel_engine_pass, result)
+        self._report(lib.gabriel_engine_forward, result)
 
     def _report(self, function, result) -> None:
         handle = self._live()
@@ -126,17 +127,18 @@ class Engine(ThreadHandle):
 
     def loan(self) -> memoryview:
         """Returns a buffer in shared memory for a new input, of the engine's maximum output size.
-        Write the input into it, then forward it with `emit`."""
+        Write the input into it, then forward it with `replace`."""
         out = ffi.new("uint8_t **")
         check(lib.gabriel_engine_new_output(self._live(), out))
         return view(out[0], self._max_output_size, writable=True)
 
-    def emit(self, length: int, *, output_type: str | None = None, result=b"") -> None:
-        """Reports that the engine forwards the first `length` bytes of the loaned buffer as a new
-        input along every outgoing edge. `output_type` names how to read it."""
+    def replace(self, length: int, *, output_type: str | None = None, result=b"") -> None:
+        """Reports that the engine replaces the input: it forwards the first `length` bytes of the
+        loaned buffer as a new input, in place of the input, along every outgoing edge.
+        `output_type` names how to read it."""
         handle = self._live()
         self._release_input()
-        check(lib.gabriel_engine_emit(handle, cstr(output_type), length, *bytes_arg(result)))
+        check(lib.gabriel_engine_replace(handle, cstr(output_type), length, *bytes_arg(result)))
 
     def _release_input(self) -> None:
         """Releases the input's bytes, which the outcome hands back to the server."""

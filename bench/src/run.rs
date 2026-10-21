@@ -218,9 +218,9 @@ fn start_engine(
                 thread::sleep(work);
                 drop(turn);
                 if rng.random_bool(pass_probability) {
-                    engine.pass(&result)?;
+                    engine.forward(&result)?;
                 } else {
-                    engine.stop(&result)?;
+                    engine.drop(&result)?;
                 }
             }
             Ok(worked)

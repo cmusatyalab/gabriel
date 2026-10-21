@@ -347,7 +347,7 @@ mod tests {
         // 2.
         publish(&mut fixture.producer, 2);
         publish(&mut fixture.producer, 3);
-        detector.stop(&[]).unwrap();
+        detector.drop(&[]).unwrap();
 
         assert_eq!(next_input(&mut detector), 3);
     }
@@ -363,13 +363,13 @@ mod tests {
 
         publish(&mut fixture.producer, 1);
         assert_eq!(next_input(&mut filter), 1);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         assert_eq!(next_input(&mut detector), 1);
 
         // The token stays with input 1 until the detector is done with it.
         publish(&mut fixture.producer, 2);
         assert!(filter.wait(QUIET).is_err());
-        detector.stop(&[]).unwrap();
+        detector.drop(&[]).unwrap();
         assert_eq!(next_input(&mut filter), 2);
     }
 
@@ -386,9 +386,9 @@ mod tests {
         let published_at = Timestamp::now();
         publish(&mut fixture.producer, 1);
         next_input(&mut filter);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         next_input(&mut detector);
-        detector.stop(&[]).unwrap();
+        detector.drop(&[]).unwrap();
 
         let stamps: Vec<_> = (0..4).map(|_| next_stamps(&mut subscription)).collect();
         let kinds: Vec<_> = stamps.iter().map(|(kind, ..)| *kind).collect();
@@ -458,7 +458,7 @@ mod tests {
 
         publish(&mut fixture.producer, 1);
         assert_eq!(next_input(&mut detector), 1);
-        detector.stop(&RESULT).unwrap();
+        detector.drop(&RESULT).unwrap();
 
         assert_eq!(
             next_event(&mut subscription),
@@ -510,12 +510,12 @@ mod tests {
                 let Ok(input) = engine.poll_input() else {
                     continue;
                 };
-                let passes = input.data[0] % 2 == 0;
+                let forwards = input.data[0] % 2 == 0;
                 thread::sleep(work);
-                if passes {
-                    engine.pass(&[]).unwrap();
+                if forwards {
+                    engine.forward(&[]).unwrap();
                 } else {
-                    engine.stop(&[]).unwrap();
+                    engine.drop(&[]).unwrap();
                 }
             }
         })
@@ -606,7 +606,7 @@ mod tests {
         let disconnected = next_event(&mut subscription);
         assert_eq!(disconnected.0, EventKind::Disconnected);
         // The answer reaches the new server, which never gave the detector this input.
-        detector.stop(&[]).unwrap();
+        detector.drop(&[]).unwrap();
         // The flow is installed on the new server, so a new input reaches the detector.
         let deadline = Instant::now() + WAIT;
         let input = loop {
@@ -790,9 +790,9 @@ mod tests {
 
         publish(&mut fixture.producer, 7);
         assert_eq!(next_input(&mut filter), 7);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         assert_eq!(next_input(&mut detector), 7);
-        detector.pass(RESULT).unwrap();
+        detector.forward(RESULT).unwrap();
 
         let mut seen = Vec::new();
         while !seen
@@ -834,7 +834,7 @@ mod tests {
         publish(&mut fixture.producer, 7);
         filter.wait(WAIT).unwrap();
         assert_eq!(filter.poll_input().unwrap().payload_type(), INPUT_TYPE);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
 
         detector.wait(WAIT).unwrap();
         assert_eq!(detector.poll_input().unwrap().payload_type(), INPUT_TYPE);
@@ -855,7 +855,7 @@ mod tests {
         assert_eq!(next_input(&mut tiler), 7);
         let output = tiler.new_output().unwrap();
         output[..TILES.len()].copy_from_slice(crate::ipc::as_uninit(TILES));
-        tiler.emit(TILES_TYPE, TILES.len(), &[]).unwrap();
+        tiler.replace(TILES_TYPE, TILES.len(), &[]).unwrap();
 
         detector.wait(WAIT).unwrap();
         let input = detector.poll_input().unwrap();
@@ -878,9 +878,9 @@ mod tests {
 
         publish(&mut fixture.producer, 7);
         next_input(&mut filter);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         next_input(&mut detector);
-        detector.pass(RESULT).unwrap();
+        detector.forward(RESULT).unwrap();
 
         let result = (0..)
             .map(|_| {
@@ -916,9 +916,9 @@ mod tests {
         // One input through both servers, so the remote part is installed.
         let id = publish(&mut fixture.producer, 7);
         next_input(&mut filter);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         next_input(&mut detector);
-        detector.pass(&[]).unwrap();
+        detector.forward(&[]).unwrap();
 
         fusion
             .publish_derived(&id, FLOW, "example.Decision", DECISION)
@@ -971,11 +971,11 @@ mod tests {
 
         publish(&mut fixture.producer, 7);
         assert_eq!(next_input(&mut filter), 7);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         assert_eq!(next_input(&mut detector), 7);
         assert_eq!(next_input(&mut segmenter), 7);
-        detector.pass(b"box").unwrap();
-        segmenter.pass(b"mask").unwrap();
+        detector.forward(b"box").unwrap();
+        segmenter.forward(b"mask").unwrap();
 
         let mut results = HashSet::new();
         while results.len() < 2 {
@@ -1005,9 +1005,9 @@ mod tests {
         // One input through both servers, so the remote part is installed.
         publish(&mut fixture.producer, 7);
         next_input(&mut filter);
-        filter.pass(&[]).unwrap();
+        filter.forward(&[]).unwrap();
         next_input(&mut detector);
-        detector.pass(&[]).unwrap();
+        detector.forward(&[]).unwrap();
 
         let Offload { remote, .. } = fixture;
         drop(remote);

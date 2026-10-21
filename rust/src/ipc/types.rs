@@ -21,7 +21,7 @@ pub const MAX_PAYLOAD_TYPE_NAME: usize = 64;
 /// Maximum length of an engine name.
 pub const MAX_ENGINE_NAME: usize = 64;
 /// Maximum number of offers one event creates: one per target engine of a crossing, or one per
-/// outgoing edge after a pass.
+/// outgoing edge after a forward or a replace.
 pub const MAX_CHILDREN: usize = 16;
 
 /// How to read a payload's bytes, so a consumer can pick the right decoder.
@@ -92,7 +92,7 @@ pub enum EventKind {
     Accepted,
     /// The offer was sent to the engine; a result may come.
     Sent,
-    /// The engine finished the input. `forward` says what it passed on.
+    /// The engine finished the input. `outcome` says what it forwarded.
     Result,
     /// The offer was replaced in a pending slot and never sent.
     Skipped,
@@ -105,14 +105,17 @@ pub enum EventKind {
     Derived,
 }
 
-/// What an engine forwards along its outgoing input edges.
+/// What an engine did with an input: what it forwards along its outgoing input edges.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ZeroCopySend, Serialize, Deserialize)]
 #[repr(C)]
-pub enum Forward {
+pub enum Outcome {
+    /// Forward nothing: the input ends at the engine.
     #[default]
-    Stop,
-    Pass,
-    Emit,
+    Drop,
+    /// Forward the input unchanged.
+    Forward,
+    /// Forward a new input in place of the input.
+    Replace,
 }
 
 /// Finds the events a subscriber lost, from the sequence numbers of the events it reads.
@@ -153,7 +156,7 @@ pub(crate) struct EventRecord {
     /// The flow the offer belongs to, or for `Derived`, the flow the engine derived it in.
     pub(crate) flow: FlowName,
     /// Only for `Result`.
-    pub(crate) forward: Forward,
+    pub(crate) outcome: Outcome,
     /// The offers created by an `Accepted`, or by a `Result` that forwarded. Empty otherwise.
     pub(crate) children: StaticVec<OfferId, MAX_CHILDREN>,
     /// How to read the result bytes. Empty when there are none.
@@ -230,20 +233,20 @@ impl EventRecord {
         )
     }
 
-    /// The engine finished the input. `children` are the offers created by passing it on; they
-    /// must be empty for `Forward::Stop`. `payload_type` says how to read the result bytes.
+    /// The engine finished the input. `children` are the offers created by forwarding it; they
+    /// must be empty for `Outcome::Drop`. `payload_type` says how to read the result bytes.
     pub(crate) fn result(
         offer: OfferId,
         id: InputId,
         engine: EngineName,
         flow: FlowName,
-        forward: Forward,
+        outcome: Outcome,
         children: &[OfferId],
         payload_type: PayloadType,
     ) -> Result<Self> {
-        if forward == Forward::Stop && !children.is_empty() {
+        if outcome == Outcome::Drop && !children.is_empty() {
             return Err(Error::InvalidArgument(String::from(
-                "a stopped input cannot have children",
+                "a dropped input cannot have children",
             )));
         }
         let mut record = Self::new(
@@ -253,7 +256,7 @@ impl EventRecord {
             engine,
             flow,
         );
-        record.forward = forward;
+        record.outcome = outcome;
         record.children = children_from(children)?;
         record.payload_type = payload_type;
         Ok(record)
@@ -397,7 +400,7 @@ pub(crate) struct DerivedRecord {
     pub(crate) payload_type: PayloadType,
 }
 
-/// The payload is the engine's new output, then the result bytes. Only `Emit` has an output. The
+/// The payload is the engine's new output, then the result bytes. Only `Replace` has an output. The
 /// result comes last because an engine knows it only when it reports the outcome, after it has
 /// written the output in place.
 #[derive(Debug, Clone, Default, ZeroCopySend)]
@@ -406,10 +409,10 @@ pub(crate) struct OutcomeRecord {
     /// The offer the engine is answering.
     pub(crate) offer: OfferId,
     pub(crate) id: InputId,
-    pub(crate) forward: Forward,
+    pub(crate) outcome: Outcome,
     /// How to read the result bytes. Empty when there are none.
     pub(crate) payload_type: PayloadType,
-    /// How to read the output. Empty unless `forward` is `Emit`.
+    /// How to read the output. Empty unless `outcome` is `Replace`.
     pub(crate) output_type: PayloadType,
     /// The length in bytes of the output, at the start of the payload.
     pub(crate) output_len: u32,
@@ -418,9 +421,9 @@ pub(crate) struct OutcomeRecord {
 }
 
 impl OutcomeRecord {
-    /// Forward nothing. A discard is a stop with no result. `result_type` says how to read the
+    /// Forward nothing. A discard is a drop with no result. `result_type` says how to read the
     /// result.
-    pub(crate) fn stop(
+    pub(crate) fn drop(
         offer: OfferId,
         id: InputId,
         result_type: PayloadType,
@@ -429,7 +432,7 @@ impl OutcomeRecord {
         Self {
             offer,
             id,
-            forward: Forward::Stop,
+            outcome: Outcome::Drop,
             payload_type: result_type,
             result_len,
             ..Self::default()
@@ -437,21 +440,21 @@ impl OutcomeRecord {
     }
 
     /// Forward the input unchanged along every outgoing edge.
-    pub(crate) fn pass(
+    pub(crate) fn forward(
         offer: OfferId,
         id: InputId,
         result_type: PayloadType,
         result_len: u32,
     ) -> Self {
         Self {
-            forward: Forward::Pass,
-            ..Self::stop(offer, id, result_type, result_len)
+            outcome: Outcome::Forward,
+            ..Self::drop(offer, id, result_type, result_len)
         }
     }
 
-    /// Forward a new input of `output_len` bytes along every outgoing edge. `output_type` says how
-    /// to read it, `result_type` how to read the result.
-    pub(crate) fn emit(
+    /// Forward a new input of `output_len` bytes, in place of the input, along every outgoing
+    /// edge. `output_type` says how to read it, `result_type` how to read the result.
+    pub(crate) fn replace(
         offer: OfferId,
         id: InputId,
         result_type: PayloadType,
@@ -461,14 +464,14 @@ impl OutcomeRecord {
     ) -> Result<Self> {
         if output_len == 0 {
             return Err(Error::InvalidArgument(String::from(
-                "an emit needs a non-empty output",
+                "a replace needs a non-empty output",
             )));
         }
         Ok(Self {
-            forward: Forward::Emit,
+            outcome: Outcome::Replace,
             output_type,
             output_len,
-            ..Self::stop(offer, id, result_type, result_len)
+            ..Self::drop(offer, id, result_type, result_len)
         })
     }
 }
@@ -509,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn result_that_passes_keeps_its_children() {
+    fn result_that_forwards_keeps_its_children() {
         let children = [offer(2), offer(3)];
 
         let record = EventRecord::result(
@@ -517,7 +520,7 @@ mod tests {
             input(),
             engine(),
             flow(),
-            Forward::Pass,
+            Outcome::Forward,
             &children,
             PayloadType::new(),
         )
@@ -529,13 +532,13 @@ mod tests {
     }
 
     #[test]
-    fn stopped_result_cannot_have_children() {
+    fn dropped_result_cannot_have_children() {
         let result = EventRecord::result(
             offer(1),
             input(),
             engine(),
             flow(),
-            Forward::Stop,
+            Outcome::Drop,
             &[offer(2)],
             PayloadType::new(),
         );
@@ -590,8 +593,8 @@ mod tests {
     }
 
     #[test]
-    fn emit_needs_a_non_empty_output() {
-        let result = OutcomeRecord::emit(
+    fn replace_needs_a_non_empty_output() {
+        let result = OutcomeRecord::replace(
             offer(1),
             input(),
             PayloadType::new(),

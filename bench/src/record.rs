@@ -64,8 +64,8 @@ pub struct EventRow {
     pub seq: Option<u64>,
     pub flow: String,
     pub engine: String,
-    /// What the engine forwarded, for `Result`.
-    pub forward: Option<String>,
+    /// What the engine did with the input, for `Result`.
+    pub outcome: Option<String>,
     /// The size of the engine's result in bytes, for `Result`; e.g. a detector's grows with the
     /// objects it found.
     pub result_len: Option<usize>,
@@ -90,7 +90,7 @@ impl EventRow {
                 seq: None,
                 flow: String::new(),
                 engine: String::new(),
-                forward: None,
+                outcome: None,
                 result_len: None,
                 offered_ns: None,
                 at_ns: None,
@@ -107,8 +107,8 @@ impl EventRow {
                     seq: names_input.then(|| event.id().seq()),
                     flow: event.flow().to_owned(),
                     engine: event.engine().to_owned(),
-                    forward: (kind == gabriel::EventKind::Result)
-                        .then(|| format!("{:?}", event.forward())),
+                    outcome: (kind == gabriel::EventKind::Result)
+                        .then(|| format!("{:?}", event.outcome())),
                     result_len: (kind == gabriel::EventKind::Result).then(|| event.result().len()),
                     offered_ns: event.offered_at().map(|at| at.as_nanos()),
                     at_ns: Some(event.at().as_nanos()),

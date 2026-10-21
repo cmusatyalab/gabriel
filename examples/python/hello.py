@@ -49,7 +49,7 @@ with (
 
         # 5. The engine gets it, and reports its result.
         input = engine.next(WAIT)
-        engine.stop(bytes(input.data).upper())
+        engine.drop(result=bytes(input.data).upper())
 
         # 6. The app reads the result.
         while (event := events.next(WAIT)).kind != gabriel.EventKind.RESULT:

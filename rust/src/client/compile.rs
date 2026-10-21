@@ -229,7 +229,7 @@ pub(super) fn compile(
                 .crossings
                 .push(CrossingSpec { id, targets });
         }
-        // The local server sends the client what such an engine emits, for its crossings.
+        // The local server sends the client what such an engine forwards, for its crossings.
         if let EdgeSource::Engine(node) = source
             && crossings
                 .last()

@@ -19,7 +19,7 @@ const (
 	EventAccepted EventKind = C.GABRIEL_EVENT_KIND_T_ACCEPTED
 	// EventSent: the offer was sent to the engine; a result may come.
 	EventSent EventKind = C.GABRIEL_EVENT_KIND_T_SENT
-	// EventResult: the engine finished the input. Forward says what it passed on.
+	// EventResult: the engine finished the input. Outcome says what it forwarded.
 	EventResult EventKind = C.GABRIEL_EVENT_KIND_T_RESULT
 	// EventSkipped: a newer input replaced the offer before it was sent.
 	EventSkipped EventKind = C.GABRIEL_EVENT_KIND_T_SKIPPED
@@ -57,28 +57,28 @@ func (k EventKind) String() string {
 	}
 }
 
-// Forward says what an engine forwarded along its outgoing edges.
-type Forward int
+// Outcome says what an engine did with an input: what it forwarded along its outgoing edges.
+type Outcome int
 
 const (
-	// ForwardStop: nothing.
-	ForwardStop Forward = C.GABRIEL_FORWARD_T_STOP
-	// ForwardPass: the input, unchanged.
-	ForwardPass Forward = C.GABRIEL_FORWARD_T_PASS
-	// ForwardEmit: a new input.
-	ForwardEmit Forward = C.GABRIEL_FORWARD_T_EMIT
+	// OutcomeDrop: nothing; the input ended at the engine.
+	OutcomeDrop Outcome = C.GABRIEL_OUTCOME_T_DROP
+	// OutcomeForward: the input, unchanged.
+	OutcomeForward Outcome = C.GABRIEL_OUTCOME_T_FORWARD
+	// OutcomeReplace: a new input, in place of the input.
+	OutcomeReplace Outcome = C.GABRIEL_OUTCOME_T_REPLACE
 )
 
-func (f Forward) String() string {
-	switch f {
-	case ForwardStop:
-		return "stop"
-	case ForwardPass:
-		return "pass"
-	case ForwardEmit:
-		return "emit"
+func (o Outcome) String() string {
+	switch o {
+	case OutcomeDrop:
+		return "drop"
+	case OutcomeForward:
+		return "forward"
+	case OutcomeReplace:
+		return "replace"
 	default:
-		return fmt.Sprintf("Forward(%d)", int(f))
+		return fmt.Sprintf("Outcome(%d)", int(o))
 	}
 }
 
@@ -94,8 +94,8 @@ type Event struct {
 	Engine string
 	// Flow is the flow the event belongs to; empty if none.
 	Flow string
-	// Forward is what the engine forwarded, for [EventResult].
-	Forward Forward
+	// Outcome is what the engine did with the input, for [EventResult].
+	Outcome Outcome
 	// PayloadType says how to read Result; empty if there is no result.
 	PayloadType string
 	// Result is the engine's result, for [EventResult]. It is a copy, so it stays valid.
@@ -187,7 +187,7 @@ func eventOf(view *C.gabriel_event_t) Event {
 		ID:          inputID(view.id),
 		Engine:      C.GoString(view.engine),
 		Flow:        C.GoString(view.flow),
-		Forward:     Forward(view.forward),
+		Outcome:     Outcome(view.outcome),
 		PayloadType: C.GoString(view.payload_type),
 		Result:      C.GoBytes(unsafe.Pointer(view.result), C.int(view.result_len)),
 		At:          Timestamp(view.at_ns),

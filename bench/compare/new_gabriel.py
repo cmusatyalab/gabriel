@@ -48,7 +48,7 @@ def engine() -> None:
     with gabriel.Engine(ENGINE, max_output_size=common.RESULT_SIZE) as engine:
         common.say(common.READY)
         for _ in engine:
-            engine.stop(common.RESULT)
+            engine.drop(result=common.RESULT)
 
 
 def app(resolution: str, recorder: common.Recorder) -> None:

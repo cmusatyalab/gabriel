@@ -16,7 +16,7 @@ use iceoryx2_bb_container::string::String as _;
 
 use crate::{
     Error, InputId, Result, Timestamp,
-    ipc::types::{EngineName, EventGaps, EventKind, EventRecord, Forward},
+    ipc::types::{EngineName, EventGaps, EventKind, EventRecord, Outcome},
     services::{self, EventPayload},
 };
 
@@ -97,9 +97,9 @@ impl Published<'_> {
         self.record.flow.as_str()
     }
 
-    /// What the engine forwarded. Only meaningful for [`EventKind::Result`].
-    pub fn forward(&self) -> Forward {
-        self.record.forward
+    /// What the engine did with the input. Only meaningful for [`EventKind::Result`].
+    pub fn outcome(&self) -> Outcome {
+        self.record.outcome
     }
 
     /// How to read [`Published::result`]; empty if there is no result.
@@ -340,7 +340,7 @@ mod tests {
                 id,
                 EngineName::try_from("detector").unwrap(),
                 FlowName::try_from("tracking").unwrap(),
-                Forward::Stop,
+                Outcome::Drop,
                 &[],
                 Default::default(),
             )

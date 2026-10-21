@@ -8,9 +8,9 @@ use iceoryx2::port::{
     listener::Listener, notifier::Notifier, publisher::Publisher, subscriber::Subscriber,
 };
 use iceoryx2::prelude::*;
-use iceoryx2_bb_container::string::String as _;
 use iceoryx2::sample::Sample;
 use iceoryx2::sample_mut_uninit::SampleMutUninit;
+use iceoryx2_bb_container::string::String as _;
 
 use crate::ipc::{
     as_uninit,
@@ -41,11 +41,11 @@ impl Input<'_> {
     }
 }
 
-/// An outcome being built by [`Engine::new_output`] and [`Engine::emit`].
+/// An outcome being built by [`Engine::new_output`] and [`Engine::replace`].
 type Output = SampleMutUninit<ipc::Service, [MaybeUninit<u8>], OutcomeRecord>;
 
-/// Processes one input at a time and reports exactly one outcome for it: [`Engine::stop`],
-/// [`Engine::pass`], or [`Engine::emit`].
+/// Processes one input at a time and reports exactly one outcome for it: [`Engine::drop`],
+/// [`Engine::forward`], or [`Engine::replace`].
 pub struct Engine {
     /// How to read this engine's results. Empty if it says nothing.
     result_type: PayloadType,
@@ -61,7 +61,7 @@ pub struct Engine {
     derived: Publisher<ipc::Service, [u8], DerivedRecord>,
     /// The input being processed, until its outcome is reported.
     current: Option<Sample<ipc::Service, [u8], InputHeader>>,
-    /// The output being written, until it is emitted.
+    /// The output being written, until it replaces the input.
     output: Option<Output>,
     /// The engines the engine subscribed to, by name.
     subscriptions: Vec<(String, Subscription)>,
@@ -215,18 +215,19 @@ impl Engine {
         })
     }
 
-    /// Reports that the engine forwards nothing. A discard is a stop with no result.
-    pub fn stop(&mut self, result: &[u8]) -> Result<()> {
-        self.report(result, OutcomeRecord::stop)
+    /// Reports that the engine drops the input: it forwards nothing. A discard is a drop with no
+    /// result.
+    pub fn drop(&mut self, result: &[u8]) -> Result<()> {
+        self.report(result, OutcomeRecord::drop)
     }
 
     /// Reports that the engine forwards the input unchanged along every outgoing edge.
-    pub fn pass(&mut self, result: &[u8]) -> Result<()> {
-        self.report(result, OutcomeRecord::pass)
+    pub fn forward(&mut self, result: &[u8]) -> Result<()> {
+        self.report(result, OutcomeRecord::forward)
     }
 
     /// Loans a buffer of `max_output_size` bytes for a new input. Fill it, then call
-    /// [`Engine::emit`].
+    /// [`Engine::replace`].
     pub fn new_output(&mut self) -> Result<&mut [MaybeUninit<u8>]> {
         self.current_input()?;
         if self.output.is_none() {
@@ -239,14 +240,16 @@ impl Engine {
         Ok(self.output.as_mut().expect("just created").payload_mut())
     }
 
-    /// Reports that the engine forwards the first `output_len` bytes of the buffer from
-    /// [`Engine::new_output`] as a new input along every outgoing edge. `output_type` names how
-    /// to read it; empty if it has no convention.
-    pub fn emit(&mut self, output_type: &str, output_len: usize, result: &[u8]) -> Result<()> {
+    /// Reports that the engine replaces the input: it forwards the first `output_len` bytes of
+    /// the buffer from [`Engine::new_output`] as a new input, in place of the input, along every
+    /// outgoing edge. `output_type` names how to read it; empty if it has no convention.
+    pub fn replace(&mut self, output_type: &str, output_len: usize, result: &[u8]) -> Result<()> {
         let (offer, id) = self.current_input()?;
         let output_type = payload_type(output_type)?;
         let mut output = self.output.take().ok_or_else(|| {
-            Error::InvalidArgument(String::from("nothing to emit; call new_output first"))
+            Error::InvalidArgument(String::from(
+                "nothing to replace the input with; call new_output first",
+            ))
         })?;
         let end = output_len + result.len();
         if end > self.max_output_size {
@@ -255,7 +258,7 @@ impl Engine {
                 max: self.max_output_size,
             });
         }
-        let record = OutcomeRecord::emit(
+        let record = OutcomeRecord::replace(
             offer,
             id,
             self.result_type_of(result),
@@ -310,7 +313,7 @@ impl Engine {
         Ok(())
     }
 
-    /// Reports `stop` or `pass`, made by `record`, with `result` as the payload.
+    /// Reports `drop` or `forward`, made by `record`, with `result` as the payload.
     fn report(
         &mut self,
         result: &[u8],
@@ -374,7 +377,7 @@ mod tests {
     use iceoryx2_bb_container::string::String as _;
 
     use super::*;
-    use crate::ipc::types::Forward;
+    use crate::ipc::types::Outcome;
     use crate::routing::ids::{EdgeId, OfferId, ProducerName};
     use crate::test_util::unique;
 
@@ -511,7 +514,7 @@ mod tests {
         fixture.deliver_frame();
         fixture.engine.wait(WAIT_TIMEOUT).unwrap();
         fixture.engine.poll_input().unwrap();
-        fixture.engine.stop(&[]).unwrap();
+        fixture.engine.drop(&[]).unwrap();
         fixture.input_ready.notify().unwrap();
 
         assert!(matches!(
@@ -526,7 +529,7 @@ mod tests {
         fixture.deliver_frame();
         fixture.engine.poll_input().unwrap();
 
-        fixture.engine.stop(&[]).unwrap();
+        fixture.engine.drop(&[]).unwrap();
 
         let notifications = fixture
             .outcome_ready
@@ -561,43 +564,43 @@ mod tests {
     }
 
     #[test]
-    fn pass_reports_the_offer_and_result() {
+    fn forward_reports_the_offer_and_result() {
         let mut fixture = Fixture::new();
         fixture.offer_frame();
         fixture.engine.poll_input().unwrap();
 
-        fixture.engine.pass(&RESULT).unwrap();
+        fixture.engine.forward(&RESULT).unwrap();
 
         let outcome = fixture.outcomes.receive().unwrap().unwrap();
         let record = outcome.user_header();
-        assert_eq!(record.forward, Forward::Pass);
+        assert_eq!(record.outcome, Outcome::Forward);
         assert_eq!(record.offer.seq, SEQ);
         assert_eq!(record.id.seq, SEQ);
         assert_eq!(record.result_len as usize, RESULT.len());
         assert_eq!(record.payload_type.as_str(), RESULT_TYPE);
         assert_eq!(&outcome.payload()[..RESULT.len()], RESULT);
         assert!(matches!(
-            fixture.engine.pass(&RESULT),
+            fixture.engine.forward(&RESULT),
             Err(Error::InvalidArgument(_))
         ));
     }
 
     #[test]
-    fn discard_is_a_stop_with_no_result() {
+    fn discard_is_a_drop_with_no_result() {
         let mut fixture = Fixture::new();
         fixture.offer_frame();
         fixture.engine.poll_input().unwrap();
 
-        fixture.engine.stop(&[]).unwrap();
+        fixture.engine.drop(&[]).unwrap();
 
         let outcome = fixture.outcomes.receive().unwrap().unwrap();
-        assert_eq!(outcome.user_header().forward, Forward::Stop);
+        assert_eq!(outcome.user_header().outcome, Outcome::Drop);
         assert_eq!(outcome.user_header().result_len, 0);
         assert_eq!(outcome.user_header().payload_type.as_str(), "");
     }
 
     #[test]
-    fn emit_reports_the_output_then_the_result() {
+    fn replace_reports_the_output_then_the_result() {
         const OUTPUT: [u8; 5] = [5, 5, 5, 6, 6];
         let mut fixture = Fixture::new();
         fixture.offer_frame();
@@ -609,12 +612,12 @@ mod tests {
         }
         fixture
             .engine
-            .emit(OUTPUT_TYPE, OUTPUT.len(), &RESULT)
+            .replace(OUTPUT_TYPE, OUTPUT.len(), &RESULT)
             .unwrap();
 
         let outcome = fixture.outcomes.receive().unwrap().unwrap();
         let record = outcome.user_header();
-        assert_eq!(record.forward, Forward::Emit);
+        assert_eq!(record.outcome, Outcome::Replace);
         assert_eq!(record.output_type.as_str(), OUTPUT_TYPE);
         assert_eq!(record.payload_type.as_str(), RESULT_TYPE);
         assert_eq!(record.output_len as usize, OUTPUT.len());
@@ -625,12 +628,12 @@ mod tests {
     }
 
     #[test]
-    fn emit_without_an_output_is_rejected() {
+    fn replace_without_an_output_is_rejected() {
         let mut fixture = Fixture::new();
         fixture.offer_frame();
         fixture.engine.poll_input().unwrap();
 
-        let result = fixture.engine.emit(OUTPUT_TYPE, 1, &[]);
+        let result = fixture.engine.replace(OUTPUT_TYPE, 1, &[]);
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
@@ -642,7 +645,9 @@ mod tests {
         fixture.engine.poll_input().unwrap();
         fixture.engine.new_output().unwrap();
 
-        let result = fixture.engine.emit(OUTPUT_TYPE, MAX_OUTPUT_SIZE, &RESULT);
+        let result = fixture
+            .engine
+            .replace(OUTPUT_TYPE, MAX_OUTPUT_SIZE, &RESULT);
 
         assert!(matches!(result, Err(Error::SizeExceeded { .. })));
     }
@@ -653,7 +658,7 @@ mod tests {
         fixture.offer_frame();
         fixture.engine.poll_input().unwrap();
 
-        let result = fixture.engine.stop(&[0; MAX_OUTPUT_SIZE + 1]);
+        let result = fixture.engine.drop(&[0; MAX_OUTPUT_SIZE + 1]);
 
         assert!(matches!(result, Err(Error::SizeExceeded { .. })));
     }

@@ -200,11 +200,11 @@ func newMotionFilter() *motionFilter {
 
 func (f *motionFilter) process(engine *gabriel.Engine, input gabriel.Input) error {
 	if f.last != nil && meanChange(f.last, input.Data) < motionThreshold {
-		return engine.Stop(nil)
+		return engine.Drop(nil)
 	}
 	// The input's bytes are valid only until the outcome, so keep a copy.
 	f.last = append(f.last[:0], input.Data...)
-	return engine.Pass(nil)
+	return engine.Forward(nil)
 }
 
 func meanChange(a, b []byte) float64 {
@@ -232,14 +232,14 @@ func detect(engine *gabriel.Engine, input gabriel.Input) error {
 		right, bottom = max(right, x), max(bottom, y)
 	}
 	if right < 0 {
-		return engine.Stop(nil)
+		return engine.Drop(nil)
 	}
 	box.Width, box.Height = right-box.X+1, bottom-box.Y+1
 	result, err := json.Marshal(box)
 	if err != nil {
 		return err
 	}
-	return engine.Stop(result)
+	return engine.Drop(result)
 }
 
 // film publishes frames from the camera until ctx is done. It reports on ready once the camera

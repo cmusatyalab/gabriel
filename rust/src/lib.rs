@@ -24,7 +24,7 @@ pub use client::{Client, RemoteServerConfig};
 pub use clock::Timestamp;
 pub use engine::{Engine, Input};
 pub use error::{Error, Result};
-pub use ipc::types::{EventKind, Forward};
+pub use ipc::types::{EventKind, Outcome};
 pub use producer::Producer;
 pub use reader::Reader;
 pub use routing::ids::InputId;

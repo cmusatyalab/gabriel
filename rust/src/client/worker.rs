@@ -45,7 +45,7 @@ use crate::{
         remote_server::RemoteServer,
         server_link::{ServerEvent, ServerLink},
     },
-    ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Forward},
+    ipc::types::{Data, EngineName, EventKind, EventRecord, FlowName, Outcome},
     metrics as gabriel_metrics, naming,
     routing::{
         flow::{FlowRouter, RouterAction},
@@ -627,12 +627,12 @@ impl Worker {
                 let Some(&node) = flow.nodes.get(&record.engine) else {
                     return;
                 };
-                // After an `Emit`, the server sends the new input if the client has edges leaving
+                // After a `Replace`, the server sends the new input if the client has edges leaving
                 // the engine, and the client offers it on them.
                 OfferEnd::Result {
                     node,
-                    forwarded: record.forward == Forward::Pass
-                        || (record.forward == Forward::Emit && event.forwarded.is_some()),
+                    forwarded: record.outcome == Outcome::Forward
+                        || (record.outcome == Outcome::Replace && event.forwarded.is_some()),
                     children: children(),
                 }
             }

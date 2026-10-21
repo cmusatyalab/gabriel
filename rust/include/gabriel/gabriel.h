@@ -14,7 +14,7 @@
 /**
  * The version of the ABI that this library implements.
  */
-#define GABRIEL_ABI_VERSION 1
+#define GABRIEL_ABI_VERSION 2
 
 /**
  * Maximum length of a flow name.
@@ -87,22 +87,22 @@ typedef uint32_t gabriel_event_kind_t;
 #endif // __cplusplus
 
 /**
- * What an engine forwarded, as a subscription reports it.
+ * What an engine did with an input, as a subscription reports it.
  */
-enum gabriel_forward_t
+enum gabriel_outcome_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint32_t
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
-  GABRIEL_FORWARD_T_STOP,
-  GABRIEL_FORWARD_T_PASS,
-  GABRIEL_FORWARD_T_EMIT,
+  GABRIEL_OUTCOME_T_DROP,
+  GABRIEL_OUTCOME_T_FORWARD,
+  GABRIEL_OUTCOME_T_REPLACE,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
-typedef enum gabriel_forward_t gabriel_forward_t;
+typedef enum gabriel_outcome_t gabriel_outcome_t;
 #else
-typedef uint32_t gabriel_forward_t;
+typedef uint32_t gabriel_outcome_t;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -118,8 +118,8 @@ typedef struct gabriel_client_t gabriel_client_t;
 typedef struct gabriel_client_options_t gabriel_client_options_t;
 
 /**
- * Processes one input at a time and reports exactly one outcome for it: [`Engine::stop`],
- * [`Engine::pass`], or [`Engine::emit`].
+ * Processes one input at a time and reports exactly one outcome for it: [`Engine::drop`],
+ * [`Engine::forward`], or [`Engine::replace`].
  */
 typedef struct gabriel_engine_t gabriel_engine_t;
 
@@ -194,9 +194,9 @@ typedef struct {
    */
   const char *flow;
   /**
-   * What the engine forwarded, for `RESULT`.
+   * What the engine did with the input, for `RESULT`.
    */
-  gabriel_forward_t forward;
+  gabriel_outcome_t outcome;
   /**
    * How to read `result`; "" if there is no result.
    */
@@ -576,28 +576,29 @@ gabriel_status_t gabriel_engine_publish_derived(gabriel_engine_t *engine,
                                                 size_t result_len);
 
 /**
- * Stop: forward nothing. A discard is a stop with no result (`result` null, `result_len` 0).
+ * Drop: forward nothing; the input ends at the engine. A discard is a drop with no result
+ * (`result` null, `result_len` 0).
  *
  * # Safety
  * `engine` must be a live handle; `result` must point to `result_len` readable bytes, or be
  * null when `result_len` is 0.
  */
-gabriel_status_t gabriel_engine_stop(gabriel_engine_t *engine,
+gabriel_status_t gabriel_engine_drop(gabriel_engine_t *engine,
                                      const uint8_t *result,
                                      size_t result_len);
 
 /**
- * Pass: forward the input unchanged along every outgoing input edge.
+ * Forward: forward the input unchanged along every outgoing input edge.
  *
  * # Safety
- * As for [`gabriel_engine_stop`].
+ * As for [`gabriel_engine_drop`].
  */
-gabriel_status_t gabriel_engine_pass(gabriel_engine_t *engine,
-                                     const uint8_t *result,
-                                     size_t result_len);
+gabriel_status_t gabriel_engine_forward(gabriel_engine_t *engine,
+                                        const uint8_t *result,
+                                        size_t result_len);
 
 /**
- * Loans a buffer for a new input. Fill it, then call `gabriel_engine_emit`.
+ * Loans a buffer for a new input. Fill it, then call `gabriel_engine_replace`.
  *
  * # Safety
  * `engine` must be a live handle; `buf` must be valid for writes.
@@ -605,17 +606,18 @@ gabriel_status_t gabriel_engine_pass(gabriel_engine_t *engine,
 gabriel_status_t gabriel_engine_new_output(gabriel_engine_t *engine, uint8_t **buf);
 
 /**
- * Emit: forward the first `output_len` bytes of the loaned buffer as a new input along every
- * outgoing input edge. `output_type` names how to read it; it may be NULL.
+ * Replace: forward the first `output_len` bytes of the loaned buffer as a new input, in place
+ * of the input, along every outgoing input edge. `output_type` names how to read it; it may be
+ * NULL.
  *
  * # Safety
- * As for [`gabriel_engine_stop`]; `output_type` must be NUL-terminated or null.
+ * As for [`gabriel_engine_drop`]; `output_type` must be NUL-terminated or null.
  */
-gabriel_status_t gabriel_engine_emit(gabriel_engine_t *engine,
-                                     const char *output_type,
-                                     size_t output_len,
-                                     const uint8_t *result,
-                                     size_t result_len);
+gabriel_status_t gabriel_engine_replace(gabriel_engine_t *engine,
+                                        const char *output_type,
+                                        size_t output_len,
+                                        const uint8_t *result,
+                                        size_t result_len);
 
 /**
  * Subscribes to the events about the inputs of the producer `name`: what happened to each at

@@ -20,7 +20,7 @@ use crate::{
     Error, Result,
     clock::Timestamp,
     ipc::types::{
-        DerivedRecord, EngineName, EventRecord, FlowName, Forward, MAX_CHILDREN, OutcomeRecord,
+        DerivedRecord, EngineName, EventRecord, FlowName, MAX_CHILDREN, Outcome, OutcomeRecord,
     },
     routing::{
         edge::{EdgeAction, EdgeState},
@@ -61,7 +61,7 @@ pub(crate) struct InstallFlow {
     /// Client edges arriving at this server.
     pub(crate) crossings: Vec<CrossingSpec>,
     /// This server's engines with client edges leaving them, such as an uplink. The client
-    /// forwards what they pass on, so after an `Emit` it needs the new input, which only this
+    /// forwards what they forward, so after a `Replace` it needs the new input, which only this
     /// server has. The server sends it with the result.
     pub(crate) client_sources: Vec<NodeId>,
 }
@@ -83,7 +83,7 @@ pub(crate) enum ServerAction<T> {
         record: EventRecord,
         result: Option<T>,
         /// The input the engine forwarded, when the client must send it on and does not hold
-        /// it: one the engine, or an engine before it on this server, emitted.
+        /// it: one the engine, or an engine before it on this server, replaced an input with.
         forwarded: Option<T>,
     },
     /// Publish `record` on the event service of the engine `record.engine`.
@@ -93,13 +93,13 @@ pub(crate) enum ServerAction<T> {
     },
 }
 
-/// An input kept on an edge, so the server can deliver it, and forward it after `Pass`.
+/// An input kept on an edge, so the server can deliver it, and forward it after `Forward`.
 #[derive(Debug, Clone)]
 struct Kept<T> {
     id: InputId,
     data: T,
     /// Whether `data` is the input as it came on a crossing, which the client holds too, rather
-    /// than one an engine on this server emitted.
+    /// than one an engine on this server replaced an input with.
     from_client: bool,
     /// When the server made the offer, for the events that end it.
     offered_at: Timestamp,
@@ -464,13 +464,13 @@ impl<T: Clone> ServerRouter<T> {
         Ok(())
     }
 
-    /// The engine `engine` reported `outcome`. `output` is the new input of an `Emit`, and
+    /// The engine `engine` reported `outcome`. `output` is the new input of a `Replace`, and
     /// `result` the result bytes, if any.
     ///
     /// The outcome frees the engine's place, ends its offer, and forwards the input on the
     /// server's edges leaving the engine. An outcome for an offer that already ended, e.g. after
     /// a timeout, is still reported, but forwards nothing. An outcome for an input that was not
-    /// delivered to this engine, or was already answered, is ignored. An `Emit` without an output
+    /// delivered to this engine, or was already answered, is ignored. A `Replace` without an output
     /// is an error, and its input is lost, as in [`ServerRouter::input_lost`].
     pub(crate) fn outcome(
         &mut self,
@@ -481,11 +481,11 @@ impl<T: Clone> ServerRouter<T> {
         now: Instant,
     ) -> Result<()> {
         let engine = engine_name(engine)?;
-        if outcome.forward == Forward::Emit && output.is_none() {
+        if outcome.outcome == Outcome::Replace && output.is_none() {
             // The engine answered, but there is nothing to forward: the input is lost.
             self.lose_input(&engine, outcome.offer, now)?;
             return Err(Error::InvalidArgument(String::from(
-                "an emit needs an output",
+                "a replace needs an output",
             )));
         }
         let Some(engine_state) = self.engines.get_mut(&engine) else {
@@ -513,10 +513,10 @@ impl<T: Clone> ServerRouter<T> {
             let mut children = Vec::new();
             let mut to_client = None;
             if let Some(kept) = kept {
-                let forwarded = match outcome.forward {
-                    Forward::Stop => None,
-                    Forward::Pass => Some((kept.data, kept.from_client)),
-                    Forward::Emit => output.map(|output| (output, false)),
+                let forwarded = match outcome.outcome {
+                    Outcome::Drop => None,
+                    Outcome::Forward => Some((kept.data, kept.from_client)),
+                    Outcome::Replace => output.map(|output| (output, false)),
                 };
                 if let Some((data, from_client)) = forwarded {
                     if !from_client && flow.client_sources.contains(&node) {
@@ -547,7 +547,7 @@ impl<T: Clone> ServerRouter<T> {
                 outcome.id,
                 engine,
                 flow.name,
-                outcome.forward,
+                outcome.outcome,
                 &children,
                 outcome.payload_type,
             )
@@ -966,12 +966,12 @@ mod tests {
         offer
     }
 
-    fn pass(offer: OfferId, seq: u64) -> OutcomeRecord {
-        OutcomeRecord::pass(offer, input_id(seq), PayloadType::new(), 0)
+    fn forward(offer: OfferId, seq: u64) -> OutcomeRecord {
+        OutcomeRecord::forward(offer, input_id(seq), PayloadType::new(), 0)
     }
 
-    fn stop(offer: OfferId, seq: u64) -> OutcomeRecord {
-        OutcomeRecord::stop(offer, input_id(seq), PayloadType::new(), 0)
+    fn drop(offer: OfferId, seq: u64) -> OutcomeRecord {
+        OutcomeRecord::drop(offer, input_id(seq), PayloadType::new(), 0)
     }
 
     #[test]
@@ -1116,7 +1116,7 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(DETECTOR, &pass(offer, 1), None, None, now)
+            .outcome(DETECTOR, &forward(offer, 1), None, None, now)
             .unwrap();
         let steps = steps(&mut router);
 
@@ -1144,7 +1144,7 @@ mod tests {
         let now = Instant::now();
         let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
-        let emit = OutcomeRecord::emit(
+        let replace = OutcomeRecord::replace(
             offer,
             input_id(1),
             PayloadType::new(),
@@ -1155,7 +1155,7 @@ mod tests {
         .unwrap();
 
         router
-            .outcome(DETECTOR, &emit, Some(OUTPUT), None, now)
+            .outcome(DETECTOR, &replace, Some(OUTPUT), None, now)
             .unwrap();
         let steps = steps(&mut router);
 
@@ -1180,8 +1180,8 @@ mod tests {
         (router, session)
     }
 
-    fn emit(offer: OfferId, seq: u64) -> OutcomeRecord {
-        OutcomeRecord::emit(
+    fn replace(offer: OfferId, seq: u64) -> OutcomeRecord {
+        OutcomeRecord::replace(
             offer,
             input_id(seq),
             PayloadType::new(),
@@ -1211,7 +1211,7 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(DETECTOR, &emit(offer, 1), Some(OUTPUT), None, now)
+            .outcome(DETECTOR, &replace(offer, 1), Some(OUTPUT), None, now)
             .unwrap();
 
         assert_eq!(forwarded_to_client(&mut router), vec![Some(OUTPUT)]);
@@ -1224,7 +1224,7 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(DETECTOR, &pass(offer, 1), None, None, now)
+            .outcome(DETECTOR, &forward(offer, 1), None, None, now)
             .unwrap();
 
         assert_eq!(forwarded_to_client(&mut router), vec![None]);
@@ -1236,12 +1236,12 @@ mod tests {
         let (mut router, session) = installed_with_client_sources(vec![TRACKER_NODE]);
         let to_detector = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         router
-            .outcome(DETECTOR, &emit(to_detector, 1), Some(OUTPUT), None, now)
+            .outcome(DETECTOR, &replace(to_detector, 1), Some(OUTPUT), None, now)
             .unwrap();
         let to_tracker = only_delivery(&steps(&mut router));
 
         router
-            .outcome(TRACKER, &pass(to_tracker, 1), None, None, now)
+            .outcome(TRACKER, &forward(to_tracker, 1), None, None, now)
             .unwrap();
 
         assert_eq!(forwarded_to_client(&mut router), vec![Some(OUTPUT)]);
@@ -1254,7 +1254,7 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(DETECTOR, &emit(offer, 1), Some(OUTPUT), None, now)
+            .outcome(DETECTOR, &replace(offer, 1), Some(OUTPUT), None, now)
             .unwrap();
 
         assert_eq!(forwarded_to_client(&mut router), vec![None]);
@@ -1277,7 +1277,7 @@ mod tests {
         let now = Instant::now();
         let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
-        let emit = OutcomeRecord::emit(
+        let replace = OutcomeRecord::replace(
             offer,
             input_id(1),
             PayloadType::new(),
@@ -1287,7 +1287,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = router.outcome(DETECTOR, &emit, None, None, now);
+        let result = router.outcome(DETECTOR, &replace, None, None, now);
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
@@ -1299,7 +1299,7 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
         let steps = steps(&mut router);
 
@@ -1322,7 +1322,7 @@ mod tests {
         assert!(delivered(&replaced).is_empty());
 
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now)
             .unwrap();
         let [(_, _, data)] = delivered(&steps(&mut router))[..] else {
             panic!("expected one delivery");
@@ -1361,7 +1361,7 @@ mod tests {
         assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::TimedOut]);
 
         router
-            .outcome(DETECTOR, &pass(offer, 1), None, None, now + TIMEOUT)
+            .outcome(DETECTOR, &forward(offer, 1), None, None, now + TIMEOUT)
             .unwrap();
         let steps = steps(&mut router);
 
@@ -1381,12 +1381,12 @@ mod tests {
         let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
         steps(&mut router);
 
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
 
         assert!(steps(&mut router).is_empty());
@@ -1399,12 +1399,12 @@ mod tests {
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
 
         router
-            .outcome(TRACKER, &stop(offer, 1), None, None, now)
+            .outcome(TRACKER, &drop(offer, 1), None, None, now)
             .unwrap();
         assert!(steps(&mut router).is_empty());
 
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
         assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::Result]);
     }
@@ -1419,7 +1419,7 @@ mod tests {
         assert!(delivered(&waiting).is_empty());
 
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now)
             .unwrap();
         let second = only_delivery(&steps(&mut router));
         assert_eq!(second.seq, first.seq + 1);
@@ -1438,13 +1438,13 @@ mod tests {
         accept(&mut router, session, OTHER_CROSSING, 3, now);
 
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now)
             .unwrap();
         let second = only_delivery(&steps(&mut router));
         // The first edge is pending again before the other edge got its turn.
         accept(&mut router, session, CROSSING, 4, now);
         router
-            .outcome(DETECTOR, &stop(second, 2), None, None, now)
+            .outcome(DETECTOR, &drop(second, 2), None, None, now)
             .unwrap();
         let third = only_delivery(&steps(&mut router));
 
@@ -1477,7 +1477,7 @@ mod tests {
         assert!(delivered(&waiting).is_empty());
 
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now + TIMEOUT)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now + TIMEOUT)
             .unwrap();
         let second = only_delivery(&steps(&mut router));
         assert_eq!(second.seq, first.seq + 1);
@@ -1509,7 +1509,7 @@ mod tests {
         steps(&mut router);
 
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
 
         assert!(steps(&mut router).is_empty());
@@ -1533,7 +1533,7 @@ mod tests {
         let now = Instant::now();
         let (mut router, session) = installed(ONE);
         let offer = only_delivery(&accept(&mut router, session, CROSSING, 1, now));
-        let emit = OutcomeRecord::emit(
+        let replace = OutcomeRecord::replace(
             offer,
             input_id(1),
             PayloadType::new(),
@@ -1543,7 +1543,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = router.outcome(DETECTOR, &emit, None, None, now);
+        let result = router.outcome(DETECTOR, &replace, None, None, now);
 
         assert!(matches!(result, Err(Error::InvalidArgument(_))));
         assert_eq!(client_kinds(&steps(&mut router)), vec![EventKind::TimedOut]);
@@ -1566,7 +1566,7 @@ mod tests {
         );
         // An outcome the dead engine sent before it died changes nothing.
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now)
             .unwrap();
         assert!(steps(&mut router).is_empty());
     }
@@ -1581,7 +1581,7 @@ mod tests {
         assert!(router.holds_inputs(DETECTOR));
 
         router
-            .outcome(DETECTOR, &stop(offer, 1), None, None, now)
+            .outcome(DETECTOR, &drop(offer, 1), None, None, now)
             .unwrap();
         assert!(!router.holds_inputs(DETECTOR));
     }
@@ -1611,7 +1611,7 @@ mod tests {
         assert!(delivered(&waiting).is_empty());
 
         router
-            .outcome(DETECTOR, &stop(first, 1), None, None, now)
+            .outcome(DETECTOR, &drop(first, 1), None, None, now)
             .unwrap();
         let next = only_delivery(&steps(&mut router));
 

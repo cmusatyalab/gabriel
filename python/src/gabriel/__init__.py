@@ -2,9 +2,9 @@
 
 A producer publishes inputs on a flow. A client takes the producer's inputs and offers them to the
 flow's engines, which a server serves. Each engine processes one input at a time and reports one
-outcome for it: `Engine.stop`, `Engine.pass_` or `Engine.emit`. The app reads what happened to its
-producer's inputs from a `Subscription`, and anyone can read a producer's inputs themselves with a
-`Reader`.
+outcome for it: `Engine.drop`, `Engine.forward` or `Engine.replace`. The app reads what happened to
+its producer's inputs from a `Subscription`, and anyone can read a producer's inputs themselves with
+a `Reader`.
 
 A `Producer`, an `Engine`, a `Subscription` and a `Reader` must stay on the thread that created
 them; using one from another thread raises `WrongThreadError`. A `Client` and a `Server` may be
@@ -29,7 +29,7 @@ from gabriel.producer import Producer
 from gabriel.reader import Reader
 from gabriel.server import Server
 from gabriel.subscription import Subscription
-from gabriel.types import Event, EventKind, Forward, Input, InputId, ReadInput
+from gabriel.types import Event, EventKind, Input, InputId, Outcome, ReadInput
 
 
 def init_log(filter: str | None = None) -> None:
@@ -53,12 +53,12 @@ __all__ = [
     "Engine",
     "Event",
     "EventKind",
-    "Forward",
     "GabrielError",
     "Input",
     "InputId",
     "InternalError",
     "InvalidArgumentError",
+    "Outcome",
     "Producer",
     "ReadInput",
     "Reader",

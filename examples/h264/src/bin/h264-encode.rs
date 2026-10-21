@@ -255,7 +255,7 @@ fn main() -> Result<()> {
         };
         if let Some(problem) = problem {
             eprintln!("discarding input {}: {problem}", id.seq());
-            engine.stop(&[])?;
+            engine.drop(&[])?;
             continue;
         }
         let frame = frame.as_mut().expect("checked above");
@@ -279,7 +279,7 @@ fn main() -> Result<()> {
                 args.timeout_ms
             );
             keyframes.needed = true;
-            engine.stop(&[])?;
+            engine.drop(&[])?;
             continue;
         };
 
@@ -299,11 +299,11 @@ fn main() -> Result<()> {
                 bytes.len()
             );
             keyframes.needed = true;
-            engine.stop(&[])?;
+            engine.drop(&[])?;
             continue;
         }
         engine.new_output()?[..bytes.len()].write_copy_of_slice(&bytes);
-        engine.emit(&encoded_type, bytes.len(), &[])?;
+        engine.replace(&encoded_type, bytes.len(), &[])?;
         keyframes.emitted(id, keyframe);
         if forced && !keyframe {
             eprintln!("the encoder ignored a request for a keyframe");

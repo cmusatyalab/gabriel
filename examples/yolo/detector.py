@@ -54,4 +54,4 @@ with (
                 found.boxes.cls, found.boxes.conf, found.boxes.xyxy
             )
         ]
-        engine.stop(json.dumps(objects).encode())
+        engine.drop(result=json.dumps(objects).encode())

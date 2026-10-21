@@ -505,7 +505,7 @@ mod tests {
     use super::*;
     use crate::{
         Engine, Subscription,
-        ipc::types::{EventKind, Forward, payload_type},
+        ipc::types::{EventKind, Outcome, payload_type},
         routing::{
             ids::{EdgeId, NodeId, ProducerName},
             server_router::{CrossingSpec, EdgeSpec},
@@ -626,13 +626,13 @@ mod tests {
         fixture.client_kinds();
         fixture.engine.poll_input().unwrap();
 
-        fixture.engine.pass(&RESULT).unwrap();
+        fixture.engine.forward(&RESULT).unwrap();
         fixture.dispatcher.poll(now).unwrap();
 
         let event = fixture.dispatcher.poll_client_event().unwrap();
         assert_eq!(event.session, fixture.session);
         assert_eq!(event.record.kind, EventKind::Result);
-        assert_eq!(event.record.forward, Forward::Pass);
+        assert_eq!(event.record.outcome, Outcome::Forward);
         let result = event.result.unwrap();
         assert_eq!(&*result.bytes, RESULT);
         assert_eq!(result.payload_type.as_str(), RESULT_TYPE);
@@ -650,7 +650,7 @@ mod tests {
             .unwrap();
         fixture.accept_frame(now);
         fixture.engine.poll_input().unwrap();
-        fixture.engine.stop(&RESULT).unwrap();
+        fixture.engine.drop(&RESULT).unwrap();
         fixture.dispatcher.poll(now).unwrap();
 
         let events: Vec<(u64, EventKind)> = std::iter::from_fn(|| subscriber.receive().unwrap())
@@ -699,7 +699,7 @@ mod tests {
         let mut subscription = Subscription::engine(&fixture.name).unwrap();
         fixture.accept_frame(now);
         fixture.engine.poll_input().unwrap();
-        fixture.engine.pass(&RESULT).unwrap();
+        fixture.engine.forward(&RESULT).unwrap();
         fixture.dispatcher.poll(now).unwrap();
 
         let mut kinds = Vec::new();
@@ -800,7 +800,7 @@ mod tests {
         let mut fixture = Fixture::new();
         fixture.accept_frame(now);
         fixture.engine.poll_input().unwrap();
-        fixture.engine.stop(&[]).unwrap();
+        fixture.engine.drop(&[]).unwrap();
 
         let node = NodeBuilder::new().create::<ipc::Service>().unwrap();
         let other = services::open_server_input_ready(&node, &unique("server"))
@@ -894,7 +894,7 @@ mod tests {
 
     #[test]
     fn short_outcome_payload_is_rejected() {
-        let outcome = OutcomeRecord::emit(
+        let outcome = OutcomeRecord::replace(
             OfferId::default(),
             InputId::default(),
             PayloadType::new(),

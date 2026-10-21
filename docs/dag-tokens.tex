@@ -1912,14 +1912,22 @@ Engines report one outcome per input to their own server, over iceoryx2:
 struct Outcome {
     offer: OfferId,
     input: InputId,
-    node: String,              // engine that produced it
-    result: Option<Vec<u8>>,
-    forward: Forward,          // Pass | Emit(output: Vec<u8>) | Stop
+    forward: Forward,          // Stop | Pass | Emit
+    result_type: String,       // how to read `result`; empty when there is none
+    output_type: String,       // how to read `output`; empty unless Emit
+    output: Vec<u8>,           // the new input of an Emit
+    result: Vec<u8>,
 }
 \end{lstlisting}
-A discard is \code{Stop} with no result. An engine can pass an input on and
-also report a result, e.g.\ a filter whose detections are used for
-speculative action. The server applies the outcome to the edges it owns, and
+The outcome does not name its engine: each engine has its own outcome
+service, so the server knows which engine answered. A discard is \code{Stop}
+with no result. An engine can pass an input on and also report a result,
+e.g.\ a filter whose detections are used for speculative action. The result
+and the forwarded input are separate: the next engines get only the input
+(the original after \code{Pass}, the new one after \code{Emit}), and the
+result goes only into the \code{Result} event. So a next engine that needs
+the result, e.g.\ a cloudlet engine that fuses with a local detector's boxes,
+needs an \code{Emit} that puts it in the new input. The server applies the outcome to the edges it owns, and
 reports it to the client as a \code{Result} event. The client then applies it
 to the edges the client owns, such as an uplink after a local filter's
 \code{Pass} (\S\ref{sec:forwarding}). The records and services that carry
@@ -1943,29 +1951,40 @@ engines to the client on one ordered stream:
 \begin{lstlisting}
 enum ResultEvent {
     // The offer was sent to the engine, so a result may come.
-    Sent     { offer: OfferId, input: InputId, node: String },
+    Sent     { offer: OfferId, input: InputId, engine: String },
     // A server received a crossing and created one offer per target.
     Accepted { offer: OfferId, input: InputId, children: Vec<OfferId> },
     // The engine finished the input. `forward` says whether the input went
     // on; `children` are the offers this created on the server's own edges.
-    Result   { offer: OfferId, input: InputId, node: String,
-               result: Option<Vec<u8>>, forward: ForwardKind,  // Pass|Emit|Stop
-               children: Vec<OfferId>, late: bool },
+    Result   { offer: OfferId, input: InputId, engine: String,
+               forward: Forward,  // Stop | Pass | Emit
+               children: Vec<OfferId>,
+               result_type: String, result: Vec<u8> },
     // The offer will never be sent to the engine.
-    Skipped  { offer: OfferId, input: InputId, node: String },
+    Skipped  { offer: OfferId, input: InputId, engine: String },
     // The offer was sent, but the engine did not answer before the offer's
     // deadline, or the engine was lost.
-    TimedOut { offer: OfferId, input: InputId, node: String },
+    TimedOut { offer: OfferId, input: InputId, engine: String },
     // The connection to the server was lost. No more events will come for
-    // anything sent to that server before now.
+    // anything sent to that server before now. It names no input; relayed
+    // to a remote engine's subscribers, it names the engine.
     Disconnected { flow: String },
     // A result an engine derived from the events it subscribes to, e.g. a
     // fusion decision. It answers no offer, so it does not affect tokens.
-    Derived  { input: InputId, node: String, result: Vec<u8> },
+    Derived  { input: InputId, engine: String,
+               result_type: String, result: Vec<u8> },
 }
 \end{lstlisting}
 Every event also carries the name of its flow, since one frame can enter
-several flows under the same \code{InputId}.
+several flows under the same \code{InputId}. An event that a server sends a
+client can also carry an input: the one an engine emitted, when an edge of
+the client leaves that engine (\code{client\_sources}, \S\ref{sec:install}),
+so the client can send it on.
+
+A late result is not marked. The client delivers it once, as an ordinary
+\code{Result}, and drops duplicates (\S\ref{sec:accounting}). A reader tells
+that a result is late because it already saw that engine's offer for the
+input end, with \code{TimedOut} or \code{Disconnected}.
 
 \paragraph{Timestamps.} Every event also says when it happened (\code{at}),
 and an event that ends a server's offer says when the server made the offer
@@ -1990,8 +2009,8 @@ engine's input edges, that offer ends in exactly one of:
         the local server is handled the same way.
 \end{itemize}
 A \code{Result} can arrive after its offer already ended with \code{TimedOut}
-or \code{Disconnected}. It is still delivered, with \code{late} set. It does
-not end the offer a second time, but the result may still be useful. This
+or \code{Disconnected}. It is still delivered, as a late result (see above). It
+does not end the offer a second time, but the result may still be useful. This
 guarantee is also what lets the client account for end-to-end tokens
 (\S\ref{sec:accounting}).
 
@@ -2029,12 +2048,22 @@ services}, where any process can read them.
         polling.
 \end{itemize}
 
+\paragraph{What to subscribe to.} There are two kinds of subscription: to a
+producer, or to an engine. There is none per flow. A producer's subscription
+gets the events about its inputs at every engine they reach, in every flow, so
+to follow a whole flow, an app subscribes to each of the flow's producers and
+filters by the flow each event names. SteelEagle's eagled does this for a
+vehicle's frames and telemetry. An engine's subscription gets that engine's
+events for every producer and flow, and is the only way to read its
+\code{Derived} results, which answer no input of a producer.
+
 \paragraph{What the producer's app sees.} The app does not track offers, so
 the client reports what happens to each input at each engine:
 \begin{itemize}[nosep]
   \item \code{Sent}, \code{Result}, \code{Skipped}, and \code{TimedOut} from
         the servers, unless the client dropped the event as a duplicate. A
-        late \code{Result} is published too.
+        late \code{Result} is published too. A \code{Sent} is published only
+        while its offer is open (\S\ref{sec:gaps}).
   \item \code{Skipped} and \code{TimedOut} for a crossing offer that ended on
         the client, once per target engine of the crossing. A crossing that
         times out after \code{Accepted} is not reported: its targets' own
@@ -2163,7 +2192,8 @@ offer $o$ of input $i$ arrives, the client:
 \begin{enumerate}[nosep]
   \item Checks whether the event is expected. If $o$ recently ended with
         \code{TimedOut} or \code{Disconnected} and the event is a
-        \code{Result}, the client delivers the result marked late and stops.
+        \code{Result}, the client delivers the result once, as a late result
+        (\S\ref{sec:events}), and stops.
         Any other event for an offer that is not in \code{open}, or for an
         input without a ticket, is a duplicate or a bug: the client drops it
         and logs it.
@@ -2260,8 +2290,8 @@ its way to the cloudlet.
 
 \paragraph{An offer for an event that is no longer open.} If the offer
 already ended, the router applies nothing. The event is \code{Late} if the
-offer timed out recently, so the client delivers its result once, marked late,
-and \code{Dropped} otherwise (a duplicate, or an unknown input). A late
+offer timed out recently, so the client delivers its result once, as a late
+result, and \code{Dropped} otherwise (a duplicate, or an unknown input). A late
 \code{Pass} is never forwarded.
 
 \paragraph{Time passes.} The client calls the router's \code{expire} method
@@ -2689,7 +2719,8 @@ can return a token twice:
         \code{pending\_token\_return} flag the same way.
   \item \textbf{Late events} (after a deadline or a disconnection): the
         offer was already removed, so the event cannot return the token
-        again. A late \code{Result} is still delivered once, marked late.
+        again. A late \code{Result} is still delivered once, as a late
+        result.
   \item \textbf{Unknown offers} (bugs, or messages from a previous session):
         the offer is not in \code{open}, or its \code{session} does not
         match, so the event is dropped and logged.
@@ -2802,7 +2833,10 @@ detector processes 10 frames/s and the remote one, including the network,
 
 \paragraph{Fusion.} The fusion engine subscribes to the event services of both
 detectors (\S\ref{sec:subscribe}). It is not part of the flow, so it never
-slows the detectors down. It cannot count on getting both results for a frame, and does not
+slows the detectors down. It runs on the device, where the client relays the
+remote detector's events; the cloudlet never sees the local detector's. To
+fuse on the cloudlet instead, the local detector would emit an input that
+carries its detections with the frame (\S\ref{sec:results}). It cannot count on getting both results for a frame, and does not
 always need both: its own logic decides how long to wait for the remote
 result. The result events tell it what can still come:
 
@@ -3145,7 +3179,7 @@ The client speaks the same protocol to both servers; only the transport
 differs. Control calls are encoded with postcard, and each carries the
 \code{PROTOCOL\_VERSION} it was made with; a server refuses a call of another
 version. On one machine, inputs and events have fixed-size records instead
-(\S\ref{sec:services}). Over QUIC, every message will be encoded with
+(\S\ref{sec:services}). Over QUIC, every message is encoded with
 postcard.
 \begin{itemize}[nosep]
   \item \textbf{Control calls} (client to server): \code{InstallFlow}, which
@@ -3155,7 +3189,9 @@ postcard.
         by the input's data. The server does not reply to an input. Instead,
         it reports what happens to the input as result events.
   \item \textbf{Result events} (server to client): one ordered stream of
-        \code{ResultEvent}s for all of the server's engines. Using one stream
+        \code{ResultEvent}s for all of the server's engines, each with the
+        input an engine emitted when the client sends it on, as on the local
+        server. Using one stream
         guarantees that a parent's event arrives before its children's
         (\S\ref{sec:accounting}). The client republishes the remote server's
         events on the device's event services (\S\ref{sec:subscribe}).
@@ -3275,8 +3311,10 @@ Engine events (\code{.../events})
   & the result, if any \\
 Client events (\code{.../events})
   & local server $\to$ client
-  & as for engine events, numbered per client
-  & the result, if any \\
+  & as for engine events, numbered per client, plus the type and length of
+    a forwarded input
+  & the input an engine emitted, if the client sends it on, then the
+    result \\
 Producer results (\code{.../result})
   & client $\to$ the producer's app
   & as for engine events, numbered per producer

@@ -87,14 +87,14 @@ def test_input_reaches_engine_and_result_reaches_app(fixture):
         assert input.id.session == fixture.producer.session
         assert input.id.seq == seq
         assert input.payload_type == INPUT_TYPE
-        fixture.engine.pass_(b"cat")
+        fixture.engine.forward(result=b"cat")
 
         deadline = time.monotonic() + WAIT
         while (event := events.next(deadline - time.monotonic())).kind != gabriel.EventKind.RESULT:
             pass
         assert event.engine == fixture.engine_name
         assert event.id.seq == seq
-        assert event.forward == gabriel.Forward.PASS
+        assert event.outcome == gabriel.Outcome.FORWARD
         assert event.result == b"cat"
         assert 0 < event.at_ns <= time.monotonic_ns()
 
@@ -126,7 +126,7 @@ def test_input_cannot_be_read_after_its_outcome(fixture):
     fixture.producer.send(FLOW, b"frame")
     input = fixture.engine.next(WAIT)
 
-    fixture.engine.stop()
+    fixture.engine.drop()
 
     with pytest.raises(ValueError):
         bytes(input.data)
@@ -168,7 +168,7 @@ def test_engine_on_a_thread_of_its_own_gets_inputs():
             ready.set()
             input = engine.next(WAIT)
             results.append(bytes(input.data))
-            engine.stop()
+            engine.drop()
 
     thread = threading.Thread(target=serve)
     with gabriel.Server(server_name) as server:
@@ -246,7 +246,7 @@ def test_an_event_kind_from_a_newer_abi_stays_an_int():
     assert _known(gabriel.EventKind, 1000) == 1000
 
 
-def test_emitted_input_reaches_the_next_engine(fixture):
+def test_replacement_reaches_the_next_engine(fixture):
     tracker_name = unique("tracker")
     with gabriel.Engine(tracker_name, max_output_size=MAX_OUTPUT_SIZE) as tracker:
         fixture.server.add_engine(tracker_name)
@@ -269,12 +269,12 @@ timeout = "5s"
         assert fixture.engine.next(WAIT) is not None
         output = fixture.engine.loan()
         output[:5] = b"tiles"
-        fixture.engine.emit(5, output_type="example.Tiles")
+        fixture.engine.replace(5, output_type="example.Tiles")
 
         input = tracker.next(WAIT)
         assert bytes(input.data) == b"tiles"
         assert input.payload_type == "example.Tiles"
-        tracker.stop()
+        tracker.drop()
 
 
 def test_engine_subscriber_sees_the_engines_result(fixture):
@@ -283,7 +283,7 @@ def test_engine_subscriber_sees_the_engines_result(fixture):
 
         seq = fixture.producer.send(FLOW, b"frame")
         assert fixture.engine.next(WAIT) is not None
-        fixture.engine.pass_(b"cat")
+        fixture.engine.forward(result=b"cat")
 
         deadline = time.monotonic() + WAIT
         while (event := events.next(deadline - time.monotonic())).kind != gabriel.EventKind.RESULT:
@@ -299,7 +299,7 @@ def test_engine_waits_for_an_event_of_an_engine_it_subscribes_to(fixture):
 
         seq = fixture.producer.send(FLOW, b"frame")
         assert fixture.engine.next(WAIT) is not None
-        fixture.engine.pass_(b"cat")
+        fixture.engine.forward(result=b"cat")
 
         deadline = time.monotonic() + WAIT
         while True:
@@ -324,7 +324,7 @@ def test_fusion_publishes_a_derived_result_its_subscribers_get(fixture):
         fixture.add_flow()
         fixture.producer.send(FLOW, b"frame")
         assert fixture.engine.next(WAIT) is not None
-        fixture.engine.pass_(b"cat")
+        fixture.engine.forward(result=b"cat")
         deadline = time.monotonic() + WAIT
         while (event := fusion.poll_event()) is None or event.kind != gabriel.EventKind.RESULT:
             fusion.wait(deadline - time.monotonic())

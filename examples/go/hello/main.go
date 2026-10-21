@@ -67,7 +67,7 @@ func main() {
 	// 5. The engine gets it, and reports its result.
 	input, err := engine.Next(ctx)
 	check(err)
-	check(engine.Stop([]byte(strings.ToUpper(string(input.Data)))))
+	check(engine.Drop([]byte(strings.ToUpper(string(input.Data)))))
 
 	// 6. The app reads the result.
 	for {

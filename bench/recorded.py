@@ -84,7 +84,11 @@ def results(run: Run) -> Iterator[tuple[dict, float]]:
 
 
 def forwards(event: dict) -> bool:
-    """Whether a Result passed its input on."""
+    """Whether a Result forwarded its input or a replacement."""
+    # Recordings made before the outcomes were renamed call the field
+    # "forward", and a drop "Stop".
+    if "outcome" in event:
+        return event["outcome"] != "Drop"
     return event["forward"] != "Stop"
 
 
